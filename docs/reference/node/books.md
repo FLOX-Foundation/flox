@@ -62,3 +62,5 @@ const matrix = new flox.CompositeBookMatrix();
 | `hasArbitrage(symbol)` | `boolean` | True if arbitrage opportunity exists |
 | `markStale(exchange, symbol)` | `void` | Mark exchange data as stale |
 | `checkStaleness(nowNs, thresholdNs)` | `void` | Evict stale data |
+
+There is currently no method to feed book updates into a `CompositeBookMatrix` from Node (or from QuickJS or Codon) -- the C ABI this binding wraps does not export an update entry point for it yet, only the Python binding (`flox_py.CompositeBookMatrix.update_book`) reaches `onBookUpdate` directly. A `CompositeBookMatrix` constructed here starts, and stays, empty.

@@ -125,7 +125,7 @@ struct Bar {
   Quantity tradeCount;    // Number of trades in bar
   TimePoint startTime;    // Bar open time
   TimePoint endTime;      // Bar close time
-  BarCloseReason reason;  // Why bar closed (Threshold, Gap, Forced, Warmup)
+  BarCloseReason reason;  // Threshold or Forced today; see reference/api/aggregator/bar.md
 };
 
 // Calculate delta (buy pressure - sell pressure)

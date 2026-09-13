@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 #include <math.h>
+#include <cstdint>
+#include <limits>
 
 using namespace flox;
 
@@ -91,6 +93,127 @@ TEST(DecimalTest, FromDoublePositiveRoundCorrectly)
   EXPECT_EQ(Price::fromDouble(1.0).raw(), 1000000);
   EXPECT_EQ(Price::fromDouble(0.000001).raw(), 1);
   EXPECT_EQ(Price::fromDouble(0.0000001).raw(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// BOOK-08: operator+= must saturate instead of silently overflowing.
+//
+// Overflow is guarded two ways, and this file tests both:
+//   - FLOX_SCALE_CHECKS on (any build without NDEBUG, or an explicit
+//     -DFLOX_SCALE_CHECKS=1 build such as CI's sanitizer job): overflow
+//     trips FLOX_SCALE_CHECK's assert immediately -- a programmer error
+//     caught as early as possible, same as every other FLOX_SCALE_CHECK
+//     in this file's arithmetic operators.
+//   - FLOX_SCALE_CHECKS off (a normal NDEBUG release build): the assert
+//     compiles to nothing, so checkedAddI64's saturation is what
+//     actually runs and must produce a defined, non-wrapped result.
+// A single un-guarded test can only exercise one of these per build, and
+// the two are mutually exclusive at compile time, so the tests below are
+// split accordingly instead of assuming a particular build type.
+// ---------------------------------------------------------------------------
+
+#if FLOX_SCALE_CHECKS
+
+TEST(DecimalTest, AccumulateOverflowTripsAssertWithScaleChecksOn)
+{
+  // Direct boundary case, scale checks on: the assert fires before
+  // saturation ever gets a chance to run -- see
+  // AccumulateSaturatesInsteadOfOverflowing below for the assert-off half
+  // of this same scenario.
+  EXPECT_DEATH(
+      {
+        Price total = Price::fromRaw(std::numeric_limits<int64_t>::max() - 100);
+        total += Price::fromRaw(1000);  // pushes 900 past the int64 ceiling
+      },
+      "fixed-point accumulation overflow");
+}
+
+TEST(DecimalTest, AccumulateRealisticBarVolumeOverflowTripsAssertWithScaleChecksOn)
+{
+  // Same repeated-accumulation shape as
+  // AccumulateRealisticBarVolumeOverflowSaturates below, scale checks on.
+  EXPECT_DEATH(
+      {
+        Price total = Price::fromRaw(0);
+        const Price increment = Price::fromRaw(5'000'000'000'000LL);
+        for (int i = 0; i < 2'000'000; ++i)
+        {
+          total += increment;
+        }
+      },
+      "fixed-point accumulation overflow");
+}
+
+TEST(DecimalTest, AccumulateNegativeOverflowTripsAssertWithScaleChecksOn)
+{
+  EXPECT_DEATH(
+      {
+        Price total = Price::fromRaw(std::numeric_limits<int64_t>::min() + 10);
+        total += Price::fromRaw(-100);
+      },
+      "fixed-point accumulation overflow");
+}
+
+#else  // !FLOX_SCALE_CHECKS
+
+TEST(DecimalTest, AccumulateSaturatesInsteadOfOverflowing)
+{
+  // Direct boundary test, scale checks off (a normal release build): a raw
+  // `_raw += other._raw` here is signed integer overflow -- undefined
+  // behavior, previously observed in the real Bar::volume accumulator
+  // (Volume::Scale = 1e8) to flip sign at -O0 and to vanish (get
+  // optimized away, printing the mathematically correct value from a
+  // UB-assuming compiler) at -O1, so the same accumulation reported a
+  // different result depending on how the binary was built. Post-fix,
+  // the accumulator must saturate at INT64_MAX rather than wrapping,
+  // regardless of optimization level.
+  Price total = Price::fromRaw(std::numeric_limits<int64_t>::max() - 100);
+  total += Price::fromRaw(1000);  // pushes 900 past the int64 ceiling
+
+  EXPECT_EQ(total.raw(), std::numeric_limits<int64_t>::max());
+}
+
+TEST(DecimalTest, AccumulateRealisticBarVolumeOverflowSaturates)
+{
+  // Reproduces the actual finding shape: repeatedly accumulating a large
+  // per-trade notional (as Bar::volume += price*quantity does) past the
+  // representable range. At this test file's local Price (Scale=1e6),
+  // 2,000,000 iterations of a raw increment of 5e12 accumulate to 1e19,
+  // comfortably past INT64_MAX (~9.223e18).
+  Price total = Price::fromRaw(0);
+  const Price increment = Price::fromRaw(5'000'000'000'000LL);
+  for (int i = 0; i < 2'000'000; ++i)
+  {
+    total += increment;
+  }
+
+  EXPECT_GE(total.raw(), 0) << "accumulation must never go negative from overflow";
+  EXPECT_EQ(total.raw(), std::numeric_limits<int64_t>::max());
+}
+
+TEST(DecimalTest, AccumulateNegativeSaturatesAtMin)
+{
+  Price total = Price::fromRaw(std::numeric_limits<int64_t>::min() + 10);
+  total += Price::fromRaw(-100);
+
+  EXPECT_EQ(total.raw(), std::numeric_limits<int64_t>::min());
+}
+
+#endif  // FLOX_SCALE_CHECKS
+
+TEST(DecimalTest, AccumulateStaysExactBelowTheOverflowCeiling)
+{
+  // Sanity check: saturation must not kick in for ordinary accumulation
+  // that stays well within int64 range. Never trips the assert either,
+  // so this one runs unconditionally.
+  Price total = Price::fromRaw(0);
+  const Price increment = Price::fromDouble(1000.0);
+  for (int i = 0; i < 1000; ++i)
+  {
+    total += increment;
+  }
+
+  EXPECT_NEAR(total.toDouble(), 1000.0 * 1000, 1e-6);
 }
 
 }  // namespace

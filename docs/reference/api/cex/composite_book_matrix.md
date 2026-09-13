@@ -74,6 +74,19 @@ BestQuote bestBid(SymbolId symbol) const noexcept {
 }
 ```
 
+## Snapshot vs. delta updates
+
+`onBookUpdate()` treats `BookUpdateEvent::update.type` (`BookUpdateType::SNAPSHOT` or `::DELTA`) differently per side:
+
+- A **SNAPSHOT** replaces both sides of that exchange's top-of-book wholesale. A side with no levels in a snapshot is published as genuinely empty (`bestBid`/`bestAsk`/`bidForExchange`/`askForExchange` report it invalid).
+- A **DELTA** only updates the side(s) actually present in the update. A side absent from a delta (a typical incremental frame only carries the side that changed) is left exactly as it was published before -- it is not cleared. If a delta only carries deletions and leaves no live level on a side, that side keeps its last known top rather than reporting a `$0.00` "valid" quote; there is no full order book behind this matrix, so a delta that removes the current top without a replacement level cannot be resolved to a new top until the next snapshot or an update that improves it.
+
+This matters because a real exchange delta commonly touches only one side (e.g. a Bybit `bids`-only incremental frame): before this behaved correctly, any single-sided delta zeroed out the *other* side's price and quantity, making that exchange's whole side disappear from cross-venue comparison until the next snapshot.
+
+## Symbol capacity
+
+Per-symbol state is stored in a fixed `SymbolStateMap<..., 256>` (256 symbols by default). A `SymbolId` at or beyond that capacity has nowhere to live -- the per-exchange state holds atomics, so it cannot use the growable overflow storage available to movable types. Such a write is routed to a shared internal scratch slot instead of the table (visible only in a debug build, which trips an assertion), rather than aliasing symbol 0. If you need more than 256 symbols, instantiate a wider `SymbolStateMap` capacity for your build or shard by exchange group.
+
 ## Usage
 
 ### Basic Setup

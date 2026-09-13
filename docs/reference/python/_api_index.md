@@ -431,7 +431,7 @@ Cross-exchange composite order book. Tracks best bid/ask across up to 4 exchange
 - `mark_exchange_stale(self, exchange: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `mark_stale(self, exchange: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `spread(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> typing.Any`
-- `update_book(self, exchange: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, bid_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], bid_quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ask_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ask_quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], recv_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
+- `update_book(self, exchange: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, bid_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], bid_quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ask_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ask_quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], recv_ns: typing.SupportsInt | typing.SupportsIndex = 0, is_delta: bool = False) -> None`
 
 ### `class ConstantLatency(LatencyModel)`
 

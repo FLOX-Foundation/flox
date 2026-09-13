@@ -33,8 +33,15 @@ class VolumeBarPolicy
 
   constexpr uint64_t param() const noexcept
   {
-    // Return threshold in scaled units (fits in 28 bits for reasonable values)
-    return static_cast<uint32_t>(_thresholdRaw / 1000);  // Compress for TimeframeId
+    // Same units as TimeframeId::volume(threshold): the notional threshold
+    // as passed to fromDouble()/the constructor (e.g. 1'000'000 for "$1M
+    // volume"), not the internal Volume::Scale-scaled fixed-point _raw
+    // representation. BarAggregator<VolumeBarPolicy> and BarMatrix must
+    // agree on this value or a matrix configured with
+    // TimeframeId::volume(threshold) never finds the bars this policy
+    // emits (they used to disagree: this used to divide by 1000 instead
+    // of Volume::Scale, and also silently truncated to 32 bits).
+    return static_cast<uint64_t>(_thresholdRaw / Volume::Scale);
   }
 
   [[nodiscard]] bool shouldClose(const TradeEvent& /*trade*/, const Bar& bar) const noexcept

@@ -105,4 +105,30 @@ constexpr int64_t checkedNarrowI64(__int128_t v) noexcept
 }
 #endif
 
+// Checked int64 addition, used by Decimal::operator+= (accumulators such as
+// Bar::volume). Plain `a + b` on int64_t is signed overflow, which is
+// undefined behavior in C++, not a defined wraparound -- observed in
+// practice to flip sign at -O0 and to disappear (the compiler assuming
+// overflow cannot happen) at higher optimization levels, so the same
+// accumulation reports a different number depending on how it was built.
+// This detects overflow through unsigned arithmetic (defined behavior) and
+// saturates at the int64 boundary instead, consistent with checkedNarrowI64
+// above. No __int128 dependency, so it is available on every toolchain this
+// project targets, including MSVC.
+constexpr int64_t checkedAddI64(int64_t a, int64_t b) noexcept
+{
+  const uint64_t ua = static_cast<uint64_t>(a);
+  const uint64_t ub = static_cast<uint64_t>(b);
+  const uint64_t usum = ua + ub;
+  // Signed overflow occurred iff both operands have the same sign and the
+  // result's sign differs from theirs.
+  const bool overflowed = static_cast<bool>((~(ua ^ ub) & (ua ^ usum)) >> 63);
+  FLOX_SCALE_CHECK(!overflowed, "fixed-point accumulation overflow (Decimal::operator+= exceeds int64 range)");
+  if (overflowed)
+  {
+    return b >= 0 ? (std::numeric_limits<int64_t>::max)() : (std::numeric_limits<int64_t>::min)();
+  }
+  return static_cast<int64_t>(usum);
+}
+
 }  // namespace flox

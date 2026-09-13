@@ -8,6 +8,7 @@
  */
 
 #include "flox/aggregator/bar_aggregator.h"
+#include "flox/aggregator/bar_matrix.h"
 #include "flox/aggregator/bus/bar_bus.h"
 #include "flox/aggregator/custom/footprint_bar.h"
 #include "flox/aggregator/custom/market_profile.h"
@@ -278,6 +279,45 @@ TEST(TimeBarPolicyTest, FlushesFinalBarOnStop)
   EXPECT_EQ(result[0].low, Price::fromDouble(100.0));
   EXPECT_EQ(result[0].close, Price::fromDouble(105.0));
   EXPECT_EQ(result[0].volume, Volume::fromDouble(100 * 1 + 105 * 1));
+  // BOOK-07: a bar flushed by stop() must be reported as Forced, not
+  // Threshold -- it never actually reached its threshold/interval.
+  EXPECT_EQ(result[0].reason, BarCloseReason::Forced);
+}
+
+// BOOK-10: a late (out-of-order) trade must never close the current bar
+// early. The bug compared the trade's aligned interval to bar.startTime
+// with `!=` instead of `>`, so a trade aligned to an *earlier* interval
+// than the current bar also satisfied the close condition -- closing the
+// live bar one event early and opening a duplicate bucket for an interval
+// that had already been emitted, breaking monotonicity of bar.startTime
+// (5 trades used to produce 3 bars with startTime order 60, 0, 60 instead
+// of 2 bars in order 60, 120).
+TEST(TimeBarPolicyTest, LateTradeDoesNotCloseBarEarlyOrBreakMonotonicity)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  TimeBarAggregator aggregator(TimeBarPolicy(INTERVAL), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 70));
+  aggregator.onTrade(makeTrade(SYMBOL, 101, 1, 80));
+  aggregator.onTrade(makeTrade(SYMBOL, 102, 1, 30));  // late: belongs to the [0,60) interval, already gone
+  aggregator.onTrade(makeTrade(SYMBOL, 103, 1, 90));
+  aggregator.onTrade(makeTrade(SYMBOL, 104, 1, 130));  // next interval: closes the [60,120) bar
+
+  aggregator.stop();  // flush the still-open [120,180) bar
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 2);
+  EXPECT_EQ(result[0].startTime, ts(60));
+  EXPECT_EQ(result[0].tradeCount.raw(), 4);
+  EXPECT_EQ(result[1].startTime, ts(120));
+  EXPECT_EQ(result[1].tradeCount.raw(), 1);
+  EXPECT_LT(result[0].startTime, result[1].startTime) << "bar.startTime must be monotonic";
 }
 
 // ============================================================================
@@ -306,6 +346,44 @@ TEST(TickBarPolicyTest, ClosesAfterNTrades)
   EXPECT_EQ(result[0].open, Price::fromDouble(100.0));
   EXPECT_EQ(result[0].close, Price::fromDouble(102.0));
   EXPECT_EQ(result[0].tradeCount.raw(), 3);  // Raw trade count, not scaled
+  // BOOK-07: a bar closed by reaching its threshold is genuinely Threshold,
+  // distinct from Forced (see FlushesFinalBarOnStop below).
+  EXPECT_EQ(result[0].reason, BarCloseReason::Threshold);
+}
+
+// BOOK-09(a): every threshold-based policy in this aggregator (Tick,
+// Volume, Range, Renko) detects "threshold already met" only when the
+// *next* event arrives -- shouldClose() is evaluated against the bar's
+// state from before the current trade, so the bar that completes the
+// threshold is only recognized as complete once a further trade proves no
+// more belong to it. This mirrors Time bars, which structurally cannot
+// close without a trade from the next interval either. The audit flagged
+// this specifically for Tick bars as "publishes one trade late"; both
+// reviewers judged it a design property rather than a data-correctness bug
+// (the bar's contents are exactly N trades, only the *emission* lags by
+// one event) -- documented in docs/explanation/bar-types.md. This test
+// pins that intended behavior down as a spec, not a symptom to "fix" away.
+TEST(TickBarPolicyTest, ClosesOneEventAfterThresholdIsReached)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  BarAggregator<TickBarPolicy> aggregator(TickBarPolicy(3), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 101, 1, 1));
+  aggregator.onTrade(makeTrade(SYMBOL, 102, 1, 2));  // 3rd trade: threshold reached, not yet detected
+
+  aggregator.stop();  // no 4th trade arrived; stop() force-flushes what we have
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 1);
+  EXPECT_EQ(result[0].tradeCount.raw(), 3)
+      << "the bar's own content is exactly N trades even though publication lagged";
 }
 
 // ============================================================================
@@ -333,6 +411,43 @@ TEST(VolumeBarPolicyTest, ClosesOnVolumeThreshold)
 
   ASSERT_EQ(result.size(), 1);
   EXPECT_EQ(result[0].volume, Volume::fromDouble(300.0));
+}
+
+// BOOK-06: BarAggregator<VolumeBarPolicy> and BarMatrix used to disagree on
+// how a threshold maps to a TimeframeId param -- BarAggregator emitted
+// `policy.param()` (internal Volume::Scale-scaled raw / 1000, truncated to
+// 32 bits), while a matrix configured via TimeframeId::volume(threshold)
+// expected the threshold itself. Every bar from this producer silently
+// failed BarMatrix::findTimeframeIndex and was dropped (bar() returned
+// nullptr for all of them, with no error). Same shape of bug for Range and
+// Renko -- see RangeBarPolicyTest/RenkoBarPolicyTest param() coverage
+// below; this end-to-end test is the one that actually exercises BarMatrix.
+TEST(VolumeBarPolicyTest, EmittedBarsAreFoundInBarMatrix)
+{
+  BarBus bus;
+  bus.enableDrainOnStop();
+  BarAggregator<VolumeBarPolicy> aggregator(VolumeBarPolicy::fromDouble(300.0), &bus);
+
+  BarMatrix<16, 4, 32> matrix;
+  std::array<TimeframeId, 1> tfs = {TimeframeId::volume(300)};
+  matrix.configure(tfs);
+  bus.subscribe(&matrix);
+
+  bus.start();
+  aggregator.start();
+
+  int emitted = 0;
+  for (int i = 0; i < 9; ++i)
+  {
+    aggregator.onTrade(makeTrade(SYMBOL, 100, 1, i));  // notional 100 -> closes every 3rd trade
+    ++emitted;
+  }
+  aggregator.stop();
+  bus.stop();
+
+  const auto* series = matrix.series(SYMBOL, TimeframeId::volume(300));
+  ASSERT_NE(series, nullptr) << "BarMatrix must have a slot for this timeframe";
+  EXPECT_EQ(series->size(), 3u) << "all 3 volume-threshold bars from 9 trades must land in the matrix";
 }
 
 // ============================================================================
@@ -367,6 +482,14 @@ TEST(RenkoBarPolicyTest, CreatesBricksOnPriceMove)
 
 TEST(RangeBarPolicyTest, ClosesOnRangeBreak)
 {
+  // BOOK-09(b): a range bar must close with an actual high-low range that
+  // reaches the threshold. The bar's own accumulated range hits 10 as soon
+  // as the 95 trade is folded in (high=105, low=95); the close is only
+  // detected on the *next* trade (same off-by-one-event lag every
+  // threshold policy in this file has -- see TickBarPolicyTest), but the
+  // emitted bar's range must not be short of the threshold the way it used
+  // to be (this test used to assert low=100, i.e. a range of 5 against a
+  // threshold of 10 -- see BOOK-09 in the audit).
   std::vector<Bar> result;
   BarBus bus;
   bus.enableDrainOnStop();
@@ -379,13 +502,16 @@ TEST(RangeBarPolicyTest, ClosesOnRangeBreak)
 
   aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
   aggregator.onTrade(makeTrade(SYMBOL, 105, 1, 1));  // range = 5
-  aggregator.onTrade(makeTrade(SYMBOL, 95, 1, 2));   // range = 10, closes
+  aggregator.onTrade(makeTrade(SYMBOL, 95, 1, 2));   // range = 10 after this trade
+  aggregator.onTrade(makeTrade(SYMBOL, 96, 1, 3));   // next trade observes threshold met, closes
 
   bus.stop();
 
   ASSERT_EQ(result.size(), 1);
   EXPECT_EQ(result[0].high, Price::fromDouble(105.0));
-  EXPECT_EQ(result[0].low, Price::fromDouble(100.0));  // Note: didn't update to 95 before close check
+  EXPECT_EQ(result[0].low, Price::fromDouble(95.0));
+  EXPECT_GE((result[0].high - result[0].low).toDouble(), 10.0)
+      << "closed range bar must reach the configured threshold";
 }
 
 // ============================================================================
@@ -448,6 +574,33 @@ TEST(HeikinAshiBarPolicyTest, UsesTimeBasedIntervals)
   ASSERT_EQ(result.size(), 1);
   EXPECT_EQ(result[0].startTime, ts(0));
   EXPECT_EQ(result[0].endTime, ts(60));
+}
+
+// BOOK-10: same fix as TimeBarPolicy -- a late trade must not close the
+// current Heikin-Ashi bar early or break startTime monotonicity.
+TEST(HeikinAshiBarPolicyTest, LateTradeDoesNotBreakMonotonicity)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  HeikinAshiBarAggregator aggregator(HeikinAshiBarPolicy(INTERVAL), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 70));
+  aggregator.onTrade(makeTrade(SYMBOL, 101, 1, 80));
+  aggregator.onTrade(makeTrade(SYMBOL, 102, 1, 30));   // late, belongs to an already-gone interval
+  aggregator.onTrade(makeTrade(SYMBOL, 104, 1, 130));  // closes the [60,120) bar
+
+  aggregator.stop();
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 2);
+  EXPECT_EQ(result[0].startTime, ts(60));
+  EXPECT_EQ(result[1].startTime, ts(120));
+  EXPECT_LT(result[0].startTime, result[1].startTime);
 }
 
 TEST(HeikinAshiBarPolicyTest, ChainedBarsUsesPreviousHAValues)
@@ -1152,6 +1305,9 @@ TEST(MultiTimeframeAggregatorTest, SingleTradeAcrossAllTimeframes)
     EXPECT_EQ(bar.high, Price::fromDouble(100.0));
     EXPECT_EQ(bar.low, Price::fromDouble(100.0));
     EXPECT_EQ(bar.close, Price::fromDouble(100.0));
+    // BOOK-07: stop() flushes are Forced, not Threshold, in
+    // MultiTimeframeAggregator too.
+    EXPECT_EQ(bar.reason, BarCloseReason::Forced);
   }
 }
 

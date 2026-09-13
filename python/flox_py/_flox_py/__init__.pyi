@@ -514,9 +514,9 @@ class CompositeBookMatrix:
         """
         Composite spread (best ask - best bid) or None
         """
-    def update_book(self, exchange: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, bid_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], bid_quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ask_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ask_quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], recv_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+    def update_book(self, exchange: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, bid_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], bid_quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ask_prices: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], ask_quantities: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], recv_ns: typing.SupportsInt | typing.SupportsIndex = 0, is_delta: bool = False) -> None:
         """
-        Feed a book update from an exchange
+        Feed a book update from an exchange. is_delta=False (the default) replaces both sides of that exchange's top-of-book wholesale, as a real snapshot would. is_delta=True only updates the side(s) present in bid_prices/ask_prices; a side not present in a delta call is left exactly as it was, not cleared.
         """
 class ConstantLatency(LatencyModel):
     """

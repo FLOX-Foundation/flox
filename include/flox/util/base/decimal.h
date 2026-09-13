@@ -159,6 +159,12 @@ class Decimal
 
   constexpr friend Decimal operator*(int64_t x, Decimal d) { return withScale(x * d._raw, d.scale()); }
 
+  // Checked accumulation: a raw signed overflow here is undefined behavior
+  // (and, worse, UB whose visible result changes with the optimization
+  // level -- see checkedAddI64). This saturates at the int64 boundary
+  // instead of wrapping, so an accumulator that runs past ~92.23e9 units
+  // (at the default 1e8 scale) reports the ceiling rather than a
+  // wrong-signed garbage value.
   constexpr Decimal& operator+=(const Decimal& other)
   {
     FLOX_SCALE_CHECK(_raw == 0 || other._raw == 0 || scale() == other.scale(),
@@ -169,7 +175,7 @@ class Decimal
       _scale = other._scale;
     }
 #endif
-    _raw += other._raw;
+    _raw = checkedAddI64(_raw, other._raw);
     return *this;
   }
 
