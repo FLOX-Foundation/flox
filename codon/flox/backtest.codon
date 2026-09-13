@@ -5,6 +5,8 @@
 #
 # Handles are heap-allocated by the C API. Call .close() when done to free them.
 
+from flox.order_type_codes import order_type_code_from_str
+
 from C import flox_simulated_executor_create() -> cobj
 from C import flox_simulated_executor_destroy(cobj)
 from C import flox_simulated_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
@@ -336,21 +338,8 @@ class SimulatedExecutor:
     def submit_order(self, id: int, side: str, price: float, quantity: float,
                      order_type: str = "market", symbol: int = 1):
         side_u = u8(0 if side == "buy" else 1)
-        t = 1
-        if order_type == "limit":
-            t = 0
-        elif order_type == "stop_market":
-            t = 2
-        elif order_type == "stop_limit":
-            t = 3
-        elif order_type == "take_profit_market":
-            t = 4
-        elif order_type == "take_profit_limit":
-            t = 5
-        elif order_type == "trailing_stop":
-            t = 6
         flox_simulated_executor_submit_order(self._handle, u64(id), side_u, price, quantity,
-                                   u8(t), u32(symbol))
+                                   order_type_code_from_str(order_type), u32(symbol))
 
     def submit_order_ex(self, id: int, side: str, price: float, quantity: float,
                          order_type: str = "market", symbol: int = 1,
@@ -359,19 +348,7 @@ class SimulatedExecutor:
         """Extended submit with TIF / reduce_only / GTD deadline.
         tif: gtc | ioc | fok | gtd | post_only."""
         side_u = u8(0 if side == "buy" else 1)
-        t = 1
-        if order_type == "limit":
-            t = 0
-        elif order_type == "stop_market":
-            t = 2
-        elif order_type == "stop_limit":
-            t = 3
-        elif order_type == "take_profit_market":
-            t = 4
-        elif order_type == "take_profit_limit":
-            t = 5
-        elif order_type == "trailing_stop":
-            t = 6
+        t = order_type_code_from_str(order_type)
         tif_u = 0
         if tif == "ioc":
             tif_u = 1

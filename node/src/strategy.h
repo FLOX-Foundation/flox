@@ -8,6 +8,7 @@
 #include "error_translator.h"
 #include "flox/capi/bridge_strategy.h"
 #include "flox/capi/flox_capi.h"
+#include "flox/capi/order_type_names.hpp"
 #include "flox/engine/symbol_registry.h"
 #include "hooks.h"
 #include "run_trace.h"
@@ -101,19 +102,13 @@ inline uint32_t symId(const Napi::Value& v)
   return v.As<Napi::Number>().Uint32Value();
 }
 
-static constexpr const char* kOrderTypeNames[] = {
-    "market", "limit", "stop_market", "stop_limit",
-    "tp_market", "tp_limit", "trailing_stop",
-    "cancel", "cancel_all", "modify"};
-
 inline Napi::Object signalToJs(Napi::Env env, const FloxSignal* s)
 {
   auto obj = Napi::Object::New(env);
   obj.Set("orderId", Napi::Number::New(env, static_cast<double>(s->order_id)));
   obj.Set("symbol", Napi::Number::New(env, s->symbol));
   obj.Set("side", Napi::String::New(env, s->side == 0 ? "buy" : "sell"));
-  obj.Set("orderType", Napi::String::New(env,
-                                         s->order_type < 10 ? kOrderTypeNames[s->order_type] : "unknown"));
+  obj.Set("orderType", Napi::String::New(env, flox::capi::signalTypeName(s->order_type)));
   obj.Set("price", Napi::Number::New(env, s->price));
   obj.Set("quantity", Napi::Number::New(env, s->quantity));
   obj.Set("triggerPrice", Napi::Number::New(env, s->trigger_price));
@@ -638,25 +633,7 @@ struct NodeStrategyHost
 
   static const char* orderTypeName(uint8_t t)
   {
-    switch (t)
-    {
-      case 0:
-        return "LIMIT";
-      case 1:
-        return "MARKET";
-      case 2:
-        return "STOP_MARKET";
-      case 3:
-        return "STOP_LIMIT";
-      case 4:
-        return "TP_MARKET";
-      case 5:
-        return "TP_LIMIT";
-      case 6:
-        return "ICEBERG";
-      default:
-        return "UNKNOWN";
-    }
+    return flox::capi::orderTypeNameUpper(t);
   }
 
   static void buildOrderEventObj(Napi::Env env, Napi::Object& o,
