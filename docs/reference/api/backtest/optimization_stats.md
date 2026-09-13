@@ -56,7 +56,8 @@ public:
   static double permutationTest(
       const std::vector<double>& group1,
       const std::vector<double>& group2,
-      size_t numPermutations = 10000);
+      size_t numPermutations = 10000,
+      std::uint64_t seed = 42u);
 
   static double correlation(
       const std::vector<double>& x,
@@ -65,12 +66,13 @@ public:
   static ConfidenceInterval bootstrapCI(
       const std::vector<double>& data,
       double confidenceLevel = 0.95,
-      size_t numSamples = 10000);
+      size_t numSamples = 10000,
+      std::uint64_t seed = 42u);
 
   static void printSummary(
       const std::vector<OptimizationResult<ParamsT>>& results);
 
-  static void generateReport(
+  static bool generateReport(
       const std::vector<OptimizationResult<ParamsT>>& results,
       const std::filesystem::path& outputPath);
 };
@@ -84,10 +86,19 @@ public:
 static double permutationTest(
     const std::vector<double>& group1,
     const std::vector<double>& group2,
-    size_t numPermutations = 10000);
+    size_t numPermutations = 10000,
+    std::uint64_t seed = 42u);
 ```
 
-Two-sample permutation test for comparing group means. Returns p-value.
+Two-sample permutation test for comparing group means. Returns a p-value,
+always strictly greater than zero: the p-value is `(extreme + 1) /
+(numPermutations + 1)`, the standard add-one correction (the observed
+arrangement is itself one of the possible outcomes under the null).
+
+The resample is seeded (default `42`, matching
+[`whitesRealityCheck`](../../../how-to/whites-reality-check.md)), so the
+same inputs always return the same p-value. Pass a different `seed` to draw
+an independent resample.
 
 **Example:**
 ```cpp
@@ -121,10 +132,14 @@ double r = Stats::correlation(sharpes, returns);
 static ConfidenceInterval bootstrapCI(
     const std::vector<double>& data,
     double confidenceLevel = 0.95,
-    size_t numSamples = 10000);
+    size_t numSamples = 10000,
+    std::uint64_t seed = 42u);
 ```
 
-Bootstrap confidence interval for the mean.
+Bootstrap confidence interval for the mean. `confidenceLevel` is clamped to
+`[0, 1]`; `numSamples == 0` returns `{0.0, 0.0, 0.0}` instead of resampling.
+Seeded the same way as `permutationTest` above: deterministic by default,
+override `seed` for an independent resample.
 
 **Example:**
 ```cpp
@@ -145,12 +160,14 @@ Print optimization summary to log. Shows total combinations, mean/stddev Sharpe,
 ### generateReport
 
 ```cpp
-static void generateReport(
+static bool generateReport(
     const std::vector<OptimizationResult<ParamsT>>& results,
     const std::filesystem::path& outputPath);
 ```
 
-Generate Markdown report with top 10 results table and statistics.
+Generate a Markdown report with a top-10 results table and statistics.
+Returns `true` on success; `false` (and an error logged) if `outputPath`
+could not be opened for writing, e.g. a nonexistent parent directory.
 
 ## Example
 

@@ -532,8 +532,15 @@ double BacktestResult::computeCalmarRatio(double twr) const
   // Annualize the cumulative TWR using the trade-based sampling rate.
   // periods per year = metricsAnnualizationFactor (e.g. 252 for daily sampling).
   // If we observed n periods, annualized return = (1 + twr)^(periodsPerYear/n) - 1.
+  //
+  // With very few sampled periods this exponent explodes: two points against
+  // a 252-periods-per-year factor raises (1 + twr) to the 126th power, which
+  // produced Calmar values on the order of 1e124 on short equity curves.
+  // Refuse to annualize below a minimum sample count instead of extrapolating
+  // a two-point curve into a bogus "per year" figure.
+  static constexpr double kMinCalmarPeriods = 5.0;
   const double periods = static_cast<double>(_equityCurve.size());
-  if (periods <= 0.0)
+  if (periods < kMinCalmarPeriods)
   {
     return 0.0;
   }

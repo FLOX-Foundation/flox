@@ -189,6 +189,57 @@ TEST(BacktestMetrics, TradeFeeIncludesEntryAndExit)
   EXPECT_NEAR(stats.totalFees, 0.21, 1e-4);
 }
 
+// (sverh, found alongside B09) Calmar ratio: annualizing a very short equity
+// curve raises (1 + twr) to a huge power (252 periods-per-year / n observed
+// periods), producing values on the order of 1e37+ from an entirely
+// ordinary two-trade backtest. computeCalmarRatio now refuses to annualize
+// below a minimum sample count instead of extrapolating a two-point curve
+// into a bogus "per year" figure.
+TEST(BacktestMetrics, CalmarRatioRefusesToAnnualizeVeryShortCurves)
+{
+  BacktestConfig cfg;
+  cfg.feeRate = 0.0;
+  BacktestResult result(cfg);
+
+  // Trade 1: a huge win doubles the account (~100% return in one trade).
+  roundTrip(result, 100.0, 100100.0, 1000, 2000, 1);
+  // Trade 2: a small loss creates a nonzero drawdown off the new peak.
+  roundTrip(result, 100.0, 50.0, 3000, 4000, 3);
+
+  ASSERT_EQ(result.equityCurve().size(), 2u);
+  auto stats = result.computeStats();
+  ASSERT_GT(stats.maxDrawdown, 0.0);
+  ASSERT_GT(stats.timeWeightedReturn, 0.9);  // ~99.95% cumulative return
+
+  // Before the fix this was on the order of 1e37+ ((1.9995)^126, since
+  // 252 / 2 periods = 126). With too few sampled periods to annualize
+  // responsibly, it must be exactly 0.0.
+  EXPECT_DOUBLE_EQ(stats.calmarRatio, 0.0);
+}
+
+// Regression guard: the minimum-periods floor must not suppress Calmar on a
+// backtest with a reasonable number of sampled periods.
+TEST(BacktestMetrics, CalmarRatioComputesNormallyWithEnoughPeriods)
+{
+  BacktestConfig cfg;
+  cfg.feeRate = 0.0;
+  BacktestResult result(cfg);
+
+  roundTrip(result, 100.0, 110.0, 0, 100, 1);
+  roundTrip(result, 100.0, 95.0, 200, 300, 3);
+  roundTrip(result, 100.0, 108.0, 400, 500, 5);
+  roundTrip(result, 100.0, 97.0, 600, 700, 7);
+  roundTrip(result, 100.0, 112.0, 800, 900, 9);
+
+  ASSERT_EQ(result.equityCurve().size(), 5u);
+  auto stats = result.computeStats();
+  ASSERT_GT(stats.maxDrawdown, 0.0);
+  // A finite, sane Calmar ratio -- not suppressed by the minimum-periods
+  // floor, and nowhere near the pathological blowup a short curve produces.
+  EXPECT_GT(stats.calmarRatio, 0.0);
+  EXPECT_LT(stats.calmarRatio, 1000.0);
+}
+
 TEST(BacktestMetrics, PartialCloseProratesEntryFee)
 {
   BacktestConfig cfg;

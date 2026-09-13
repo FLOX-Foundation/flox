@@ -125,7 +125,9 @@ class BacktestResult
   // Each return is (equity[i] - equity[i-1]) / equity[i-1] with the configured
   // riskFreeRate subtracted. Sharpe/Sortino are annualized by
   // sqrt(metricsAnnualizationFactor). Calmar annualizes the cumulative TWR
-  // by the observed sample count and divides by the drawdown fraction.
+  // by the observed sample count and divides by the drawdown fraction; it
+  // returns 0.0 below a minimum sample count rather than raising a short
+  // curve's return to a huge power (see computeCalmarRatio).
   double computeSharpeRatio() const;
   double computeSortinoRatio() const;
   double computeCalmarRatio(double cumulativeTwr) const;

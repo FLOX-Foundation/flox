@@ -600,3 +600,157 @@ TEST(LiquidationEngine, BookAnchoredImpactBlendsMarks)
   e.onMark(BTC, 80.0);
   EXPECT_EQ(e.cascadeSizesPerTick().size(), 2u);
 }
+
+// === B09 audit: BT-03, BT-04, BT-05 ===
+
+// BT-03: the maintenance-margin check (upnl, a few lines up in each walk)
+// scales by contractMultiplier -- options 100x, ES 50x -- so a leveraged
+// position can be ruled underwater. The realized loss booked at close must
+// scale the same way, or the deficit that reaches insurance/ADL is silently
+// shrunk by exactly contractMultiplier. Same economic position (10
+// contracts, multiplier 100, entry 50, mark 40, margin 3000) must produce
+// the same $7,000.00 deficit through every one of the three position paths
+// (orphan, isolated account, cross account) -- before the fix, only the
+// cross path (which never shared this code) got $7,000.00; orphan and
+// isolated both silently reported $0.00 (residual 3000 + (-100) = 2900,
+// "solvent").
+TEST(LiquidationEngine, ContractMultiplierAppliesToRealizedLossNotJustMarginCheck)
+{
+  constexpr double kQty = 10.0;
+  constexpr double kMultiplier = 100.0;
+  constexpr double kEntry = 50.0;
+  constexpr double kMark = 40.0;
+  constexpr double kMargin = 3000.0;
+  // realized = qty * (mark - entry) * multiplier = 10 * (-10) * 100 = -10,000.
+  // deficit = margin + realized = 3000 - 10000 = -7000 -> $7,000.00 shortfall.
+  constexpr double kExpectedDeficit = 7000.0;
+
+  // Orphan position.
+  {
+    LiquidationEngine e;
+    e.setInsuranceFundCapital(1e9);
+    e.setAdlEnabled(false);
+    e.setLiquidationSlippageBps(0.0);
+    e.openPosition(LeveragedPosition{.accountId = 1,
+                                     .symbol = BTC,
+                                     .quantity = kQty,
+                                     .entryPrice = kEntry,
+                                     .equity = kMargin,
+                                     .contractMultiplier = kMultiplier});
+    const auto out = e.onMark(BTC, kMark);
+    EXPECT_EQ(out.liquidationsCount, 1u);
+    EXPECT_NEAR(out.insuranceFundDelta, -kExpectedDeficit, 1e-6);
+  }
+
+  // Isolated account.
+  {
+    LiquidationEngine e;
+    e.setInsuranceFundCapital(1e9);
+    e.setAdlEnabled(false);
+    e.setLiquidationSlippageBps(0.0);
+    Account a(/*accountId=*/2, /*equity=*/0.0);
+    a.setMarginMode(MarginMode::Isolated);
+    a.openPosition(BTC, kQty, kEntry, /*isolatedEquity=*/kMargin, kMultiplier);
+    e.attachAccount(&a);
+    const auto out = e.onMark(BTC, kMark);
+    EXPECT_EQ(out.liquidationsCount, 1u);
+    EXPECT_NEAR(out.insuranceFundDelta, -kExpectedDeficit, 1e-6);
+  }
+
+  // Cross account -- control: this path already applied the multiplier
+  // before the fix, and must keep agreeing with the other two after it.
+  {
+    LiquidationEngine e;
+    e.setInsuranceFundCapital(1e9);
+    e.setAdlEnabled(false);
+    e.setLiquidationSlippageBps(0.0);
+    Account a(/*accountId=*/3, /*equity=*/kMargin);
+    a.setMarginMode(MarginMode::Cross);
+    a.openPosition(BTC, kQty, kEntry, /*isolatedEquity=*/0.0, kMultiplier);
+    e.attachAccount(&a);
+    const auto out = e.onMark(BTC, kMark);
+    EXPECT_EQ(out.liquidationsCount, 1u);
+    EXPECT_NEAR(out.insuranceFundDelta, -kExpectedDeficit, 1e-6);
+  }
+}
+
+// BT-04: an isolated-mode ADL winner must keep both its posted margin AND
+// the ADL-retained gain -- the position holding them is erased from the
+// account's book by the same runInsuranceAndAdlPhase call that credits it.
+// Before the fix, `p.equity += realized` wrote the retained gain into that
+// about-to-be-erased position instead of the account, so the winner lost
+// BOTH the $50 retained gain AND its $5,000 posted margin: a $5,050.00
+// discrepancy on a single ADL episode (ended at $0.00 instead of
+// $5,050.00), while the cross-margin path with the same numbers (see
+// AdlConfiscatesForgoneGainNotFullUpnl above) already got this right.
+TEST(LiquidationEngine, IsolatedAdlWinnerKeepsMarginAndForgoneGain)
+{
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(0.0);  // fund can't absorb -> straight to ADL
+  e.setAdlEnabled(true);
+  e.setLiquidationSlippageBps(0.0);
+
+  // Bankrupt long (orphan): 10 @ 100, equity 50; at mark 40 loss 600 -> deficit 550.
+  e.openPosition(pos(/*acct=*/1, 10.0, 100.0, 50.0));
+
+  // Winner: isolated short account, -10 @ 100, posted margin (isolated
+  // equity) 5000. At mark 40 uPnl = +600.
+  Account w(/*accountId=*/2, /*equity=*/0.0);
+  w.setMarginMode(MarginMode::Isolated);
+  w.openPosition(BTC, -10.0, 100.0, /*isolatedEquity=*/5000.0);
+  e.attachAccount(&w);
+
+  const auto out = e.onMark(BTC, 40.0);
+  EXPECT_EQ(out.liquidationsCount, 1u);
+  EXPECT_EQ(out.adlCloseoutsCount, 1u);
+  EXPECT_EQ(out.adlClosedOut.front(), 2u);
+  EXPECT_EQ(w.positionCount(), 0u);  // fully deleveraged
+
+  // absorbed = min(deficit 550, upnl 600) = 550; retained = 50. The leg is
+  // gone, so both its $5,000 posted margin and the $50 retained gain must
+  // now live on the account's shared equity: 5000 + 50 = 5050.
+  EXPECT_DOUBLE_EQ(w.equity(), 5050.0);
+}
+
+// BT-05: leverage-based ADL rankings (Binance/Bybit) score a candidate by
+// upnl * (notional / equity). `Account::openPosition` always leaves a
+// cross leg's own `p.equity` at 0 ("Cross mode ignores per-position
+// equity", account.cpp) -- scoring off `p.equity` collapsed every cross
+// candidate's leverage (and thus score) to 0, so the ranking degenerated
+// into an accountId tie-break that can pick the WRONG side entirely once
+// equities differ.
+TEST(LiquidationEngine, BinanceRankingUsesAccountEquityForCrossLeverage)
+{
+  LiquidationEngine e;
+  e.addTier(0.0, 0.005);
+  e.setInsuranceFundCapital(0.0);
+  e.setAdlEnabled(true);
+  e.setLiquidationSlippageBps(0.0);
+  e.setAdlRanking(AdlRanking::Binance);
+
+  // Bankrupt orphan long -> deficit 550 (covered by either winner alone).
+  e.openPosition(pos(/*acct=*/1, 10.0, 100.0, 50.0));
+
+  // Winner "low": low leverage via a large account equity. notional@40 =
+  // 400, leverage = 400/100000 = 0.004, upnl = +600 -> score = 2.4.
+  Account low(/*accountId=*/2, /*equity=*/100'000.0);
+  low.setMarginMode(MarginMode::Cross);
+  low.openPosition(BTC, -10.0, 100.0);  // isolatedEquity defaults to 0 (cross)
+  e.attachAccount(&low);
+
+  // Winner "high": 1000x higher leverage via a tiny account equity,
+  // otherwise identical. leverage = 400/100 = 4.0, upnl = +600 -> score = 2400.
+  Account high(/*accountId=*/3, /*equity=*/100.0);
+  high.setMarginMode(MarginMode::Cross);
+  high.openPosition(BTC, -10.0, 100.0);
+  e.attachAccount(&high);
+
+  const auto out = e.onMark(BTC, 40.0);
+  ASSERT_EQ(out.adlCloseoutsCount, 1u);
+  // The high-leverage account must be ADL'd first, as a real venue's
+  // Binance-style ranking would. Before the fix both candidates scored 0
+  // and the accountId tie-break picked account 2 (the LOW-leverage side)
+  // instead -- the exact opposite of the venue's order.
+  EXPECT_EQ(out.adlClosedOut.front(), 3u);
+}
