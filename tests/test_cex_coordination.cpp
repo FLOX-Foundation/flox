@@ -549,6 +549,17 @@ TEST_F(CompositeBookMatrixTest, SnapshotWithEmptySideInvalidatesThatSide)
   EXPECT_FALSE(askAfter.valid) << "a snapshot with no ask levels must invalidate the ask side";
 }
 
+// BOOK-12(b): writing an out-of-range symbol is guarded two ways, and both
+// are tested here, the same split used in test_decimal.cpp for the
+// analogous accumulation-overflow guard:
+//   - NDEBUG unset (any debug/sanitizer build): SymbolStateMap's assert
+//     fires immediately -- a programmer error (a table sized too small
+//     for the symbol universe) caught as early as possible.
+//   - NDEBUG set (a normal release build): the assert compiles to
+//     nothing, so the overflow-scratch-slot fallback is what actually
+//     runs and must not corrupt symbol 0's data.
+#ifdef NDEBUG
+
 TEST_F(CompositeBookMatrixTest, OverflowSymbolDoesNotCorruptSymbolZero)
 {
   CompositeBookMatrix<4> matrix;
@@ -571,6 +582,28 @@ TEST_F(CompositeBookMatrixTest, OverflowSymbolDoesNotCorruptSymbolZero)
   EXPECT_EQ(bidZero.priceRaw, 50 * 1'000'000LL)
       << "writing an out-of-range symbol must not corrupt symbol 0's data";
 }
+
+#else  // !NDEBUG
+
+TEST_F(CompositeBookMatrixTest, OverflowSymbolTripsAssertInDebugBuilds)
+{
+  CompositeBookMatrix<4> matrix;
+  BookUpdateEvent ev(res_);
+
+  setupBookUpdate(ev, 0, 0, 50 * 1'000'000LL, 1 * 1'000'000LL, 5001 * 10'000LL,
+                  1 * 1'000'000LL, BookUpdateType::SNAPSHOT);
+  matrix.onBookUpdate(ev);
+
+  EXPECT_DEATH(
+      {
+        setupBookUpdate(ev, 300, 0, 7000 * 1'000'000LL, 1 * 1'000'000LL, 7001 * 1'000'000LL,
+                        1 * 1'000'000LL, BookUpdateType::SNAPSHOT);
+        matrix.onBookUpdate(ev);
+      },
+      "SymbolId exceeds MaxSymbols for non-movable type");
+}
+
+#endif  // NDEBUG
 
 // ============================================================================
 // SplitOrderTracker Tests
