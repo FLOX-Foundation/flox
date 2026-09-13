@@ -76,5 +76,8 @@ setTimeout(() => {
   runner.stop();
 
   console.log(`${passed} passed, ${failed} failed`);
+  // Forced exit: runner.stop() does not release the threaded Runner's
+  // ThreadSafeFunction (separately tracked, see test_types.ts), so the
+  // event loop would otherwise sit alive until GC happens to collect it.
   process.exit(failed > 0 ? 1 : 0);
 }, 3000);

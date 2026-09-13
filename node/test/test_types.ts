@@ -13,7 +13,7 @@
 // silently (e.g. a declared `bigint` field that is actually `number`).
 
 declare const console: { log(...args: unknown[]): void; error(...args: unknown[]): void };
-declare const process: { exitCode?: number };
+declare const process: { exitCode?: number; exit(code?: number): never };
 
 let _passed = 0;
 let _failed = 0;
@@ -592,6 +592,15 @@ void POSITION_FIFO;
 void POSITION_AVG_COST;
 
 console.log(`test_types: ${_passed} passed, ${_failed} failed`);
-if (_failed > 0) {
-  process.exitCode = 1;
-}
+// Forced exit, not process.exitCode: the threadedRunner constructed above
+// (new Runner(registry, cb, true)) holds a ThreadSafeFunction that is
+// never released on stop() -- only in a destructor that GC may or may not
+// run before Node would otherwise decide the loop is idle. Locally this
+// often finishes anyway once GC happens to collect it; on CI it hung one
+// run for hours before a human cancelled it. That non-release is a real,
+// separately tracked defect (TSFN lifecycle on Runner.stop()), not
+// something this test should paper over silently -- hence this comment
+// instead of a quiet process.exit(). This test's job is to check the type
+// contract, not to prove the process exits, so forcing the exit here is
+// legitimate; it is called out because it is also hiding a bug.
+process.exit(_failed > 0 ? 1 : 0);

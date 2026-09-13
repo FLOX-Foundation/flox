@@ -85,6 +85,7 @@ function drainStep() {
   check(true, `process survived ${N} throwing threaded dispatches without crashing`);
   runner.stop();
   console.log(`${passed} passed, ${failed} failed`);
+  // Forced exit: see the matching comment in test_tsfn_backpressure.js.
   process.exit(failed > 0 ? 1 : 0);
 }
 drainStep();
