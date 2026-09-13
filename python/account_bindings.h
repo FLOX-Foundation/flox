@@ -60,7 +60,13 @@ inline void bindAccount(py::module_& m)
       .def("record_fill", &flox::Account::recordFill, py::arg("ts_ns"), py::arg("notional"), py::arg("symbol") = flox::SymbolId{0})
       .def("rolling_notional_by_symbol_30d", &flox::Account::rollingNotionalBySymbol30d)
       .def("rolling_notional_30d", &flox::Account::rollingNotional30d)
-      .def("reset_rolling", &flox::Account::resetRolling);
+      .def("reset_rolling", &flox::Account::resetRolling)
+      .def("reset", &flox::Account::reset, py::arg("equity"),
+           "Clear every open position and mark, reset the 30-day rolling "
+           "notional window, and set equity to `equity`. Use this to reuse "
+           "one Account across repeated backtest or RL-training episodes "
+           "on the same tape -- without it, a position and its equity "
+           "delta from one episode survive into the next.");
 }
 
 }  // namespace flox_py

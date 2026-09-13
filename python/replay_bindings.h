@@ -750,10 +750,20 @@ class PyDataWriter
     return _writer.writeTrade(tr);
   }
 
-  uint64_t writeTrades(py::array_t<int64_t> exchangeTsNs, py::array_t<int64_t> recvTsNs,
-                       py::array_t<double> prices, py::array_t<double> quantities,
-                       py::array_t<uint64_t> tradeIds, py::array_t<uint32_t> symbolIds,
-                       py::array_t<uint8_t> sides)
+  // c_style | forcecast on every array below: without it a strided view
+  // (a `[::2]` slice, a structured-array field) is accepted silently and
+  // read at stride 8 bytes regardless of its real element spacing, which
+  // writes the wrong trade data to disk -- a durable corruption, worse
+  // than a one-off bad read, since the tape this produces looks fine
+  // until someone replays it. See rawToDouble a little further down in
+  // this file, which already guards against the same thing for reads.
+  uint64_t writeTrades(py::array_t<int64_t, py::array::c_style | py::array::forcecast> exchangeTsNs,
+                       py::array_t<int64_t, py::array::c_style | py::array::forcecast> recvTsNs,
+                       py::array_t<double, py::array::c_style | py::array::forcecast> prices,
+                       py::array_t<double, py::array::c_style | py::array::forcecast> quantities,
+                       py::array_t<uint64_t, py::array::c_style | py::array::forcecast> tradeIds,
+                       py::array_t<uint32_t, py::array::c_style | py::array::forcecast> symbolIds,
+                       py::array_t<uint8_t, py::array::c_style | py::array::forcecast> sides)
   {
     size_t n = exchangeTsNs.size();
     if (recvTsNs.size() != static_cast<py::ssize_t>(n) ||
@@ -801,10 +811,14 @@ class PyDataWriter
   // Bulk option-quote write. mark_price / index_price are doubles converted via
   // PRICE_SCALE; iv is a double (e.g. 0.65) scaled by kIvScale; open_interest is
   // a double converted via QUANTITY_SCALE.
-  uint64_t writeOptionQuotes(py::array_t<int64_t> exchangeTsNs, py::array_t<int64_t> recvTsNs,
-                             py::array_t<double> markPrices, py::array_t<double> indexPrices,
-                             py::array_t<double> ivs, py::array_t<double> openInterest,
-                             py::array_t<uint32_t> symbolIds, py::object bidPrices,
+  uint64_t writeOptionQuotes(py::array_t<int64_t, py::array::c_style | py::array::forcecast> exchangeTsNs,
+                             py::array_t<int64_t, py::array::c_style | py::array::forcecast> recvTsNs,
+                             py::array_t<double, py::array::c_style | py::array::forcecast> markPrices,
+                             py::array_t<double, py::array::c_style | py::array::forcecast> indexPrices,
+                             py::array_t<double, py::array::c_style | py::array::forcecast> ivs,
+                             py::array_t<double, py::array::c_style | py::array::forcecast> openInterest,
+                             py::array_t<uint32_t, py::array::c_style | py::array::forcecast> symbolIds,
+                             py::object bidPrices,
                              py::object askPrices, py::object underlyingPrices, py::object bidSizes,
                              py::object askSizes, py::object bidIvs, py::object askIvs)
   {
@@ -819,24 +833,26 @@ class PyDataWriter
       throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
     }
 
-    // Optional channels: pass None to record 0. Each must match length if given.
-    auto optArr = [&](py::object o) -> py::array_t<double>
+    // Optional channels: pass None to record 0. Each must match length if
+    // given. c_style | forcecast on the cast target, same reason as the
+    // required arrays above: without it a strided optional channel writes
+    // silently wrong data instead of failing loudly or copying correctly.
+    auto optArr = [&](py::object o) -> py::array_t<double, py::array::c_style | py::array::forcecast>
     {
       if (o.is_none())
       {
-        return py::array_t<double>();
+        return py::array_t<double, py::array::c_style | py::array::forcecast>();
       }
-      auto a = o.cast<py::array_t<double>>();
+      auto a = o.cast<py::array_t<double, py::array::c_style | py::array::forcecast>>();
       if (a.size() != static_cast<py::ssize_t>(n))
       {
         throw flox::FloxError("E_LEN_001", "All input arrays must have the same length.");
       }
       return a;
     };
-    py::array_t<double> bidArr = optArr(bidPrices), askArr = optArr(askPrices),
-                        undArr = optArr(underlyingPrices), bidSzArr = optArr(bidSizes),
-                        askSzArr = optArr(askSizes), bidIvArr = optArr(bidIvs),
-                        askIvArr = optArr(askIvs);
+    py::array_t<double, py::array::c_style | py::array::forcecast> bidArr = optArr(bidPrices),
+                                                                   askArr = optArr(askPrices), undArr = optArr(underlyingPrices), bidSzArr = optArr(bidSizes),
+                                                                   askSzArr = optArr(askSizes), bidIvArr = optArr(bidIvs), askIvArr = optArr(askIvs);
 
     const auto* ets = exchangeTsNs.data();
     const auto* rts = recvTsNs.data();

@@ -1,12 +1,14 @@
 """Tests for the reproducibility bundle (W6.T015)."""
 from __future__ import annotations
 
+import io
 import json
 import shutil
 import sys
 import tarfile
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -185,6 +187,168 @@ class BundleValidateTests(unittest.TestCase):
                     dst.addfile(member, fileobj=f)
         with self.assertRaises(ValueError):
             bundle.validate_bundle(broken)
+
+
+def _repack_with_member(bundle_path: Path, dest: Path, extra_members: dict) -> None:
+    """Copy `bundle_path` to `dest`, adding each (name -> bytes) in
+    `extra_members` as an additional tar member (used to smuggle a
+    path-traversal entry into an otherwise normal bundle)."""
+    with tarfile.open(bundle_path, "r") as src, tarfile.open(dest, "w") as dst:
+        for member in src.getmembers():
+            f = src.extractfile(member)
+            dst.addfile(member, fileobj=f)
+        for name, data in extra_members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            dst.addfile(info, fileobj=io.BytesIO(data))
+
+
+def _repack_replacing_member(bundle_path: Path, dest: Path, replacements: dict) -> None:
+    """Copy `bundle_path` to `dest`, replacing the content of each
+    member named in `replacements` (name -> bytes) and leaving every
+    other member untouched -- used to simulate a bundle whose
+    strategy.py was edited after packing without touching the
+    manifest's recorded hashes."""
+    with tarfile.open(bundle_path, "r") as src, tarfile.open(dest, "w") as dst:
+        for member in src.getmembers():
+            if member.name in replacements:
+                data = replacements[member.name]
+                info = tarfile.TarInfo(member.name)
+                info.size = len(data)
+                dst.addfile(info, fileobj=io.BytesIO(data))
+            else:
+                f = src.extractfile(member)
+                dst.addfile(member, fileobj=f)
+
+
+class BundleSecurityTests(unittest.TestCase):
+    """Extraction must not escape the destination directory,
+    and replaying/validating a bundle must warn that it executes
+    the strategy code inside it."""
+
+    def setUp(self) -> None:
+        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-test-"))
+        strat = _write_strategy(self.work)
+        tape_dir = _write_tape(self.work)
+        self.bundle_path = self.work / "bundle.tar"
+        bundle.pack_bundle(strategy=strat, tape=tape_dir, output=self.bundle_path)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.work, ignore_errors=True)
+
+    def test_path_traversal_member_is_refused(self) -> None:
+        evil = self.work / "evil.tar"
+        _repack_with_member(
+            self.bundle_path, evil,
+            {"../escaped_from_bundle.txt": b"should never land outside the bundle root"},
+        )
+        with self.assertRaises(bundle.BundleSecurityError):
+            bundle.replay_bundle(evil)
+        # And nothing was written outside the (nonexistent, since
+        # extraction should have been refused) extraction directory.
+        self.assertFalse((self.work.parent / "escaped_from_bundle.txt").exists())
+
+    def test_replay_warns_about_executing_bundle_code(self) -> None:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            bundle.replay_bundle(self.bundle_path)
+        self.assertTrue(
+            any(issubclass(w.category, bundle.BundleTrustWarning) for w in caught),
+            f"expected a BundleTrustWarning, got {[w.category for w in caught]}",
+        )
+
+
+class BundleIntegrityTests(unittest.TestCase):
+    """The manifest's recorded strategy/tape hashes and
+    engine version must actually be checked, and a bundle predating
+    the .floxrun ride-along must not be flagged as mismatched purely
+    because of that."""
+
+    def setUp(self) -> None:
+        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-test-"))
+        self.strat = _write_strategy(self.work)
+        self.tape_dir = _write_tape(self.work)
+        self.bundle_path = self.work / "bundle.tar"
+        bundle.pack_bundle(strategy=self.strat, tape=self.tape_dir, output=self.bundle_path)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.work, ignore_errors=True)
+
+    def test_swapped_strategy_with_untouched_hash_is_detected(self) -> None:
+        # The report's exact scenario: an attacker swaps strategy.py
+        # for different code AND re-records expected_output.json to
+        # match the new code's own output (so the JSON-level diff
+        # alone shows nothing), but leaves the manifest's
+        # strategy_sha256 as it was at pack time. Build that bundle by
+        # packing the tampered strategy fresh (self-consistent
+        # manifest + expected output for the new code), then splicing
+        # its strategy.py and expected_output.json onto the ORIGINAL
+        # bundle's manifest -- which still names the original hash.
+        tampered_dir = Path(tempfile.mkdtemp(prefix="flox-bundle-tampered-"))
+        try:
+            tampered_source = _STRATEGY_SOURCE.replace("self.qty = qty", "self.qty = qty * 5")
+            tampered_strat = tampered_dir / "strategy.py"
+            tampered_strat.write_text(tampered_source)
+            tampered_bundle = tampered_dir / "tampered.tar"
+            bundle.pack_bundle(strategy=tampered_strat, tape=self.tape_dir, output=tampered_bundle)
+
+            with tarfile.open(tampered_bundle, "r") as tf:
+                new_strategy_bytes = tf.extractfile("strategy/strategy.py").read()
+                new_expected_bytes = tf.extractfile("expected_output.json").read()
+
+            spliced = self.work / "spliced.tar"
+            _repack_replacing_member(
+                self.bundle_path, spliced,
+                {
+                    "strategy/strategy.py": new_strategy_bytes,
+                    "expected_output.json": new_expected_bytes,
+                },
+            )
+            res = bundle.validate_bundle(spliced)
+            self.assertFalse(
+                res.matches,
+                "a strategy swapped for different code, with a matching "
+                "expected_output.json but the original manifest hash "
+                "left untouched, must not validate as a match",
+            )
+            self.assertTrue(
+                any(d.startswith("strategy_sha256:") for d in res.diff), res.diff
+            )
+        finally:
+            shutil.rmtree(tampered_dir, ignore_errors=True)
+
+    def test_faked_engine_version_is_detected(self) -> None:
+        with tarfile.open(self.bundle_path, "r") as tf:
+            manifest = json.loads(tf.extractfile("manifest.json").read())
+        manifest["flox_version"] = "0.0.1-attacker"
+        replaced = self.work / "fakeversion.tar"
+        _repack_replacing_member(
+            self.bundle_path, replaced,
+            {"manifest.json": json.dumps(manifest).encode("utf-8")},
+        )
+        res = bundle.validate_bundle(replaced)
+        self.assertTrue(any(d.startswith("flox_version:") for d in res.diff), res.diff)
+
+    def test_bundle_without_floxrun_still_validates_on_matching_content(self) -> None:
+        # Simulate a bundle packed before the .floxrun ride-along
+        # landed: strip expected.floxrun/ entirely. Every other field
+        # still matches byte-for-byte, so this must still validate --
+        # comparing "actual has a fresh trace" against "expected never
+        # had one" must not, on its own, fail the whole bundle.
+        with tarfile.open(self.bundle_path, "r") as src:
+            members = [m for m in src.getmembers() if not m.name.startswith("expected.floxrun")]
+            old_format = self.work / "old_format.tar"
+            with tarfile.open(old_format, "w") as dst:
+                for m in members:
+                    dst.addfile(m, fileobj=src.extractfile(m))
+        res = bundle.validate_bundle(old_format)
+        self.assertTrue(
+            res.matches,
+            f"a bundle with no expected.floxrun/ but otherwise-matching "
+            f"content must still validate: diff={res.diff}",
+        )
+        self.assertNotIn("floxrun_present", res.actual)
+        self.assertNotIn("floxrun_present", res.expected)
 
 
 if __name__ == "__main__":

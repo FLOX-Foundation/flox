@@ -96,22 +96,26 @@ def place_order(
     return _post("/place_order", body)
 
 
-def cancel_order(*, order_id: int, dry_run: bool = True) -> str:
+def cancel_order(*, account: str, order_id: int, dry_run: bool = True) -> str:
     return _post("/cancel_order", {
+        "account": account,
         "order_id": int(order_id),
         "dry_run": bool(dry_run),
     })
 
 
-def cancel_all(*, symbol: int = 0, dry_run: bool = True) -> str:
+def cancel_all(*, account: str, symbol: int = 0, dry_run: bool = True) -> str:
     return _post("/cancel_all", {
+        "account": account,
         "symbol": int(symbol),
         "dry_run": bool(dry_run),
     })
 
 
-def flatten_positions(*, symbol: Optional[int] = None, dry_run: bool = True) -> str:
-    body: dict[str, Any] = {"dry_run": bool(dry_run)}
+def flatten_positions(
+    *, account: str, symbol: Optional[int] = None, dry_run: bool = True
+) -> str:
+    body: dict[str, Any] = {"account": account, "dry_run": bool(dry_run)}
     if symbol is not None:
         body["symbol"] = int(symbol)
     return _post("/flatten_positions", body)

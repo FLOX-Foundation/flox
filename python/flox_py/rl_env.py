@@ -215,6 +215,11 @@ class FloxTradingEnv:
     _last_fill_idx: int = field(default=0, init=False)
     _last_equity_at_mark: float = field(default=0.0, init=False)
     _venue_entry_price: float = field(default=0.0, init=False)
+    # Equity the venue stack's account had when this env was
+    # constructed. reset() restores the account to this value so a
+    # policy trained over repeated episodes on the same tape sees the
+    # same starting balance each time -- see _reset_venue_stack.
+    _initial_account_equity: float = field(default=0.0, init=False)
     _last_outcome: dict = field(default_factory=dict, init=False)
     # order_id → dict(side, type, price, qty_remaining, submit_step,
     # initial_qty). Maintained as fills land — orders disappear when
@@ -239,6 +244,9 @@ class FloxTradingEnv:
     metadata: dict = field(default_factory=lambda: {"render_modes": []})
 
     def __post_init__(self) -> None:
+        if self.venue_stack is not None:
+            self._initial_account_equity = float(self.venue_stack.account().equity())
+
         if self.multi_tapes is not None:
             self._init_multi_symbol()
             return
@@ -511,6 +519,50 @@ class FloxTradingEnv:
 
     # ── Gymnasium API ────────────────────────────────────────────
 
+    def _reset_venue_stack(self) -> None:
+        """Restore the venue stack to the state a fresh episode expects.
+
+        `Account.open_position`/`close_position` only ever mutate the
+        account's position list; nothing clears it between calls, so
+        without this a position, the account's equity, and every fill
+        recorded on the executor carry over from the previous episode.
+        The standard training loop (``PPO(...).learn(...)``) resets the
+        env on every episode boundary, so on a real venue stack that
+        silently corrupts the whole run: reward keeps drifting with
+        episode count and the account can go broke on pure replay, with
+        the agent never having caused it.
+        """
+        if self.venue_stack is None:
+            return
+        executor = self.venue_stack.executor()
+        symbols = (
+            [int(s) for s in self.multi_tapes.keys()]
+            if self.multi_tapes is not None
+            else [self.symbol_id]
+        )
+        for sym in symbols:
+            executor.cancel_all(sym)
+        executor.clear_fills()
+        self.venue_stack.account().reset(self._initial_account_equity)
+        # FeeSchedule keeps its own 30-day rolling-notional window (and
+        # tier-transition log) separate from the Account it is bound
+        # to; Account.reset() above does not touch it. Left alone, the
+        # fee tier on the very first fill of episode 2+ is computed
+        # against episode 1's trading volume, so even a fully reset
+        # account can see a slightly different fee on that one fill.
+        self.venue_stack.fees().reset_rolling()
+        # Known remaining gap: SimulatedExecutor has no reset of its own
+        # (no method clears its internal order-matching / queue-position
+        # state), so a market order's simulated fill price can still
+        # differ by a tick or two between two otherwise-identical
+        # episodes depending on what the executor saw in the previous
+        # one. This is a narrower, much smaller effect than what this
+        # method fixes -- equity and position no longer carry over, so
+        # reward no longer grows with episode count and the account no
+        # longer drains on pure replay -- but it means two episodes are
+        # not guaranteed byte-identical. Giving SimulatedExecutor its
+        # own reset() is future C++ work.
+
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> Tuple[Any, dict]:
@@ -521,6 +573,7 @@ class FloxTradingEnv:
         self._last_fill_idx = 0
         self._multi_last_fill_idx = 0
         self._last_outcome = {}
+        self._reset_venue_stack()
 
         if self.multi_tapes is not None:
             return self._reset_multi()
@@ -1185,13 +1238,44 @@ class FloxTradingEnv:
 
     # ── Internal — shared observation ────────────────────────────
 
+    def _last_known_price(self) -> float:
+        """The most recent trade price the agent has actually observed.
+
+        ``self.trades[self._idx]`` is tempting to reach for here because
+        it is cheap and already in scope, but by the time ``_observation``
+        runs at the end of a step, ``self._idx`` has already been advanced
+        past the trade that step just replayed -- ``trades[self._idx]``
+        is the price of the NEXT trade, the one the agent's action for
+        this step has not been executed against yet. Building the PnL
+        and open-order-distance slots from it leaks that future fill
+        price into the observation: an agent can invert the leaked value
+        and trade the zigzag in the tape almost perfectly, which is not
+        a signal any real policy would have. ``_price_window`` already
+        holds the price this step actually traded at (appended before
+        ``self._idx`` moves), so it is the honest source here.
+        """
+        if self._price_window:
+            return float(self._price_window[-1])
+        return self._first_price
+
     def _observation(self) -> List[float]:
         denom = self._first_price if self._first_price > 0 else 1.0
         normalized = [p / denom for p in self._price_window]
         unreal = 0.0
-        if self._position != 0.0 and self._idx < len(self.trades):
-            cur_price = float(self.trades[self._idx][1])
-            unreal = (cur_price - self._entry_price) * self._position
+        if self._position != 0.0:
+            cur_price = self._last_known_price()
+            # Venue-stack mode tracks its own weighted entry price
+            # (_apply_fill keeps it in lockstep with the Account); the
+            # bare path's _entry_price is never written there (see
+            # _step_venue_stack_common / _apply_fill), so reading it
+            # here would silently report entry price 0 and turn this
+            # slot into raw price * position instead of unrealized PnL.
+            entry_price = (
+                self._venue_entry_price
+                if self.venue_stack is not None
+                else self._entry_price
+            )
+            unreal = (cur_price - entry_price) * self._position
         return list(normalized) + [self._position, unreal] + self._open_order_slots()
 
     def _open_order_slots(self) -> List[float]:
@@ -1199,11 +1283,7 @@ class FloxTradingEnv:
         if n <= 0:
             return []
 
-        cur_price = (
-            float(self.trades[self._idx][1])
-            if self._idx < len(self.trades)
-            else self._first_price
-        )
+        cur_price = self._last_known_price()
         max_offset_ticks = max(int(self.max_price_offset_ticks), 1)
         tick = float(self.tick_size) if self.tick_size > 0 else 1.0
         norm_qty = float(self.max_position) if self.max_position > 0 else 1.0
@@ -1676,6 +1756,7 @@ class WalkForwardRL:
         possible."""
         obs, _ = test_env.reset(seed=0)
         equities: List[float] = []
+        rewards: List[float] = []
         total_reward = 0.0
         steps = 0
         terminated = False
@@ -1684,6 +1765,7 @@ class WalkForwardRL:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, info = test_env.step(action)
             total_reward += float(reward)
+            rewards.append(float(reward))
             steps += 1
             equity_at_mark = info.get("equity_at_mark", info.get("equity"))
             if equity_at_mark is not None:
@@ -1701,17 +1783,25 @@ class WalkForwardRL:
                 peak = max(peak, e)
                 dd = (peak - e) / peak if peak > 0 else 0.0
                 max_dd = max(max_dd, dd)
-            mean_reward = total_reward / max(steps, 1)
-            variance = (
-                sum((r - mean_reward) ** 2 for r in equities) / max(steps, 1)
-            )
-            std = variance ** 0.5
-            sharpe = (
-                (mean_reward / std) if std > 0 else 0.0
-            )
         else:
             return_pct = 0.0
             max_dd = 0.0
+
+        # Sharpe is mean / std of the per-step RETURN series (the same
+        # `reward`, dollars of equity change per step, that the loop
+        # above already produces) -- never of the equity LEVEL. Equity
+        # level is dominated by the starting balance, which has nothing
+        # to do with how good the strategy is: mixing "mean reward in
+        # dollars" with "std of an equity level around ~ starting
+        # capital" makes the ratio scale with 1 / starting_capital, so
+        # the same strategy on the same tape reports a Sharpe 100x
+        # smaller just because the account started with 100x more cash.
+        if rewards:
+            mean_reward = sum(rewards) / len(rewards)
+            variance = sum((r - mean_reward) ** 2 for r in rewards) / len(rewards)
+            std = variance ** 0.5
+            sharpe = (mean_reward / std) if std > 0 else 0.0
+        else:
             sharpe = 0.0
 
         m = {

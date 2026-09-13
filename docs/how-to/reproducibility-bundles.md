@@ -2,6 +2,8 @@
 
 A bundle is a single tarball that encodes everything needed to reproduce a backtest result byte-for-byte on another machine: strategy code, the captured tape it ran against, the engine version, and the expected output. `flox bundle pack` captures a run; `flox bundle validate` proves the next run on the same inputs matches.
 
+**`flox bundle replay` and `flox bundle validate` run the strategy code shipped inside the bundle.** A bundle is designed to be shared, which is exactly why this matters: replaying one is the same as running any other code someone handed you. Only replay or validate a bundle from a source you trust. Nothing in the format authenticates who produced it.
+
 ## Why this exists
 
 Backtest divergence is the most common bug in algorithmic trading. A strategy passes on your laptop, fails on someone else's machine, or behaves differently after an engine bump. A bundle pins all the inputs (strategy SHA, tape SHA, engine version, slippage config) and the recorded output, so divergence becomes a hard CI failure instead of a slow erosion of trust.
@@ -59,6 +61,8 @@ Replay plus a strict comparison against the recorded `expected_output.json`. Exi
 ## What's compared
 
 The validator checks `trade_count`, `fill_count`, the per-fill `(symbol, side, price, quantity)` tuples in order, and `total_filled_quantity`. Order IDs are intentionally excluded because the runner assigns them from a process-wide counter that is not stable between processes.
+
+It also recomputes `strategy_sha256` and `tape_sha256` from what was actually extracted and re-hashes the running engine's version, then compares all three against the values the manifest recorded at pack time. This catches a bundle whose `strategy.py` or tape changed after packing, even if `expected_output.json` was re-recorded to match the new content. It is not a substitute for signing: the manifest lives unsigned in the same archive it describes, so a party who edits the strategy can recompute these hashes too. What it does catch is accidental drift and an engine-version mismatch, which is the common case this format exists for.
 
 If you need stricter comparison (per-fill timestamps, intermediate equity curve), open an issue. The current set is the minimum that catches engine-level regressions; extending it is cheap once a real divergence shows up.
 

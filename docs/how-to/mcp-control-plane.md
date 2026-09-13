@@ -8,7 +8,8 @@ The companion read-only inspection (`get_positions`, `get_open_orders`, `get_pnl
 
 The MCP server is a child process the AI client spawns. Anything else on the machine that can read the user's environment can also see `FLOX_CONTROL_URL` and `FLOX_CONTROL_TOKEN`. The server enforces three layered defenses:
 
-- Scoped bearer tokens (`read`, `paper`, `live`). A `paper` token cannot place into accounts whose name does not start with `paper-`. A `live` token is required for anything else.
+- Scoped bearer tokens (`read`, `paper`, `live`). Every mutating op — `place_order`, `cancel_order`, `cancel_all`, `flatten_positions` — takes an `account` argument, and a `paper` token cannot target an account whose name does not start with `paper-`. A `live` token is required for anything else. `flatten_positions` additionally skips any position row the `positions` accessor tags with a different account, so a paper caller flattening its own book cannot sweep a live account sharing the same accessor.
+- `set_kill_switch` halts trading at the engine level rather than for one account, so the paper/live account split does not apply to it. Only a `live` token may call it.
 - Out-of-band approval for `place_order` on `live` scope. The operator generates a one-shot token through a separate channel and passes it on the request. The server consumes it and refuses replays.
 - Token-bucket rate limits per token / op family. Order entry defaults to 1/sec sustained.
 
@@ -98,10 +99,12 @@ This is the single most important defense against an AI client running away with
 | Tool | What it does |
 |---|---|
 | `place_order(account, symbol, side, qty, type, price?, reason?, dry_run, approve_token?)` | Submit a market or limit order. Live scope requires `approve_token`. |
-| `cancel_order(order_id, dry_run)` | Cancel one open order by id. |
-| `cancel_all(symbol?, dry_run)` | Cancel every open order; optionally restrict to one symbol. |
-| `flatten_positions(symbol?, dry_run)` | Close every open position with opposite-side market orders. |
-| `set_kill_switch(active, reason?, dry_run)` | Halt or resume trading at the engine level. |
+| `cancel_order(account, order_id, dry_run)` | Cancel one open order by id. |
+| `cancel_all(account, symbol?, dry_run)` | Cancel every open order; optionally restrict to one symbol. |
+| `flatten_positions(account, symbol?, dry_run)` | Close every open position with opposite-side market orders. |
+| `set_kill_switch(active, reason?, dry_run)` | Halt or resume trading at the engine level. `live` scope only. |
+
+`account` is required on every mutating tool and gated the same way on all of them: a `paper` token is refused with `403` unless the named account starts with `paper-`.
 
 Every tool returns the server's JSON response, which contains `audit_id`, `accepted`, `dry_run`, `effects`, and on rejection an `error`. The audit log records the same fields with secrets redacted.
 

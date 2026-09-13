@@ -363,6 +363,25 @@ class ControlServer:
     def _is_paper_account(self, account: str) -> bool:
         return account.startswith("paper-") or account == "paper"
 
+    def _require_paper_account(self, caller: _Caller, args: Mapping[str, Any], *, op: str) -> str:
+        """Every mutating op is documented as scope ``paper`` → "mutating
+        ops against accounts whose name starts with ``paper-``". Only
+        ``place_order`` used to enforce that; ``cancel_order``,
+        ``cancel_all``, ``flatten_positions``, and ``set_kill_switch``
+        acted on the single shared executor regardless of scope, so a
+        paper token could close live positions, cancel live orders, and
+        pull the emergency stop with a 200 OK response. Every mutating
+        handler now goes through this, closing that gap uniformly
+        instead of re-deriving the check per endpoint."""
+        account = str(args.get("account") or "")
+        if not account:
+            raise ControlServerError(f"{op} requires account")
+        if caller.scope == "paper" and not self._is_paper_account(account):
+            raise ScopeForbidden(
+                f"paper scope cannot target non-paper account {account!r}"
+            )
+        return account
+
     def _resolve_dry_run(self, args: Mapping[str, Any]) -> bool:
         if "dry_run" in args:
             return bool(args["dry_run"])
@@ -420,6 +439,7 @@ class ControlServer:
 
     def handle_cancel_order(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
         self._require_scope(caller, allowed={"paper", "live"})
+        self._require_paper_account(caller, args, op="cancel_order")
         self._ratelim.check(caller.token_id, "cancels")
         order_id = int(args.get("order_id", 0))
         if order_id <= 0:
@@ -433,6 +453,7 @@ class ControlServer:
 
     def handle_cancel_all(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
         self._require_scope(caller, allowed={"paper", "live"})
+        self._require_paper_account(caller, args, op="cancel_all")
         self._ratelim.check(caller.token_id, "cancels")
         symbol = int(args.get("symbol", 0))
         dry_run = self._resolve_dry_run(args)
@@ -447,8 +468,17 @@ class ControlServer:
         market order. Reads positions through the supplied
         ``positions`` accessor; if it is not configured, returns an
         empty effects list and ``accepted=True`` so the caller can
-        treat absence as a no-op."""
+        treat absence as a no-op.
+
+        Requires ``account`` like every other mutating op (see
+        ``_require_paper_account``). When a position row carries its own
+        ``account``/``account_id`` field this also skips rows that do not
+        match the declared account, so a paper caller flattening its own
+        book cannot sweep a live account's positions even if both share
+        one ``positions`` accessor.
+        """
         self._require_scope(caller, allowed={"paper", "live"})
+        account = self._require_paper_account(caller, args, op="flatten_positions")
         self._ratelim.check(caller.token_id, "orders")
         dry_run = self._resolve_dry_run(args)
         symbol_filter = args.get("symbol")
@@ -469,6 +499,9 @@ class ControlServer:
             rows = list(self.positions)
 
         for row in rows:
+            row_account = row.get("account", row.get("account_id"))
+            if row_account is not None and str(row_account) != account:
+                continue
             sym = int(row.get("symbol_id", row.get("symbol", 0)))
             qty = float(row.get("qty", 0.0))
             if symbol_filter is not None and sym != int(symbol_filter):
@@ -493,7 +526,15 @@ class ControlServer:
         return {"accepted": True, "dry_run": dry_run, "effects": effects}
 
     def handle_set_kill_switch(self, caller: _Caller, args: Dict[str, Any]) -> Dict[str, Any]:
-        self._require_scope(caller, allowed={"paper", "live"})
+        # The kill switch halts trading at the engine level (see
+        # docs/how-to/mcp-control-plane.md) -- it is not scoped to any one
+        # account, so the paper/"accounts starting with paper-" carve-out
+        # that applies to every other mutating op does not apply here:
+        # there is no paper-only kill switch to grant. A paper token (the
+        # low-trust one `flox engine sim` prints to stdout) tripping the
+        # real one is a denial-of-service against live trading, so only
+        # `live` may call this.
+        self._require_scope(caller, allowed={"live"})
         self._ratelim.check(caller.token_id, "kill")
         active = bool(args.get("active", False))
         reason = str(args.get("reason") or "")

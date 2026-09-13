@@ -153,12 +153,12 @@ The snapshot file is read-only by construction — the MCP server never writes i
 | Tool | Purpose |
 |------|---------|
 | `place_order(account, symbol, side, qty, type?, price?, reason?, dry_run?, approve_token?)` | Place a market or limit order. |
-| `cancel_order(order_id, dry_run?)` | Cancel one open order. |
-| `cancel_all(symbol?, dry_run?)` | Cancel every open order; `symbol=0` (default) spans all symbols. |
-| `flatten_positions(symbol?, dry_run?)` | Close every open position with opposite-side market orders. |
-| `set_kill_switch(active, reason?, dry_run?)` | Halt or resume trading. |
+| `cancel_order(account, order_id, dry_run?)` | Cancel one open order. |
+| `cancel_all(account, symbol?, dry_run?)` | Cancel every open order; `symbol=0` (default) spans all symbols. |
+| `flatten_positions(account, symbol?, dry_run?)` | Close every open position with opposite-side market orders. |
+| `set_kill_switch(active, reason?, dry_run?)` | Halt or resume trading. `live` scope only. |
 
-All five default to `dry_run=true`; pass `dry_run=false` to dispatch. `place_order` on `live` scope additionally needs a one-shot `approve_token` from `ControlServer.issue_approval()`. Scopes, rate limits, and the audit log are covered in [Control a running engine over MCP](mcp-control-plane.md).
+All five default to `dry_run=true`; pass `dry_run=false` to dispatch. `account` is required on every tool but `set_kill_switch` and is gated the same way everywhere: a `paper` token is refused unless the named account starts with `paper-`. `place_order` on `live` scope additionally needs a one-shot `approve_token` from `ControlServer.issue_approval()`. Scopes, rate limits, and the audit log are covered in [Control a running engine over MCP](mcp-control-plane.md).
 
 ## Limits of the snapshot model
 

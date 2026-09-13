@@ -259,6 +259,49 @@ TEST(Account, RollingNotionalResetClearsCounter)
   EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 0.0);
 }
 
+// reset() exists so an Account can be reused across repeated
+// backtest / RL-training episodes on the same tape (python's rl_env
+// FloxTradingEnv.reset() calls it via the pybind11 binding). Without
+// it, a position and its equity delta from one episode survived into
+// the next -- openPosition()/closePosition() only ever mutate
+// `_positions`, nothing clears it between runs on its own.
+TEST(Account, ResetClearsPositionsMarksRollingWindowAndRestoresEquity)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(/*symbol=*/1, /*quantity=*/2.0, /*entryPrice=*/100.0,
+                 /*isolatedEquity=*/500.0);
+  a.setMark(1, 110.0, /*tsNs=*/1'000);
+  a.recordFill(0, 50'000.0);
+  a.addEquity(-37.5);
+
+  ASSERT_EQ(a.positionCount(), 1u);
+  ASSERT_GT(a.rollingNotional30d(), 0.0);
+  ASSERT_NE(a.equity(), 10'000.0);
+
+  a.reset(10'000.0);
+
+  EXPECT_EQ(a.positionCount(), 0u);
+  EXPECT_DOUBLE_EQ(a.equity(), 10'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 0.0);
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), 0.0);
+  // A cleared mark means an immediately re-opened position on the
+  // same symbol values at entry price (zero uPnL) rather than the
+  // stale mark from before reset -- this is what actually catches a
+  // reset that forgets to clear `_marks`.
+  a.openPosition(1, 1.0, 100.0);
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), 0.0);
+}
+
+TEST(Account, ResetLeavesMarginModeUntouched)
+{
+  // Margin mode is a venue property, not episode state -- reset()
+  // must not silently flip it back to the default.
+  Account a(1, 10'000.0);
+  a.setMarginMode(MarginMode::Isolated);
+  a.reset(10'000.0);
+  EXPECT_EQ(a.marginMode(), MarginMode::Isolated);
+}
+
 TEST(Account, FeeScheduleRollingNotionalEvicts)
 {
   // FeeSchedule has its own copy of the rolling-window logic; verify

@@ -95,11 +95,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Mapping, Optional
 
 logger = logging.getLogger(__name__)
+
+# ccxt's three `exchange.precisionMode` values. Mirrored here as plain
+# ints (rather than imported) so this module keeps working without
+# ccxt installed -- `ccxt.pro` itself is only imported lazily, inside
+# `_ensure_exchange`, for exactly that reason. Stable across every
+# ccxt language port; see ccxt's `Exchange` base class.
+_DECIMAL_PLACES = 2
+_SIGNIFICANT_DIGITS = 3
+_TICK_SIZE = 4
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -121,27 +131,72 @@ def _trade_is_buy(t: Mapping[str, Any]) -> bool:
     return (t.get("side") or "").lower() == "buy"
 
 
-def _market_tick_size(market: Mapping[str, Any]) -> float:
-    """Extract a tick size from a ccxt ``market`` dict.
+def _precision_step(raw: Any, precision_mode: Optional[int] = None) -> Optional[float]:
+    """Resolve one ccxt ``precision.*`` entry (``price`` or ``amount``)
+    to a step size, using ``exchange.precisionMode`` to disambiguate
+    when the caller has it.
 
-    ccxt's ``precision.price`` is overloaded across exchanges: some
-    expose it as the tick value (e.g. ``0.01``), others as the number
-    of decimal digits (e.g. ``2``). Convention: values >= 1 are read
-    as decimals. Falls back to 0.01 if neither shape parses.
+    ccxt exposes three incompatible conventions for this field
+    (``ccxt.DECIMAL_PLACES``, ``ccxt.SIGNIFICANT_DIGITS``,
+    ``ccxt.TICK_SIZE``) and does not normalise them; which one a given
+    exchange uses is exactly what ``exchange.precisionMode`` says.
+    Without it, this used to guess "values >= 1 are a digit count" --
+    which is correct for ``DECIMAL_PLACES`` but silently wrong by
+    10x-10^11x for a ``TICK_SIZE`` exchange whose tick happens to be
+    >= 1 (a $1, $2, $5, $10 tick is common on options and inverse
+    futures). Also refuses a non-integer "digit count" (``2.5``)
+    instead of truncating it, since that value can only be honest
+    under ``TICK_SIZE`` -- the same ambiguity in miniature.
     """
-    p = market.get("precision") or {}
-    raw = p.get("price")
     if raw is None:
-        return 0.01
+        return None
     try:
         v = float(raw)
     except (TypeError, ValueError):
-        return 0.01
+        return None
     if v <= 0:
-        return 0.01
+        return None
+
+    if precision_mode == _TICK_SIZE:
+        return v
+    if precision_mode in (_DECIMAL_PLACES, _SIGNIFICANT_DIGITS):
+        if v != int(v):
+            return None
+        return 10.0 ** -int(v)
+
+    # No precisionMode available -- fall back to the previous
+    # heuristic (values >= 1 read as a decimal-digit count, values < 1
+    # read as the tick itself), but validated: a non-integer "digit
+    # count" no longer gets silently truncated.
     if v >= 1:
+        if v != int(v):
+            return None
         return 10.0 ** -int(v)
     return v
+
+
+def _market_tick_size(market: Mapping[str, Any], precision_mode: Optional[int] = None) -> float:
+    """Extract a tick size from a ccxt ``market`` dict. Falls back to
+    0.01 if the ``precision.price`` field is missing or does not
+    parse under :func:`_precision_step`."""
+    p = market.get("precision") or {}
+    step = _precision_step(p.get("price"), precision_mode)
+    return step if step is not None else 0.01
+
+
+def _precision_digits(step: Optional[float]) -> int:
+    """Decimal digit count implied by a step/tick size -- the inverse
+    of the ``DECIMAL_PLACES`` branch of :func:`_precision_step` --
+    e.g. ``0.001`` -> 3, ``1e-8`` -> 8, ``1.0`` -> 0. Feeds the
+    market-data recorder's ``price_precision`` / ``qty_precision``
+    fields from the tick this adapter actually resolved and
+    registered, rather than a hardcoded guess."""
+    if step is None or step <= 0:
+        return 0
+    if step >= 1:
+        return 0
+    digits = round(-math.log10(step))
+    return max(0, digits)
 
 
 class UnsupportedOrderType(RuntimeError):
@@ -213,6 +268,12 @@ class CcxtBroker:
     _market_data_recorder: Any = field(default=None, init=False, repr=False)
     _sym_to_ccxt: dict = field(default_factory=dict, init=False, repr=False)
     _ccxt_to_sym: dict = field(default_factory=dict, init=False, repr=False)
+    # flox symbol id -> (price_precision, qty_precision) resolved at
+    # add_symbol() time, so set_market_data_recorder() -- called after
+    # symbols already exist -- can mirror the same precision into a
+    # recorder attached late instead of the hardcoded (2, 8) it used to
+    # always send regardless of the market's actual precision.
+    _sym_precision: dict = field(default_factory=dict, init=False, repr=False)
     _flox_to_ccxt_order: dict = field(default_factory=dict, init=False, repr=False)
     _ccxt_orders_by_sym: dict = field(default_factory=dict, init=False, repr=False)
     _tasks: list = field(default_factory=list, init=False, repr=False)
@@ -322,10 +383,25 @@ class CcxtBroker:
                 f"symbol {ccxt_sym!r} is not listed on {self.exchange_id} "
                 f"(after load_markets())"
             )
-        tick = _market_tick_size(market)
+        precision_mode = getattr(self.exchange, "precisionMode", None)
+        tick = _market_tick_size(market, precision_mode)
         sym = self._registry.add_symbol(self.exchange_id, ccxt_sym, tick)
         self._sym_to_ccxt[int(sym)] = ccxt_sym
         self._ccxt_to_sym[ccxt_sym] = sym
+
+        # price_precision comes from the same tick just registered with
+        # the symbol, not a re-derivation, so the recorder and the
+        # registry can never disagree about it; qty_precision comes
+        # from the market's `precision.amount` the same way. Both used
+        # to be the hardcoded constants 2 and 8 regardless of the
+        # market's actual precision. Resolved and remembered here even
+        # with no recorder attached yet, so a recorder attached later
+        # (set_market_data_recorder) mirrors the right values too.
+        amount_step = _precision_step((market.get("precision") or {}).get("amount"), precision_mode)
+        price_precision = _precision_digits(tick)
+        qty_precision = _precision_digits(amount_step) if amount_step is not None else 8
+        self._sym_precision[int(sym)] = (price_precision, qty_precision)
+
         # Mirror the symbol into the attached recorder (if any) so
         # tapes recorded directly via the broker carry a populated
         # metadata.json::symbols. set_market_data_recorder() handles
@@ -335,7 +411,7 @@ class CcxtBroker:
         if callable(add_symbol):
             flat_name = ccxt_sym.replace("/", "").split(":")[0]
             try:
-                add_symbol(int(sym), flat_name, "", "", 2, 8)
+                add_symbol(int(sym), flat_name, "", "", price_precision, qty_precision)
             except Exception:
                 pass
         return sym
@@ -375,8 +451,11 @@ class CcxtBroker:
             # (exchange, name) key matches across exchanges that
             # label perps differently (e.g. ":USDT" appended).
             flat_name = ccxt_name.replace("/", "").split(":")[0]
+            price_precision, qty_precision = self._sym_precision.get(
+                int(flox_sid), (2, 8)
+            )
             try:
-                add_symbol(int(flox_sid), flat_name, "", "", 2, 8)
+                add_symbol(int(flox_sid), flat_name, "", "", price_precision, qty_precision)
             except Exception:
                 # Hook may reject duplicate adds; not our problem.
                 pass

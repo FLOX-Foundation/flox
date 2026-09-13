@@ -224,7 +224,7 @@ class CancelTests(_BaseServerTest):
     def test_cancel_order(self) -> None:
         status, body = _post(
             self.server.url, "/cancel_order",
-            {"order_id": 42, "dry_run": False},
+            {"account": "paper-1", "order_id": 42, "dry_run": False},
             token="paper-token",
         )
         self.assertEqual(status, 200)
@@ -233,18 +233,56 @@ class CancelTests(_BaseServerTest):
     def test_cancel_all(self) -> None:
         status, body = _post(
             self.server.url, "/cancel_all",
-            {"symbol": 7, "dry_run": False},
+            {"account": "paper-1", "symbol": 7, "dry_run": False},
             token="paper-token",
         )
         self.assertEqual(status, 200)
         self.assertEqual(self.executor.cancelled_all, [7])
+
+    def test_cancel_order_requires_account(self) -> None:
+        status, body = _post(
+            self.server.url, "/cancel_order",
+            {"order_id": 42, "dry_run": False},
+            token="paper-token",
+        )
+        self.assertEqual(status, 400)
+
+    def test_cancel_all_requires_account(self) -> None:
+        status, body = _post(
+            self.server.url, "/cancel_all",
+            {"symbol": 7, "dry_run": False},
+            token="paper-token",
+        )
+        self.assertEqual(status, 400)
+
+    def test_paper_token_cannot_cancel_order_on_live_account(self) -> None:
+        # Regression for the gap where cancel_order/cancel_all reached
+        # the shared executor regardless of scope: a paper token could
+        # cancel a live order because these two handlers never checked
+        # `account` at all, unlike place_order.
+        status, body = _post(
+            self.server.url, "/cancel_order",
+            {"account": "bybit-prod", "order_id": 42, "dry_run": False},
+            token="paper-token",
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(self.executor.cancelled, [])
+
+    def test_paper_token_cannot_cancel_all_on_live_account(self) -> None:
+        status, body = _post(
+            self.server.url, "/cancel_all",
+            {"account": "bybit-prod", "symbol": 7, "dry_run": False},
+            token="paper-token",
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(self.executor.cancelled_all, [])
 
 
 class FlattenTests(_BaseServerTest):
     def test_flatten_with_no_positions_accessor_is_noop(self) -> None:
         status, body = _post(
             self.server.url, "/flatten_positions",
-            {"dry_run": False},
+            {"account": "paper-1", "dry_run": False},
             token="paper-token",
         )
         self.assertEqual(status, 200)
@@ -259,7 +297,7 @@ class FlattenTests(_BaseServerTest):
         ]
         status, body = _post(
             self.server.url, "/flatten_positions",
-            {"dry_run": False},
+            {"account": "paper-1", "dry_run": False},
             token="paper-token",
         )
         self.assertEqual(status, 200)
@@ -276,12 +314,48 @@ class FlattenTests(_BaseServerTest):
         ]
         status, body = _post(
             self.server.url, "/flatten_positions",
-            {"symbol": 2, "dry_run": False},
+            {"account": "paper-1", "symbol": 2, "dry_run": False},
             token="paper-token",
         )
         self.assertEqual(status, 200)
         self.assertEqual(len(body["effects"]), 1)
         self.assertEqual(body["effects"][0]["flatten"]["symbol"], 2)
+
+    def test_flatten_requires_account(self) -> None:
+        status, body = _post(
+            self.server.url, "/flatten_positions",
+            {"dry_run": False},
+            token="paper-token",
+        )
+        self.assertEqual(status, 400)
+
+    def test_paper_token_cannot_flatten_live_account(self) -> None:
+        # Regression: a paper token used to be able to flatten every
+        # position the `positions` accessor returned, live accounts
+        # included, because flatten_positions never checked `account`.
+        status, body = _post(
+            self.server.url, "/flatten_positions",
+            {"account": "bybit-prod", "dry_run": False},
+            token="paper-token",
+        )
+        self.assertEqual(status, 403)
+
+    def test_flatten_skips_rows_tagged_for_a_different_account(self) -> None:
+        # Defense in depth: when the positions accessor tags rows with
+        # an account, a caller flattening its own paper account must
+        # not sweep a live account's rows sharing the same accessor.
+        self.server.positions = lambda: [
+            {"account": "paper-1", "symbol_id": 1, "qty": 0.5},
+            {"account": "bybit-prod", "symbol_id": 2, "qty": 15.5},
+        ]
+        status, body = _post(
+            self.server.url, "/flatten_positions",
+            {"account": "paper-1", "dry_run": False},
+            token="paper-token",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["effects"]), 1)
+        self.assertEqual(body["effects"][0]["flatten"]["symbol"], 1)
 
 
 class KillSwitchTests(_BaseServerTest):
@@ -294,6 +368,19 @@ class KillSwitchTests(_BaseServerTest):
         self.assertEqual(status, 200)
         self.assertTrue(self.kill_switch.active)
         self.assertEqual(self.kill_switch.reason, "panic")
+
+    def test_paper_token_cannot_set_kill_switch(self) -> None:
+        # Regression: the kill switch halts trading engine-wide, not
+        # per account, so it used to be reachable by a paper token --
+        # the same low-trust token `flox engine sim` prints to stdout
+        # could pull the emergency stop on live trading.
+        status, body = _post(
+            self.server.url, "/set_kill_switch",
+            {"active": True, "reason": "pwn", "dry_run": False},
+            token="paper-token",
+        )
+        self.assertEqual(status, 403)
+        self.assertFalse(self.kill_switch.active)
 
 
 class AuditTests(_BaseServerTest):
