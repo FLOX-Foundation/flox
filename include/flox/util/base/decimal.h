@@ -48,9 +48,7 @@ class Decimal
   {
     if constexpr (Scale > 0)
     {
-      return Decimal(static_cast<int64_t>(val >= 0.0
-                                              ? val * Scale + 0.5
-                                              : val * Scale - 0.5));
+      return Decimal(narrowDoubleToI64(val >= 0.0 ? val * Scale + 0.5 : val * Scale - 0.5));
     }
     else
     {
@@ -71,8 +69,10 @@ class Decimal
   }
   static constexpr Decimal fromDouble(double val, int64_t scale)
   {
-    return withScale(static_cast<int64_t>(val >= 0.0 ? val * scale + 0.5 : val * scale - 0.5),
-                     scale);
+    return withScale(
+        narrowDoubleToI64(val >= 0.0 ? val * static_cast<double>(scale) + 0.5
+                                     : val * static_cast<double>(scale) - 0.5),
+        scale);
   }
 
   // Reinterpret this value, whose raw was created at `fromScale`, into this

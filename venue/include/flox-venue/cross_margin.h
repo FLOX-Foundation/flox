@@ -47,6 +47,21 @@ class CrossMarginManager
     cfg_[s] = {imBps, mmBps, priceScale, qtyScale};
   }
 
+  // Whether this symbol has a risk profile. Nothing may be opened on one that
+  // does not: a margin requirement is not something the venue can guess.
+  bool isConfigured(SymbolId s) const noexcept { return cfg_.count(s) != 0; }
+
+  // Margin charged on a leg whose symbol was never configured. Full notional by
+  // default -- no leverage at all -- because the alternative to a known
+  // requirement is the most conservative one, not none. An integrator with a
+  // different house rule can move it, but it stays a rate the venue chose
+  // rather than an accident of a missing map entry.
+  void setUnconfiguredSymbolMargin(int32_t imBps, int32_t mmBps) noexcept
+  {
+    fallbackCfg_.imBps = imBps;
+    fallbackCfg_.mmBps = mmBps;
+  }
+
   // Scales of a configured symbol; defaults for one traded before configureSymbol.
   std::pair<int64_t, int64_t> scalesOf(SymbolId s) const
   {
@@ -201,6 +216,15 @@ class CrossMarginManager
     {
       return true;
     }
+    // Exposure may only grow on a symbol the risk configuration knows. Without
+    // a profile there is no initial-margin rate, and an absent rate used to
+    // read as a rate of zero: one listing that reached the matching engine
+    // before the risk config would have backed any notional at all with any
+    // collateral at all.
+    if (!isConfigured(s))
+    {
+      return false;
+    }
 
     const Amount imAfter = marginReqWith(acct, s, next, priceRaw, /*maintenance*/ false);
     return imAfter <= equity(acct);
@@ -249,6 +273,20 @@ class CrossMarginManager
  private:
   struct Leg
   {
+    int64_t qtyRaw{0};
+    int64_t entryRaw{0};
+  };
+
+  // A leg closed by a liquidation, kept with its entry price. The entry is what
+  // every mark lookup falls back to when a symbol has no published mark: it
+  // prices the leg at no gain and no loss, which is the only honest answer when
+  // there is no price. The fallback used to be a literal zero in three places
+  // here, and a zero is not a missing price -- it is a price, one that turns a
+  // short into a winner of its whole notional and bills the insurance fund for
+  // the invention.
+  struct ClosedLeg
+  {
+    SymbolId symbol{};
     int64_t qtyRaw{0};
     int64_t entryRaw{0};
   };
@@ -317,13 +355,9 @@ class CrossMarginManager
   __int128 legMargin(SymbolId s, int64_t qtyRaw, int64_t markRaw, bool maintenance) const
   {
     auto c = cfg_.find(s);
-    if (c == cfg_.end())
-    {
-      return 0;
-    }
-    const int32_t bps = maintenance ? c->second.mmBps : c->second.imBps;
-    const Amount notional =
-        notionalRaw(markRaw, iabs64(qtyRaw), c->second.priceScale, c->second.qtyScale);
+    const SymCfg& cfg = c == cfg_.end() ? fallbackCfg_ : c->second;
+    const int32_t bps = maintenance ? cfg.mmBps : cfg.imBps;
+    const Amount notional = notionalRaw(markRaw, iabs64(qtyRaw), cfg.priceScale, cfg.qtyScale);
     return notional * bps / 10000;
   }
 
@@ -362,7 +396,7 @@ class CrossMarginManager
     {
       return;
     }
-    std::vector<std::pair<SymbolId, int64_t>> bankruptSides;  // (symbol, signed qty) closed
+    std::vector<ClosedLeg> bankruptSides;
     for (const auto& [s, leg] : a->second)
     {
       const int64_t mark = markOf(s, leg.entryRaw);
@@ -370,7 +404,7 @@ class CrossMarginManager
       const Amount pnl = notionalRaw(mark - leg.entryRaw, leg.qtyRaw, pS, qS);
       led_.credit(acct, collateral_, pnl);
       led_.credit(venue_, collateral_, -pnl);
-      bankruptSides.emplace_back(s, leg.qtyRaw);
+      bankruptSides.push_back({s, leg.qtyRaw, leg.entryRaw});
     }
     pos_.erase(a);
 
@@ -384,9 +418,10 @@ class CrossMarginManager
       avail = led_.available(acct, collateral_);
     }
     const bool bankrupt = avail < 0;
-    for (const auto& [s, q] : bankruptSides)
+    for (const ClosedLeg& c : bankruptSides)
     {
-      onLiq_(Liquidation{acct, s, Quantity::fromRaw(iabs64(q)), Price::fromRaw(markOf(s, 0)), bankrupt,
+      onLiq_(Liquidation{acct, c.symbol, Quantity::fromRaw(iabs64(c.qtyRaw)),
+                         Price::fromRaw(markOf(c.symbol, c.entryRaw)), bankrupt,
                          /*adl*/ false});
     }
     if (!bankrupt)
@@ -406,7 +441,7 @@ class CrossMarginManager
   // Claw the bankruptcy deficit back from the most profitable traders on the
   // opposite side of the bankrupt's positions: close each at the mark and haircut
   // their realized gain into the insurance fund, until the deficit is recovered.
-  void autoDeleverage(const std::vector<std::pair<SymbolId, int64_t>>& bankruptSides, Amount deficit)
+  void autoDeleverage(const std::vector<ClosedLeg>& bankruptSides, Amount deficit)
   {
     // Rank candidate winners: opposite side, positive unrealized profit.
     struct Cand
@@ -416,10 +451,10 @@ class CrossMarginManager
       Amount uPnl;
     };
     std::vector<Cand> cands;
-    for (const auto& [sym, bqty] : bankruptSides)
+    for (const ClosedLeg& bankruptLeg : bankruptSides)
     {
-      const int64_t bankruptSign = bqty > 0 ? 1 : -1;
-      const int64_t mark = markOf(sym, 0);
+      const SymbolId sym = bankruptLeg.symbol;
+      const int64_t bankruptSign = bankruptLeg.qtyRaw > 0 ? 1 : -1;
       for (const auto& [oa, legs] : pos_)
       {
         auto l = legs.find(sym);
@@ -433,7 +468,8 @@ class CrossMarginManager
           continue;  // must be the opposite side
         }
         const auto [pS, qS] = scalesOf(sym);
-        const Amount up = notionalRaw(mark - l->second.entryRaw, l->second.qtyRaw, pS, qS);
+        const Amount up =
+            notionalRaw(markOf(sym, l->second.entryRaw) - l->second.entryRaw, l->second.qtyRaw, pS, qS);
         if (up > 0)
         {
           cands.push_back({oa, sym, up});
@@ -476,8 +512,8 @@ class CrossMarginManager
       {
         continue;
       }
-      const int64_t mark = markOf(c.sym, 0);
       const Leg leg = l->second;
+      const int64_t mark = markOf(c.sym, leg.entryRaw);
       // Close the winner at the mark (realize their gain), then haircut it.
       const auto [pS, qS] = scalesOf(c.sym);
       const Amount pnl = notionalRaw(mark - leg.entryRaw, leg.qtyRaw, pS, qS);
@@ -556,6 +592,7 @@ class CrossMarginManager
   uint64_t venue_;
   OnLiquidation onLiq_;
   const CollateralSchedule* collat_{nullptr};
+  SymCfg fallbackCfg_{10000, 10000, Price::Scale, Quantity::Scale};
   bool adl_{false};
   bool liqPaused_{false};
   std::unordered_map<SymbolId, SymCfg> cfg_;
