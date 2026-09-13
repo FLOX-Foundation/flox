@@ -128,7 +128,14 @@ class Decimal
 
   // Scalar multiply / divide preserve the value's scale.
   constexpr Decimal operator*(int64_t x) const { return withScale(_raw * x, scale()); }
-  constexpr Decimal operator/(int64_t x) const { return withScale(_raw / x, scale()); }
+  constexpr Decimal operator/(int64_t x) const
+  {
+    if (x == 0)
+    {
+      return withScale(dividedByZeroI64(_raw), scale());
+    }
+    return withScale(_raw / x, scale());
+  }
 
   // Fixed-point multiply / divide bake in the compile-time Scale, so both
   // operands must be at the default scale; rescale a per-symbol value first.
@@ -144,11 +151,19 @@ class Decimal
     return Decimal((_raw / Scale) * other._raw + (_raw % Scale) * other._raw / Scale);
 #endif
   }
+  // The zero-divisor guard used to read `assert(other.isZero() != 0)`, which
+  // asserts the divisor IS zero: it aborted every legal division in a build
+  // with assertions on, and in a build with them off it let a division by
+  // zero through to the platform. Both directions are covered now -- the
+  // check trips in checked builds, and the result is defined in all of them.
   constexpr Decimal operator/(const Decimal& other) const
   {
-    assert(other.isZero() != 0 && "Division by zero");
     FLOX_SCALE_CHECK(scale() == Scale && other.scale() == Scale,
                      "Decimal::operator/ requires default scale; rescale first");
+    if (other._raw == 0)
+    {
+      return Decimal(dividedByZeroI64(_raw));
+    }
 #if defined(__SIZEOF_INT128__)
     using i128 = __int128_t;
     return Decimal(checkedNarrowI64(((i128)_raw * (i128)Scale) / (i128)other._raw));

@@ -160,4 +160,103 @@ TEST(ScaleTest, RescaleBridgesToDefaultScale)
   EXPECT_NEAR(d.toDouble(), 0.00000004, 1e-12);
 }
 
+// --- fixed-point division -------------------------------------------------
+
+// Dividing two non-zero values is the ordinary case and must stay ordinary in
+// every configuration. The zero-divisor guard used to be written inverted, so
+// a build with assertions on aborted right here.
+TEST(ScaleTest, DivisionOfNonZeroValuesDoesNotTrap)
+{
+  Price hundred = Price::fromDouble(100.0);
+  Price four = Price::fromDouble(4.0);
+  EXPECT_NEAR((hundred / four).toDouble(), 25.0, 1e-9);
+
+  Volume vol = Volume::fromDouble(1000.0);
+  Quantity qty = Quantity::fromDouble(40.0);
+  EXPECT_NEAR((vol / qty).toDouble(), 25.0, 1e-9);
+}
+
+#if FLOX_SCALE_CHECKS
+// With checks on, a zero divisor trips instead of reaching the hardware.
+TEST(ScaleDeathTest, DecimalDivisionByZeroTraps)
+{
+  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  Price hundred = Price::fromDouble(100.0);
+  Price zero = Price::fromRaw(0);
+  EXPECT_DEATH(
+      {
+        volatile int64_t r = (hundred / zero).raw();
+        (void)r;
+      },
+      "division by zero");
+}
+
+TEST(ScaleDeathTest, VolumeDividedByZeroQuantityTraps)
+{
+  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  Volume vol = Volume::fromDouble(1000.0);
+  Quantity zero = Quantity::fromRaw(0);
+  EXPECT_DEATH(
+      {
+        volatile int64_t r = (vol / zero).raw();
+        (void)r;
+      },
+      "division by zero");
+}
+#else
+// With checks off the answer is still defined, and it saturates rather than
+// returning whatever the platform leaves behind. A price at the int64
+// boundary is unmistakable downstream; 0.0 or 25.0, which is what the
+// unguarded division returned on different builds from the same input, is
+// not.
+TEST(ScaleTest, DecimalDivisionByZeroIsCountedAndSaturates)
+{
+  resetFixedPointDivisionsByZero();
+
+  Price hundred = Price::fromDouble(100.0);
+  Price zero = Price::fromRaw(0);
+  EXPECT_EQ((hundred / zero).raw(), std::numeric_limits<int64_t>::max());
+  EXPECT_EQ(fixedPointDivisionsByZero(), 1u);
+
+  Price minusHundred = Price::fromDouble(-100.0);
+  EXPECT_EQ((minusHundred / zero).raw(), std::numeric_limits<int64_t>::min());
+  EXPECT_EQ(fixedPointDivisionsByZero(), 2u);
+
+  EXPECT_EQ((zero / zero).raw(), 0);
+  EXPECT_EQ(fixedPointDivisionsByZero(), 3u);
+
+  // The scalar overload divides the raw int64 directly, which is where the
+  // platform difference showed up first: AArch64 returns 0 rather than
+  // trapping.
+  EXPECT_EQ((hundred / int64_t{0}).raw(), std::numeric_limits<int64_t>::max());
+  EXPECT_EQ(fixedPointDivisionsByZero(), 4u);
+
+  // An ordinary division leaves the counter alone.
+  EXPECT_NEAR((hundred / Price::fromDouble(4.0)).toDouble(), 25.0, 1e-9);
+  EXPECT_EQ(fixedPointDivisionsByZero(), 4u);
+
+  resetFixedPointDivisionsByZero();
+}
+
+TEST(ScaleTest, VolumeDividedByZeroQuantityIsCountedAndSaturates)
+{
+  resetFixedPointDivisionsByZero();
+
+  Volume vol = Volume::fromDouble(1000.0);
+  Quantity zero = Quantity::fromRaw(0);
+  EXPECT_EQ((vol / zero).raw(), std::numeric_limits<int64_t>::max());
+  EXPECT_EQ(fixedPointDivisionsByZero(), 1u);
+
+  Volume negative = Volume::fromDouble(-1000.0);
+  EXPECT_EQ((negative / zero).raw(), std::numeric_limits<int64_t>::min());
+  EXPECT_EQ(fixedPointDivisionsByZero(), 2u);
+
+  Price zeroPx = Price::fromRaw(0);
+  EXPECT_EQ((vol / zeroPx).raw(), std::numeric_limits<int64_t>::max());
+  EXPECT_EQ(fixedPointDivisionsByZero(), 3u);
+
+  resetFixedPointDivisionsByZero();
+}
+#endif
+
 }  // namespace

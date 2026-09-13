@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -92,12 +93,36 @@ class SymbolRegistry : public ISubsystem
   static constexpr size_t kMaxSymbols = 4096;
   static constexpr size_t kMaxEquivalentsPerSymbol = 8;
 
+  // A copy of the equivalence list, taken while the registry lock is held.
+  // Small and fixed-size, so the copy costs a few words and never allocates.
+  struct EquivalentSymbols
+  {
+    std::array<SymbolId, kMaxEquivalentsPerSymbol> ids{};
+    uint8_t count{0};
+
+    const SymbolId* begin() const { return ids.data(); }
+    const SymbolId* end() const { return ids.data() + count; }
+    size_t size() const { return count; }
+    bool empty() const { return count == 0; }
+    SymbolId operator[](size_t i) const { return ids[i]; }
+  };
+
   // Exchange management
   ExchangeId registerExchange(std::string_view name,
                               VenueType type = VenueType::CentralizedExchange);
-  const ExchangeInfo* getExchange(ExchangeId id) const;
+
+  // Returns a copy of the entry, not a pointer into the registry. A pointer
+  // would outlive the lock that made it safe to read: the caller dereferences
+  // it after the getter has returned, and by then a clear() or a later
+  // registration may already be rewriting that slot. No locking inside the
+  // getter can fix that, because the unsafe read happens at the call site.
+  std::optional<ExchangeInfo> getExchange(ExchangeId id) const;
   ExchangeId getExchangeId(std::string_view name) const;
-  size_t exchangeCount() const { return _numExchanges; }
+  size_t exchangeCount() const
+  {
+    std::shared_lock lock(_mutex);
+    return _numExchanges;
+  }
 
   // Symbol registration (legacy string-based API)
   SymbolId registerSymbol(const std::string& exchange, const std::string& symbol);
@@ -118,7 +143,7 @@ class SymbolRegistry : public ISubsystem
 
   // Symbol equivalence (cross-exchange mapping)
   void mapEquivalentSymbols(std::span<const SymbolId> equivalentSymbols);
-  std::span<const SymbolId> getEquivalentSymbols(SymbolId symbol) const;
+  EquivalentSymbols getEquivalentSymbols(SymbolId symbol) const;
   SymbolId getEquivalentOnExchange(SymbolId symbol, ExchangeId exchange) const;
 
   // Persistence
@@ -133,7 +158,21 @@ class SymbolRegistry : public ISubsystem
   size_t size() const;
 
  private:
-  mutable std::mutex _mutex;
+  // The getters below used to read the exchange table and the symbol-to-
+  // exchange vector with no lock at all, while a writer resized that vector
+  // under the mutex. The reads are frequent and the writes are rare, so the
+  // mutex is a shared one: readers run concurrently with each other and are
+  // excluded only while a registration or a clear() is in flight.
+  //
+  // Public getters take the lock once and go through these helpers, because a
+  // getter calling another getter would take a shared lock twice on one
+  // thread and can deadlock against a waiting writer. These return references
+  // into registry storage and are only ever used while the lock is held.
+  const ExchangeInfo* getExchangeLocked(ExchangeId id) const;
+  ExchangeId getExchangeForSymbolLocked(SymbolId symbol) const;
+  std::span<const SymbolId> getEquivalentSymbolsLocked(SymbolId symbol) const;
+
+  mutable std::shared_mutex _mutex;
   std::unordered_map<SymbolId, SymbolInfo> _symbols;
   std::unordered_map<std::string, SymbolId> _map;
   std::vector<std::pair<std::string, std::string>> _reverse;

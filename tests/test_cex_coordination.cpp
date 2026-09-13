@@ -78,9 +78,9 @@ TEST(SymbolRegistryExchangeTest, GetExchange)
   SymbolRegistry registry;
 
   ExchangeId id = registry.registerExchange("Kraken", VenueType::CentralizedExchange);
-  const ExchangeInfo* info = registry.getExchange(id);
+  const auto info = registry.getExchange(id);
 
-  ASSERT_NE(info, nullptr);
+  ASSERT_TRUE(info.has_value());
   EXPECT_EQ(info->nameView(), "Kraken");
   EXPECT_EQ(info->type, VenueType::CentralizedExchange);
 }

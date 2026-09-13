@@ -96,7 +96,7 @@ public:
 | Method            | Description                                           |
 | ----------------- | ----------------------------------------------------- |
 | `registerExchange`| Registers an exchange, returns `ExchangeId`.          |
-| `getExchange`     | Returns `ExchangeInfo*` for the given ID.             |
+| `getExchange`     | Returns a copy of the `ExchangeInfo` for the given ID, or `std::nullopt`. |
 | `getExchangeId`   | Lookup `ExchangeId` by name.                          |
 | `exchangeCount`   | Returns number of registered exchanges.               |
 
@@ -133,7 +133,7 @@ auto bybitEquiv = registry.getEquivalentOnExchange(btcBinance, bybitExchangeId);
 | Method                    | Description                                               |
 | ------------------------- | --------------------------------------------------------- |
 | `mapEquivalentSymbols`    | Links symbols as equivalent across exchanges.             |
-| `getEquivalentSymbols`    | Returns span of all equivalent symbols.                   |
+| `getEquivalentSymbols`    | Returns a copy of the equivalence list, at most `kMaxEquivalentsPerSymbol` entries. |
 | `getEquivalentOnExchange` | Returns equivalent symbol on a specific exchange.         |
 
 ## Persistence
@@ -159,7 +159,9 @@ auto bybitEquiv = registry.getEquivalentOnExchange(btcBinance, bybitExchangeId);
 * `_symbols` is an unordered_map for direct `id` lookups.
 * `_symbolToExchange` provides O(1) symbol-to-exchange mapping.
 * Equivalence uses flat storage: `[sym * kMaxEquivalentsPerSymbol ... (sym+1) * kMaxEquivalentsPerSymbol)` for O(1) lookup.
-* A single mutex protects all structures; registration is rare, lookups are frequent.
+* A single shared mutex protects all structures. Registration is rare and takes it exclusively. Lookups are frequent, run concurrently with each other under a shared lock, and wait only while a registration or a `clear()` is in flight. Every accessor goes through it, `getExchange` and `getExchangeForSymbol` and `venueTypeForSymbol` included: reading `_symbolToExchange` while another thread resized it was a read past the end of a freed buffer.
+* `registerExchange` fills the entry before the exchange count admits it, so an id a reader is allowed to dereference always carries a populated name and venue type.
+* Accessors return values, never addresses into registry storage. `getExchange` used to return `const ExchangeInfo*` and `getEquivalentSymbols` a `std::span`, both pointing at memory the lock protected only until the accessor returned. The caller then read through them with nothing held, and a concurrent `clear()` or registration rewrote the storage underneath: a thread sanitizer run caught exactly that, an unsynchronized `nameView()` against `clear()` zeroing the table. Locking inside the accessor cannot fix it, because the unsafe read happens at the call site. Both copy out under the lock now.
 
 ## Notes
 
