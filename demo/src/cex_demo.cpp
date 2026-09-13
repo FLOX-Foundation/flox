@@ -77,7 +77,7 @@ void demoExchangeRegistration()
   std::cout << "Registered exchanges:\n";
   for (ExchangeId ex = 0; ex < registry.exchangeCount(); ++ex)
   {
-    const auto* info = registry.getExchange(ex);
+    const auto info = registry.getExchange(ex);
     std::cout << "  [" << static_cast<int>(ex) << "] " << info->nameView() << "\n";
   }
 
@@ -100,7 +100,7 @@ void demoExchangeRegistration()
   for (SymbolId eq : eqs)
   {
     ExchangeId exId = registry.getExchangeForSymbol(eq);
-    const auto* exInfo = registry.getExchange(exId);
+    const auto exInfo = registry.getExchange(exId);
     std::cout << "  SymbolId=" << eq << " on " << exInfo->nameView() << "\n";
   }
 }

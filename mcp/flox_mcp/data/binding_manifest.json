@@ -11630,6 +11630,11 @@
           "name": "EquityPoint"
         },
         {
+          "header": "include/flox/engine/symbol_registry.h",
+          "kind": "type",
+          "name": "EquivalentSymbols"
+        },
+        {
           "header": "include/flox/util/eventing/event_bus.h",
           "kind": "type",
           "name": "EventBus"
@@ -12733,6 +12738,11 @@
           "header": "include/flox/util/memory/pool.h",
           "kind": "type",
           "name": "Pool"
+        },
+        {
+          "header": "include/flox/util/memory/pool.h",
+          "kind": "type",
+          "name": "PoolReleaser"
         },
         {
           "header": "include/flox/replay/pool_state_tape.h",
@@ -16901,6 +16911,121 @@
         },
         {
           "kind": "method",
+          "name": "clear",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "deserialize",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "exchangeCount",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getAllSymbols",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getEquivalentOnExchange",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getEquivalentSymbols",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getEquivalentSymbolsLocked",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getExchange",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getExchangeForSymbol",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getExchangeForSymbolLocked",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getExchangeId",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getExchangeLocked",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getSymbolId",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getSymbolInfo",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "getSymbolName",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "loadFromFile",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "mapEquivalentSymbols",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "registerExchange",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "registerSymbol",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "saveToFile",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "serialize",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "size",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
+          "name": "venueTypeForSymbol",
+          "parent": "EquivalentSymbols"
+        },
+        {
+          "kind": "method",
           "name": "all",
           "parent": "ExchangeCapabilities"
         },
@@ -19166,11 +19291,6 @@
         },
         {
           "kind": "method",
-          "name": "consumeSlot",
-          "parent": "LogEntry"
-        },
-        {
-          "kind": "method",
           "name": "flushLoop",
           "parent": "LogEntry"
         },
@@ -19186,12 +19306,27 @@
         },
         {
           "kind": "method",
+          "name": "nextArchivePath",
+          "parent": "LogEntry"
+        },
+        {
+          "kind": "method",
+          "name": "retireOldest",
+          "parent": "LogEntry"
+        },
+        {
+          "kind": "method",
           "name": "rotate",
           "parent": "LogEntry"
         },
         {
           "kind": "method",
           "name": "rotateIfNeeded",
+          "parent": "LogEntry"
+        },
+        {
+          "kind": "method",
+          "name": "serviceFlushRequest",
           "parent": "LogEntry"
         },
         {
@@ -21041,6 +21176,11 @@
         },
         {
           "kind": "method",
+          "name": "releaseErased",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
           "name": "setExhaustionCallback",
           "parent": "Pool"
         },
@@ -21053,6 +21193,11 @@
           "kind": "method",
           "name": "upstreamBytes",
           "parent": "Pool"
+        },
+        {
+          "kind": "method",
+          "name": "releaseErased",
+          "parent": "PoolReleaser"
         },
         {
           "kind": "method",
@@ -21182,11 +21327,6 @@
         {
           "kind": "method",
           "name": "setPool",
-          "parent": "PoolableBase"
-        },
-        {
-          "kind": "method",
-          "name": "void",
           "parent": "PoolableBase"
         },
         {
@@ -24068,106 +24208,6 @@
           "kind": "method",
           "name": "applyHeikinAshi",
           "parent": "SymbolHAState"
-        },
-        {
-          "kind": "method",
-          "name": "clear",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "deserialize",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "exchangeCount",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getAllSymbols",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getEquivalentOnExchange",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getEquivalentSymbols",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getExchange",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getExchangeForSymbol",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getExchangeId",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getSymbolId",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getSymbolInfo",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "getSymbolName",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "loadFromFile",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "mapEquivalentSymbols",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "registerExchange",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "registerSymbol",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "saveToFile",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "serialize",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "size",
-          "parent": "SymbolRegistry"
-        },
-        {
-          "kind": "method",
-          "name": "venueTypeForSymbol",
-          "parent": "SymbolRegistry"
         },
         {
           "kind": "method",

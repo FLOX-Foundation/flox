@@ -54,13 +54,14 @@ h->tickSequence = 123;
 * Implement:
 
   * `clear()`
-  * `setPool(void*)`
+  * `setPool(pool::PoolReleaser*)`
   * `releaseToPool()`
 
 ## Internal Design
 
 * `Pool<T>` stores slots in a hand-rolled `struct alignas(alignof(T)) Storage { std::byte data[sizeof(T)]; }` array for static placement. `std::aligned_storage` is deprecated and is not used.
 * Objects are returned to the pool through a lock-free index freelist (`IndexFreelist`), which accepts `push` and `pop` from any thread. This is not a convenience: a bus slot owns its `Handle` until the slot is overwritten, and the overwrite runs on whichever thread is publishing, so with several connectors sharing a bus an event returns to its pool from a foreign thread. The freelist stores 32-bit slot indices with an ABA tag packed into one 64-bit word.
+* Each object holds a pointer to the pool that owns its slot, reached through the type-erased `pool::PoolReleaser` interface that `Pool` implements. A process commonly runs several pools of the same `T`, one per connector, so the owner has to be a property of the object rather than of its type. An object returns to the pool its slot belongs to, and destroying one pool leaves every other pool of that type alone.
 * `acquireCount()` / `releaseCount()` / `exhaustionCount()` are atomic and safe to read while the pool is in use.
 * Backed by a `monotonic_buffer_resource` and `unsynchronized_pool_resource` for internal vector-like allocations.
 

@@ -9,8 +9,10 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <limits>
+#include <type_traits>
 #include <version>
 
 // Single point of truth for fixed-point scale safety. Two concerns live here:
@@ -104,6 +106,53 @@ constexpr int64_t checkedNarrowI64(__int128_t v) noexcept
   return saturate_cast<int64_t>(v);
 }
 #endif
+
+// A zero divisor in fixed-point division. There is no representable answer,
+// and the raw machine behavior is not portable: x86 raises a hardware
+// exception, arm64 returns an unspecified value without trapping at all, and
+// the __int128 software path hands back whatever the runtime helper left in
+// the register. That last case is the dangerous one -- dividing a filled
+// volume by a zero filled quantity produced a plausible-looking execution
+// price (0.0 in one build, 25.0 in another, from the same input) that then
+// flowed into PnL and risk.
+//
+// Checked builds trip FLOX_SCALE_CHECK. Every build returns a saturated
+// value, consistent with checkedNarrowI64 and checkedAddI64 above: defined
+// behavior, and a number at the int64 boundary that no real price or
+// quantity can be mistaken for.
+namespace detail
+{
+inline std::atomic<uint64_t> g_divisionsByZero{0};
+}  // namespace detail
+
+// How many fixed-point divisions by zero this process has taken. A release
+// build has no assertion to trip, so this counter is what a health check or a
+// test reads to tell a saturated result apart from an ordinary one. Nothing
+// on the hot path touches it: it only moves on the zero-divisor path.
+inline uint64_t fixedPointDivisionsByZero() noexcept
+{
+  return detail::g_divisionsByZero.load(std::memory_order_relaxed);
+}
+
+inline void resetFixedPointDivisionsByZero() noexcept
+{
+  detail::g_divisionsByZero.store(0, std::memory_order_relaxed);
+}
+
+constexpr int64_t dividedByZeroI64(int64_t numerator) noexcept
+{
+  FLOX_SCALE_CHECK(false, "fixed-point division by zero");
+  if (!std::is_constant_evaluated())
+  {
+    detail::g_divisionsByZero.fetch_add(1, std::memory_order_relaxed);
+  }
+  if (numerator == 0)
+  {
+    return 0;
+  }
+  return numerator > 0 ? (std::numeric_limits<int64_t>::max)()
+                       : (std::numeric_limits<int64_t>::min)();
+}
 
 // Checked int64 addition, used by Decimal::operator+= (accumulators such as
 // Bar::volume). Plain `a + b` on int64_t is signed overflow, which is

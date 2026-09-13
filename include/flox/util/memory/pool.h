@@ -36,20 +36,42 @@ concept Poolable = RefCountable<T> && requires(T* obj) {
 namespace flox::pool
 {
 
+// Type-erased view of the pool an object came from, so a pooled object can
+// name its owner without knowing the pool's Capacity.
+//
+// The release path used to go through a function pointer held as a static
+// member of the object type, which made it one pointer for every pool of that
+// type rather than one per pool. Two pools of the same T -- two connectors
+// each holding a Pool<BookUpdateEvent, N> is the ordinary case -- then shared
+// it: the second pool's constructor rewrote it to a lambda that casts the
+// pool pointer to its own Capacity, so releasing an object into the first
+// pool wrote the freelist and the counters at the second pool's offsets,
+// landing inside the first pool's live slot array. Destroying either pool
+// nulled it for both, and the next release dereferenced null.
+//
+// The owner is per object now, set when the pool constructs the slot and
+// stored in the same pointer-sized field that used to hold the raw pool
+// address, so no pooled type changes size or layout.
+struct PoolReleaser
+{
+  virtual void releaseErased(void* obj) = 0;
+
+ protected:
+  ~PoolReleaser() = default;
+};
+
 template <typename Derived>
 struct PoolableBase : public RefCountable
 {
-  void* _origin = nullptr;
+  PoolReleaser* _origin = nullptr;
 
-  void setPool(void* pool) { _origin = pool; }
+  void setPool(PoolReleaser* pool) { _origin = pool; }
 
   void releaseToPool()
   {
-    assert(_origin && _releaseFn && "Pool or releaseFn not set");
-    _releaseFn(_origin, static_cast<Derived*>(this));
+    assert(_origin && "Pool not set");
+    _origin->releaseErased(static_cast<Derived*>(this));
   }
-
-  static inline void (*_releaseFn)(void*, void*) = nullptr;
 
   void clear() {}
 };
@@ -133,7 +155,7 @@ class Handle
 };
 
 template <typename T, size_t Capacity>
-class Pool
+class Pool final : public PoolReleaser
 {
   static_assert(concepts::RefCountable<T>, "T must be RefCountable");
   static_assert(concepts::Poolable<T>, "T must be Poolable");
@@ -151,19 +173,15 @@ class Pool
 
       obj->setPool(this);
 
-      T::_releaseFn = [](void* pool, void* ptr)
-      {
-        static_cast<Pool<T, Capacity>*>(pool)->release(static_cast<T*>(ptr));
-      };
-
       _freelist.push(static_cast<uint32_t>(i));
     }
   }
 
-  ~Pool()
-  {
-    T::_releaseFn = nullptr;
-  }
+  // Nothing to unwind: the owner pointer each object carries dies with the
+  // slot it points into, so destroying one pool cannot disturb another.
+  ~Pool() = default;
+
+  void releaseErased(void* obj) override { release(static_cast<T*>(obj)); }
 
   using ExhaustionCallback = void (*)(size_t capacity, size_t inUse);
 

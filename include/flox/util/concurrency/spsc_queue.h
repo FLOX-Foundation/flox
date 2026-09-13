@@ -118,7 +118,22 @@ class SPSCQueue
     return true;
   }
 
-  T* try_pop()
+  // Hands back a pointer into the ring and republishes the slot to the
+  // producer straight away, so the pointer is borrowed, not owned.
+  //
+  // The pointer stays valid until the consumer's next call that moves the
+  // tail -- pop, try_pop, try_pop_ref or clear. Up to that point the ring
+  // invariant protects it: one slot is always left empty, so a producer
+  // filling the queue stops one short of the slot just handed out. Take a
+  // second pointer without finishing with the first and that protection is
+  // gone -- the producer can construct a new element into the first slot, the
+  // stale pointer then reads the new element's value, and running `ptr->~T()`
+  // on it, which is how a popped element is meant to be destroyed, destroys
+  // an element still queued for delivery. To consume a batch, use
+  // read_segment / commit_read below: those hold the slots until the commit.
+  //
+  // Destroy the element through the returned pointer before the next pop.
+  [[nodiscard]] T* try_pop()
   {
     const size_t tail = _tail.load(std::memory_order_relaxed);
     if (tail == _head.load(std::memory_order_acquire))
@@ -135,7 +150,9 @@ class SPSCQueue
     return ptr;
   }
 
-  std::optional<std::reference_wrapper<T>> try_pop_ref()
+  // Same borrowing rules as try_pop: valid until the consumer's next call
+  // that moves the tail.
+  [[nodiscard]] std::optional<std::reference_wrapper<T>> try_pop_ref()
   {
     const size_t tail = _tail.load(std::memory_order_relaxed);
     if (tail == _head.load(std::memory_order_acquire))
@@ -161,7 +178,7 @@ class SPSCQueue
   // republished to the producer only at commit, after the consumer is done
   // with it.
 
-  size_t read_segment(T*& out) noexcept
+  [[nodiscard]] size_t read_segment(T*& out) noexcept
   {
     const size_t tail = _tail.load(std::memory_order_relaxed);
     const size_t head = _head.load(std::memory_order_acquire);
@@ -179,7 +196,7 @@ class SPSCQueue
     _tail.store((tail + n) & MASK, std::memory_order_release);
   }
 
-  size_t write_segment(T*& out) noexcept
+  [[nodiscard]] size_t write_segment(T*& out) noexcept
   {
     const size_t head = _head.load(std::memory_order_relaxed);
     const size_t tail = _tail.load(std::memory_order_acquire);

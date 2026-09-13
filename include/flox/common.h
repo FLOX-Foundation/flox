@@ -152,6 +152,13 @@ inline Price operator/(Volume vol, Quantity qty)
 {
   FLOX_SCALE_CHECK(vol.scale() == Volume::Scale && qty.scale() == Quantity::Scale,
                    "Volume/Quantity requires default scale; rescale a per-symbol value first");
+  // An unfilled order divides a zero volume by a zero quantity here. Left to
+  // the platform that is a hardware trap on x86 and an unspecified value on
+  // arm64, which is how a zero fill became a plausible execution price.
+  if (qty.raw() == 0)
+  {
+    return Price::fromRaw(dividedByZeroI64(vol.raw()));
+  }
 #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
   // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
   using i128 = __int128_t;
@@ -175,6 +182,10 @@ inline Quantity operator/(Volume vol, Price px)
 {
   FLOX_SCALE_CHECK(vol.scale() == Volume::Scale && px.scale() == Price::Scale,
                    "Volume/Price requires default scale; rescale a per-symbol value first");
+  if (px.raw() == 0)
+  {
+    return Quantity::fromRaw(dividedByZeroI64(vol.raw()));
+  }
 #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
   // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
   using i128 = __int128_t;

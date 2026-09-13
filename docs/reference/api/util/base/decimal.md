@@ -34,6 +34,30 @@ class Decimal {
 | `isZero()`                  | True if `_raw == 0`.                                                         |
 | Arithmetic / Comparison Ops | Full suite of `+`, `-`, `*`, `/`, `==`, `<`, `<=`, etc. on same-type values. |
 
+## Division by zero
+
+An integer divide by zero behaves differently on every target. x86 raises a
+hardware exception, AArch64 returns an unspecified value and does not trap, and
+the 128-bit software path returns whatever the runtime helper left behind.
+Dividing a filled volume by a zero filled quantity used to land in that last
+case: a believable execution price, and a different one depending on how the
+build was optimized.
+
+Every fixed-point division checks its divisor first:
+
+* In a checked build (`FLOX_SCALE_CHECKS`, on by default without `NDEBUG`) a
+  zero divisor trips the guardrail and the process stops there.
+* In an unchecked build the result saturates: `INT64_MAX` for a positive
+  numerator, `INT64_MIN` for a negative one, zero for `0 / 0`. Fixed-point
+  overflow is already treated this way. The point is a number at the int64
+  boundary, which no real price or quantity can be mistaken for.
+* `flox::fixedPointDivisionsByZero()` counts how often that happened, so a
+  release build has something to read; `flox::resetFixedPointDivisionsByZero()`
+  clears the counter. An ordinary division touches neither.
+
+This covers `Decimal / Decimal`, `Decimal / int64_t`, and the
+`Volume / Quantity` and `Volume / Price` overloads in `flox/common.h`.
+
 ## Notes
 
 * Scale is enforced at compile time — `Decimal<PriceTag, 1000>` is a distinct type from `Decimal<QuantityTag, 1000>`.

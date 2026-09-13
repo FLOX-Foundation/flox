@@ -10,9 +10,11 @@
 #include "flox/engine/symbol_registry.h"
 #include "flox/util/performance/profile.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <optional>
+#include <shared_mutex>
 #include <span>
 
 namespace flox
@@ -39,15 +41,19 @@ ExchangeId SymbolRegistry::registerExchange(std::string_view name, VenueType typ
     return InvalidExchangeId;
   }
 
-  ExchangeId id = static_cast<ExchangeId>(_numExchanges++);
+  // Fill the entry before the count admits it. Publishing the count first
+  // let a reader see an id it was allowed to dereference while the name and
+  // the venue type were still blank.
+  ExchangeId id = static_cast<ExchangeId>(_numExchanges);
   _exchanges[id].setName(name);
   _exchanges[id].type = type;
   _exchangeNameToId[std::string(name)] = id;
+  ++_numExchanges;
 
   return id;
 }
 
-const ExchangeInfo* SymbolRegistry::getExchange(ExchangeId id) const
+const ExchangeInfo* SymbolRegistry::getExchangeLocked(ExchangeId id) const
 {
   if (id >= _numExchanges)
   {
@@ -56,9 +62,22 @@ const ExchangeInfo* SymbolRegistry::getExchange(ExchangeId id) const
   return &_exchanges[id];
 }
 
+std::optional<ExchangeInfo> SymbolRegistry::getExchange(ExchangeId id) const
+{
+  std::shared_lock lock(_mutex);
+  const ExchangeInfo* info = getExchangeLocked(id);
+  if (info == nullptr)
+  {
+    return std::nullopt;
+  }
+  // Copied here, under the lock. Handing back the address instead would move
+  // the read to the call site, where nothing holds the lock any more.
+  return *info;
+}
+
 ExchangeId SymbolRegistry::getExchangeId(std::string_view name) const
 {
-  std::scoped_lock lock(_mutex);
+  std::shared_lock lock(_mutex);
   auto it = _exchangeNameToId.find(std::string(name));
   if (it != _exchangeNameToId.end())
   {
@@ -104,7 +123,7 @@ SymbolId SymbolRegistry::registerSymbol(ExchangeId exchange, std::string_view sy
   return id;
 }
 
-ExchangeId SymbolRegistry::getExchangeForSymbol(SymbolId symbol) const
+ExchangeId SymbolRegistry::getExchangeForSymbolLocked(SymbolId symbol) const
 {
   if (symbol >= _symbolToExchange.size())
   {
@@ -113,9 +132,16 @@ ExchangeId SymbolRegistry::getExchangeForSymbol(SymbolId symbol) const
   return _symbolToExchange[symbol];
 }
 
+ExchangeId SymbolRegistry::getExchangeForSymbol(SymbolId symbol) const
+{
+  std::shared_lock lock(_mutex);
+  return getExchangeForSymbolLocked(symbol);
+}
+
 VenueType SymbolRegistry::venueTypeForSymbol(SymbolId symbol) const
 {
-  const ExchangeInfo* info = getExchange(getExchangeForSymbol(symbol));
+  std::shared_lock lock(_mutex);
+  const ExchangeInfo* info = getExchangeLocked(getExchangeForSymbolLocked(symbol));
   return info != nullptr ? info->type : VenueType::CentralizedExchange;
 }
 
@@ -167,7 +193,7 @@ void SymbolRegistry::mapEquivalentSymbols(std::span<const SymbolId> equivalentSy
   }
 }
 
-std::span<const SymbolId> SymbolRegistry::getEquivalentSymbols(SymbolId symbol) const
+std::span<const SymbolId> SymbolRegistry::getEquivalentSymbolsLocked(SymbolId symbol) const
 {
   if (symbol >= _equivalentCounts.size())
   {
@@ -184,12 +210,28 @@ std::span<const SymbolId> SymbolRegistry::getEquivalentSymbols(SymbolId symbol) 
   return {&_equivalents[baseIdx], count};
 }
 
+SymbolRegistry::EquivalentSymbols SymbolRegistry::getEquivalentSymbols(SymbolId symbol) const
+{
+  std::shared_lock lock(_mutex);
+
+  // Same reasoning as getExchange: a span points into a vector that the next
+  // mapEquivalentSymbols reallocates and clear() empties, and the caller walks
+  // it after the lock is gone. The list is at most kMaxEquivalentsPerSymbol
+  // entries, so it is copied out instead.
+  EquivalentSymbols out;
+  const std::span<const SymbolId> view = getEquivalentSymbolsLocked(symbol);
+  out.count = static_cast<uint8_t>(view.size());
+  std::copy(view.begin(), view.end(), out.ids.begin());
+  return out;
+}
+
 SymbolId SymbolRegistry::getEquivalentOnExchange(SymbolId symbol, ExchangeId exchange) const
 {
-  auto equivalents = getEquivalentSymbols(symbol);
+  std::shared_lock lock(_mutex);
+  auto equivalents = getEquivalentSymbolsLocked(symbol);
   for (SymbolId eq : equivalents)
   {
-    if (getExchangeForSymbol(eq) == exchange)
+    if (getExchangeForSymbolLocked(eq) == exchange)
     {
       return eq;
     }
