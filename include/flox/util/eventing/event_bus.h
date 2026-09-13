@@ -481,6 +481,23 @@ class EventBus : public ISubsystem
       _published[i].store(-1, std::memory_order_relaxed);
     }
     _cachedMinConsumed.store(-1, std::memory_order_relaxed);
+
+    // The ring is empty again, so the sequence line goes back to where a fresh
+    // bus starts. A consumer thread always resumes from sequence 0; leaving
+    // the producer counter and the gating lines at the previous run's
+    // positions describes a ring that no longer exists, and start() after
+    // stop() -- the other half of the ISubsystem contract, taken on every
+    // reconnect -- then accepts publishes, hands back valid sequence numbers
+    // and delivers nothing at all. Consumer threads are joined above, so this
+    // races nothing but a publish concurrent with the stop, which is already
+    // unordered against it.
+    _next.store(-1, std::memory_order_relaxed);
+    _cachedMin.store(-1, std::memory_order_relaxed);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      _consumers[i].seq.store(-1, std::memory_order_relaxed);
+      _gating[i].v.store(_consumers[i].required ? -1 : INT64_MAX, std::memory_order_relaxed);
+    }
   }
 
  public:
@@ -845,12 +862,10 @@ class EventBus : public ISubsystem
           break;
         }
 
-        // Value 2 = timeout placeholder (event was never constructed in
-        // this slot), value 0 = reclaimed, value 1 = valid event. ALL
-        // consumers must skip timeout placeholders -- dispatching would
-        // read stale/uninitialized memory from a previous wrap-around.
-        // Relaxed is enough: the construction store is ordered before the
-        // slot stamp acquired above.
+        // Value 1 = valid event, value 0 = reclaimed. Only a constructed
+        // slot is dispatched: anything else would read stale memory from a
+        // previous wrap-around. Relaxed is enough: the construction store is
+        // ordered before the slot stamp acquired above.
         if (_constructed[cidx].load(std::memory_order_relaxed) == 1)
         {
           FLOX_PROFILE_SCOPE("Disruptor::deliver");
@@ -911,6 +926,25 @@ class EventBus : public ISubsystem
     if (_drainOnStop)
     {
       int64_t seq = _consumers[i].seq.load(std::memory_order_relaxed);
+      uint64_t delivered = 0;
+
+      // The drain owes the listener the same batch contract as the loop above.
+      // A listener that batches -- amortising an fsync, a durability barrier,
+      // a flush -- commits what it was handed only on this edge, so a drain
+      // that dispatches without it applies the events and never lets them out.
+      const auto endBatch = [&]
+      {
+        if (delivered == 0)
+        {
+          return;
+        }
+        delivered = 0;
+        if constexpr (requires { EventDispatcher<Event>::endOfBatch(*l); })
+        {
+          EventDispatcher<Event>::endOfBatch(*l);
+        }
+      };
+
       for (;;)
       {
         const int64_t want = seq + 1;
@@ -925,12 +959,159 @@ class EventBus : public ISubsystem
           FLOX_PROFILE_SCOPE("Disruptor::drain_deliver");
           EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
           _consumeCount.fetch_add(1, std::memory_order_relaxed);
+          ++delivered;
         }
 
         _consumers[i].seq.store(want, std::memory_order_release);
         _gating[i].v.store(required ? want : INT64_MAX, std::memory_order_release);
 
         seq = want;
+
+        // Bounded like the run above, so a long drain does not leave a
+        // batching listener holding an unbounded backlog.
+        if (delivered == kMaxConsumeRun)
+        {
+          endBatch();
+        }
+      }
+
+      endBatch();
+    }
+  }
+
+  // Blocking claim. Reserve first -- one fetch_add, the hot path -- then wait
+  // out both gates. A blocking publish never gives up, so the reservation is
+  // always honoured and no sequence is ever left unstamped except when the bus
+  // stops underneath, which throws the whole ring away anyway.
+  bool claimBlocking(int64_t& claimed)
+  {
+    const int64_t seq = _next.fetch_add(1, std::memory_order_acq_rel) + 1;
+
+    // Check for overflow (very unlikely but safe)
+    if (seq < 0)
+    {
+      _next.fetch_sub(1, std::memory_order_acq_rel);
+      return false;
+    }
+
+    const int64_t wrap = seq - static_cast<int64_t>(CapacityPow2);
+
+    BusyBackoff bo;
+    int64_t cachedMin = _cachedMin.load(std::memory_order_acquire);
+    while (wrap > cachedMin)
+    {
+      if (!_running.load(std::memory_order_relaxed))
+      {
+        return false;
+      }
+      cachedMin = minGating();
+      _cachedMin.store(cachedMin, std::memory_order_release);
+      if (wrap <= cachedMin)
+      {
+        break;
+      }
+      bo.pause();
+    }
+
+    // Wait for ALL consumers (including optional) to process the old event
+    // before destroying it. This prevents use-after-free for optional
+    // consumers. minConsumed() is a scan over every consumer's progress line,
+    // so consult the monotonic cache first: any previously observed lower
+    // bound stays valid forever, and the scan runs only when it is not enough.
+    if (wrap >= 0 && _cachedMinConsumed.load(std::memory_order_acquire) < wrap)
+    {
+      BusyBackoff reclaimBo;
+      int64_t observed;
+      while ((observed = minConsumed()) < wrap)
+      {
+        if (!_running.load(std::memory_order_relaxed))
+        {
+          return false;
+        }
+        reclaimBo.pause();
+      }
+      _cachedMinConsumed.store(observed, std::memory_order_release);
+    }
+
+    claimed = seq;
+    return true;
+  }
+
+  // Bounded claim. A publish that is allowed to give up must give up with no
+  // trace: a sequence handed out and then abandoned would have to be stamped
+  // into the ring for consumers to get past it, and that stamp lands on the
+  // slot of an event the slowest consumer has not read yet -- it reads a
+  // sequence it can never match and spins there for good. So the sequence is
+  // taken LAST, with a compare-exchange, and only once both gates already
+  // admit it. Losing that race to another producer costs one re-evaluation,
+  // never a stamped slot.
+  //
+  // Consumer progress only moves forward, so a gate that admitted the
+  // candidate sequence before the exchange still admits it after.
+  PublishResult claimBounded(std::chrono::microseconds timeout, int64_t& claimed)
+  {
+    const auto startTime = std::chrono::steady_clock::now();
+    const auto expired = [&]
+    { return std::chrono::steady_clock::now() - startTime >= timeout; };
+
+    BusyBackoff bo;
+    for (;;)
+    {
+      if (!_running.load(std::memory_order_relaxed))
+      {
+        return PublishResult::STOPPED;
+      }
+
+      const int64_t cur = _next.load(std::memory_order_acquire);
+      const int64_t seq = cur + 1;
+      if (seq < 0)
+      {
+        return PublishResult::STOPPED;
+      }
+
+      const int64_t wrap = seq - static_cast<int64_t>(CapacityPow2);
+
+      if (wrap > _cachedMin.load(std::memory_order_acquire))
+      {
+        const int64_t cachedMin = minGating();
+        _cachedMin.store(cachedMin, std::memory_order_release);
+        if (wrap > cachedMin)
+        {
+          if (expired())
+          {
+            return PublishResult::TIMEOUT;
+          }
+          bo.pause();
+          continue;
+        }
+      }
+
+      if (wrap >= 0 && _cachedMinConsumed.load(std::memory_order_acquire) < wrap)
+      {
+        const int64_t observed = minConsumed();
+        if (observed < wrap)
+        {
+          if (expired())
+          {
+            return PublishResult::TIMEOUT;
+          }
+          bo.pause();
+          continue;
+        }
+        _cachedMinConsumed.store(observed, std::memory_order_release);
+      }
+
+      int64_t expectedNext = cur;
+      if (_next.compare_exchange_weak(expectedNext, seq, std::memory_order_acq_rel,
+                                      std::memory_order_relaxed))
+      {
+        claimed = seq;
+        return PublishResult::SUCCESS;
+      }
+
+      if (expired())
+      {
+        return PublishResult::TIMEOUT;
       }
     }
   }
@@ -945,76 +1126,25 @@ class EventBus : public ISubsystem
       return {PublishResult::STOPPED, -1};
     }
 
-    // Reserve sequence number
-    const int64_t seq = _next.fetch_add(1, std::memory_order_acq_rel) + 1;
-
-    // Check for overflow (very unlikely but safe)
-    if (seq < 0)
+    int64_t seq = -1;
+    if (timeout.has_value())
     {
-      _next.fetch_sub(1, std::memory_order_acq_rel);
+      const PublishResult claim = claimBounded(timeout.value(), seq);
+      if (claim != PublishResult::SUCCESS)
+      {
+        if (claim == PublishResult::TIMEOUT)
+        {
+          _dropCount.fetch_add(1, std::memory_order_relaxed);
+        }
+        return {claim, -1};
+      }
+    }
+    else if (!claimBlocking(seq))
+    {
       return {PublishResult::STOPPED, -1};
     }
 
-    const int64_t wrap = seq - static_cast<int64_t>(CapacityPow2);
-
-    BusyBackoff bo;
-    int64_t cachedMin = _cachedMin.load(std::memory_order_acquire);
-
-    auto startTime = timeout.has_value() ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-
-    while (wrap > cachedMin)
-    {
-      if (!_running.load(std::memory_order_relaxed))
-      {
-        return {PublishResult::STOPPED, -1};
-      }
-
-      if (timeout.has_value())
-      {
-        auto elapsed = std::chrono::steady_clock::now() - startTime;
-        if (elapsed >= timeout.value())
-        {
-          // Timeout - we already reserved the slot, so mark it as timeout placeholder (value 2)
-          // This distinguishes from reclaimed slots (value 0) which optional consumers can skip
-          const size_t idx = size_t(seq) & Mask;
-          _constructed[idx].store(2, std::memory_order_release);
-          _published[idx].store(seq, std::memory_order_release);
-          _dropCount.fetch_add(1, std::memory_order_relaxed);
-          return {PublishResult::TIMEOUT, -1};
-        }
-      }
-
-      cachedMin = minGating();
-      _cachedMin.store(cachedMin, std::memory_order_release);
-      if (wrap <= cachedMin)
-      {
-        break;
-      }
-      bo.pause();
-    }
-
     const size_t idx = size_t(seq) & Mask;
-
-    // Wait for ALL consumers (including optional) to process the old event
-    // before destroying it. This prevents use-after-free for optional
-    // consumers. minConsumed() is a scan over every consumer's progress line,
-    // so consult the monotonic cache first: any previously observed lower
-    // bound stays valid forever, and the scan runs only when it is not enough.
-    const int64_t oldSeq = seq - static_cast<int64_t>(CapacityPow2);
-    if (oldSeq >= 0 && _cachedMinConsumed.load(std::memory_order_acquire) < oldSeq)
-    {
-      BusyBackoff reclaimBo;
-      int64_t observed;
-      while ((observed = minConsumed()) < oldSeq)
-      {
-        if (!_running.load(std::memory_order_relaxed))
-        {
-          return {PublishResult::STOPPED, -1};
-        }
-        reclaimBo.pause();
-      }
-      _cachedMinConsumed.store(observed, std::memory_order_release);
-    }
 
     // Destroy old event if present - only if not already reclaimed
     // The _constructed flag ensures only one thread destroys
@@ -1087,7 +1217,9 @@ class EventBus : public ISubsystem
   inline Event& slot_ref(size_t idx) noexcept { return *slot_ptr(idx); }
 
   alignas(64) std::array<std::atomic<int64_t>, CapacityPow2> _published{};
-  // _constructed values: 0 = empty/reclaimed, 1 = valid event, 2 = timeout placeholder
+  // _constructed values: 0 = empty/reclaimed, 1 = valid event. A slot is
+  // stamped only by a publish that owns its sequence, so there is no third
+  // state for a sequence that was claimed and then given up on.
   alignas(64) std::array<std::atomic<uint8_t>, CapacityPow2> _constructed{};
 
   // Monotonic lower bound of minConsumed(); stale values are always safe.

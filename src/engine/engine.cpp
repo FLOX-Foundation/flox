@@ -14,7 +14,6 @@
 #include "flox/util/memory/large_arena.h"
 #include "flox/util/performance/memory_profile.h"
 
-#include <algorithm>
 #include <utility>
 
 namespace flox
@@ -74,11 +73,13 @@ void Engine::stop()
     connector->stop();
   }
 
-  // Stop subsystems in reverse order
-  std::reverse(_subsystems.begin(), _subsystems.end());
-  for (auto& subsystem : _subsystems)
+  // Stop subsystems in reverse order. Walking backwards rather than reversing
+  // in place: the vector is the engine's start order, and reordering it here
+  // leaves a second start() bringing the strategy up before the bus it
+  // publishes into and a second stop() shutting that bus down first.
+  for (auto it = _subsystems.rbegin(); it != _subsystems.rend(); ++it)
   {
-    subsystem->stop();
+    (*it)->stop();
   }
 }
 

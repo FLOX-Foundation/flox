@@ -50,6 +50,12 @@ if (result == Bus::PublishResult::TIMEOUT) {
 }
 ```
 
+`TIMEOUT` means the event never entered the ring: no slot was written and no
+sequence number was spent, so the next accepted publish takes the sequence this
+one would have had. `stats().dropped` counts the refusals. See
+[The Disruptor Pattern](../../../../explanation/disruptor.md) for why the two
+publish paths claim their sequence at different points.
+
 ## CPU Affinity (when `FLOX_CPU_AFFINITY_ENABLED`)
 
 ```cpp

@@ -14,10 +14,14 @@
 #include "flox/common.h"
 #include "flox/engine/abstract_subscriber.h"
 #include "flox/engine/abstract_subsystem.h"
+#include "flox/engine/engine.h"
 #include "flox/strategy/abstract_strategy.h"
 
 #include <gtest/gtest.h>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace flox;
 
@@ -201,4 +205,54 @@ TEST(SmokeEngineTest, StrategyReceivesBothEvents)
   EXPECT_EQ(strategy->seenBooks(), 1);
   EXPECT_EQ(strategy->lastTradePrice(), Price::fromDouble(101.25));
   EXPECT_EQ(strategy->lastBid(), Price::fromDouble(101.10));
+}
+
+namespace
+{
+
+// Records the order in which the engine touches its subsystems.
+class OrderSpy : public ISubsystem
+{
+ public:
+  OrderSpy(std::string name, std::vector<std::string>& log) : _name(std::move(name)), _log(log) {}
+
+  void start() override { _log.push_back("start:" + _name); }
+  void stop() override { _log.push_back("stop:" + _name); }
+
+ private:
+  std::string _name;
+  std::vector<std::string>& _log;
+};
+
+}  // namespace
+
+// Subsystems come up in dependency order and go down in the reverse of it --
+// the bus before its publishers on the way up, after them on the way down. The
+// second cycle has to hold the same order as the first: an engine that is
+// stopped and started again (a reconnect, a session roll) must not bring the
+// strategy up before the bus it publishes into.
+TEST(SmokeEngineTest, SubsystemOrderSurvivesASecondCycle)
+{
+  std::vector<std::string> log;
+  std::vector<std::unique_ptr<ISubsystem>> subsystems;
+  subsystems.push_back(std::make_unique<OrderSpy>("bus", log));
+  subsystems.push_back(std::make_unique<OrderSpy>("risk", log));
+  subsystems.push_back(std::make_unique<OrderSpy>("strategy", log));
+
+  EngineConfig cfg;
+  Engine engine(cfg, std::move(subsystems), {});
+
+  engine.start();
+  engine.stop();
+  const std::vector<std::string> cycle1 = log;
+  log.clear();
+
+  engine.start();
+  engine.stop();
+
+  const std::vector<std::string> expected{"start:bus", "start:risk", "start:strategy",
+                                          "stop:strategy", "stop:risk", "stop:bus"};
+  EXPECT_EQ(cycle1, expected);
+  EXPECT_EQ(log, expected) << "the second cycle ran the subsystems in a different order than the "
+                              "first";
 }

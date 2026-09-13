@@ -34,6 +34,8 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <thread>
+#include <variant>
 #include <vector>
 
 using namespace flox;
@@ -1722,8 +1724,22 @@ TEST(VenueCheckpoint, GroupCommitSyncsBeforeItPublishes)
   EXPECT_GT(w.events, 0u) << "the shard published nothing, so nothing was checked";
   EXPECT_EQ(w.unbacked, 0u) << "an event reached a subscriber before the batch barrier was taken";
 
-  const uint64_t liveHash = s->engine().stateHash();
+  const uint64_t settled = w.events;
+
+  // The barrier also has to hold for the last batch of a session. These two go
+  // in with no flush and no pause in front of stop(), so they are drained by
+  // the shutdown path rather than by the running loop -- the one window where
+  // a staged batch can be applied, journaled, and then dropped on the floor
+  // with nobody told.
+  s->submit(InboundCommand{limit(3, Side::BUY, 99.00, 1.0, 2)});
+  s->submit(InboundCommand{limit(4, Side::SELL, 101.00, 1.0, 1)});
+
   s->stop();
+  const uint64_t liveHash = s->engine().stateHash();
+
+  EXPECT_GT(w.events, settled) << "the commands drained by stop() were journaled and applied, but "
+                                  "their events never reached the subscriber";
+  EXPECT_EQ(w.unbacked, 0u) << "an event reached a subscriber before the batch barrier was taken";
   s.reset();
 
   // And the batched journal is still a journal: a fresh shard replays it into
@@ -1737,4 +1753,76 @@ TEST(VenueCheckpoint, GroupCommitSyncsBeforeItPublishes)
   EXPECT_EQ(s2->engine().stateHash(), liveHash);
   EXPECT_GT(s2->recoveredCommands(), 0u);
   s2->stop();
+}
+
+// The same promise under load. A gateway thread is still writing when the
+// shard is told to stop, so the last commands are picked up by the shutdown
+// drain instead of the running loop. Every command the journal holds has been
+// applied to the engine; the client has to have been told about all of them,
+// because a restart replays the journal with outbound suppressed and the
+// acknowledgement never comes back.
+TEST(VenueCheckpoint, GroupCommitAcksEverythingItJournalsWhenStopped)
+{
+  const std::string base = "/tmp/flox_test_venue_group_drain.bin";
+
+  struct Counter : IEngineEventListener
+  {
+    std::atomic<uint64_t> accepted{0};
+    void onEngineEvent(const EngineEventMsg& ev) override
+    {
+      if (std::holds_alternative<OrderAccepted>(ev.event))
+      {
+        ++accepted;
+      }
+    }
+  };
+
+  constexpr OrderId kOrders = 200000;
+
+  for (int rep = 0; rep < 3; ++rep)
+  {
+    cleanFiles(base);
+
+    venue::SymbolConfig c = cfg();
+    Ledger led;
+    auto t = clockState(1'000'000);
+    auto s = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Group,
+                                                clockOf(t));
+    Counter w;
+    s->engine().setLedger(&led, VENUE_ACCT);
+    s->subscribeOutbound(&w);
+    s->start();
+
+    s->submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(10'000'000), SYM}});
+    s->flush();
+
+    std::thread producer(
+        [&]
+        {
+          for (OrderId id = 1; id <= kOrders; ++id)
+          {
+            // Resting buys far below the band: one acknowledgement each, no fills.
+            if (s->submit(InboundCommand{limit(id, Side::BUY, 50.00, 0.01, 1)}) < 0)
+            {
+              return;
+            }
+          }
+        });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    s->stop();
+    producer.join();
+
+    // One journal record is the deposit; the rest are orders, each of which the
+    // engine accepted and each of which owes the client an acknowledgement.
+    const uint64_t journaledOrders = s->journaled() - 1;
+    EXPECT_GT(journaledOrders, 0u) << "rep " << rep << ": nothing went through, nothing checked";
+    EXPECT_EQ(w.accepted.load(), journaledOrders)
+        << "rep " << rep << ": " << (journaledOrders - w.accepted.load()) << " of "
+        << journaledOrders
+        << " journaled orders were applied to the engine without their acknowledgement ever "
+           "leaving the shard";
+  }
+
+  cleanFiles(base);
 }
