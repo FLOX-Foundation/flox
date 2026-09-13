@@ -1,12 +1,14 @@
 # Choose a matching model: FIFO, pro-rata, hybrid
 
 flox's queue simulator decides how an incoming trade at a price level
-gets distributed across resting limit orders. The default is FIFO —
-the order at the front of the queue eats first. Real venues do not
-all behave that way.
+gets distributed across resting limit orders. The default is `none`,
+which skips queue modelling entirely; `tob` and `full` are the FIFO
+models, where the order at the front of the queue eats first. Real
+venues do not all behave that way.
 
 | Venue family                       | Real matching                  | Closest model              |
 |------------------------------------|--------------------------------|----------------------------|
+| No queue modelling (the default)   | —                              | `none`                     |
 | Most spot crypto, US equities      | Price-time FIFO                | `tob` / `full`             |
 | Options exchanges (CME, Eurex)     | Pure pro-rata                  | `pro_rata`                 |
 | Some hybrid futures / fee tiers    | FIFO top-N, pro-rata           | `pro_rata_with_fifo`       |
@@ -25,6 +27,26 @@ trade in FIFO order, and only the remainder is distributed pro-rata
 across the rest. Several exchanges use this scheme to reward queue
 priority while still preserving size-weighted matching for the bulk
 of the book.
+
+## What `none` does
+
+`none` is the default and it models no queue at all. A resting limit
+order fills as soon as the opposite touch crosses its price, without
+waiting for anything in front of it. The fill happens at the price the
+order posted and is reported as a maker fill, the same as it would be
+under `tob` or `full`.
+
+That last part matters on coarse data. When the touch jumps past a
+resting order between two observations — a 1-minute or 1-hour bar
+rather than a tick — the order still trades at its own price. It does
+not collect the distance the touch travelled. A limit order that
+arrives already marketable is a different case: it crosses the book,
+pays the touch and is reported as a taker fill.
+
+`none` is fast and it gets the economics of a fill right. What it does
+not give you is queue position: an order at the back of a deep level
+fills just as readily as one at the front. Use `tob` or `full` when
+queue priority is part of the strategy.
 
 ## Configure
 
@@ -159,6 +181,12 @@ multiplier (e.g. 1.5) on top of raw size.
   the sum of fills never exceeds the trade quantity.
 - A trade larger than the level total fills only the level total —
   no overshoot.
+- A trade consumes resting orders on one side of the level only: the
+  side opposite the aggressor. A buyer who lifts the offer trades
+  against resting asks, a seller who hits the bid trades against
+  resting bids. Feed the aggressor flag along with the trade
+  (`on_trade(symbol, price, qty, is_buy)`) and a two-sided quote
+  cannot trade with itself on a single print.
 - An empty `fifoTopN` (zero or larger than the level depth) makes
   `pro_rata_with_fifo` behave identically to pure `pro_rata`.
 - The `set_queue_fifo_top_n` / `setQueueFifoTopN` value persists

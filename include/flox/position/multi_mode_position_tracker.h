@@ -352,6 +352,25 @@ class MultiModePositionTracker : public IPositionManager
     applyFillInternal(order, order.quantity, precomputeFill(order, order.quantity));
   }
 
+  // Preferred forms: they carry the price the fill actually happened at, which
+  // a market order does not carry on the order itself.
+  void onOrderPartiallyFilled(const Order& order, Quantity fillQty,
+                              Price fillPrice) override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    Order atFillPrice = order;
+    atFillPrice.price = fillPrice;
+    applyFillInternal(atFillPrice, fillQty, precomputeFill(atFillPrice, fillQty));
+  }
+
+  void onOrderFilled(const Order& order, Quantity fillQty, Price fillPrice) override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    Order atFillPrice = order;
+    atFillPrice.price = fillPrice;
+    applyFillInternal(atFillPrice, fillQty, precomputeFill(atFillPrice, fillQty));
+  }
+
   void onOrderCanceled(const Order& order) override
   {
     if (_mode == PositionAggregationMode::GROUPED)

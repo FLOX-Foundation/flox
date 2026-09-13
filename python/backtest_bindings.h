@@ -564,13 +564,15 @@ class PyBacktestResult
  public:
   PyBacktestResult(double initialCapital, double feeRate, bool usePercentageFee,
                    double fixedFeePerTrade, double riskFreeRate, double annualization,
-                   double makerFeeRate, double takerFeeRate)
+                   std::optional<double> makerFeeRate,
+                   std::optional<double> takerFeeRate)
   {
     _config.initialCapital = initialCapital;
     _config.feeRate = feeRate;
     _config.usePercentageFee = usePercentageFee;
     _config.fixedFeePerTrade = fixedFeePerTrade;
-    // Negative means unset, so both sides keep charging fee_rate.
+    // None means unset, so both sides keep charging fee_rate. A negative rate
+    // is a rebate the venue pays, not a missing value.
     _config.makerFeeRate = makerFeeRate;
     _config.takerFeeRate = takerFeeRate;
     _config.riskFreeRate = riskFreeRate;
@@ -862,14 +864,17 @@ inline void bindBacktest(py::module_& m)
       .def_property_readonly("fill_count", &PySimulatedExecutor::fillCount);
 
   py::class_<PyBacktestResult>(m, "BacktestResult")
-      .def(py::init<double, double, bool, double, double, double, double, double>(),
+      .def(py::init<double, double, bool, double, double, double,
+                    std::optional<double>, std::optional<double>>(),
            py::arg("initial_capital") = 100000.0, py::arg("fee_rate") = 0.0001,
            py::arg("use_percentage_fee") = true, py::arg("fixed_fee_per_trade") = 0.0,
            py::arg("risk_free_rate") = 0.0, py::arg("annualization_factor") = 252.0,
-           py::arg("maker_fee_rate") = -1.0, py::arg("taker_fee_rate") = -1.0,
-           "maker_fee_rate / taker_fee_rate default to -1.0, meaning unset: both\n"
+           py::arg("maker_fee_rate") = py::none(),
+           py::arg("taker_fee_rate") = py::none(),
+           "maker_fee_rate / taker_fee_rate default to None, meaning unset: both\n"
            "sides are charged fee_rate. Set either to charge the real spread\n"
-           "between posting and taking. Only used when use_percentage_fee.")
+           "between posting and taking. A negative rate is a rebate the venue\n"
+           "pays, not a missing value. Only used when use_percentage_fee.")
       .def("record_fill", &PyBacktestResult::recordFill,
            py::arg("order_id"), py::arg("symbol"), py::arg("side"), py::arg("price"),
            py::arg("quantity"), py::arg("timestamp_ns"), py::arg("is_maker") = false)

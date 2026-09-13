@@ -148,8 +148,88 @@ void OrderQueueTracker::removeOrder(OrderId orderId)
   }
 }
 
+void OrderQueueTracker::resizeOrder(OrderId orderId, Quantity newRemaining)
+{
+  if (!_enabled)
+  {
+    return;
+  }
+
+  for (auto& level : _levels)
+  {
+    for (auto it = level.entries.begin(); it != level.entries.end(); ++it)
+    {
+      if (it->orderId != orderId)
+      {
+        continue;
+      }
+      if (newRemaining.raw() <= 0)
+      {
+        level.entries.erase(it);
+        compact();
+        return;
+      }
+      if (newRemaining.raw() < it->remaining.raw())
+      {
+        it->remaining = newRemaining;
+      }
+      return;
+    }
+  }
+}
+
+void OrderQueueTracker::refreshOrder(SymbolId symbol, Side side, Price levelPrice,
+                                     OrderId orderId, Quantity qty, bool toBack)
+{
+  if (!_enabled || qty.raw() <= 0)
+  {
+    return;
+  }
+
+  LevelKey key{.symbol = symbol, .side = side, .priceRaw = levelPrice.raw()};
+  Level& level = getOrCreateLevel(key);
+  // Everything still resting at the level is ahead of a tranche sent to the
+  // back; a retained tranche inherits the front position the consumed one held.
+  const Quantity ahead = toBack ? level.totalQty : Quantity{};
+
+  for (auto& entry : level.entries)
+  {
+    if (entry.orderId == orderId)
+    {
+      entry.remaining = qty;
+      entry.aheadRemaining = ahead;
+      entry.aheadAtArrival = ahead;
+      return;
+    }
+  }
+  level.entries.push_back(QueueEntry{.orderId = orderId,
+                                     .remaining = qty,
+                                     .aheadRemaining = ahead,
+                                     .aheadAtArrival = ahead});
+}
+
 void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
+                                Side aggressorSide,
                                 std::vector<std::pair<OrderId, Quantity>>& filled)
+{
+  // A print has one aggressor and one resting counterparty. A buyer who lifts
+  // the offer trades against resting asks, a seller who hits the bid trades
+  // against resting bids. Matching a print against both sides of a level would
+  // let a two-sided quote trade with itself.
+  const Side restingSide = (aggressorSide == Side::BUY) ? Side::SELL : Side::BUY;
+  matchTrade(symbol, price, tradeQty, &restingSide, filled);
+}
+
+void OrderQueueTracker::onTradeAggressorUnknown(
+    SymbolId symbol, Price price, Quantity tradeQty,
+    std::vector<std::pair<OrderId, Quantity>>& filled)
+{
+  matchTrade(symbol, price, tradeQty, nullptr, filled);
+}
+
+void OrderQueueTracker::matchTrade(SymbolId symbol, Price price, Quantity tradeQty,
+                                   const Side* restingSide,
+                                   std::vector<std::pair<OrderId, Quantity>>& filled)
 {
   if (!_enabled || tradeQty.raw() <= 0)
   {
@@ -158,7 +238,8 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
 
   for (auto& level : _levels)
   {
-    if (level.key.symbol != symbol || level.key.priceRaw != price.raw())
+    if (level.key.symbol != symbol || level.key.priceRaw != price.raw() ||
+        (restingSide != nullptr && level.key.side != *restingSide))
     {
       continue;
     }
@@ -366,8 +447,6 @@ void OrderQueueTracker::onTrade(SymbolId symbol, Price price, Quantity tradeQty,
       level.totalQty = Quantity::fromRaw(0);
     }
   }
-
-  compact();
 }
 
 void OrderQueueTracker::onLevelUpdate(SymbolId symbol, Side side, Price price,

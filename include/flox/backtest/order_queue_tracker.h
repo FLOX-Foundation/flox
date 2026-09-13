@@ -103,10 +103,43 @@ class OrderQueueTracker
   // Remove a cancelled order (no-op if unknown).
   void removeOrder(OrderId orderId);
 
-  // Trade at a price level. Consumes queue-ahead first, then fills waiting orders.
-  // Appends (orderId, fillQty) pairs to `filled` for each (possibly partial) fill.
+  // Set how much of an order is still available to trade. Used when the order
+  // shrinks after registration (self-trade prevention decrements it). A new
+  // remaining of zero or less drops the order from the queue. No-op if the
+  // order is not resting.
+  void resizeOrder(OrderId orderId, Quantity newRemaining);
+
+  // Re-expose a hidden iceberg tranche at the order's level. `toBack` puts the
+  // tranche behind everything currently resting there, which is how most
+  // crypto venues treat a refresh; otherwise it keeps the queue position the
+  // consumed tranche held. The level's own quantity is left alone -- the book
+  // feed owns it.
+  void refreshOrder(SymbolId symbol, Side side, Price levelPrice,
+                    OrderId orderId, Quantity qty, bool toBack);
+
+  // Trade at a price level. Only resting orders on the side opposite the
+  // aggressor can be on the other side of a print, so `aggressorSide` selects
+  // which side of the level book is consumed: a buy aggressor lifts resting
+  // asks, a sell aggressor hits resting bids.
+  // Consumes queue-ahead first, then fills waiting orders. Appends
+  // (orderId, fillQty) pairs to `filled` for each (possibly partial) fill.
+  //
+  // Levels left without entries are not dropped here -- call compact() once the
+  // caller has finished reacting to the fills, so that a reaction which needs
+  // the level's remaining depth (an iceberg refresh) can still read it.
   void onTrade(SymbolId symbol, Price price, Quantity tradeQty,
+               Side aggressorSide,
                std::vector<std::pair<OrderId, Quantity>>& filled);
+
+  // Same, for a feed that does not report which side was the aggressor. Both
+  // sides of the level are then eligible, which over-fills a two-sided quote;
+  // pass the aggressor whenever it is known. Live venue feeds that omit the
+  // flag are the reason this form exists.
+  void onTradeAggressorUnknown(SymbolId symbol, Price price, Quantity tradeQty,
+                               std::vector<std::pair<OrderId, Quantity>>& filled);
+
+  // Drop levels that hold no orders. Cheap to call; safe to call repeatedly.
+  void compact();
 
   // A price level changed quantity. Shrinks `aheadRemaining` proportionally
   // when qty decreases (trade-ahead heuristic). Growth adds only behind us.
@@ -150,7 +183,10 @@ class OrderQueueTracker
 
   Level* findLevel(const LevelKey& key);
   Level& getOrCreateLevel(const LevelKey& key);
-  void compact();  // drop levels whose entries are empty
+  // `restingSide` null means "aggressor unknown, match both sides".
+  void matchTrade(SymbolId symbol, Price price, Quantity tradeQty,
+                  const Side* restingSide,
+                  std::vector<std::pair<OrderId, Quantity>>& filled);
 
   bool _enabled{false};
   size_t _depth{1};

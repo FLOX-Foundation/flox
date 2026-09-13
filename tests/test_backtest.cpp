@@ -125,8 +125,11 @@ TEST_F(BacktestTest, SimulatedExecutorLimitOrderFill)
   asks.emplace_back(Price::fromDouble(101.0), Quantity::fromDouble(10.0));
   executor.onBookUpdate(1, bids, asks);
 
+  // The order was resting at 102 when the ask came down through it, so that is
+  // where it trades and it provided the liquidity.
   ASSERT_EQ(executor.fills().size(), 1);
-  EXPECT_DOUBLE_EQ(executor.fills()[0].price.toDouble(), 101.0);
+  EXPECT_DOUBLE_EQ(executor.fills()[0].price.toDouble(), 102.0);
+  EXPECT_TRUE(executor.fills()[0].isMaker);
 }
 
 TEST_F(BacktestTest, SimulatedExecutorCancelOrder)

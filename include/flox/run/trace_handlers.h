@@ -178,6 +178,22 @@ class TraceExecutionListener : public IOrderExecutionListener
       _inner->onOrderFilled(o);
     }
   }
+  void onOrderPartiallyFilled(const Order& o, Quantity q, Price fillPrice) override
+  {
+    writeFill(o, q);
+    if (_inner)
+    {
+      _inner->onOrderPartiallyFilled(o, q, fillPrice);
+    }
+  }
+  void onOrderFilled(const Order& o, Quantity q, Price fillPrice) override
+  {
+    writeFill(o, q);
+    if (_inner)
+    {
+      _inner->onOrderFilled(o, q, fillPrice);
+    }
+  }
   void onOrderCanceled(const Order& o) override
   {
     writeOrderEvent(o, OrderEventKind::Cancel);

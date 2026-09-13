@@ -60,6 +60,25 @@ class MultiExecutionListener : public IOrderExecutionListener
                           { l->onOrderFilled(order); });
   }
 
+  // Forward the fill price too, so a listener behind the fan-out sees the same
+  // payload it would see wired up directly.
+  void onOrderPartiallyFilled(const Order& order, Quantity fillQty,
+                              Price fillPrice) override
+  {
+    std::ranges::for_each(
+        _listeners,
+        [&](auto* l)
+        { l->onOrderPartiallyFilled(order, fillQty, fillPrice); });
+  }
+
+  void onOrderFilled(const Order& order, Quantity fillQty, Price fillPrice) override
+  {
+    std::ranges::for_each(
+        _listeners,
+        [&](auto* l)
+        { l->onOrderFilled(order, fillQty, fillPrice); });
+  }
+
   void onOrderPendingCancel(const Order& order) override
   {
     std::ranges::for_each(_listeners,

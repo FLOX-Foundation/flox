@@ -95,6 +95,12 @@ Inherited from `IOrderExecutionListener`:
 ```cpp
 void onOrderFilled(const Order& order) override;
 void onOrderPartiallyFilled(const Order& order, Quantity fillQty) override;
+
+// Preferred: these carry the price the fill happened at, which a market
+// order does not carry on the order itself.
+void onOrderFilled(const Order& order, Quantity fillQty, Price fillPrice) override;
+void onOrderPartiallyFilled(const Order& order, Quantity fillQty,
+                            Price fillPrice) override;
 ```
 
 ## Example Usage

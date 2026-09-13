@@ -415,10 +415,12 @@ Volume BacktestResult::computeFee(Price price, Quantity qty, bool isMaker) const
 {
   if (_config.usePercentageFee)
   {
-    const double sideRate = isMaker ? _config.makerFeeRate : _config.takerFeeRate;
-    // Negative means unset, so an untouched config keeps charging feeRate on
-    // both sides and results do not move.
-    const double rate = (sideRate >= 0.0) ? sideRate : _config.feeRate;
+    const std::optional<double>& sideRate =
+        isMaker ? _config.makerFeeRate : _config.takerFeeRate;
+    // An untouched config leaves both sides empty and keeps charging feeRate,
+    // so results do not move. A rate that is set is used as given, sign and
+    // all: a negative one is a rebate the venue pays.
+    const double rate = sideRate.value_or(_config.feeRate);
     const Volume notional = price * qty;
     return Volume::fromRaw(static_cast<int64_t>(notional.toDouble() * rate *
                                                 static_cast<double>(Volume::Scale)));

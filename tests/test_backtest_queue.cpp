@@ -39,6 +39,13 @@ Order limitBuy(OrderId id, SymbolId sym, double price, double qty)
   o.quantity = Quantity::fromDouble(qty);
   return o;
 }
+
+Order limitSell(OrderId id, SymbolId sym, double price, double qty)
+{
+  Order o = limitBuy(id, sym, price, qty);
+  o.side = Side::SELL;
+  return o;
+}
 }  // namespace
 
 TEST(BacktestQueue, TobDoesNotFillUntilQueueAheadConsumed)
@@ -103,18 +110,22 @@ TEST(BacktestQueue, CancelInFrontShrinksQueueAhead)
   EXPECT_EQ(exec.fills().size(), 1u);
 }
 
-TEST(BacktestQueue, NoneModelPreservesLegacyInstantFill)
+TEST(BacktestQueue, NoneModelFillsARestingLimitAtItsPostedPriceAsMaker)
 {
   SimulatedClock clock;
   SimulatedExecutor exec(clock);
-  // Default queue model is NONE.
+  // Default queue model is NONE: no queue position is modelled, but the
+  // economics of a resting order still have to hold.
   pushBook(exec, 1, 100.0, 10.0, 105.0, 5.0);
   exec.submitOrder(limitBuy(1, 1, 102.0, 1.0));
   EXPECT_EQ(exec.fills().size(), 0u);
 
-  // Best ask drops to 101 (crosses our limit). Without queue, fill immediately.
+  // Best ask drops to 101, crossing our resting bid. Someone sold through 102
+  // to get there, so the fill happens at 102 and it is a maker fill.
   pushBook(exec, 1, 100.0, 10.0, 101.0, 5.0);
   ASSERT_EQ(exec.fills().size(), 1u);
+  EXPECT_DOUBLE_EQ(exec.fills()[0].price.toDouble(), 102.0);
+  EXPECT_TRUE(exec.fills()[0].isMaker);
 }
 
 TEST(BacktestQueue, QueuePositionUpdatedEmittedOnTradeAhead)
@@ -199,6 +210,82 @@ TEST(BacktestQueue, FillCarriesQueueAheadAndTotal)
     }
   }
   EXPECT_TRUE(sawFill);
+}
+
+// A print is one trade between one buyer and one seller. It consumes resting
+// liquidity on exactly one side of the book -- the side the aggressor hit.
+TEST(BacktestQueue, ATradeOnlyConsumesTheSideTheAggressorHit)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+
+  // Two-sided quote, both legs alone at their level.
+  // Both legs rest at 100: neither crosses a 99 / 101 book.
+  pushBook(exec, 1, 99.0, 0.0, 101.0, 0.0);
+  exec.submitOrder(limitBuy(11, 1, 100.0, 3.0));
+  exec.submitOrder(limitSell(22, 1, 100.0, 3.0));
+
+  // A buyer lifts 3 lots. Only the resting ask can be on the other side.
+  exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(3.0), true);
+
+  double totalFilled = 0.0;
+  for (const auto& f : exec.fills())
+  {
+    totalFilled += f.quantity.toDouble();
+    EXPECT_EQ(f.side, Side::SELL);
+    EXPECT_EQ(f.orderId, 22u);
+  }
+  EXPECT_DOUBLE_EQ(totalFilled, 3.0);
+}
+
+TEST(BacktestQueue, ASellAggressorConsumesTheRestingBid)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+
+  // Both legs rest at 100: neither crosses a 99 / 101 book.
+  pushBook(exec, 1, 99.0, 0.0, 101.0, 0.0);
+  exec.submitOrder(limitBuy(11, 1, 100.0, 3.0));
+  exec.submitOrder(limitSell(22, 1, 100.0, 3.0));
+
+  exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(3.0), false);
+
+  double totalFilled = 0.0;
+  for (const auto& f : exec.fills())
+  {
+    totalFilled += f.quantity.toDouble();
+    EXPECT_EQ(f.side, Side::BUY);
+    EXPECT_EQ(f.orderId, 11u);
+  }
+  EXPECT_DOUBLE_EQ(totalFilled, 3.0);
+}
+
+TEST(BacktestQueue, TwoSidedQuoteCannotSelfTradeOnASinglePrint)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+
+  // Both legs rest at 100: neither crosses a 99 / 101 book.
+  pushBook(exec, 1, 99.0, 0.0, 101.0, 0.0);
+  exec.submitOrder(limitBuy(11, 1, 100.0, 3.0));
+  exec.submitOrder(limitSell(22, 1, 100.0, 3.0));
+
+  exec.onTrade(1, Price::fromDouble(100.0), Quantity::fromDouble(3.0), true);
+
+  double net = 0.0;
+  double gross = 0.0;
+  for (const auto& f : exec.fills())
+  {
+    const double signed_ = (f.side == Side::BUY) ? f.quantity.toDouble()
+                                                 : -f.quantity.toDouble();
+    net += signed_;
+    gross += f.quantity.toDouble();
+  }
+  EXPECT_DOUBLE_EQ(gross, 3.0);
+  EXPECT_NE(net, 0.0);
 }
 
 TEST(BacktestQueue, CancelOrderRemovesFromQueue)
