@@ -354,6 +354,46 @@ void SimulatedExecutor::submitOrder(const Order& order)
     return;
   }
 
+  // reduce_only: order may only reduce existing position. Computed
+  // against the simulator-side net position (updated in executeFill).
+  // If the order would open or grow the position it is rejected; if
+  // it would overshoot zero, the size is truncated to flat.
+  //
+  // This runs before self-trade prevention, as the guide describes. An order
+  // the engine is going to reject on its own terms must not get to cancel or
+  // shrink something already resting on the way out.
+  if (accepted.flags.reduceOnly)
+  {
+    const int64_t netRaw = netPositionRaw(accepted.symbol);
+    const int64_t qtyRaw = accepted.quantity.raw();
+    const int64_t signedQtyRaw = (accepted.side == Side::BUY) ? qtyRaw : -qtyRaw;
+
+    // No open position → reduce-only can't reduce anything.
+    if (netRaw == 0 || (netRaw > 0 && signedQtyRaw > 0) ||
+        (netRaw < 0 && signedQtyRaw < 0))
+    {
+      OrderEvent ev;
+      ev.status = OrderEventStatus::REJECTED;
+      ev.order = accepted;
+      ev.exchangeTsNs = _clock.nowNs();
+      ev.timestamps = timestampsFor(accepted.id);
+      ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
+      ev.rejectReason = "reduce_only";
+      if (_callback)
+      {
+        _callback(ev);
+      }
+      return;
+    }
+
+    // Truncate so we don't flip sign.
+    const int64_t maxReductionRaw = (netRaw > 0) ? netRaw : -netRaw;
+    if (qtyRaw > maxReductionRaw)
+    {
+      accepted.quantity = Quantity::fromRaw(maxReductionRaw);
+    }
+  }
+
   // Self-trade prevention. Walk pending orders for an opposite-side
   // crossing match on the same symbol; apply the configured mode.
   // Empty / None mode is a no-op.
@@ -429,7 +469,23 @@ void SimulatedExecutor::submitOrder(const Order& order)
           if (aQty <= eQty)
           {
             // Smaller side is the new order. Cancel it; shrink existing by aQty.
-            existing.quantity = Quantity::fromRaw(existing.quantity.raw() - aQty);
+            // The queue tracker carries its own copy of what the resting order
+            // can still trade, so it has to shrink with it. When nothing is
+            // left to trade the order is pulled, the way a venue pulls an
+            // order decremented to zero.
+            const OrderId existingId = existing.id;
+            const int64_t newQtyRaw = existing.quantity.raw() - aQty;
+            const int64_t newRemainingRaw = newQtyRaw - existing.filledQuantity.raw();
+            if (newRemainingRaw <= 0)
+            {
+              cancelExisting();
+            }
+            else
+            {
+              existing.quantity = Quantity::fromRaw(newQtyRaw);
+              _queueTracker.resizeOrder(existingId,
+                                        Quantity::fromRaw(newRemainingRaw));
+            }
             rejectAccepted("stp_decrement_newest");
             return;
           }
@@ -447,42 +503,6 @@ void SimulatedExecutor::submitOrder(const Order& order)
     }
   }
 stp_done:
-
-  // reduce_only: order may only reduce existing position. Computed
-  // against the simulator-side net position (updated in executeFill).
-  // If the order would open or grow the position it is rejected; if
-  // it would overshoot zero, the size is truncated to flat.
-  if (accepted.flags.reduceOnly)
-  {
-    const int64_t netRaw = netPositionRaw(accepted.symbol);
-    const int64_t qtyRaw = accepted.quantity.raw();
-    const int64_t signedQtyRaw = (accepted.side == Side::BUY) ? qtyRaw : -qtyRaw;
-
-    // No open position → reduce-only can't reduce anything.
-    if (netRaw == 0 || (netRaw > 0 && signedQtyRaw > 0) ||
-        (netRaw < 0 && signedQtyRaw < 0))
-    {
-      OrderEvent ev;
-      ev.status = OrderEventStatus::REJECTED;
-      ev.order = accepted;
-      ev.exchangeTsNs = _clock.nowNs();
-      ev.timestamps = timestampsFor(accepted.id);
-      ev.timestamps.rejectedAtNs = ev.exchangeTsNs;
-      ev.rejectReason = "reduce_only";
-      if (_callback)
-      {
-        _callback(ev);
-      }
-      return;
-    }
-
-    // Truncate so we don't flip sign.
-    const int64_t maxReductionRaw = (netRaw > 0) ? netRaw : -netRaw;
-    if (qtyRaw > maxReductionRaw)
-    {
-      accepted.quantity = Quantity::fromRaw(maxReductionRaw);
-    }
-  }
 
   emitEvent(OrderEventStatus::SUBMITTED, accepted);
 
@@ -663,7 +683,9 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
     }
   }
 
-  const bool filled = tryFillOrder(accepted);
+  // The order is arriving, not resting: if it crosses, it is the aggressor and
+  // it pays the touch.
+  const bool filled = tryFillOrder(accepted, /*resting=*/false);
   if (!filled && isIOC)
   {
     // IOC: cancel the unfilled remainder instead of resting. The
@@ -728,48 +750,56 @@ void SimulatedExecutor::cancelOrder(OrderId orderId)
     return;
   }
 
-  for (auto it = _pending_orders.begin(); it != _pending_orders.end(); ++it)
+  // Detach the order from every book the executor keeps before announcing the
+  // cancel. The announcement re-enters the executor -- a strategy submits its
+  // replacement right there -- and anything still holding a position in
+  // _pending_orders at that point is holding a stale one.
+  for (size_t i = 0; i < _pending_orders.size(); ++i)
   {
-    if (it->id == orderId)
+    if (_pending_orders[i].id != orderId)
     {
-      Order canceled = *it;
-      emitEvent(OrderEventStatus::CANCELED, canceled);
-      *it = _pending_orders.back();
-      _pending_orders.pop_back();
-      _queueTracker.removeOrder(orderId);
-      forgetQueuePosition(orderId);
-      forgetTimestamps(orderId);
-      forgetMarketPosition(orderId);
-      forgetPendingReplace(orderId);
-      _iceberg.erase(orderId);
-      _compositeLogic.onOrderCanceled(canceled);
-      return;
+      continue;
     }
+    const Order canceled = _pending_orders[i];
+    _pending_orders[i] = _pending_orders.back();
+    _pending_orders.pop_back();
+    _queueTracker.removeOrder(orderId);
+    forgetQueuePosition(orderId);
+    forgetMarketPosition(orderId);
+    forgetPendingReplace(orderId);
+    _iceberg.erase(orderId);
+    // The event carries the order's timestamps, so they are dropped after it
+    // has been built and delivered.
+    emitEvent(OrderEventStatus::CANCELED, canceled);
+    forgetTimestamps(orderId);
+    _compositeLogic.onOrderCanceled(canceled);
+    return;
   }
 
-  for (auto it = _conditional_orders.begin(); it != _conditional_orders.end(); ++it)
+  for (size_t i = 0; i < _conditional_orders.size(); ++i)
   {
-    if (it->id == orderId)
+    if (_conditional_orders[i].id != orderId)
     {
-      Order canceled = *it;
-      emitEvent(OrderEventStatus::CANCELED, canceled);
-
-      for (auto trailingIt = _trailing_states.begin(); trailingIt != _trailing_states.end();
-           ++trailingIt)
-      {
-        if (trailingIt->first == orderId)
-        {
-          *trailingIt = _trailing_states.back();
-          _trailing_states.pop_back();
-          break;
-        }
-      }
-
-      *it = _conditional_orders.back();
-      _conditional_orders.pop_back();
-      _compositeLogic.onOrderCanceled(canceled);
-      return;
+      continue;
     }
+    const Order canceled = _conditional_orders[i];
+
+    for (auto trailingIt = _trailing_states.begin(); trailingIt != _trailing_states.end();
+         ++trailingIt)
+    {
+      if (trailingIt->first == orderId)
+      {
+        *trailingIt = _trailing_states.back();
+        _trailing_states.pop_back();
+        break;
+      }
+    }
+
+    _conditional_orders[i] = _conditional_orders.back();
+    _conditional_orders.pop_back();
+    emitEvent(OrderEventStatus::CANCELED, canceled);
+    _compositeLogic.onOrderCanceled(canceled);
+    return;
   }
 }
 
@@ -781,17 +811,20 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
                                             .cancelAllSymbol = symbol});
     return;
   }
+  // Detach everything first, announce afterwards: each CANCELED event re-enters
+  // the executor and can add or remove orders while the sweep is still running.
+  std::vector<Order> canceled;
   size_t i = 0;
   while (i < _pending_orders.size())
   {
     if (_pending_orders[i].symbol == symbol)
     {
-      emitEvent(OrderEventStatus::CANCELED, _pending_orders[i]);
+      canceled.push_back(_pending_orders[i]);
       _queueTracker.removeOrder(_pending_orders[i].id);
       forgetQueuePosition(_pending_orders[i].id);
-      forgetTimestamps(_pending_orders[i].id);
       forgetMarketPosition(_pending_orders[i].id);
       forgetPendingReplace(_pending_orders[i].id);
+      _iceberg.erase(_pending_orders[i].id);
       _pending_orders[i] = _pending_orders.back();
       _pending_orders.pop_back();
     }
@@ -806,8 +839,8 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
   {
     if (_conditional_orders[i].symbol == symbol)
     {
-      OrderId orderId = _conditional_orders[i].id;
-      emitEvent(OrderEventStatus::CANCELED, _conditional_orders[i]);
+      const OrderId orderId = _conditional_orders[i].id;
+      canceled.push_back(_conditional_orders[i]);
 
       for (auto trailingIt = _trailing_states.begin(); trailingIt != _trailing_states.end();
            ++trailingIt)
@@ -827,6 +860,14 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
     {
       ++i;
     }
+  }
+
+  for (const Order& order : canceled)
+  {
+    // The event carries the order's timestamps, so they are dropped after it
+    // has been built and delivered.
+    emitEvent(OrderEventStatus::CANCELED, order);
+    forgetTimestamps(order.id);
   }
 }
 
@@ -1173,7 +1214,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, bool isBuy)
   onTrade(symbol, price, Quantity::fromRaw(0), isBuy);
 }
 
-void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool /*isBuy*/)
+void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool isBuy)
 {
   if (_venue)
   {
@@ -1201,9 +1242,12 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
   if (_queueTracker.enabled() && qty.raw() > 0)
   {
     _queueFillBuffer.clear();
-    _queueTracker.onTrade(symbol, price, qty, _queueFillBuffer);
+    _queueTracker.onTrade(symbol, price, qty, isBuy ? Side::BUY : Side::SELL,
+                          _queueFillBuffer);
     for (const auto& [orderId, fillQty] : _queueFillBuffer)
     {
+      // Re-resolve on every iteration: a fill callback can submit, cancel or
+      // clear orders, which moves the pending-order storage under us.
       Order* ord = findPendingOrder(orderId);
       if (!ord)
       {
@@ -1214,11 +1258,14 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
       executeFill(*ord, price, fillQty, /*isMaker=*/true);
     }
     // Native iceberg: top up visible tranche from hidden remainder
-    // before the fully-filled-orders cleanup pass.
+    // before the fully-filled-orders cleanup pass. The refresh reads the
+    // level's remaining depth to place the new tranche, so the tracker has
+    // not compacted its levels yet.
     for (auto& o : _pending_orders)
     {
       maybeRefreshIceberg(o);
     }
+    _queueTracker.compact();
     // Remove fully-filled queued orders and drop their queue
     // position + timestamp tracking entries. Iceberg orders with
     // hidden remainder or a pending refresh deadline are kept alive
@@ -1409,7 +1456,7 @@ Order* SimulatedExecutor::findPendingOrder(OrderId orderId)
   return nullptr;
 }
 
-bool SimulatedExecutor::tryFillOrder(Order& order)
+bool SimulatedExecutor::tryFillOrder(Order& order, bool resting)
 {
   const MarketState& state = getMarketState(order.symbol);
   int64_t fillPriceRaw = 0;
@@ -1460,43 +1507,71 @@ bool SimulatedExecutor::tryFillOrder(Order& order)
 
   const Quantity remainingQty =
       Quantity::fromRaw(order.quantity.raw() - order.filledQuantity.raw());
+
+  // A limit order that was not marketable when it arrived is sitting in the
+  // book. Whoever crossed it had to trade through its price to get where the
+  // touch now is, so it trades at the price it posted and it provided the
+  // liquidity. The gap between its price and the far touch is not a price
+  // improvement the resting side collects -- no venue hands that out, and on
+  // coarse data the gap is the whole bar.
+  bool isMaker = false;
+  if (resting && order.type != OrderType::MARKET)
+  {
+    fillPriceRaw = order.price.raw();
+    isMaker = true;
+  }
+
   // Apply slippage only to market-style fills (limit makers trade at posted price).
   if (order.type == OrderType::MARKET)
   {
     fillPriceRaw = applySlippage(fillPriceRaw, order.side, order.symbol,
                                  remainingQty, levelQtyRaw);
   }
-  executeFill(order, Price::fromRaw(fillPriceRaw), remainingQty);
+  executeFill(order, Price::fromRaw(fillPriceRaw), remainingQty, isMaker);
   return true;
 }
 
-void SimulatedExecutor::processPendingOrders(SymbolId symbol, const MarketState& state)
+void SimulatedExecutor::processPendingOrders(SymbolId symbol, const MarketState&)
 {
-  size_t i = 0;
-  while (i < _pending_orders.size())
+  // A fill callback is a strategy callback: it can submit, cancel, replace or
+  // clear orders, and every one of those reshapes _pending_orders. Collect the
+  // candidates up front and resolve each one by id so no reference or index
+  // has to survive a callback.
+  _fillScanIds.clear();
+  for (const auto& order : _pending_orders)
   {
-    Order& order = _pending_orders[i];
     if (order.symbol != symbol)
     {
-      ++i;
       continue;
     }
-
     // Queue-registered limit orders are handled by the queue tracker on trades.
     if (order.type == OrderType::LIMIT && _queueTracker.enabled())
     {
-      ++i;
       continue;
     }
+    _fillScanIds.push_back(order.id);
+  }
 
-    if (tryFillOrder(order))
+  for (const OrderId id : _fillScanIds)
+  {
+    Order* order = findPendingOrder(id);
+    if (!order || !tryFillOrder(*order, /*resting=*/true))
+    {
+      continue;
+    }
+    removePendingOrder(id);
+  }
+}
+
+void SimulatedExecutor::removePendingOrder(OrderId orderId)
+{
+  for (size_t i = 0; i < _pending_orders.size(); ++i)
+  {
+    if (_pending_orders[i].id == orderId)
     {
       _pending_orders[i] = _pending_orders.back();
       _pending_orders.pop_back();
-    }
-    else
-    {
-      ++i;
+      return;
     }
   }
 }
@@ -1549,16 +1624,18 @@ void SimulatedExecutor::maybeRefreshIceberg(Order& order)
   st.hiddenRaw -= slice;
   st.refreshDueNs = 0;
   order.quantity = Quantity::fromRaw(order.quantity.raw() + slice);
-  // T041 priority mode: Back (default) re-adds the slice with an
-  // empty level-qty so it lands at the back of the queue. Retain
-  // keeps the slice at its previous queue depth (in our model: the
-  // already-tracked entry's queue-ahead is left intact when we don't
-  // re-add).
-  if (_queueTracker.enabled() &&
-      _icebergPriorityMode == IcebergPriorityMode::Back)
+  // T041 priority mode. Back (the default) queues the refreshed tranche behind
+  // whatever is still resting at the level, the way most crypto venues treat a
+  // refreshed slice. Retain keeps the queue position the consumed tranche held.
+  // Either way the tranche has to go back into the tracker: the consumed entry
+  // was already removed when it filled, and an order with no entry never
+  // trades again.
+  if (_queueTracker.enabled())
   {
-    _queueTracker.addOrder(order.symbol, order.side, order.price, order.id,
-                           Quantity::fromRaw(slice), Quantity{});
+    _queueTracker.refreshOrder(
+        order.symbol, order.side, order.price, order.id,
+        Quantity::fromRaw(slice),
+        _icebergPriorityMode == IcebergPriorityMode::Back);
   }
 }
 
@@ -1582,25 +1659,37 @@ void SimulatedExecutor::setIcebergPriorityModeByName(const std::string& name) no
 
 void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, bool isMaker)
 {
+  // An order never trades more than it has left. The queue tracker holds its
+  // own copy of that remainder, and anything that shrinks the order after
+  // registration has to shrink both; this clamp keeps a mismatch from turning
+  // into size the strategy never had.
+  const int64_t remainingRaw = order.quantity.raw() - order.filledQuantity.raw();
+  const int64_t fillRaw = std::min(qty.raw(), remainingRaw);
+  if (fillRaw <= 0)
+  {
+    return;
+  }
+  const Quantity fillQty = Quantity::fromRaw(fillRaw);
+
   const UnixNanos now = _clock.nowNs();
 
   _fills.push_back({.orderId = order.id,
                     .symbol = order.symbol,
                     .side = order.side,
                     .price = price,
-                    .quantity = qty,
+                    .quantity = fillQty,
                     .timestampNs = now,
                     .isMaker = isMaker});
 
   // Update simulator-side net position for reduce_only enforcement.
-  const int64_t signedRaw = (order.side == Side::BUY) ? qty.raw() : -qty.raw();
+  const int64_t signedRaw = (order.side == Side::BUY) ? fillRaw : -fillRaw;
   _netPositionRaw[order.symbol] += signedRaw;
 
-  order.filledQuantity = Quantity::fromRaw(order.filledQuantity.raw() + qty.raw());
+  order.filledQuantity = Quantity::fromRaw(order.filledQuantity.raw() + fillRaw);
 
   OrderEvent ev;
   ev.order = order;
-  ev.fillQty = qty;
+  ev.fillQty = fillQty;
   ev.fillPrice = price;
   ev.isMaker = isMaker;
   ev.exchangeTsNs = now;
@@ -1619,6 +1708,13 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
   ts.lastFillAtNs = now;
   ev.timestamps = ts;
 
+  // Past this point `order` may no longer be there to read: the callback and
+  // the handlers below re-enter the executor, and a submit or a cancel from a
+  // strategy moves the pending-order storage. Everything that follows works
+  // off this snapshot, which is complete because the order is fully mutated
+  // above.
+  const Order filled = order;
+
   if (_callback)
   {
     _callback(ev);
@@ -1626,17 +1722,17 @@ void SimulatedExecutor::executeFill(Order& order, Price price, Quantity qty, boo
 
   if (ev.status == OrderEventStatus::FILLED)
   {
-    resolveLateCancelOnFill(order);
-    resolveLateReplaceOnFill(order);
-    _compositeLogic.onOrderFilled(order);
-    onBracketFillEvent(order);
+    resolveLateCancelOnFill(filled);
+    resolveLateReplaceOnFill(filled);
+    _compositeLogic.onOrderFilled(filled);
+    onBracketFillEvent(filled);
   }
   else if (ev.status == OrderEventStatus::PARTIALLY_FILLED)
   {
     // Bracket child-arm mode "on_partial_fill" arms / resizes
     // children on every partial entry fill; OnFullFill mode
     // returns early in the handler.
-    onBracketFillEvent(order);
+    onBracketFillEvent(filled);
   }
 }
 
@@ -2323,7 +2419,9 @@ void SimulatedExecutor::triggerConditionalOrder(Order& order)
     order.type = OrderType::LIMIT;
   }
 
-  if (!tryFillOrder(order))
+  // A triggered conditional order enters the book now, so it is the aggressor
+  // if it crosses.
+  if (!tryFillOrder(order, /*resting=*/false))
   {
     _pending_orders.push_back(order);
   }

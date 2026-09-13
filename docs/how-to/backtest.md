@@ -300,10 +300,31 @@ Fills carry `is_maker`, so both sides can be priced separately:
     config.takerFeeRate = 0.0005;
     ```
 
-Both default to a negative value meaning *unset*, in which case `fee_rate`
-applies to both sides and results are unchanged. Zero is a real rate, not
-"unset" — which matters, because zero is a real maker rate. Fixed-fee mode
+Both default to *unset* (`None` in Python, an empty `std::optional` in C++),
+in which case `fee_rate` applies to both sides and results are unchanged. A
+rate you set is used as given, sign and all: zero is a real maker rate, and a
+negative one is a rebate the venue pays you for posting. Fixed-fee mode
 (`use_percentage_fee=False`) ignores the side entirely.
+
+=== "Python"
+
+    ```python
+    r = flox.BacktestResult(
+        initial_capital=10_000.0,
+        fee_rate=0.0004,
+        maker_fee_rate=-0.00005,  # the venue pays 0.5 bp for posting
+        taker_fee_rate=0.0005,
+    )
+    ```
+
+=== "C++"
+
+    ```cpp
+    BacktestConfig config{};
+    config.feeRate = 0.0004;
+    config.makerFeeRate = -0.00005;
+    config.takerFeeRate = 0.0005;
+    ```
 
 `is_maker` is also on every fill in `fills_list()` and in the `fills()` numpy
 dtype, so a fee model of your own can read it directly. What this does *not*

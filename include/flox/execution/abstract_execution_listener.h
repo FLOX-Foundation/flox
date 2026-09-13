@@ -33,6 +33,23 @@ class IOrderExecutionListener : public ISubscriber
   virtual void onOrderAccepted(const Order&) {}
   virtual void onOrderPartiallyFilled(const Order&, Quantity) {}
   virtual void onOrderFilled(const Order&) {}
+
+  // Fill callbacks that carry the price the fill happened at. That price is
+  // the one thing a listener cannot reconstruct: a market order has no price
+  // of its own, and a limit order's posted price is not where it traded when
+  // the venue improved it. The dispatcher calls these; the defaults forward to
+  // the plain forms above, so a listener written against the older signature
+  // keeps working untouched.
+  virtual void onOrderPartiallyFilled(const Order& order, Quantity fillQty,
+                                      Price /*fillPrice*/)
+  {
+    onOrderPartiallyFilled(order, fillQty);
+  }
+  virtual void onOrderFilled(const Order& order, Quantity /*fillQty*/,
+                             Price /*fillPrice*/)
+  {
+    onOrderFilled(order);
+  }
   virtual void onOrderPendingCancel(const Order&) {}
   virtual void onOrderCanceled(const Order&) {}
   virtual void onOrderExpired(const Order&) {}

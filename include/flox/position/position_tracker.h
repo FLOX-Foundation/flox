@@ -116,6 +116,22 @@ class PositionTracker : public IPositionManager
     updatePosition(order.symbol, order.side, order.price, order.quantity);
   }
 
+  // Preferred forms: they carry the price the fill actually happened at. A
+  // market order has none on the order itself, so without these the cost basis
+  // comes out as zero.
+  void onOrderPartiallyFilled(const Order& order, Quantity fillQty,
+                              Price fillPrice) override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    updatePosition(order.symbol, order.side, fillPrice, fillQty);
+  }
+
+  void onOrderFilled(const Order& order, Quantity fillQty, Price fillPrice) override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    updatePosition(order.symbol, order.side, fillPrice, fillQty);
+  }
+
  private:
   void updatePosition(SymbolId symbol, Side side, Price price, Quantity qty)
   {

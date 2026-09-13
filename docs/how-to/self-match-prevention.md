@@ -98,10 +98,15 @@ two sub-accounts in that group count as self-trade.
 - `decrement` mode mutates the resting order's quantity in place
   when the incoming order is smaller. The smaller side's
   REJECTED event carries reason `stp_decrement_newest`; the larger
-  side stays in the book at the reduced quantity.
+  side stays in the book at the reduced quantity, and the queue
+  tracker shrinks with it so the order cannot trade size it no
+  longer has. When the decrement leaves nothing to trade, the
+  resting order is cancelled and emits `CANCELED`, the way a venue
+  pulls an order decremented to zero.
 - STP runs after rate-limit and reduce-only checks, before the
   POST_ONLY / FOK / IOC checks. An incoming order that would be
-  rate-limited never reaches STP.
+  rate-limited or rejected as reduce-only never reaches STP, so it
+  cannot cancel or shrink a resting order on its way out.
 - Cancelled resting orders go through the same path as a user
   cancel — they emit `CANCELED` and disappear from the queue
   tracker / market-position tracker.

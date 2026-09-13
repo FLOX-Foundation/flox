@@ -161,10 +161,10 @@ struct OrderEvent
         listener.onOrderAccepted(order);
         break;
       case OrderEventStatus::PARTIALLY_FILLED:
-        listener.onOrderPartiallyFilled(order, fillQty);
+        listener.onOrderPartiallyFilled(order, fillQty, fillPrice);
         break;
       case OrderEventStatus::FILLED:
-        listener.onOrderFilled(order);
+        listener.onOrderFilled(order, fillQty, fillPrice);
         break;
       case OrderEventStatus::PENDING_CANCEL:
         listener.onOrderPendingCancel(order);

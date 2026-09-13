@@ -101,7 +101,7 @@ int64_t icebergHiddenRemainingRaw(OrderId id) const;  // 0 if not an iceberg
 | `setIcebergRefreshLatency` | Delay between a visible tranche filling and the next being exposed. Applies to orders submitted after the call |
 | `setIcebergSizeRandomisationPct` | Per-refresh visible-slice jitter as a fraction. `0.0` is deterministic, `0.10` is +/-10% uniform. Sampled from an internal RNG |
 | `setIcebergJitterSeed` | Reseed that RNG to reproduce a specific draw sequence |
-| `setIcebergPriorityMode` | `Back`: the refreshed slice goes to the back of the queue (most crypto venues). `Retain`: it keeps the prior slice's queue position (CME options, some Eurex contracts) |
+| `setIcebergPriorityMode` | `Back`: the refreshed slice goes to the back of the queue, behind whatever is still resting at the level (most crypto venues). `Retain`: it keeps the prior slice's queue position and trades on the next print (CME options, some Eurex contracts) |
 | `icebergHiddenRemainingRaw` | Diagnostic: remaining hidden quantity, or 0 |
 
 ### Self-trade prevention

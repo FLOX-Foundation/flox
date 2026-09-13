@@ -18,7 +18,7 @@ enum class QueueModel : uint8_t {
 
 | Mode | Behavior |
 |------|----------|
-| `NONE` | Legacy MVP behavior. A limit order fills immediately when the book crosses its price. Lowest overhead. Backward-compatible. |
+| `NONE` | The default. No queue position is modelled: a resting limit order fills as soon as the book crosses its price, at the price it posted and flagged as a maker fill. A limit order that arrives already marketable crosses and pays the touch as a taker. Lowest overhead. |
 | `TOB` | Tracks queue position at the top-of-book level where the order was placed. Trades at the level consume queue-ahead first, then fill the order (partial fills supported). Cancels in front shrink the queue-ahead value proportionally. |
 | `FULL` | Tracks queue position at up to `queueDepth` price levels per side. Useful for strategies that place resting orders a few ticks inside the book. |
 | `PRO_RATA` | Pure pro-rata. Every order at the price level receives a share of the trade proportional to its size. Models venues whose matching engine distributes a trade across all orders at the best price (most options venues, some hybrid spot venues). |
@@ -69,6 +69,8 @@ Per-model tuning on `SimulatedExecutor`:
 ## What you need to feed
 
 Queue simulation requires trade quantities. Use the overload `onTrade(symbol, price, qty, isBuy)` or, when going through `BacktestRunner`, let the replay stream drive trade events with their real quantities. The older `onTrade(symbol, price, isBuy)` overload keeps working for backward compatibility but does not drive queue fills.
+
+`isBuy` is the aggressor side and it decides which side of the level the trade consumes: a buy aggressor lifts resting asks, a sell aggressor hits resting bids. A quote resting on both sides of the same price therefore fills on one leg per print, never both.
 
 In Python: call `executor.on_trade_qty(symbol, price, quantity, is_buy)`.
 

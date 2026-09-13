@@ -233,7 +233,10 @@ class SimulatedExecutor : public IOrderExecutor
   int64_t applySlippage(int64_t priceRaw, Side side, SymbolId symbol,
                         Quantity qty, int64_t levelQtyRaw) const;
 
-  bool tryFillOrder(Order& order);
+  // `resting` says the order is already sitting in the book rather than
+  // arriving now. A resting limit order trades at the price it posted and
+  // provides the liquidity; an arriving one crosses and pays the touch.
+  bool tryFillOrder(Order& order, bool resting);
   void processPendingOrders(SymbolId symbol, const MarketState& state);
   void processConditionalOrders(SymbolId symbol, const MarketState& state);
   void updateTrailingStops(SymbolId symbol, Price currentPrice);
@@ -304,7 +307,13 @@ class SimulatedExecutor : public IOrderExecutor
   void finishSubmission(Order accepted, bool fromAck);
 
   Order* findPendingOrder(OrderId orderId);
+  void removePendingOrder(OrderId orderId);
   void drainQueueFills(SymbolId symbol);
+
+  // Ids collected before a fill sweep. Fill callbacks re-enter the executor
+  // and reshape _pending_orders, so the sweep resolves each order by id
+  // instead of holding an index or a reference across a callback.
+  std::vector<OrderId> _fillScanIds;
 
   // GTD: expire any pending order whose expiresAfter has passed. Called
   // alongside the ack finalizers from onBookUpdate / onTrade so the

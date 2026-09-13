@@ -66,7 +66,7 @@ TEST(ProRataMatching, PureProRataSplitsAcrossAllOrders)
              Quantity{});
 
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(2.0), filled);
+  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(2.0), Side::SELL, filled);
 
   // 2.0 distributed by weight 1:2:1 → 0.5 : 1.0 : 0.5.
   EXPECT_EQ(filled.size(), 3u);
@@ -84,7 +84,7 @@ TEST(ProRataMatching, ProRataDistributesExactly)
              Quantity{});
 
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(2.0), filled);
+  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(2.0), Side::SELL, filled);
 
   // Sum of distributed must equal trade qty (within rounding).
   EXPECT_LE(std::abs(totalFillRaw(filled) - Quantity::fromDouble(2.0).raw()), 1);
@@ -100,7 +100,7 @@ TEST(ProRataMatching, ProRataTradeCappedAtLevelTotal)
 
   std::vector<std::pair<OrderId, Quantity>> filled;
   // Trade larger than level total — distribute all 2.0, no overshoot.
-  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(5.0), filled);
+  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(5.0), Side::SELL, filled);
 
   EXPECT_EQ(totalFillRaw(filled), Quantity::fromDouble(2.0).raw());
 }
@@ -121,7 +121,7 @@ TEST(ProRataWithFifo, TopNGetsFifoRestProRata)
   std::vector<std::pair<OrderId, Quantity>> filled;
   // Trade 4: first 2 FIFO fully (1 + 1 = 2), remaining 2 pro-rata
   // across orders 3 and 4 (2 : 2 → 1 each).
-  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(4.0), filled);
+  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(4.0), Side::SELL, filled);
 
   EXPECT_NEAR(fillFor(filled, 1).toDouble(), 1.0, 1e-6);
   EXPECT_NEAR(fillFor(filled, 2).toDouble(), 1.0, 1e-6);
@@ -143,7 +143,7 @@ TEST(ProRataWithFifo, SmallTradeOnlyHitsFifoFront)
 
   std::vector<std::pair<OrderId, Quantity>> filled;
   // Trade 1.0 only touches the front order (FIFO).
-  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(1.0), filled);
+  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(1.0), Side::SELL, filled);
 
   EXPECT_EQ(filled.size(), 1u);
   EXPECT_EQ(filled[0].first, 1u);
@@ -161,7 +161,7 @@ TEST(ProRataMatching, FifoModeUnaffectedByMode)
     t.addOrder(BTC, Side::BUY, Price::fromDouble(50000.0), 2, Quantity::fromDouble(2.0),
                Quantity{});
     std::vector<std::pair<OrderId, Quantity>> filled;
-    t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(1.5), filled);
+    t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(1.5), Side::SELL, filled);
     // FIFO: first order eats everything.
     ASSERT_EQ(filled.size(), 1u);
     EXPECT_EQ(filled[0].first, 1u);
@@ -172,7 +172,7 @@ TEST(ProRataMatching, EmptyLevelIgnored)
 {
   auto t = makeTracker(QueueModel::PRO_RATA);
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(1.0), filled);
+  t.onTrade(BTC, Price::fromDouble(50000.0), Quantity::fromDouble(1.0), Side::SELL, filled);
   EXPECT_TRUE(filled.empty());
 }
 
@@ -194,7 +194,7 @@ TEST(TopProLmm, TopGetsConfiguredShareThenProRataRest)
              Quantity::fromDouble(30.0));
 
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, px, Quantity::fromDouble(10.0), filled);
+  t.onTrade(BTC, px, Quantity::fromDouble(10.0), Side::SELL, filled);
   // Total filled ≈ 10.
   EXPECT_NEAR(Quantity::fromRaw(totalFillRaw(filled)).toDouble(), 10.0, 1e-6);
   // Top gets ~4.
@@ -219,7 +219,7 @@ TEST(TopProLmm, LmmBonusShiftsTailDistribution)
              Quantity::fromDouble(30.0));
 
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, px, Quantity::fromDouble(10.0), filled);
+  t.onTrade(BTC, px, Quantity::fromDouble(10.0), Side::SELL, filled);
   EXPECT_NEAR(fillFor(filled, 1).toDouble(), 4.0, 1e-3);
   EXPECT_NEAR(fillFor(filled, 2).toDouble(), 2.4, 1e-3);
   EXPECT_NEAR(fillFor(filled, 3).toDouble(), 3.6, 1e-3);
@@ -240,7 +240,7 @@ TEST(TopProLmm, TopShareCappedByOrderRemaining)
              Quantity::fromDouble(21.0));
 
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, px, Quantity::fromDouble(10.0), filled);
+  t.onTrade(BTC, px, Quantity::fromDouble(10.0), Side::SELL, filled);
   EXPECT_NEAR(fillFor(filled, 1).toDouble(), 1.0, 1e-6);
   EXPECT_NEAR(fillFor(filled, 2).toDouble(), 4.5, 1e-3);
   EXPECT_NEAR(fillFor(filled, 3).toDouble(), 4.5, 1e-3);
@@ -260,7 +260,7 @@ TEST(ProRataWithPriority, MultiplierAllocatesMoreToBoostedOrder)
   t.setOrderPriorityMultiplier(2, 1.5);
 
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, px, Quantity::fromDouble(10.0), filled);
+  t.onTrade(BTC, px, Quantity::fromDouble(10.0), Side::SELL, filled);
   EXPECT_NEAR(fillFor(filled, 1).toDouble(), 4.0, 1e-3);
   EXPECT_NEAR(fillFor(filled, 2).toDouble(), 6.0, 1e-3);
 }
@@ -275,7 +275,7 @@ TEST(ProRataWithPriority, EqualMultipliersBehaveLikePureProRata)
              Quantity::fromDouble(30.0));
   // No multipliers set: every order defaults to 1.0.
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, px, Quantity::fromDouble(15.0), filled);
+  t.onTrade(BTC, px, Quantity::fromDouble(15.0), Side::SELL, filled);
   // 15 split 1:2 → 5 / 10.
   EXPECT_NEAR(fillFor(filled, 1).toDouble(), 5.0, 1e-3);
   EXPECT_NEAR(fillFor(filled, 2).toDouble(), 10.0, 1e-3);
@@ -295,7 +295,7 @@ TEST(TopProLmm, EmptyLmmListFallsBackToProRata)
              Quantity::fromDouble(30.0));
 
   std::vector<std::pair<OrderId, Quantity>> filled;
-  t.onTrade(BTC, px, Quantity::fromDouble(10.0), filled);
+  t.onTrade(BTC, px, Quantity::fromDouble(10.0), Side::SELL, filled);
   // Tail orders split 6 evenly: 3 + 3.
   EXPECT_NEAR(fillFor(filled, 1).toDouble(), 4.0, 1e-6);
   EXPECT_NEAR(fillFor(filled, 2).toDouble(), 3.0, 1e-3);
