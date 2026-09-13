@@ -226,15 +226,15 @@ if dropped:
     print(f"{dropped} events arrived past the reorder window and were discarded")
 ```
 
-Two properties of that check are worth knowing. The symbol filter runs first, so an event belonging to a symbol you did not ask to replay neither moves the watermark nor counts as late. And the watermark carries across segment boundaries within one walk, so an inversion that straddles two segments is seen rather than reset away.
+The symbol filter runs before that check, so an event belonging to a symbol you did not ask to replay neither moves the watermark nor counts as late. The watermark also carries across segment boundaries within one walk, so an inversion straddling two segments is caught instead of disappearing when the watermark restarts.
 
-Set `strict_ordering=True` to raise `FloxError(code="E_DATA_002")` on the first late event instead. Byte-for-byte reproducibility gates want that: there, a dropped frame is a silent difference between two runs. Everywhere else the drop is the better trade — on a five-day bybit capture of 12.9 million frames, fifteen events sit deeper than ten seconds, and raising on them ended the walk at the halfway mark with aggregators already fed half a dataset.
+Set `strict_ordering=True` to raise `FloxError(code="E_DATA_002")` on the first late event instead. Byte-for-byte reproducibility gates want that, because there a dropped frame is a silent difference between two runs. Everywhere else dropping is the better trade. On a five-day bybit capture of 12.9 million frames, fifteen events sit deeper than ten seconds; raising on them ended the walk at the halfway mark with aggregators already fed half a dataset.
 
 ```python
 reader = flox_py.DataReader("./tape", strict_ordering=True)
 ```
 
-The alternatives remain: raise `reorder_window_ns`, or pre-sort the tape through `BinaryLogWriter`, which sets the `Sorted` flag and bypasses the reorder buffer.
+The other two options are unchanged: raise `reorder_window_ns`, or pre-sort the tape through `BinaryLogWriter`, which sets the `Sorted` flag and bypasses the reorder buffer.
 
 ### Aggregators that cannot be partitioned
 

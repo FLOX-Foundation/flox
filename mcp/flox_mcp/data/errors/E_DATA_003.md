@@ -14,8 +14,8 @@ by applying deltas in order from the start of the tape, so a worker that begins 
 middle has no book to apply them to.
 
 The reader asks each aggregator through `IAggregator::supportsParallel()` before it
-partitions anything. When the panel contains one that says no and the caller explicitly
-asked for more than one thread, the run stops here, before the first byte is read.
+partitions anything. If the panel holds one that says no and the caller explicitly asked
+for more than one thread, the run stops here, before the first byte is read.
 
 With `n_threads=0` (the default, "auto") there is no error: the reader resolves the run to
 a single thread. Earlier versions let the request through and threw from inside a worker
@@ -40,8 +40,8 @@ Ask for one thread when the panel needs the whole tape in order.
     ```
 
 Or split the panel: run the order-dependent aggregator on its own single-threaded pass and
-let the rest go parallel. Two passes over a compressed tape usually still beat one
-single-threaded pass.
+let the rest go parallel. Two passes over a compressed tape usually still beat one single-
+threaded pass over everything.
 
 ## Writing an aggregator that says no
 
