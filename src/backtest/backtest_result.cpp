@@ -41,13 +41,20 @@ void BacktestResult::recordFill(const Fill& fill)
   // Pro-rate this fill's fee between a close portion and a new-open portion
   // by quantity, so a flipping fill (close + open) attributes fees correctly
   // to the closed trade and the new position.
+  //
+  // The product runs at full width. Written out in int64 it passes the ceiling
+  // once the per-side fee in quote currency times the quantity passes about
+  // 922, which a 7 BTC round trip at four basis points already does, and the
+  // wrap handed back a NEGATIVE per-trade fee. Equity after a flat round trip
+  // then sat above where it started, while the totals in the same object
+  // stayed correct, so no summary line showed the split.
   auto feeFractionRaw = [&](const Quantity& part) -> int64_t
   {
     if (fill.quantity.raw() == 0)
     {
       return 0;
     }
-    return (fee.raw() * part.raw()) / fill.quantity.raw();
+    return mulDivI64(fee.raw(), part.raw(), fill.quantity.raw());
   };
 
   if (fill.side == Side::BUY)
@@ -59,7 +66,7 @@ void BacktestResult::recordFill(const Fill& fill)
       const Volume pnl = computePnl(pos.avgPrice, fill.price, closeQty, false);
       const int64_t entryFeePortionRaw =
           (pos.quantity.raw() != 0)
-              ? (pos.entryFeeAcc.raw() * closeQty.raw()) / (-pos.quantity.raw())
+              ? mulDivI64(pos.entryFeeAcc.raw(), closeQty.raw(), -pos.quantity.raw())
               : 0;
       const Volume tradeFee =
           Volume::fromRaw(entryFeePortionRaw + feeFractionRaw(closeQty));
@@ -89,7 +96,7 @@ void BacktestResult::recordFill(const Fill& fill)
       const Volume pnl = computePnl(pos.avgPrice, fill.price, closeQty, true);
       const int64_t entryFeePortionRaw =
           (pos.quantity.raw() != 0)
-              ? (pos.entryFeeAcc.raw() * closeQty.raw()) / pos.quantity.raw()
+              ? mulDivI64(pos.entryFeeAcc.raw(), closeQty.raw(), pos.quantity.raw())
               : 0;
       const Volume tradeFee =
           Volume::fromRaw(entryFeePortionRaw + feeFractionRaw(closeQty));
@@ -207,11 +214,10 @@ BacktestStats BacktestResult::computeStats() const
   }
 
   stats.maxDrawdown = _maxDrawdown.toDouble();
-  if (_peakEquity.raw() > 0)
-  {
-    stats.maxDrawdownPct =
-        static_cast<double>(_maxDrawdown.raw()) / static_cast<double>(_peakEquity.raw()) * 100.0;
-  }
+  // Against the peak that stood at the time, the same number the equity curve
+  // reports point by point. The two used to be computed differently and the
+  // backtest report printed both on one page.
+  stats.maxDrawdownPct = _maxDrawdownPct;
 
   if (!durations.empty())
   {
@@ -408,6 +414,10 @@ void BacktestResult::recordTrade(SymbolId symbol, Side side, Price entryPrice, P
   pt.equity = _currentEquity.toDouble();
   const double peak = _peakEquity.toDouble();
   pt.drawdownPct = (peak > 0.0) ? (drawdownRaw / static_cast<double>(_peakEquity.raw())) * 100.0 : 0.0;
+  if (pt.drawdownPct > _maxDrawdownPct)
+  {
+    _maxDrawdownPct = pt.drawdownPct;
+  }
   _equityCurve.push_back(pt);
 }
 
@@ -524,8 +534,7 @@ double BacktestResult::computeCalmarRatio(double twr) const
     return 0.0;
   }
 
-  const double maxDDPct =
-      static_cast<double>(_maxDrawdown.raw()) / static_cast<double>(_peakEquity.raw());
+  const double maxDDPct = _maxDrawdownPct / 100.0;
   if (maxDDPct <= 0.0)
   {
     return 0.0;

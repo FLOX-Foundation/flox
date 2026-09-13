@@ -172,9 +172,15 @@ extern "C"
     int64_t end_time_ns;
   } FloxBarData;
 
+  /* has_avg_entry_price is 0 when the position manager reports no cost basis
+   * -- a flat position, or a manager that keeps none. avg_entry_price_raw is
+   * then 0 and means nothing, and bindings surface the unrealized PnL built
+   * on it as NaN rather than as the position's whole notional. The flag sits
+   * in padding the struct already had, so the layout does not move. */
   typedef struct
   {
     uint32_t symbol_id;
+    uint8_t has_avg_entry_price;
     int64_t position_raw;
     int64_t avg_entry_price_raw;
     int64_t last_trade_price_raw;

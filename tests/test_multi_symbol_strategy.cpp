@@ -16,6 +16,7 @@
 #include "flox/strategy/symbol_state_map.h"
 
 #include <gtest/gtest.h>
+#include <memory>
 #include <memory_resource>
 
 using namespace flox;
@@ -143,8 +144,9 @@ TEST_F(SymbolContextTest, UnrealizedPnlLong)
   ctx.position = Quantity::fromDouble(10.0);
   ctx.avgEntryPrice = Price::fromDouble(100.0);
 
-  double pnl = ctx.unrealizedPnl(Price::fromDouble(110.0));
-  EXPECT_NEAR(pnl, 100.0, 0.01);
+  auto pnl = ctx.unrealizedPnl(Price::fromDouble(110.0));
+  ASSERT_TRUE(pnl.has_value());
+  EXPECT_NEAR(*pnl, 100.0, 0.01);
 }
 
 TEST_F(SymbolContextTest, UnrealizedPnlShort)
@@ -153,8 +155,9 @@ TEST_F(SymbolContextTest, UnrealizedPnlShort)
   ctx.position = Quantity::fromDouble(-10.0);
   ctx.avgEntryPrice = Price::fromDouble(100.0);
 
-  double pnl = ctx.unrealizedPnl(Price::fromDouble(90.0));
-  EXPECT_NEAR(pnl, 100.0, 0.01);
+  auto pnl = ctx.unrealizedPnl(Price::fromDouble(90.0));
+  ASSERT_TRUE(pnl.has_value());
+  EXPECT_NEAR(*pnl, 100.0, 0.01);
 }
 
 TEST_F(SymbolContextTest, PositionFlags)
@@ -178,6 +181,11 @@ class TestStrategy : public Strategy
  public:
   TestStrategy(std::vector<SymbolId> syms, const SymbolRegistry& registry)
       : Strategy(1, std::move(syms), registry)
+  {
+  }
+
+  TestStrategy(SubscriberId id, std::vector<SymbolId> syms, const SymbolRegistry& registry)
+      : Strategy(id, std::move(syms), registry)
   {
   }
 
@@ -715,7 +723,11 @@ TEST_F(StrategyIntegrationTest, PositionWithoutManagerReturnsZero)
   EXPECT_EQ(strategy.position(1).toDouble(), 0.0);
 }
 
-TEST_F(StrategyIntegrationTest, GlobalOrderIdIsUnique)
+// Order ids are namespaced by subscriber id, so two strategies sharing a bus
+// never collide. Strategies that share a subscriber id share an id space --
+// but a subscriber id is a subscriber's identity, and two of them holding the
+// same one is already broken for every bus they sit on.
+TEST_F(StrategyIntegrationTest, OrderIdsAreUniqueAcrossStrategies)
 {
   class TestableStrategy : public TestStrategy
   {
@@ -724,16 +736,60 @@ TEST_F(StrategyIntegrationTest, GlobalOrderIdIsUnique)
     using TestStrategy::TestStrategy;
   };
 
-  TestableStrategy strategy1({1}, registry);
-  TestableStrategy strategy2({2}, registry);
-  strategy1.setSignalHandler(&signalCapture);
-  strategy2.setSignalHandler(&signalCapture);
+  // On the heap deliberately. A Strategy carries its per-symbol contexts by
+  // value and each context holds a full 512-level book, which is about 4.3 MB
+  // per object -- two of them in one stack frame overruns the default 8 MB
+  // stack, and under the address sanitizer the frame is larger still.
+  auto strategy1 = std::make_unique<TestableStrategy>(SubscriberId{1},
+                                                      std::vector<SymbolId>{1}, registry);
+  auto strategy2 = std::make_unique<TestableStrategy>(SubscriberId{2},
+                                                      std::vector<SymbolId>{2}, registry);
+  strategy1->setSignalHandler(&signalCapture);
+  strategy2->setSignalHandler(&signalCapture);
 
-  OrderId id1 = strategy1.emitMarketBuy(1, Quantity::fromDouble(1.0));
-  OrderId id2 = strategy2.emitMarketBuy(2, Quantity::fromDouble(1.0));
-  OrderId id3 = strategy1.emitMarketBuy(1, Quantity::fromDouble(1.0));
+  OrderId id1 = strategy1->emitMarketBuy(1, Quantity::fromDouble(1.0));
+  OrderId id2 = strategy2->emitMarketBuy(2, Quantity::fromDouble(1.0));
+  OrderId id3 = strategy1->emitMarketBuy(1, Quantity::fromDouble(1.0));
 
   EXPECT_NE(id1, id2);
   EXPECT_NE(id2, id3);
   EXPECT_NE(id1, id3);
+}
+
+// A second run of the same strategy in the same process must hand out the
+// same order ids as the first. A process-wide counter made a grid search, a
+// walk-forward pass or any batch runner produce traces that could not be
+// diffed byte for byte against each other.
+TEST_F(StrategyIntegrationTest, OrderIdsRestartForEachStrategyInstance)
+{
+  class TestableStrategy : public TestStrategy
+  {
+   public:
+    using Strategy::emitMarketBuy;
+    using TestStrategy::TestStrategy;
+  };
+
+  std::vector<OrderId> firstRun;
+  {
+    auto strategy = std::make_unique<TestableStrategy>(SubscriberId{7},
+                                                       std::vector<SymbolId>{1}, registry);
+    strategy->setSignalHandler(&signalCapture);
+    for (int i = 0; i < 3; ++i)
+    {
+      firstRun.push_back(strategy->emitMarketBuy(1, Quantity::fromDouble(1.0)));
+    }
+  }
+
+  std::vector<OrderId> secondRun;
+  {
+    auto strategy = std::make_unique<TestableStrategy>(SubscriberId{7},
+                                                       std::vector<SymbolId>{1}, registry);
+    strategy->setSignalHandler(&signalCapture);
+    for (int i = 0; i < 3; ++i)
+    {
+      secondRun.push_back(strategy->emitMarketBuy(1, Quantity::fromDouble(1.0)));
+    }
+  }
+
+  EXPECT_EQ(firstRun, secondRun);
 }

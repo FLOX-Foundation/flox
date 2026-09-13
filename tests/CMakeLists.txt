@@ -100,6 +100,8 @@ add_flox_test(test_order_group_replace)
 
 add_flox_test(test_position_aggregator)
 add_flox_test(test_position_valuator)
+add_flox_test(test_strategy_unrealized_pnl)
+add_flox_test(test_portfolio_risk_gates)
 
 # CEX coordination tests
 add_flox_test(test_cex_coordination)
@@ -160,6 +162,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_market_position)
   add_flox_test(test_replace_in_flight)
   add_flox_test(test_backtest_metrics)
+  add_flox_test(test_backtest_fee_attribution)
   add_flox_test(test_backtest_ctx_position)
   add_flox_test(test_backtest_run_tape)
   add_flox_test(test_backtest_runner_hooks)

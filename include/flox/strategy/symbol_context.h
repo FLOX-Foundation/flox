@@ -24,7 +24,11 @@ struct SymbolContext
 
   NLevelOrderBook<kDefaultBookLevels> book;
   Quantity position{};
-  Price avgEntryPrice{};
+  // Empty when the attached position manager reports no cost basis: the
+  // position is flat, or the manager keeps none. This used to be a plain
+  // Price that nothing in the engine ever wrote, so it read back as 0 and
+  // unrealized PnL came out as the entire notional.
+  std::optional<Price> avgEntryPrice{};
   Price lastTradePrice{};
   int64_t lastUpdateNs{0};
   SymbolId symbolId{0};
@@ -54,24 +58,31 @@ struct SymbolContext
     return Price::fromRaw(ask->raw() - bid->raw());
   }
 
-  [[nodiscard]] double unrealizedPnl(Price markPrice) const noexcept
+  // Empty when there is no entry price to measure against. A quietly wrong
+  // number is worse than an honest "unknown": the old code substituted zero
+  // for the entry and returned position times mark.
+  [[nodiscard]] std::optional<double> unrealizedPnl(Price markPrice) const noexcept
   {
     if (position.isZero())
     {
       return 0.0;
     }
+    if (!avgEntryPrice)
+    {
+      return std::nullopt;
+    }
     double posQty = position.toDouble();
-    double entryPx = avgEntryPrice.toDouble();
+    double entryPx = avgEntryPrice->toDouble();
     double markPx = markPrice.toDouble();
     return posQty * (markPx - entryPx);
   }
 
-  [[nodiscard]] double unrealizedPnl() const noexcept
+  [[nodiscard]] std::optional<double> unrealizedPnl() const noexcept
   {
     auto midOpt = mid();
     if (!midOpt)
     {
-      return 0.0;
+      return std::nullopt;
     }
     return unrealizedPnl(*midOpt);
   }
@@ -86,7 +97,7 @@ struct SymbolContext
   {
     book.clear();
     position = Quantity{};
-    avgEntryPrice = Price{};
+    avgEntryPrice.reset();
     lastTradePrice = Price{};
     lastUpdateNs = 0;
   }

@@ -10,9 +10,14 @@
 #include "flox/run/trace_reader.h"
 #include "flox/run/trace_recorder.h"
 
+#include "flox/replay/binary_format_v1.h"
+#include "flox/run/run_format_v1.h"
+
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
+#include <stdexcept>
 #include <string>
 
 namespace
@@ -173,4 +178,152 @@ TEST(RunTrace, MultipleSignalsPreserveOrder)
     EXPECT_EQ(sigs[i].symbol_ids[0], i);
   }
   std::filesystem::remove_all(tmp);
+}
+
+// ============================================================================
+// Hostile bundles
+// ============================================================================
+//
+// A .floxrun bundle travels: it is the artifact you hand someone to reproduce
+// a run. The reader used to take the record's own length fields at their
+// word, and those fields sit inside the bytes the CRC is taken over, so a
+// doctored file checksums clean. A 124-byte segment could ask for 60,000
+// bytes of name, 262,140 bytes of symbol ids or -- reason_len and payload_len
+// being 32-bit -- up to 4 GB of payload, and the reader would copy whatever
+// was next in the heap into the signal and carry it on into the report.
+
+namespace
+{
+
+struct HostileBundle
+{
+  std::filesystem::path root;
+  std::filesystem::path segment;
+};
+
+// A one-signal bundle with correct magic, frame size and CRC. `mutate` gets
+// the record before the CRC is computed, so whatever it writes is covered by
+// a checksum that matches.
+template <typename Mutate>
+HostileBundle writeSignalBundle(const std::string& tag, Mutate&& mutate,
+                                const std::string& segmentName = "signals.seg")
+{
+  using namespace flox::run;
+
+  auto root = makeTmp(tag);
+  std::filesystem::create_directories(root);
+
+  RunSegmentHeader hdr{};
+  hdr.record_kind = static_cast<uint8_t>(RecordKind::Signal);
+  hdr.event_count = 1;
+
+  SignalRecord rec{};
+  rec.run_ts_ns = 1;
+  rec.feed_ts_ns = 1;
+  rec.signal_id = 1;
+  mutate(rec);
+
+  flox::replay::FrameHeader fh{};
+  fh.size = sizeof(rec);
+  fh.type = static_cast<uint8_t>(FrameType::Signal);
+  fh.crc32 = flox::replay::Crc32::compute(reinterpret_cast<const uint8_t*>(&rec), sizeof(rec));
+
+  auto segPath = root / segmentName;
+  {
+    std::ofstream out(segPath, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+    out.write(reinterpret_cast<const char*>(&fh), sizeof(fh));
+    out.write(reinterpret_cast<const char*>(&rec), sizeof(rec));
+  }
+
+  {
+    std::ofstream out(root / "manifest.json", std::ios::trunc);
+    out << "{\n"
+        << "  \"schema_version\": 1,\n"
+        << "  \"format_version\": 1,\n"
+        << "  \"strategy_id\": \"hostile\",\n"
+        << "  \"strategy_hash\": \"sha256:0\",\n"
+        << "  \"run_started_ns\": 1,\n"
+        << "  \"run_ended_ns\": 2,\n"
+        << "  \"tape_refs\": [],\n"
+        << "  \"segments\": [\n"
+        << "    {\"name\": \"" << segmentName << "\", \"record_kind\": \"signals\", "
+        << "\"size_bytes\": 124, \"first_event_ns\": 1, \"last_event_ns\": 1, "
+        << "\"event_count\": 1}\n"
+        << "  ]\n}\n";
+  }
+
+  return {root, segPath};
+}
+
+}  // namespace
+
+TEST(RunTraceHostile, OversizedNameLengthIsRejected)
+{
+  auto bundle = writeSignalBundle("name_len", [](flox::run::SignalRecord& r)
+                                  { r.name_len = 60000; });
+
+  flox::run::TraceReader reader(bundle.root.string());
+  EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
+
+  std::filesystem::remove_all(bundle.root);
+}
+
+TEST(RunTraceHostile, OversizedSymbolCountIsRejected)
+{
+  auto bundle = writeSignalBundle("symbol_count", [](flox::run::SignalRecord& r)
+                                  { r.symbol_count = 65535; });
+
+  flox::run::TraceReader reader(bundle.root.string());
+  EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
+
+  std::filesystem::remove_all(bundle.root);
+}
+
+TEST(RunTraceHostile, OversizedPayloadLengthIsRejected)
+{
+  auto bundle = writeSignalBundle("payload_len", [](flox::run::SignalRecord& r)
+                                  { r.payload_len = 2'000'000'000u; });
+
+  flox::run::TraceReader reader(bundle.root.string());
+  EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
+
+  std::filesystem::remove_all(bundle.root);
+}
+
+// A record whose declared lengths fit exactly is still read. The frame here
+// carries no trailing bytes, so every length is zero and the signal comes
+// back empty rather than throwing.
+TEST(RunTraceHostile, ZeroLengthsStillRead)
+{
+  auto bundle = writeSignalBundle("zero_len", [](flox::run::SignalRecord&) {});
+
+  flox::run::TraceReader reader(bundle.root.string());
+  auto signals = reader.readAllSignals();
+  ASSERT_EQ(signals.size(), 1u);
+  EXPECT_TRUE(signals[0].name.empty());
+  EXPECT_TRUE(signals[0].symbol_ids.empty());
+  EXPECT_TRUE(signals[0].payload.empty());
+
+  std::filesystem::remove_all(bundle.root);
+}
+
+// A segment name out of the manifest is appended to the bundle root. Taken
+// unchecked, an absolute path replaced the root outright and "../" climbed
+// out of it.
+TEST(RunTraceHostile, SegmentNameCannotEscapeTheBundle)
+{
+  auto bundle = writeSignalBundle("escape_abs", [](flox::run::SignalRecord&) {}, "/etc/hosts");
+  {
+    flox::run::TraceReader reader(bundle.root.string());
+    EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
+  }
+  std::filesystem::remove_all(bundle.root);
+
+  auto climb = writeSignalBundle("escape_rel", [](flox::run::SignalRecord&) {}, "../../etc/hosts");
+  {
+    flox::run::TraceReader reader(climb.root.string());
+    EXPECT_THROW(reader.readAllSignals(), std::runtime_error);
+  }
+  std::filesystem::remove_all(climb.root);
 }

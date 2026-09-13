@@ -89,6 +89,19 @@ class PositionTracker : public IPositionManager
     return _states[symbol].avgEntryPrice();
   }
 
+  // Nothing when the position is flat: there is no entry price to report, and
+  // zero would read as a real one.
+  std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    const auto& state = _states[symbol];
+    if (state.position().raw() == 0)
+    {
+      return std::nullopt;
+    }
+    return state.avgEntryPrice();
+  }
+
   Price getRealizedPnl(SymbolId symbol) const
   {
     std::lock_guard<std::mutex> lock(_mutex);

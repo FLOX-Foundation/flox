@@ -124,19 +124,35 @@ than from a tracked size. With no valuator (the default) PnL is linear.
 
 ## Position Math
 
-### Buy Fill
+Cost basis is signed and follows the quantity: a long carries a positive cost,
+a short a negative one, so `cost / qty` reads back as the entry price on either
+side. What a fill does depends on whether it moves in the same direction as the
+position, not on whether it is a buy or a sell.
+
+### Opening or adding (fill in the same direction as the position, or flat)
 ```cpp
 cost = cost + (filledQty * fillPrice);
 qty  = qty + filledQty;
 ```
 
-### Sell Fill
+Opening a short from flat goes through here, with a negative `filledQty`, so
+the short is booked at its own entry price. The earlier code read the sign of
+the fill instead and treated every sell as a reduction. With nothing to reduce
+it divided by a zero quantity and booked the short at price 0, which left
+unrealized PnL equal to the whole notional: a 10 BTC short at 50,000 that had
+not moved a cent reported -500,000, and a cross-venue hedge carried a fixed
+error of roughly a third of its notional at every price.
+
+### Reducing (fill against the position)
 ```cpp
-Quantity sellQty = Quantity::fromRaw(-filledQty.raw());
-Price avgEntry = qty.raw() != 0 ? (cost / qty) : Price{};
-cost = cost - (sellQty * avgEntry);  // reduce cost at avg entry
-qty  = qty - sellQty;
+Price avgEntry = cost / qty;              // signed on both sides
+cost = cost - (reduceSigned * avgEntry);  // unwind at the average already booked
+qty  = qty - reduceSigned;
 ```
+
+### Crossing through flat
+A fill larger than the position closes it at the average and opens the
+remainder on the other side at the fill price, in that order.
 
 ### Close to Flat
 ```cpp

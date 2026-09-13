@@ -157,12 +157,25 @@ anything else falls back to `gtc`.
 | `last_trade_price` / `lastTradePrice` | float | Most recent trade price |
 | `best_bid` / `bestBid`, `best_ask` / `bestAsk` | float | Top-of-book |
 | `mid_price` / `midPrice` | float | `(best_bid + best_ask) / 2` |
-| `unrealized_pnl` (Py) | float | Unrealized PnL on the current position |
+| `unrealized_pnl` (Py) | float | Unrealized PnL on the current position, `NaN` when no entry price is available |
 | `is_long()` / `is_short()` / `is_flat()` (Py/Codon) | bool | Position state |
 | `book_spread()` (Py/Codon) | float | `best_ask - best_bid` |
 
 Node's `SymbolContext` is the narrower set: `position`, `symbolId`,
 `lastTradePrice`, `bestBid`, `bestAsk`, `midPrice`.
+
+Allocate a C++ `Strategy` on the heap. It holds 256 per-symbol context slots by
+value and each one carries a full 512-level book, so the object comes to about
+4.3 MB. One fits on a default 8 MB stack, two in the same function do not, and
+the overflow lands in the constructor prologue before a single line of the
+strategy has run. The bindings allocate for you.
+
+`unrealized_pnl` is measured against the average entry price the attached
+position manager reports. A manager that keeps no cost basis reports none, and
+the field comes through as `NaN` instead of a number; the JavaScript engine's
+`ctx.avgEntryPrice` is `NaN` in the same case. Test for it before comparing
+against a threshold. The two shipped managers, `PositionTracker` and
+`MultiModePositionTracker`, report an entry price whenever a position is open.
 
 ## C++ ↔ binding name map
 

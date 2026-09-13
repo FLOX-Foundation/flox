@@ -119,6 +119,14 @@ etc.) which points at the responsible subsystem.
   IDs), but it would matter for cross-process determinism. File
   a follow-up if needed.
 
+- Strategy order IDs do not have that problem. Each `Strategy`
+  numbers its own orders from 1 and prefixes them with its
+  subscriber id. A second run of the same tape in the same process,
+  under a grid search or a batch runner, hands out the same IDs as
+  the first, so two traces of an identical run compare equal byte
+  for byte. Two strategies sharing a subscriber id share an id
+  space; a subscriber id is meant to be unique per bus.
+
 - `VenueAvailability::auto_random_outages` is non-deterministic
   unless seeded. The default venue stacks do not enable random
   outages; researchers who do should set the seed explicitly.

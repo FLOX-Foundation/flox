@@ -425,26 +425,45 @@ class Strategy : public IStrategy
   }
 
  private:
+  // Order ids are per strategy instance, prefixed with the subscriber id so
+  // that strategies sharing a process never collide.
+  //
+  // A single process-wide counter meant that a second run of the same tape in
+  // the same process -- a grid search, a walk-forward, any batch runner --
+  // handed out different order ids and different signal ids, so two traces of
+  // an identical run did not compare equal byte for byte, and the numbering
+  // also moved with however the strategies happened to interleave. A fresh
+  // strategy now always starts its own numbering at 1.
+  //
+  // The namespace is the subscriber id, which is the only identity a strategy
+  // has; two strategies holding the same one share an id space, and they are
+  // already broken for every bus they sit on. Subscriber ids at or above
+  // 2^32-1 would reach the range MultiModePositionTracker reserves for its
+  // explicit fills.
+  static constexpr int kOrderIdStrategyShift = 32;
+
   OrderId nextOrderId() noexcept
   {
-    static std::atomic<OrderId> s_globalOrderId{1};
-    return s_globalOrderId++;
+    return (static_cast<OrderId>(_id) << kOrderIdStrategyShift) + (_nextOrderId++);
   }
 
-  // Pull the latest position from the attached IPositionManager into
-  // the per-symbol context so `ctx.position` / `ctx.is_long()` /
-  // `ctx.is_flat()` reflect fills the executor has dispatched. Without
-  // this hook the SymbolContext.position field is dead — initialised
-  // to zero and never updated — which silently produces 0-trade
-  // backtests when a strategy guards entries on `ctx.is_flat()` and
-  // exits on `ctx.is_long()`.
+  // Pull the latest position and cost basis from the attached
+  // IPositionManager into the per-symbol context so `ctx.position` /
+  // `ctx.is_long()` / `ctx.is_flat()` / `ctx.unrealizedPnl()` reflect fills
+  // the executor has dispatched. Without this hook the SymbolContext.position
+  // field is dead — initialised to zero and never updated — which silently
+  // produces 0-trade backtests when a strategy guards entries on
+  // `ctx.is_flat()` and exits on `ctx.is_long()`.
   void refreshPosition(SymbolContext& c, SymbolId sym) noexcept
   {
     if (_positionManager)
     {
       c.position = _positionManager->getPosition(sym);
+      c.avgEntryPrice = _positionManager->getAverageEntryPrice(sym);
     }
   }
+
+  std::atomic<OrderId> _nextOrderId{1};
 
   SubscriberId _id;
   ISignalHandler* _signalHandler{nullptr};
@@ -452,6 +471,11 @@ class Strategy : public IStrategy
   IPositionManager* _positionManager{nullptr};
   std::vector<SymbolId> _symbols;
   std::set<SymbolId> _symbolSet;
+  // Heap-allocate your Strategy. This map holds 256 SymbolContext slots by
+  // value and each one carries a full 512-level book, so the object comes to
+  // about 4.3 MB: one fits on a default 8 MB stack, two in the same frame do
+  // not, and the overflow lands in the constructor prologue before a single
+  // line of the strategy has run.
   mutable SymbolStateMap<SymbolContext> _contexts;
 
   // Per-(symbol, timeframe) ring of the most recent closed bars.

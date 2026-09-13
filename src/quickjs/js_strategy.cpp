@@ -4,6 +4,7 @@
 #include "flox/capi/order_type_names.hpp"
 
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 // Embedded JS stdlib
@@ -1107,8 +1108,12 @@ JSValue FloxJsStrategy::makeCtxObject(const FloxSymbolContext* ctx)
   JSValue obj = JS_NewObject(c);
   JS_SetPropertyStr(c, obj, "symbolId", JS_NewUint32(c, ctx->symbol_id));
   JS_SetPropertyStr(c, obj, "position", JS_NewFloat64(c, flox_quantity_to_double(ctx->position_raw)));
+  // NaN when the position manager reports no cost basis. A zero here read as
+  // a real entry price, which turned unrealized PnL into the full notional.
   JS_SetPropertyStr(c, obj, "avgEntryPrice",
-                    JS_NewFloat64(c, flox_price_to_double(ctx->avg_entry_price_raw)));
+                    JS_NewFloat64(c, ctx->has_avg_entry_price
+                                         ? flox_price_to_double(ctx->avg_entry_price_raw)
+                                         : std::numeric_limits<double>::quiet_NaN()));
   JS_SetPropertyStr(c, obj, "lastTradePrice",
                     JS_NewFloat64(c, flox_price_to_double(ctx->last_trade_price_raw)));
   JS_SetPropertyStr(c, obj, "lastUpdateNs",

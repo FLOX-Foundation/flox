@@ -344,7 +344,8 @@ class BridgeStrategy : public Strategy
     FloxSymbolContext fctx{};
     fctx.symbol_id = c.symbolId;
     fctx.position_raw = c.position.raw();
-    fctx.avg_entry_price_raw = c.avgEntryPrice.raw();
+    fctx.has_avg_entry_price = c.avgEntryPrice ? 1u : 0u;
+    fctx.avg_entry_price_raw = c.avgEntryPrice ? c.avgEntryPrice->raw() : 0;
     fctx.last_trade_price_raw = c.lastTradePrice.raw();
     fctx.last_update_ns = c.lastUpdateNs;
     fctx.book = toBookSnapshot(c);

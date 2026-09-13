@@ -307,6 +307,90 @@ TEST(AggregatedPositionTrackerTest, UnrealizedPnL)
   EXPECT_EQ(pnl.raw(), Volume::fromDouble(100000).raw());
 }
 
+// Opening a short from flat. The sell branch used to divide by the current
+// quantity, which is zero here, so the entry was booked at price 0 and
+// unrealized PnL came back as the whole notional: -500,000 on a 10 BTC short
+// at 50,000 that had not moved a cent.
+TEST(AggregatedPositionTrackerTest, ShortFromFlatBooksItsEntryPrice)
+{
+  AggregatedPositionTracker<4> tracker;
+
+  tracker.onFill(0, 1, Quantity::fromDouble(-10), Price::fromDouble(50000));
+
+  auto pos = tracker.position(0, 1);
+  EXPECT_EQ(pos.quantity.raw(), Quantity::fromDouble(-10).raw());
+  EXPECT_EQ(pos.avgEntryPrice.raw(), Price::fromDouble(50000).raw());
+
+  EXPECT_EQ(tracker.unrealizedPnl(1, Price::fromDouble(50000)).raw(), 0);
+  EXPECT_EQ(tracker.unrealizedPnl(1, Price::fromDouble(49000)).raw(),
+            Volume::fromDouble(10000).raw());
+  EXPECT_EQ(tracker.unrealizedPnl(1, Price::fromDouble(51000)).raw(),
+            Volume::fromDouble(-10000).raw());
+}
+
+// Covering part of a short unwinds at the average already booked. The entry
+// price used to go negative here -- -49,000 on a short opened at 50,000.
+TEST(AggregatedPositionTrackerTest, CoveringPartOfAShortKeepsTheEntryPrice)
+{
+  AggregatedPositionTracker<4> tracker;
+
+  tracker.onFill(0, 1, Quantity::fromDouble(-10), Price::fromDouble(50000));
+  tracker.onFill(0, 1, Quantity::fromDouble(5), Price::fromDouble(49000));
+
+  auto pos = tracker.position(0, 1);
+  EXPECT_EQ(pos.quantity.raw(), Quantity::fromDouble(-5).raw());
+  EXPECT_EQ(pos.avgEntryPrice.raw(), Price::fromDouble(50000).raw());
+  EXPECT_EQ(tracker.unrealizedPnl(1, Price::fromDouble(49000)).raw(),
+            Volume::fromDouble(5000).raw());
+}
+
+// Adding to a short averages in the new price, the mirror of adding to a long.
+TEST(AggregatedPositionTrackerTest, AddingToAShortAveragesTheEntry)
+{
+  AggregatedPositionTracker<4> tracker;
+
+  tracker.onFill(0, 1, Quantity::fromDouble(-10), Price::fromDouble(50000));
+  tracker.onFill(0, 1, Quantity::fromDouble(-10), Price::fromDouble(60000));
+
+  auto pos = tracker.position(0, 1);
+  EXPECT_EQ(pos.quantity.raw(), Quantity::fromDouble(-20).raw());
+  EXPECT_EQ(pos.avgEntryPrice.raw(), Price::fromDouble(55000).raw());
+}
+
+// A fill that crosses through flat closes the old side at its average and
+// opens the new one at the fill price.
+TEST(AggregatedPositionTrackerTest, FlippingLongToShortRebasesTheEntry)
+{
+  AggregatedPositionTracker<4> tracker;
+
+  tracker.onFill(0, 1, Quantity::fromDouble(5), Price::fromDouble(100));
+  tracker.onFill(0, 1, Quantity::fromDouble(-15), Price::fromDouble(120));
+
+  auto pos = tracker.position(0, 1);
+  EXPECT_EQ(pos.quantity.raw(), Quantity::fromDouble(-10).raw());
+  EXPECT_EQ(pos.avgEntryPrice.raw(), Price::fromDouble(120).raw());
+}
+
+// The cross-venue hedge out of the multi-exchange how-to: 1 BTC long on one
+// venue against 0.3 short on another. The short leg booked at zero gave the
+// pair a fixed error of about a third of its notional at every price.
+TEST(AggregatedPositionTrackerTest, CrossVenueHedgeValuesBothLegs)
+{
+  AggregatedPositionTracker<4> tracker;
+
+  tracker.onFill(0, 1, Quantity::fromDouble(1.0), Price::fromDouble(50000));
+  tracker.onFill(1, 1, Quantity::fromDouble(-0.3), Price::fromDouble(50100));
+
+  auto total = tracker.totalPosition(1);
+  EXPECT_EQ(total.quantity.raw(), Quantity::fromDouble(0.7).raw());
+
+  // Long leg at 50,000, short leg at 50,100, mark 50,000:
+  // 1.0 * 0 + 0.3 * 100 = 30.
+  EXPECT_NEAR(tracker.unrealizedPnl(1, Price::fromDouble(50000)).toDouble(), 30.0, 0.01);
+  // Mark 51,000: 1.0 * 1000 - 0.3 * 900 = 730.
+  EXPECT_NEAR(tracker.unrealizedPnl(1, Price::fromDouble(51000)).toDouble(), 730.0, 0.01);
+}
+
 // ============================================================================
 // CompositeBookMatrix Tests
 // ============================================================================

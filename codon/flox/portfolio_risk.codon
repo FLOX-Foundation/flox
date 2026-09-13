@@ -101,6 +101,13 @@ class PortfolioRiskAggregator:
         rules_buf = _build_rules_struct(rules, has_drawdown, has_loss,
                                         has_gross, has_conc)
         self._h = flox_portfolio_risk_create(cobj(rules_buf), initial_equity)
+        # The only way construction fails: a drawdown cap with nothing to
+        # measure against. A null handle here used to be carried silently
+        # into every later call.
+        if not self._h:
+            raise ValueError(
+                "PortfolioRiskAggregator: a max_drawdown_pct rule needs a "
+                "positive initial_equity to measure against")
 
     def update(self, name: str, fields: StrategyFields, field_mask: int):
         buf = _build_fields_struct(fields)

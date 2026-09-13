@@ -425,7 +425,8 @@ void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolCo
   const auto& c = toStrategy(s)->ctx(symbol);
   out->symbol_id = c.symbolId;
   out->position_raw = c.position.raw();
-  out->avg_entry_price_raw = c.avgEntryPrice.raw();
+  out->has_avg_entry_price = c.avgEntryPrice ? 1u : 0u;
+  out->avg_entry_price_raw = c.avgEntryPrice ? c.avgEntryPrice->raw() : 0;
   out->last_trade_price_raw = c.lastTradePrice.raw();
   out->last_update_ns = c.lastUpdateNs;
 
@@ -5860,18 +5861,25 @@ class CapiBacktestKillSwitch : public flox::IKillSwitch
 
   // The C ABI kill switch is a per-signal check. The engine contract
   // is "check(order) may trigger; isTriggered() reports current state".
-  // Cache the latest check result so the runner's gate logic
-  // (`check(order); if (isTriggered()) drop`) maps cleanly.
+  //
+  // Triggering latches, and only flox_kill_switch_reset clears it. The
+  // assignment this used to be let a single "allow" answer un-trigger the
+  // switch: after a callback said HALT, the next five orders executed and two
+  // round trips completed. The same user code through the Python adapter
+  // stayed halted, so one strategy produced two different backtest results
+  // depending on which binding ran it.
   void check(const Order& order) override
   {
     if (_impl == nullptr || _impl->cb.check == nullptr)
     {
-      _triggered = false;
       return;
     }
     FloxSignal fs = orderToFloxSignal(order);
     // C ABI: 0 → drop / kill-switch active.
-    _triggered = (_impl->cb.check(_impl->cb.user_data, &fs) == 0);
+    if (_impl->cb.check(_impl->cb.user_data, &fs) == 0)
+    {
+      _triggered = true;
+    }
   }
   void trigger(const std::string& reason) override
   {

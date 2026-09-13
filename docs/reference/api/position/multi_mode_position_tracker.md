@@ -33,6 +33,8 @@ tracker.closeLong(symbol, price, qty, /*tag=*/42);
 
 Works in all modes. In NET mode, `openLong`/`openShort` both aggregate into the net position.
 
+In GROUPED mode the tag scopes the close. A close carrying a tag unwinds the positions in that tag's group, oldest first. A close with no tag, which is the default and what `Strategy::emitClosePosition` sends, unwinds every open position on the symbol, oldest first. An untagged close used to be a silent no-op: the position stayed open, its realized PnL was lost, and subscribers were still told the position had changed.
+
 ## Snapshot
 
 Atomic read of all position fields in a single lock acquisition:
