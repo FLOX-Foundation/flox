@@ -340,13 +340,23 @@ Values 2–6 coincide; 0, 1, 7 and above do not. Which entry point uses which:
 | Entry point | Field | Encoding | Code path |
 |-------------|-------|----------|-----------|
 | `FloxOnSignalCallback` from the runner / live engine | `FloxSignal.order_type` | **A** (SignalType) | `src/capi/flox_capi.cpp` — explicit `switch (sig.type)` |
-| `FloxRiskManagerAllowFn` | `FloxSignal.order_type` | **B** (`OrderType`) | `orderToFloxSignal()` — `static_cast<uint8_t>(order.type)` |
-| `FloxKillSwitchCheckFn` | `FloxSignal.order_type` | **B** (`OrderType`) | `orderToFloxSignal()` |
-| `FloxOrderValidatorValidateFn` | `FloxSignal.order_type` | **B** (`OrderType`) | `orderToFloxSignal()` |
-| `FloxPnLTrackerOnSignalFn` | `FloxSignal.order_type` | **B** (`OrderType`) | `orderToFloxSignal()` |
+| `FloxRiskManagerAllowFn` | `FloxSignal.order_type` | **A** (SignalType) | `orderToFloxSignal()` — `signalTypeCodeFromOrderType(order.type)` |
+| `FloxKillSwitchCheckFn` | `FloxSignal.order_type` | **A** (SignalType) | `orderToFloxSignal()` — `signalTypeCodeFromOrderType(order.type)` |
+| `FloxOrderValidatorValidateFn` | `FloxSignal.order_type` | **A** (SignalType) | `orderToFloxSignal()` — `signalTypeCodeFromOrderType(order.type)` |
+| `FloxPnLTrackerOnSignalFn` | `FloxSignal.order_type` | **A** (SignalType) | `orderToFloxSignal()` — `signalTypeCodeFromOrderType(order.type)` |
 | `flox_simulated_executor_submit_order` | `order_type` argument | **B** (`OrderType`) | `static_cast<OrderType>(order_type)` |
 | `flox_simulated_executor_submit_order_ex` | `order_type` argument | **B** (`OrderType`) | `static_cast<OrderType>(order_type)` |
 | `FloxOrderEventData.order_type` | struct field | **B** (`OrderType`) | carried from `Order::type` |
+
+The four pre-trade gate rows (risk manager, kill switch, order validator, PnL
+tracker) used to hand the gate a raw `static_cast<uint8_t>(order.type)`,
+which is Encoding B, even though the field is `FloxSignal.order_type` and
+every other producer on this page fills it with Encoding A.
+`orderToFloxSignal()` now converts explicitly through
+`signalTypeCodeFromOrderType()` (see `src/capi/flox_capi.cpp`), so all four
+gates receive the same encoding as `FloxOnSignalCallback`. A gate written
+against the old table would have read every LIMIT order it received as
+MARKET, and vice versa.
 
 Consequence: passing `0` to `flox_simulated_executor_submit_order` submits a **LIMIT** order, not a
 market order. Pass `1` for market. The embedded QuickJS binding compensates for this mismatch by

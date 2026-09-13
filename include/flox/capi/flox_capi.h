@@ -182,6 +182,9 @@ extern "C"
     FloxBookSnapshot book;
   } FloxSymbolContext;
 
+  /* order_type here is the C++ flox::OrderType space (LIMIT=0, MARKET=1,
+   * ...), the same space as FloxOrder.type below. It is NOT the
+   * FLOX_SIGNAL_TYPE_* space used by FloxSignal.order_type. */
   typedef struct
   {
     uint64_t order_id;
@@ -476,6 +479,14 @@ extern "C"
     double new_quantity;
   } FloxSignal;
 
+/* FLOX_SIGNAL_TYPE_* is the code space used ONLY by FloxSignal.order_type
+ * (see the comment above FloxSignal). It swaps LIMIT and MARKET relative
+ * to the C++ flox::OrderType enum (include/flox/common.h), which is the
+ * space every other order_type / type field on this page uses (FloxOrder,
+ * FloxOrderEventData, and the order_type parameter of
+ * flox_simulated_executor_submit_order[_ex]). Do not reuse these codes to
+ * decode any of those. include/flox/capi/order_type_names.hpp carries the
+ * canonical string tables for both spaces. */
 #define FLOX_SIGNAL_TYPE_MARKET 0
 #define FLOX_SIGNAL_TYPE_LIMIT 1
 #define FLOX_SIGNAL_TYPE_STOP_MARKET 2
@@ -506,6 +517,10 @@ extern "C"
     const FloxBookLevel* asks;
   } FloxReplayEvent;
 
+  /* type is the C++ flox::OrderType space (LIMIT=0, MARKET=1, ...,
+   * ICEBERG=7), the same space as FloxOrderEventData.order_type above.
+   * It is NOT the FLOX_SIGNAL_TYPE_* space used by FloxSignal.order_type
+   * a few lines up in this file. */
   typedef struct
   {
     uint64_t id;

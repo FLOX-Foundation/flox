@@ -98,13 +98,13 @@ def main():
         if fast_above and not prev_fast_above and position <= 0:
             if position < 0:
                 # Close short
-                executor.submit_order(order_id, "buy", 0.0, 1.0, 0, sym)
+                executor.submit_order(order_id, "buy", 0.0, 1.0, "limit", sym)
                 order_tracker.on_submitted(order_id, sym, "buy", prices[i], 1.0)
                 tracker.on_fill(sym, "buy", prices[i], 1.0)
                 order_id += 1
                 trade_count += 1
             # Open long
-            executor.submit_order(order_id, "buy", 0.0, 1.0, 0, sym)
+            executor.submit_order(order_id, "buy", 0.0, 1.0, "limit", sym)
             order_tracker.on_submitted(order_id, sym, "buy", prices[i], 1.0)
             tracker.on_fill(sym, "buy", prices[i], 1.0)
             order_id += 1
@@ -113,13 +113,13 @@ def main():
         elif not fast_above and prev_fast_above and position >= 0:
             if position > 0:
                 # Close long
-                executor.submit_order(order_id, "sell", 0.0, 1.0, 0, sym)
+                executor.submit_order(order_id, "sell", 0.0, 1.0, "limit", sym)
                 order_tracker.on_submitted(order_id, sym, "sell", prices[i], 1.0)
                 tracker.on_fill(sym, "sell", prices[i], 1.0)
                 order_id += 1
                 trade_count += 1
             # Open short
-            executor.submit_order(order_id, "sell", 0.0, 1.0, 0, sym)
+            executor.submit_order(order_id, "sell", 0.0, 1.0, "limit", sym)
             order_tracker.on_submitted(order_id, sym, "sell", prices[i], 1.0)
             tracker.on_fill(sym, "sell", prices[i], 1.0)
             order_id += 1

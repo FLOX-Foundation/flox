@@ -47,6 +47,12 @@ enum class ExerciseStyle
   American
 };
 
+// This is the only order-type code space the C++ engine uses. It is NOT
+// the same space as the C-ABI's FLOX_SIGNAL_TYPE_* codes
+// (include/flox/capi/flox_capi.h), which govern FloxSignal.order_type
+// only and swap LIMIT/MARKET relative to this enum. See
+// include/flox/capi/order_type_names.hpp for the canonical string tables
+// of both spaces.
 enum class OrderType : uint8_t
 {
   LIMIT = 0,

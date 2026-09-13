@@ -1,0 +1,58 @@
+# Smoke test: SimulatedExecutor.submit_order order-type encoding, in both
+# flox.tools and flox.backtest -- see codon/flox/order_type_codes.codon.
+#
+# `flox.tools.SimulatedExecutor.submit_order` used to take a raw int with
+# default 0 (= LIMIT in flox::OrderType), unlike its sibling in
+# flox.backtest, which always took the correct string contract. Both now
+# route through the same encoder.
+
+from flox.tools import SimulatedExecutor as ToolsExecutor
+from flox.backtest import SimulatedExecutor as BacktestExecutor
+
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL  " + msg)
+
+
+SYM = 1
+
+# ── flox.tools.SimulatedExecutor (fill_count is a property) ──────────
+
+tools_exe = ToolsExecutor()
+tools_exe.submit_order(1, "buy", 1.0, 1.0, "market", SYM)
+check(tools_exe.fill_count == 0, "tools: market does not fill before any print")
+tools_exe.on_bar(SYM, 100.0)
+check(tools_exe.fill_count == 1, "tools: market buy fills on the first print")
+
+tools_exe.submit_order(2, "buy", 50.0, 1.0, "limit", SYM)
+tools_exe.on_bar(SYM, 100.0)
+check(tools_exe.fill_count == 1, "tools: limit at 50 does not fill while market prints at 100")
+tools_exe.on_bar(SYM, 50.0)
+check(tools_exe.fill_count == 2, "tools: limit at 50 fills once the market reaches 50")
+
+# ── flox.backtest.SimulatedExecutor (fill_count is a method) ─────────
+
+bt_exe = BacktestExecutor()
+bt_exe.submit_order(1, "buy", 1.0, 1.0, "market", SYM)
+check(bt_exe.fill_count() == 0, "backtest: market does not fill before any print")
+bt_exe.on_bar(SYM, 100.0)
+check(bt_exe.fill_count() == 1, "backtest: market buy fills on the first print")
+
+bt_exe.submit_order(2, "buy", 50.0, 1.0, "limit", SYM)
+bt_exe.on_bar(SYM, 100.0)
+check(bt_exe.fill_count() == 1, "backtest: limit at 50 does not fill while market prints at 100")
+bt_exe.on_bar(SYM, 50.0)
+check(bt_exe.fill_count() == 2, "backtest: limit at 50 fills once the market reaches 50")
+
+bt_exe.close()
+
+if failed > 0:
+    raise ValueError(str(failed) + " check(s) failed")
+print("done")

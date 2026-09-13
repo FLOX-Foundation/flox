@@ -105,3 +105,6 @@ add_codon_executable(codon_merged_tape_smoke
 
 add_codon_executable(codon_backtest_run_tapes_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/backtest_run_tapes_smoke.codon)
+
+add_codon_executable(codon_order_type_codes_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/order_type_codes_smoke.codon)

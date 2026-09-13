@@ -10,8 +10,8 @@
     {
       "language": "codon",
       "path": "docs/examples/codon_full_backtest.codon",
-      "sha256": "88fa29c78cfd6b8b956326b252add86f676f23e9c315e7edd2f81e210010682b",
-      "size_bytes": 7319,
+      "sha256": "58e59bbfe0f1a3bf52eee5ef739063a9c56da25a615fe383aee9ca4a14b5fb9d",
+      "size_bytes": 7343,
       "topic": "backtest"
     },
     {

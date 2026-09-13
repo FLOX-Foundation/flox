@@ -1,6 +1,8 @@
 #include "js_strategy.h"
 #include "js_bindings.h"
 
+#include "flox/capi/order_type_names.hpp"
+
 #include <iostream>
 #include <stdexcept>
 
@@ -1281,25 +1283,7 @@ const char* jsMarketPositionName(uint8_t p)
 }
 const char* jsOrderTypeName(uint8_t t)
 {
-  switch (t)
-  {
-    case 0:
-      return "LIMIT";
-    case 1:
-      return "MARKET";
-    case 2:
-      return "STOP_MARKET";
-    case 3:
-      return "STOP_LIMIT";
-    case 4:
-      return "TP_MARKET";
-    case 5:
-      return "TP_LIMIT";
-    case 6:
-      return "ICEBERG";
-    default:
-      return "UNKNOWN";
-  }
+  return flox::capi::orderTypeNameUpper(t);
 }
 }  // namespace
 
