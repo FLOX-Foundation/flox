@@ -23,7 +23,10 @@ class CCI : public StreamingBar<CCI>
     const size_t n = high.size();
     std::vector<double> out(n, std::nan(""));
 
-    if (n < _period)
+    // A zero period has no well-defined window; the nested SMA(0) below is
+    // now safe on its own (it returns all-NaN), but guard here too so the
+    // "not enough data" contract is explicit rather than incidental.
+    if (_period == 0 || n < _period)
     {
       return out;
     }

@@ -29,6 +29,7 @@
 
 #include <gtest/gtest.h>
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 
 using namespace flox;
@@ -220,6 +221,42 @@ TEST(RSI, BoundaryValues)
   }
 }
 
+// A fully flat window (zero average gain AND zero average loss -- no movement
+// at all in the seed) used to report 100, the same value as a pure uptrend.
+// Read as "overbought", that is backwards: nothing happened. The decided
+// convention is the neutral midpoint 50, matching Stochastic's flat-range
+// convention below. A pure uptrend (avgLoss == 0, avgGain > 0, covered by
+// BoundaryValues above) is a different case and still correctly reports 100.
+TEST(RSI, FlatSeedWindowIsNeutralNotOverbought)
+{
+  RSI rsi(14);
+  std::vector<double> flat(20, 100.0);
+  auto result = rsi.compute(flat);
+  for (size_t i = 14; i < result.size(); ++i)
+  {
+    EXPECT_NEAR(result[i], 50.0, 1e-10) << "index " << i;
+  }
+}
+
+// A decline followed by a flat plateau must NOT hit the same branch: avgLoss
+// decays geometrically toward zero but never becomes exactly zero, so this
+// stays correctly at 0 (maximally oversold), unlike a flat *seed* window.
+TEST(RSI, PlateauAfterDeclineStaysZeroNotNeutral)
+{
+  RSI rsi(14);
+  std::vector<double> series;
+  for (int i = 20; i >= 1; --i)
+  {
+    series.push_back(static_cast<double>(i));  // decline
+  }
+  series.insert(series.end(), 40, 1.0);  // flat plateau at the bottom
+  auto result = rsi.compute(series);
+  for (size_t i = series.size() - 10; i < series.size(); ++i)
+  {
+    EXPECT_NEAR(result[i], 0.0, 1e-9) << "index " << i;
+  }
+}
+
 TEST(RSI, MiddleRange)
 {
   RSI rsi(14);
@@ -383,6 +420,196 @@ TEST(RSI, NaNInputHandled)
   EXPECT_TRUE(hasValid);
 }
 
+// The rolling-sum family (SMA/RMA/Bollinger/VWAP/CCI) used to have no NaN
+// handling at all: one bad candle poisoned _period outputs and, worse, the
+// underflowed `_period - 1` index on a zero period was a heap-buffer-overflow
+// waiting to happen. These five tests are the direct analogs of
+// EMA.NaNInputSkipped above, same input, same shape of assertion -- proving
+// the rolling-sum family now has the same "poison the window, recover once
+// the NaN slides out" contract EMA and RSI already had.
+
+TEST(SMA, NaNInputSkipped)
+{
+  SMA sma(3);
+  std::vector<double> input = {std::nan(""), std::nan(""), 1, 2, 3, 4, 5};
+  auto result = sma.compute(input);
+  // First 2 NaN in input poison every 3-wide window that overlaps them
+  // (indices 0..3); the window [2,3,4] is the first fully clean one.
+  EXPECT_TRUE(std::isnan(result[0]));
+  EXPECT_TRUE(std::isnan(result[1]));
+  EXPECT_TRUE(std::isnan(result[2]));
+  EXPECT_TRUE(std::isnan(result[3]));
+  EXPECT_FALSE(std::isnan(result[4]));
+  EXPECT_NEAR(result[4], 2.0, 1e-10);  // mean(1,2,3)
+  EXPECT_NEAR(result[5], 3.0, 1e-10);  // mean(2,3,4)
+  EXPECT_NEAR(result[6], 4.0, 1e-10);  // mean(3,4,5)
+}
+
+TEST(SMA, NaNInMiddleRecovers)
+{
+  // A single bad candle mid-series must poison only the windows that overlap
+  // it, then recover -- not poison every output for the rest of the series.
+  SMA sma(3);
+  std::vector<double> input = {1, 2, 3, 4, std::nan(""), 6, 7, 8, 9, 10};
+  auto result = sma.compute(input);
+  EXPECT_FALSE(std::isnan(result[3]));  // window [1,2,3] is clean
+  EXPECT_TRUE(std::isnan(result[4]));   // window [2,3,nan]
+  EXPECT_TRUE(std::isnan(result[5]));   // window [3,nan,6]
+  EXPECT_TRUE(std::isnan(result[6]));   // window [nan,6,7]
+  EXPECT_FALSE(std::isnan(result[7]));  // window [6,7,8] is clean again
+  EXPECT_NEAR(result[7], 7.0, 1e-10);
+  EXPECT_NEAR(result[9], 9.0, 1e-10);  // window [8,9,10]
+}
+
+TEST(SMA, ZeroPeriodIsSafeNotOutOfBounds)
+{
+  // period=0 has no well-defined window. Before the fix, `_period - 1`
+  // underflowed to SIZE_MAX and wrote out of bounds (confirmed by ASan); it
+  // must now behave like "insufficient data" instead: never NaN, never a
+  // crash, no assumption about output size beyond what compute() promises.
+  SMA sma(0);
+  std::vector<double> input = {1, 2, 3, 4, 5};
+  auto result = sma.compute(input);
+  ASSERT_EQ(result.size(), input.size());
+  for (double v : result)
+  {
+    EXPECT_TRUE(std::isnan(v));
+  }
+}
+
+TEST(RMA, NaNInputSkipped)
+{
+  RMA rma(3);
+  std::vector<double> input = {std::nan(""), std::nan(""), 1, 2, 3, 4, 5};
+  auto result = rma.compute(input);
+  EXPECT_TRUE(std::isnan(result[0]));
+  EXPECT_TRUE(std::isnan(result[1]));
+  EXPECT_TRUE(std::isnan(result[2]));
+  EXPECT_TRUE(std::isnan(result[3]));
+  EXPECT_FALSE(std::isnan(result[4]));
+  EXPECT_NEAR(result[4], 2.0, 1e-10);  // seeded as SMA(1,2,3)
+  EXPECT_FALSE(std::isnan(result[5]));
+  EXPECT_FALSE(std::isnan(result[6]));
+}
+
+TEST(RMA, ZeroPeriodIsSafeNotOutOfBounds)
+{
+  RMA rma(0);
+  std::vector<double> input = {1, 2, 3, 4, 5};
+  auto result = rma.compute(input);
+  ASSERT_EQ(result.size(), input.size());
+  for (double v : result)
+  {
+    EXPECT_TRUE(std::isnan(v));
+  }
+}
+
+TEST(Bollinger, NaNInputSkipped)
+{
+  Bollinger bb(3, 2.0);
+  std::vector<double> input = {std::nan(""), std::nan(""), 1, 2, 3, 4, 5};
+  auto result = bb.compute(input);
+  EXPECT_TRUE(std::isnan(result.middle[3]));
+  EXPECT_TRUE(std::isnan(result.upper[3]));
+  EXPECT_TRUE(std::isnan(result.lower[3]));
+  ASSERT_FALSE(std::isnan(result.middle[4]));
+  ASSERT_FALSE(std::isnan(result.upper[4]));
+  ASSERT_FALSE(std::isnan(result.lower[4]));
+  EXPECT_NEAR(result.middle[4], 2.0, 1e-10);
+  EXPECT_GT(result.upper[4], result.middle[4]);
+  EXPECT_LT(result.lower[4], result.middle[4]);
+  EXPECT_FALSE(std::isnan(result.middle[6]));
+}
+
+TEST(Bollinger, ZeroPeriodIsSafeNotOutOfBounds)
+{
+  Bollinger bb(0, 2.0);
+  std::vector<double> input = {1, 2, 3, 4, 5};
+  auto result = bb.compute(input);
+  ASSERT_EQ(result.middle.size(), input.size());
+  for (double v : result.middle)
+  {
+    EXPECT_TRUE(std::isnan(v));
+  }
+}
+
+TEST(VWAP, NaNInputSkipped)
+{
+  VWAP vwap(3);
+  std::vector<double> close = {std::nan(""), std::nan(""), 10, 20, 30, 40, 50};
+  std::vector<double> volume = {1, 1, 1, 1, 1, 1, 1};
+  auto result = vwap.compute(close, volume);
+  EXPECT_TRUE(std::isnan(result[2]));
+  EXPECT_TRUE(std::isnan(result[3]));
+  ASSERT_FALSE(std::isnan(result[4]));
+  EXPECT_NEAR(result[4], 20.0, 1e-10);  // vwap(10,20,30) equal volumes
+  EXPECT_NEAR(result[5], 30.0, 1e-10);
+  EXPECT_NEAR(result[6], 40.0, 1e-10);
+}
+
+TEST(VWAP, ZeroWindowIsSafeNotOutOfBounds)
+{
+  VWAP vwap(0);
+  std::vector<double> close = {1, 2, 3, 4, 5};
+  std::vector<double> volume = {1, 1, 1, 1, 1};
+  auto result = vwap.compute(close, volume);
+  ASSERT_EQ(result.size(), close.size());
+  for (double v : result)
+  {
+    EXPECT_TRUE(std::isnan(v));
+  }
+}
+
+TEST(CCI, NaNInputSkipped)
+{
+  // CCI has always had its own NaN check on the SMA it builds internally
+  // (`if (std::isnan(tpSma[i])) continue;`) -- but that check was useless
+  // while SMA itself never recovered from a NaN. Once SMA recovers, CCI does
+  // too, with no CCI-specific change needed.
+  CCI cci(3);
+  std::vector<double> hlc = {std::nan(""), std::nan(""), 10, 20, 30, 40, 50};
+  auto result = cci.compute(hlc, hlc, hlc);
+  EXPECT_TRUE(std::isnan(result[3]));
+  ASSERT_FALSE(std::isnan(result[4]));
+  EXPECT_FALSE(std::isnan(result[6]));
+}
+
+TEST(CCI, ZeroPeriodIsSafeNotOutOfBounds)
+{
+  CCI cci(0);
+  std::vector<double> hlc = {1, 2, 3, 4, 5};
+  auto result = cci.compute(hlc, hlc, hlc);
+  ASSERT_EQ(result.size(), hlc.size());
+  for (double v : result)
+  {
+    EXPECT_TRUE(std::isnan(v));
+  }
+}
+
+// The documented composition pattern (indicator_pipeline.h's own doc comment):
+// stack one indicator on top of another node's output, where the upstream
+// node's warmup prefix is a normal, expected run of NaN. Before the fix this
+// lost 100% of the downstream output (60/60 bars in the audit's repro) because
+// the rolling-sum family never recovered from the first NaN it ever saw.
+TEST(SMA, ComposedOverWarmupPrefixRecovers)
+{
+  EMA ema(10);
+  auto emaOut = ema.compute(prices());  // 20 bars, 9-bar NaN warmup prefix
+  SMA sma(5);
+  auto smaOut = sma.compute(emaOut);
+  ASSERT_EQ(smaOut.size(), 20u);
+  // sma's 5-wide window first fully clears the EMA's NaN prefix (length 9,
+  // valid from index 9) at index 9 + 5 - 1 = 13.
+  for (size_t i = 0; i < 13; ++i)
+  {
+    EXPECT_TRUE(std::isnan(smaOut[i])) << "index " << i;
+  }
+  for (size_t i = 13; i < 20; ++i)
+  {
+    EXPECT_FALSE(std::isnan(smaOut[i])) << "index " << i;
+  }
+}
+
 TEST(BarFields, ExtractClose)
 {
   std::vector<Bar> bars(5);
@@ -490,6 +717,57 @@ TEST(ADX, ThreeOutputs)
   }
   EXPECT_FALSE(std::isnan(result.adx[27]));
   EXPECT_GE(result.adx[27], 0.0);
+}
+
+// adx.h claims exact TA-Lib parity. TA-Lib's lookback is `period` bars for
+// PLUS_DI/MINUS_DI and `2*period - 1` for ADX, so on n == 2*period bars it
+// already has one full ADX value (at index 2*period-1) and `period` DI values
+// (from index `period`). The old guard (`n < 2*period + 1`) demanded one bar
+// more than that and returned nothing at all on exactly n == 2*period.
+TEST(ADX, MatchesTaLibLookbackOnMinimalBarCount)
+{
+  std::vector<double> h = {48.70, 48.72, 48.90, 48.87, 48.82, 49.05, 49.20, 49.35, 49.92, 50.19};
+  std::vector<double> l = {47.79, 48.14, 48.39, 48.37, 48.24, 48.64, 48.94, 48.86, 49.50, 49.87};
+  std::vector<double> c = {48.16, 48.61, 48.75, 48.63, 48.74, 49.03, 49.07, 49.32, 49.91, 50.13};
+  const size_t period = 5;
+  ASSERT_EQ(h.size(), 2 * period);  // exactly the minimal TA-Lib bar count
+
+  ADX adx(period);
+  auto result = adx.compute(h, l, c);
+  ASSERT_EQ(result.adx.size(), 2 * period);
+
+  for (size_t i = 0; i < period; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result.plus_di[i])) << "index " << i;
+    EXPECT_TRUE(std::isnan(result.minus_di[i])) << "index " << i;
+  }
+  for (size_t i = period; i < 2 * period; ++i)
+  {
+    EXPECT_FALSE(std::isnan(result.plus_di[i])) << "index " << i;
+    EXPECT_FALSE(std::isnan(result.minus_di[i])) << "index " << i;
+  }
+  for (size_t i = 0; i + 1 < 2 * period - 1; ++i)
+  {
+    EXPECT_TRUE(std::isnan(result.adx[i])) << "index " << i;
+  }
+  EXPECT_FALSE(std::isnan(result.adx[2 * period - 1]));
+}
+
+// A perfectly flat instrument has zero true range: TA-Lib writes 0 for
+// +DI/-DI/ADX there, not NaN (adx.h's comment claims exact TA-Lib parity, so
+// this boundary has to match too, not just the happy path with real movement).
+TEST(ADX, FlatTrueRangeWritesZeroNotNaN)
+{
+  std::vector<double> flat(20, 100.0);
+  ADX adx(5);
+  auto result = adx.compute(flat, flat, flat);
+  for (size_t i = 5; i < 10; ++i)
+  {
+    EXPECT_NEAR(result.plus_di[i], 0.0, 1e-12) << "index " << i;
+    EXPECT_NEAR(result.minus_di[i], 0.0, 1e-12) << "index " << i;
+  }
+  ASSERT_FALSE(std::isnan(result.adx[9]));
+  EXPECT_NEAR(result.adx[9], 0.0, 1e-12);
 }
 
 // CHOP
@@ -730,6 +1008,75 @@ TEST(IndicatorGraph, CircularDependencyThrows)
   g.addNode("b", {"a"}, [](IndicatorGraph&, SymbolId)
             { return std::vector<double>{}; });
   EXPECT_THROW(g.require(0, "a"), flox::FloxError);
+}
+
+// A node whose compute function throws once used to poison _computing
+// permanently: nothing erased the "in progress" marker on the exception path,
+// so every later require() for that node reported a phantom circular
+// dependency instead of retrying. Neither invalidate() nor a full reset()
+// used to clear it either. A scope guard (RAII) around _computing now erases
+// the marker on every exit path, so the node recovers as soon as its compute
+// function stops throwing.
+TEST(IndicatorGraph, RecoversAfterComputeThrows)
+{
+  IndicatorGraph g;
+  std::vector<Bar> bars(1);
+  bars[0].close = Price::fromDouble(100.0);
+  g.setBars(0, bars);
+
+  bool shouldThrow = true;
+  int calls = 0;
+  g.addNode("flaky", {},
+            [&](IndicatorGraph&, SymbolId) -> std::vector<double>
+            {
+              ++calls;
+              if (shouldThrow)
+              {
+                throw std::runtime_error("transient");
+              }
+              return std::vector<double>{42.0};
+            });
+
+  EXPECT_THROW(g.require(0, "flaky"), std::runtime_error);
+  EXPECT_EQ(calls, 1);
+
+  // The cause is gone, but nothing has invalidated the cache -- require()
+  // must still be able to retry rather than reporting a circular dependency
+  // left over from the failed attempt.
+  shouldThrow = false;
+  auto& result = g.require(0, "flaky");
+  ASSERT_EQ(result.size(), 1u);
+  EXPECT_DOUBLE_EQ(result[0], 42.0);
+  EXPECT_EQ(calls, 2);
+}
+
+// Same recovery, exercised through current() (which already swallows the
+// exception into NaN by contract) and through the explicit invalidation
+// paths, so a caller who invalidates instead of relying on the next
+// require() also gets a working node back.
+TEST(IndicatorGraph, CurrentRecoversAfterComputeThrowsAndInvalidate)
+{
+  IndicatorGraph g;
+  std::vector<Bar> bars(1);
+  bars[0].close = Price::fromDouble(100.0);
+  g.setBars(0, bars);
+
+  bool shouldThrow = true;
+  g.addNode("flaky", {},
+            [&](IndicatorGraph&, SymbolId) -> std::vector<double>
+            {
+              if (shouldThrow)
+              {
+                throw std::runtime_error("transient");
+              }
+              return std::vector<double>{7.0};
+            });
+
+  EXPECT_TRUE(std::isnan(g.current(0, "flaky")));
+
+  shouldThrow = false;
+  g.invalidateAll();
+  EXPECT_DOUBLE_EQ(g.current(0, "flaky"), 7.0);
 }
 
 TEST(IndicatorGraph, CacheInvalidation)

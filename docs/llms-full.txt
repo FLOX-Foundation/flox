@@ -19313,11 +19313,13 @@ Useful if you want one MA that self-adjusts across regimes rather than manually 
 
 ### Slope
 
-Linear regression slope over a rolling window. Not exactly a moving average, but used in similar ways.
+Two-point rate of change over a rolling window, not a linear regression: the difference between the current value and the value `length` bars back, divided by the window length.
 
 ```
-slope = Σ(x − x̄)(y − ȳ) / Σ(x − x̄)²
+slope = (x[i] − x[i − length]) / length
 ```
+
+This is cheaper than an OLS fit and reacts only to the window's two endpoints, ignoring the points between them. On a clean straight line the two formulas agree, so the difference is easy to miss in a simple example; on a noisy series they can diverge by 50% or more, since the two-point version does not average away the noise the way a regression slope does.
 
 Positive = upward trend. Magnitude is the steepness. Good for momentum filtering.
 
@@ -19335,6 +19337,8 @@ RS  = avg_gain / avg_loss   (Wilder's RMA)
 ```
 
 The classic levels (70 = overbought, 30 = oversold) work well in ranging markets. In a strong trend, RSI can stay above 70 for a long time; whether that helps or hurts depends on your strategy. Period 14 is standard; shorter periods make it noisier.
+
+A window with zero gain and zero loss (the instrument hasn't moved at all) reports the neutral 50, not 100: on a flat market, "maximally overbought" would be a misleading signal. A genuine uptrend (all gains) still reports 100, and a decline followed by a flat plateau still reports 0.
 
 ### MACD
 

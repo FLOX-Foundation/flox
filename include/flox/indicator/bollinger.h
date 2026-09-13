@@ -56,7 +56,7 @@ class Bollinger
     result.middle.resize(n, std::nan(""));
     result.lower.resize(n, std::nan(""));
 
-    if (n < _period)
+    if (_period == 0 || n < _period)
     {
       return result;
     }
@@ -67,6 +67,10 @@ class Bollinger
     for (size_t i = _period - 1; i < n; ++i)
     {
       double mean = result.middle[i];
+      if (std::isnan(mean))
+      {
+        continue;  // SMA's window still has a NaN candle; leave bands NaN too
+      }
       double sumSq = 0.0;
       for (size_t j = i - _period + 1; j <= i; ++j)
       {
@@ -94,7 +98,7 @@ class Bollinger
       lower[i] = std::nan("");
     }
 
-    if (n < _period)
+    if (_period == 0 || n < _period)
     {
       return;
     }
@@ -105,6 +109,10 @@ class Bollinger
     for (size_t i = _period - 1; i < n; ++i)
     {
       double mean = middle[i];
+      if (std::isnan(mean))
+      {
+        continue;  // SMA's window still has a NaN candle; leave bands NaN too
+      }
       double sumSq = 0.0;
       for (size_t j = i - _period + 1; j <= i; ++j)
       {
