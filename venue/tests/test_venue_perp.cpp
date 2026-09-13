@@ -536,9 +536,10 @@ void test_reduce_only_resting_cannot_flip_at_fill()
 
   // Reduce-only exit for the WHOLE position, resting above the market.
   eng.submit(InboundCommand{ord(3, Side::SELL, 110, 10, 1, /*reduceOnly*/ true)}, 2);
-  // The position then shrinks by 6 through another exit, leaving +4 behind the
-  // resting order's 10.
-  eng.submit(InboundCommand{ord(4, Side::SELL, 100, 6, 1, /*reduceOnly*/ true)}, 3);
+  // The position then shrinks by 6 through a plain sell, leaving +4 behind the
+  // resting order's 10. It has to be a plain sell: a second reduce-only order
+  // would now be capped against what order 3 has already claimed.
+  eng.submit(InboundCommand{ord(4, Side::SELL, 100, 6, 1)}, 3);
   eng.submit(InboundCommand{ord(5, Side::BUY, 100, 6, 3)}, 4);
   CHECK(eng.positionQty(1) == qty(4).raw());
 
@@ -598,7 +599,7 @@ void test_auction_uncross_respects_reduce_only()
   eng.submit(InboundCommand{ord(1, Side::BUY, 100, 10, 1)}, 0);
   eng.submit(InboundCommand{ord(2, Side::SELL, 100, 10, 2)}, 1);  // acct1 long 10
   eng.submit(InboundCommand{ord(3, Side::SELL, 110, 10, 1, /*reduceOnly*/ true)}, 2);
-  eng.submit(InboundCommand{ord(4, Side::SELL, 100, 6, 1, /*reduceOnly*/ true)}, 3);
+  eng.submit(InboundCommand{ord(4, Side::SELL, 100, 6, 1)}, 3);  // plain sell: see the test above
   eng.submit(InboundCommand{ord(5, Side::BUY, 100, 6, 3)}, 4);
   CHECK(eng.positionQty(1) == qty(4).raw());  // order 3 now over-sized for the position
 

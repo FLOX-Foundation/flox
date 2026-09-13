@@ -86,12 +86,27 @@ Interchangeable, and held identical by a differential fuzz.
 Types LIMIT / MARKET / STOP / TAKE_PROFIT / TRAILING; TIF GTC, IOC,
 FOK, GTD (`expiryNs`), POST_ONLY; iceberg (`visibleQuantity`); peg
 (Bid/Ask/Mid + offset); OCO (`ocoGroup`); reduce-only; STP in four
-modes with account or firm scope.
+modes with account or firm scope. `Quote` carries the same controls,
+so a two-sided quote gives up nothing a single order has.
 
 Every state-mutating input is an `InboundCommand` (`NewOrder`,
 `CancelOrder`, `ModifyOrder`, `MassCancel`, `Quote`,
 `LastLookDecision`, `SetMark`, `ApplyFunding`, `AdminCmd`) — that is
 what makes deterministic journal replay possible.
+
+`CancelOrder`, `ModifyOrder` and `Quote` address orders by id, and the
+engine checks that the command's `accountId` owns the order it names
+(`NotOrderOwner` otherwise). Order ids are one global namespace, so
+the id alone is not authorization. `accountId == 0` is the unbound /
+trusted-transport sentinel and keeps full control; an in-process
+embedder acts as `0`.
+
+A modify at the same price, shrinking, reduces in place and keeps
+time priority. Any other amend re-enters at the tail carrying the
+order's STP, reduce-only, post-only, last-look flag and iceberg peak,
+and it can end as a rest, a fill, an `OrderRejected` or an
+`OrderCanceled`. `newQty` on an iceberg means the total remaining,
+peak plus hidden.
 
 ## Derivatives
 
@@ -133,8 +148,10 @@ crossed book; `FLOX_FUZZ_OPS` for a deep run) and a conservation fuzz
 account's `reserved` returns to zero). Plus an ASAN/UBSAN/TSAN gate:
 `venue/scripts/run_sanitizers.sh`.
 
-`venue/AUDIT-LOG.md` catalogues the defects this corpus caught, each
-with the regression test that pins it.
+Order-integrity properties that no other suite asserts -- who may act
+on an order, what a modify preserves, and what all-or-none is worth
+when another gate cuts liquidity out from under the sweep -- live in
+`venue/tests/test_venue_matching_integrity.cpp`.
 """
 
 

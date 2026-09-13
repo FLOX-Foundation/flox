@@ -140,6 +140,29 @@ class LadderBook
     return true;
   }
 
+  // In-place TOTAL (displayed + hidden) reduction. See
+  // MatchingBook::reduceTotal.
+  bool reduceTotal(OrderId id, Quantity newTotal) noexcept
+  {
+    const int32_t n = findSlot(id);
+    if (n < 0)
+    {
+      return false;
+    }
+    Node& node = nodes_[static_cast<size_t>(n)];
+    if (newTotal < node.order.leaves)
+    {
+      levelRef(node.side, node.level).totalQty -= (node.order.leaves - newTotal);
+      node.order.leaves = newTotal;
+      node.order.hidden = Quantity{};
+    }
+    else
+    {
+      node.order.hidden = newTotal - node.order.leaves;
+    }
+    return true;
+  }
+
   // Reduce an order (by id) by `by`, with iceberg refill+requeue when its peak
   // is exhausted, else remove it. Used by pro-rata matching.
   void consumeById(OrderId id, Quantity by) noexcept

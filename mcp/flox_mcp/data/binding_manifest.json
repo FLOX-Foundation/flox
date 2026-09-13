@@ -16194,6 +16194,11 @@
         },
         {
           "kind": "method",
+          "name": "reduceTotal",
+          "parent": "Config"
+        },
+        {
+          "kind": "method",
           "name": "refill",
           "parent": "Config"
         },

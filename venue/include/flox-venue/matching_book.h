@@ -67,6 +67,30 @@ class MatchingBook
     return true;
   }
 
+  // In-place TOTAL (displayed + hidden) reduction, keeping FIFO position. The
+  // hidden reserve absorbs the cut first, so shrinking an iceberg does not
+  // shrink what it shows while it still has reserve. Caller guarantees
+  // 0 < newTotal <= leaves + hidden. On a non-iceberg this is `reduce`.
+  bool reduceTotal(OrderId id, Quantity newTotal)
+  {
+    auto it = index_.find(id);
+    if (it == index_.end())
+    {
+      return false;
+    }
+    RestingOrder& o = *it->second.pos;
+    if (newTotal < o.leaves)
+    {
+      o.leaves = newTotal;
+      o.hidden = Quantity{};
+    }
+    else
+    {
+      o.hidden = newTotal - o.leaves;
+    }
+    return true;
+  }
+
   // Reduce an order (by id) by `by`, with iceberg refill+requeue when its peak
   // is exhausted, else remove it. Used by pro-rata matching.
   void consumeById(OrderId id, Quantity by)
