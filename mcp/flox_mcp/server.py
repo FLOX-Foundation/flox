@@ -972,12 +972,21 @@ def build_server() -> Server:
                 description=(
                     "Cancel one open order by id. Talks HTTP to the local "
                     "ControlServer. Default dry_run=true. Useful for "
-                    "operator-driven cleanup or panic stop."
+                    "operator-driven cleanup or panic stop. account is "
+                    "required and gated the same way as place_order: paper "
+                    "scope may only target paper-prefixed accounts."
                 ),
                 inputSchema={
                     "type": "object",
-                    "required": ["order_id"],
+                    "required": ["account", "order_id"],
                     "properties": {
+                        "account": {
+                            "type": "string",
+                            "description":
+                                "Account the order belongs to. paper-prefixed "
+                                "names are allowed in paper scope; live "
+                                "scope is required for any other.",
+                        },
                         "order_id": {"type": "integer"},
                         "dry_run": {"type": "boolean"},
                     },
@@ -988,11 +997,21 @@ def build_server() -> Server:
                 description=(
                     "Cancel every open order, optionally filtered by symbol. "
                     "Default dry_run=true. The most common 'panic stop' "
-                    "primitive after set_kill_switch."
+                    "primitive after set_kill_switch. account is required "
+                    "and gated the same way as place_order: paper scope may "
+                    "only target paper-prefixed accounts."
                 ),
                 inputSchema={
                     "type": "object",
+                    "required": ["account"],
                     "properties": {
+                        "account": {
+                            "type": "string",
+                            "description":
+                                "Account whose orders to cancel. paper-prefixed "
+                                "names are allowed in paper scope; live "
+                                "scope is required for any other.",
+                        },
                         "symbol": {
                             "type": "integer",
                             "description":
@@ -1008,11 +1027,23 @@ def build_server() -> Server:
                     "Close every open position with opposite-side market "
                     "orders, optionally filtered by symbol. Default "
                     "dry_run=true. Use for 'close everything' operator "
-                    "actions or end-of-day flatten."
+                    "actions or end-of-day flatten. account is required and "
+                    "gated the same way as place_order: paper scope may "
+                    "only target paper-prefixed accounts, and rows the "
+                    "positions accessor tags with a different account are "
+                    "skipped."
                 ),
                 inputSchema={
                     "type": "object",
+                    "required": ["account"],
                     "properties": {
+                        "account": {
+                            "type": "string",
+                            "description":
+                                "Account whose positions to flatten. paper-"
+                                "prefixed names are allowed in paper scope; "
+                                "live scope is required for any other.",
+                        },
                         "symbol": {
                             "type": "integer",
                             "description":
@@ -1028,7 +1059,10 @@ def build_server() -> Server:
                     "Set the engine's kill-switch state. active=true halts "
                     "all trading; active=false resumes. Default dry_run=true; "
                     "explicit dry_run=false applies the change. Use for "
-                    "emergency halt and for resuming after manual review."
+                    "emergency halt and for resuming after manual review. "
+                    "The kill switch is engine-level, not per-account, so "
+                    "only live scope may call this -- paper tokens are "
+                    "refused even with dry_run=false."
                 ),
                 inputSchema={
                     "type": "object",
@@ -1365,16 +1399,19 @@ def build_server() -> Server:
                 )
             elif name == "cancel_order":
                 text = control.cancel_order(
+                    account=arguments["account"],
                     order_id=int(arguments["order_id"]),
                     dry_run=bool(arguments.get("dry_run", True)),
                 )
             elif name == "cancel_all":
                 text = control.cancel_all(
+                    account=arguments["account"],
                     symbol=int(arguments.get("symbol", 0)),
                     dry_run=bool(arguments.get("dry_run", True)),
                 )
             elif name == "flatten_positions":
                 text = control.flatten_positions(
+                    account=arguments["account"],
                     symbol=arguments.get("symbol"),
                     dry_run=bool(arguments.get("dry_run", True)),
                 )

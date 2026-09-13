@@ -4,6 +4,7 @@
 #include <napi.h>
 #include <cstring>
 #include <vector>
+#include "bindings_common.h"
 #include "flox/capi/flox_capi.h"
 
 namespace node_flox
@@ -91,13 +92,24 @@ inline Napi::Value stat_whites_reality_check(const Napi::CallbackInfo& info)
   return o;
 }
 
+// n used to come from `sl` alone, with `ss`/`lr` indexed at that same
+// length -- the same missing-length-check defect as the pybind11
+// bar_returns/trade_pnl bindings (see indicator_bindings.h).
 inline Napi::Value stat_bar_returns(const Napi::CallbackInfo& info)
 {
   auto sl = info[0].As<Napi::Int8Array>();
   auto ss = info[1].As<Napi::Int8Array>();
   auto lr = info[2].As<Napi::Float64Array>();
   size_t n = sl.ElementLength();
+  if (!requireSameLength(info.Env(), "bar_returns", {n, ss.ElementLength(), lr.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   auto out = Napi::Float64Array::New(info.Env(), n);
+  if (n == 0)
+  {
+    return out;
+  }
   out[0] = 0.0;
   for (size_t i = 1; i < n; ++i)
   {
@@ -112,6 +124,10 @@ inline Napi::Value stat_trade_pnl(const Napi::CallbackInfo& info)
   auto ss = info[1].As<Napi::Int8Array>();
   auto lr = info[2].As<Napi::Float64Array>();
   size_t n = sl.ElementLength();
+  if (!requireSameLength(info.Env(), "trade_pnl", {n, ss.ElementLength(), lr.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   std::vector<double> trades;
   double pnl = 0;
   int8_t prev = 0;

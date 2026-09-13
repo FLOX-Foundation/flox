@@ -187,6 +187,97 @@ class AnalyzePathTests(unittest.TestCase):
         finally:
             Path(f.name).unlink()
 
+    def test_analyze_path_on_non_utf8_file_does_not_raise(self) -> None:
+        # analyze_source catches a SyntaxError so a lint
+        # pipeline over many files does not abort on one bad file;
+        # analyze_path used to have no equivalent guard and raised
+        # UnicodeDecodeError straight out of the CLI on the first
+        # non-UTF-8 strategy file.
+        import tempfile
+        fd, name = tempfile.mkstemp(suffix=".py")
+        try:
+            with open(fd, "wb") as f:
+                f.write("# coment\xe1rio\nx = 1\n".encode("latin-1"))
+            report = lookahead.analyze_path(name)
+            self.assertFalse(report.ok)
+            self.assertEqual([f.rule for f in report.findings], ["read_error"])
+        finally:
+            Path(name).unlink()
+
+    def test_analyze_path_on_missing_file_does_not_raise(self) -> None:
+        report = lookahead.analyze_path("/nonexistent/path/strategy.py")
+        self.assertFalse(report.ok)
+        self.assertEqual([f.rule for f in report.findings], ["read_error"])
+
+
+class MissedFormsTests(unittest.TestCase):
+    """forms the detector's report claimed were out of scope
+    (or, for `np.roll`, claimed WERE caught) but were actually missed
+    entirely."""
+
+    def test_shift_keyword_periods_is_flagged(self) -> None:
+        report = lookahead.analyze_source("df['close'].shift(periods=-1)\n")
+        self.assertIn("shift_negative", [f.rule for f in report.findings])
+
+    def test_shift_negative_via_literal_starred_dict_is_flagged(self) -> None:
+        report = lookahead.analyze_source("df['close'].shift(**{'periods': -1})\n")
+        self.assertIn("shift_negative", [f.rule for f in report.findings])
+
+    def test_numpy_roll_negative_is_flagged(self) -> None:
+        # docs/how-to/lookahead-detector.md claims this is caught;
+        # before the fix it was not.
+        report = lookahead.analyze_source("next_close = np.roll(close, -1)\n")
+        self.assertIn("shift_negative", [f.rule for f in report.findings])
+
+    def test_numpy_roll_positive_is_clean(self) -> None:
+        report = lookahead.analyze_source("prev_close = np.roll(close, 1)\n")
+        self.assertEqual([f.rule for f in report.findings], [])
+
+    def test_iloc_literal_on_left_is_flagged(self) -> None:
+        report = lookahead.analyze_source("future = df.iloc[1 + i]\n")
+        self.assertIn("forward_index_add", [f.rule for f in report.findings])
+
+    def test_iloc_tuple_index_is_flagged(self) -> None:
+        report = lookahead.analyze_source("future = df.iloc[i + 1, 0]\n")
+        self.assertIn("forward_index_add", [f.rule for f in report.findings])
+
+    def test_forward_slice_close_is_flagged(self) -> None:
+        report = lookahead.analyze_source("future_window = close[i:i+3]\n")
+        self.assertIn("forward_slice", [f.rule for f in report.findings])
+
+    def test_forward_slice_iloc_is_flagged(self) -> None:
+        report = lookahead.analyze_source("future_window = df.iloc[i:i+3]\n")
+        self.assertIn("forward_slice", [f.rule for f in report.findings])
+
+    def test_forward_index_write_target_is_not_flagged(self) -> None:
+        # A write is not a lookahead read.
+        report = lookahead.analyze_source("out[i + 1] = v\n")
+        self.assertEqual([f.rule for f in report.findings], [])
+
+    def test_ring_buffer_front_trim_is_not_flagged(self) -> None:
+        report = lookahead.analyze_source(
+            "def on_trade(self, ctx, trade):\n"
+            "    self.buf = self.buf[1:]\n"
+        )
+        self.assertEqual([f.rule for f in report.findings], [])
+
+    def test_tail_slice_in_callback_is_not_flagged(self) -> None:
+        report = lookahead.analyze_source(
+            "def on_trade(self, ctx, trade):\n"
+            "    last20 = self.buf[-20:]\n"
+        )
+        self.assertEqual([f.rule for f in report.findings], [])
+
+    def test_open_upper_slice_on_name_index_still_flagged(self) -> None:
+        # Regression guard: the false-positive fix (require the lower
+        # bound to be a Name) must not silence the true positive it
+        # was already catching.
+        report = lookahead.analyze_source(
+            "def on_bar(self, ctx, bar):\n"
+            "    future = bar.history[i:]\n"
+        )
+        self.assertIn("open_upper_slice_in_callback", [f.rule for f in report.findings])
+
 
 if __name__ == "__main__":
     unittest.main()

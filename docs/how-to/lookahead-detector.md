@@ -28,29 +28,42 @@ Add `--json` if you want machine-readable output for CI integration.
 
 ### `shift_negative`
 
-`df.shift(-N)` and `Series.shift(-N)` with positive `N` read from the future. Pandas treats negative shift as "look forward". The same applies to numpy's roll and any third-party indicator library that adopts the pandas convention.
+`df.shift(-N)` and `Series.shift(-N)` with positive `N` read from the future. Pandas treats negative shift as "look forward". The same applies to numpy's `roll`, which fires under this same rule name, and to any third-party indicator library that adopts the pandas convention.
 
 ```python
 # bug
 df['next_close'] = df['close'].shift(-1)
+next_close = np.roll(df['close'], -1)
 ```
+
+The shift amount is read whether it arrives positionally, as a `periods=` keyword, or as a literal `**{"periods": -1}` unpack. A shift amount that only exists in a variable (`df.shift(-k)`) is not statically resolvable and is not flagged — verify those by hand.
 
 ### `forward_index_add`
 
-Index arithmetic that walks forward from the current bar peeks at future rows.
+Index arithmetic that walks forward from the current bar peeks at future rows. The literal can sit on either side of the `+`, and a tuple index (`df.iloc[i + 1, 0]`) is checked the same way. Only reads are flagged — assigning to a forward index (`out[i + 1] = v`) is a write, not a lookahead.
 
 ```python
 # bug
 def on_bar(self, ctx, bar):
-    future = df.iloc[i + 1]   # flagged
-    ahead  = arr[i + 5]       # flagged
+    future = df.iloc[i + 1]     # flagged
+    ahead  = arr[i + 5]         # flagged
+    also   = df.iloc[1 + i]     # flagged (literal on the left)
 ```
 
-Subtraction (`i - N`) is fine; the lint only fires on positive integer literals to the right of an `Add`.
+Subtraction (`i - N`) is fine; the lint only fires on a positive integer literal added to the index.
+
+### `forward_slice`
+
+A slice whose upper bound is itself `index + N` walks past the current row the same way `forward_index_add` does, in or out of a per-bar callback.
+
+```python
+# bug
+future_window = close[i:i+3]
+```
 
 ### `open_upper_slice_in_callback`
 
-Inside a per-bar callback (`on_trade`, `on_bar`, `on_book`, `signal`, `compute`, `update`, etc), an open-upper slice spans every future row.
+Inside a per-bar callback (`on_trade`, `on_bar`, `on_book`, `signal`, `compute`, `update`, etc), an open-upper slice off a variable lower bound spans every future row.
 
 ```python
 # bug
@@ -58,7 +71,7 @@ def on_bar(self, ctx, bar):
     history_plus_future = bar.history[i:]   # flagged
 ```
 
-Cap the upper bound at the current index (`bar.history[i - 100:i]`) and the lint stays quiet.
+Cap the upper bound at the current index (`bar.history[i - 100:i]`) and the lint stays quiet. A literal lower bound is a different idiom, not a lookahead, and is not flagged: `buf = buf[1:]` (drop the oldest entry) and `last20 = buf[-20:]` (a fixed tail window) both read clean regardless of callback depth.
 
 ### `future_attr_name`
 
@@ -76,6 +89,9 @@ The detector is intentionally narrow. It will miss:
 - Vectorised computations that read forward without index arithmetic (`np.where(df['close'] > df['close'].rolling(5).mean(), ...)` is fine; specific rolling-window misuse can still leak).
 - Boolean masks built from forward-looking data and applied to the current row.
 - Function calls that internally peek at future state.
+- A shift or index offset that only exists in a variable rather than a literal (`df.shift(-k)`, `arr[i + n]`). The lint resolves literals statically; it does not trace values.
+
+A file the lint cannot read at all — wrong encoding, deleted mid-scan, no read permission — surfaces as a `read_error` finding rather than crashing the process, the same way a syntax error does.
 
 A strategy that needs a hard guarantee should pair this lint with an integration test: run on a tape, then re-run on the same tape with the last K rows truncated, and confirm signals up to bar `T-K` are identical between both runs. The replay-equivalence gate already in CI is the spiritual cousin; both shipping side by side is the cheapest path to high confidence.
 

@@ -133,7 +133,8 @@ inline void bindOptimizer(py::module_& m)
 {
   m.def(
       "permutation_test",
-      [](py::array_t<double> group1, py::array_t<double> group2, size_t numPermutations)
+      [](py::array_t<double, py::array::c_style | py::array::forcecast> group1,
+         py::array_t<double, py::array::c_style | py::array::forcecast> group2, size_t numPermutations)
       {
         auto* g1 = group1.data();
         auto* g2 = group2.data();
@@ -152,7 +153,8 @@ inline void bindOptimizer(py::module_& m)
 
   m.def(
       "correlation",
-      [](py::array_t<double> x, py::array_t<double> y)
+      [](py::array_t<double, py::array::c_style | py::array::forcecast> x,
+         py::array_t<double, py::array::c_style | py::array::forcecast> y)
       {
         if (x.size() != y.size())
         {
@@ -176,7 +178,7 @@ inline void bindOptimizer(py::module_& m)
 
   m.def(
       "bootstrap_ci",
-      [](py::array_t<double> data, double confidence, size_t numSamples)
+      [](py::array_t<double, py::array::c_style | py::array::forcecast> data, double confidence, size_t numSamples)
       {
         auto* dp = data.data();
         size_t n = data.size();

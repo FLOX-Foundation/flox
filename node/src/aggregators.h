@@ -4,6 +4,7 @@
 #include <napi.h>
 #include <cstring>
 #include <vector>
+#include "bindings_common.h"
 #include "flox/capi/flox_capi.h"
 
 namespace node_flox
@@ -39,6 +40,20 @@ struct TradeArrays
   size_t n;
 };
 
+// n used to come from `ts` alone, with px/qty/ib walked at that same
+// length inside doAggregate() with no check that they actually had that
+// many elements -- the same defect as the pybind11 aggregator bindings
+// (see aggregator_bindings.h), reachable the same way: a mismatched
+// column from upstream data prep reads (and, once big enough, crashes on
+// reading) past the short array's end. requireSameLength mirrors what
+// every batch indicator in indicators.h already does for the same
+// reason. On a mismatch this leaves the pending JS exception set and
+// returns an empty TradeArrays (n = 0) rather than unwinding C++ control
+// flow itself -- ThrowAsJavaScriptException() only arms the exception,
+// it does not throw a C++ exception, so every caller below still runs
+// to completion; n = 0 just makes that completion produce zero bars
+// instead of an out-of-bounds read, and the pending exception overrides
+// the return value once control reaches JS.
 inline TradeArrays extractTrades(const Napi::CallbackInfo& info)
 {
   auto ts = info[0].As<Napi::Float64Array>();
@@ -46,6 +61,10 @@ inline TradeArrays extractTrades(const Napi::CallbackInfo& info)
   auto qty = info[2].As<Napi::Float64Array>();
   auto ib = info[3].As<Napi::Uint8Array>();
   size_t n = ts.ElementLength();
+  if (!requireSameLength(info.Env(), "aggregate", {n, px.ElementLength(), qty.ElementLength(), ib.ElementLength()}))
+  {
+    return {{}, px.Data(), qty.Data(), ib.Data(), 0};
+  }
 
   // Convert float64 timestamps to int64
   std::vector<int64_t> tsVec(n);

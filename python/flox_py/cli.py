@@ -430,7 +430,7 @@ def cmd_bundle_replay(args: argparse.Namespace) -> int:
 
     try:
         res = bundle_mod.replay_bundle(Path(args.path))
-    except (FileNotFoundError, ValueError) as exc:
+    except (FileNotFoundError, ValueError, bundle_mod.BundleSecurityError) as exc:
         # Every sibling verb reports a bad path as a message; this one dumped
         # a raw traceback, which reads like a crash rather than bad input.
         print(f"flox bundle replay: {exc}", file=sys.stderr)
@@ -451,7 +451,7 @@ def cmd_bundle_validate(args: argparse.Namespace) -> int:
 
     try:
         res = bundle_mod.validate_bundle(Path(args.path))
-    except (FileNotFoundError, ValueError) as exc:
+    except (FileNotFoundError, ValueError, bundle_mod.BundleSecurityError) as exc:
         print(f"flox bundle validate: {exc}", file=sys.stderr)
         return 1
     if res.matches:
@@ -1265,7 +1265,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_replay = bundle_sub.add_parser(
         "replay",
-        help="Extract a bundle, replay the strategy, print actual vs expected.",
+        help="Extract a bundle, replay the strategy, print actual vs expected. "
+             "WARNING: this runs strategy/strategy.py from inside the bundle "
+             "-- only replay bundles from a source you trust.",
     )
     p_replay.add_argument("path", help="Path to the bundle .tar file.")
     p_replay.set_defaults(handler=cmd_bundle_replay)
@@ -1273,7 +1275,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_validate = bundle_sub.add_parser(
         "validate",
         help="Replay a bundle and assert the output is byte-equal to expected. "
-             "Exit 0 on match, 1 on divergence (with diff printed).",
+             "Exit 0 on match, 1 on divergence (with diff printed). "
+             "WARNING: this runs strategy/strategy.py from inside the bundle "
+             "-- only validate bundles from a source you trust.",
     )
     p_validate.add_argument("path", help="Path to the bundle .tar file.")
     p_validate.set_defaults(handler=cmd_bundle_validate)

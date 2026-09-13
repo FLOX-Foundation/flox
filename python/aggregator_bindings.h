@@ -6,6 +6,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "bindings_common.h"
 #include "flox/aggregator/aggregation_policy.h"
 #include "flox/aggregator/bar.h"
 #include "flox/aggregator/policies/heikin_ashi_bar_policy.h"
@@ -115,11 +116,16 @@ std::vector<PyExtBar> doAggregate(Policy& policy, const int64_t* ts, const doubl
 }
 
 template <typename Policy>
-py::array_t<PyExtBar> aggregateBars(Policy policy, py::array_t<int64_t> timestamps,
-                                    py::array_t<double> prices, py::array_t<double> quantities,
-                                    py::array_t<uint8_t> isBuy)
+py::array_t<PyExtBar> aggregateBars(
+    Policy policy, py::array_t<int64_t, py::array::c_style | py::array::forcecast> timestamps,
+    py::array_t<double, py::array::c_style | py::array::forcecast> prices,
+    py::array_t<double, py::array::c_style | py::array::forcecast> quantities,
+    py::array_t<uint8_t, py::array::c_style | py::array::forcecast> isBuy)
 {
   size_t n = timestamps.size();
+  checkSameSize(n, static_cast<size_t>(prices.size()), "timestamps and prices size");
+  checkSameSize(n, static_cast<size_t>(quantities.size()), "timestamps and quantities size");
+  checkSameSize(n, static_cast<size_t>(isBuy.size()), "timestamps and is_buy size");
   const auto* ts = timestamps.data();
   const auto* px = prices.data();
   const auto* qt = quantities.data();
@@ -151,8 +157,10 @@ inline void bindAggregators(py::module_& m)
 
   m.def(
       "aggregate_time_bars",
-      [](py::array_t<int64_t> ts, py::array_t<double> px, py::array_t<double> qty,
-         py::array_t<uint8_t> is_buy, double interval_seconds)
+      [](py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
+         py::array_t<double, py::array::c_style | py::array::forcecast> px,
+         py::array_t<double, py::array::c_style | py::array::forcecast> qty,
+         py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double interval_seconds)
       {
         auto policy = flox::TimeBarPolicy(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -165,8 +173,10 @@ inline void bindAggregators(py::module_& m)
 
   m.def(
       "aggregate_tick_bars",
-      [](py::array_t<int64_t> ts, py::array_t<double> px, py::array_t<double> qty,
-         py::array_t<uint8_t> is_buy, uint32_t tick_count)
+      [](py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
+         py::array_t<double, py::array::c_style | py::array::forcecast> px,
+         py::array_t<double, py::array::c_style | py::array::forcecast> qty,
+         py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, uint32_t tick_count)
       { return aggregateBars(flox::TickBarPolicy(tick_count), ts, px, qty, is_buy); },
       "Aggregate trades into tick bars",
       py::arg("timestamps"), py::arg("prices"), py::arg("quantities"),
@@ -174,8 +184,10 @@ inline void bindAggregators(py::module_& m)
 
   m.def(
       "aggregate_volume_bars",
-      [](py::array_t<int64_t> ts, py::array_t<double> px, py::array_t<double> qty,
-         py::array_t<uint8_t> is_buy, double volume_threshold)
+      [](py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
+         py::array_t<double, py::array::c_style | py::array::forcecast> px,
+         py::array_t<double, py::array::c_style | py::array::forcecast> qty,
+         py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double volume_threshold)
       { return aggregateBars(flox::VolumeBarPolicy::fromDouble(volume_threshold), ts, px, qty, is_buy); },
       "Aggregate trades into volume bars",
       py::arg("timestamps"), py::arg("prices"), py::arg("quantities"),
@@ -183,8 +195,10 @@ inline void bindAggregators(py::module_& m)
 
   m.def(
       "aggregate_range_bars",
-      [](py::array_t<int64_t> ts, py::array_t<double> px, py::array_t<double> qty,
-         py::array_t<uint8_t> is_buy, double range_size)
+      [](py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
+         py::array_t<double, py::array::c_style | py::array::forcecast> px,
+         py::array_t<double, py::array::c_style | py::array::forcecast> qty,
+         py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double range_size)
       { return aggregateBars(flox::RangeBarPolicy::fromDouble(range_size), ts, px, qty, is_buy); },
       "Aggregate trades into range bars",
       py::arg("timestamps"), py::arg("prices"), py::arg("quantities"),
@@ -192,8 +206,10 @@ inline void bindAggregators(py::module_& m)
 
   m.def(
       "aggregate_renko_bars",
-      [](py::array_t<int64_t> ts, py::array_t<double> px, py::array_t<double> qty,
-         py::array_t<uint8_t> is_buy, double brick_size)
+      [](py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
+         py::array_t<double, py::array::c_style | py::array::forcecast> px,
+         py::array_t<double, py::array::c_style | py::array::forcecast> qty,
+         py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double brick_size)
       { return aggregateBars(flox::RenkoBarPolicy::fromDouble(brick_size), ts, px, qty, is_buy); },
       "Aggregate trades into renko bars",
       py::arg("timestamps"), py::arg("prices"), py::arg("quantities"),
@@ -201,8 +217,10 @@ inline void bindAggregators(py::module_& m)
 
   m.def(
       "aggregate_heikin_ashi_bars",
-      [](py::array_t<int64_t> ts, py::array_t<double> px, py::array_t<double> qty,
-         py::array_t<uint8_t> is_buy, double interval_seconds)
+      [](py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
+         py::array_t<double, py::array::c_style | py::array::forcecast> px,
+         py::array_t<double, py::array::c_style | py::array::forcecast> qty,
+         py::array_t<uint8_t, py::array::c_style | py::array::forcecast> is_buy, double interval_seconds)
       {
         auto policy = flox::HeikinAshiBarPolicy(
             std::chrono::duration_cast<std::chrono::nanoseconds>(

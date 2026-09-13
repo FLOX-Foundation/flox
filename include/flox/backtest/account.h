@@ -132,6 +132,24 @@ class Account
     _rollingTotal = 0.0;
   }
 
+  // Full state reset: clears every open position, every recorded mark,
+  // and the 30-day rolling-notional window, then sets equity to
+  // `equity`. Margin mode is left untouched (it is a venue property,
+  // not episode state).
+  //
+  // Exists for callers that reuse one Account across repeated backtest
+  // or RL-training episodes on the same tape. Without it, a position
+  // and its equity delta from episode N survive into episode N + 1 --
+  // openPosition()/closePosition() only ever append to or filter
+  // `_positions`, nothing clears it on its own between runs.
+  void reset(double equity) noexcept
+  {
+    _positions.clear();
+    _marks.clear();
+    _equity = equity;
+    resetRolling();
+  }
+
   // Aggregate views over the position book. All scale each leg by its
   // contractMultiplier, so a 100-multiplier option counts 100x a perp of the
   // same quantity and price.

@@ -200,6 +200,16 @@ inline void bindBareExecutor(py::module_& m)
           [](const flox::SimulatedExecutor& self)
           { return self.fills().size(); })
       .def(
+          "clear_fills",
+          [](flox::SimulatedExecutor& self)
+          { self.extractFills(); },
+          "Discard every fill recorded so far. `fills_list()` and "
+          "`fill_count` read the same accumulating buffer as the plain "
+          "PySimulatedExecutor wrapper; nothing resets it between runs "
+          "on its own, so a caller that reuses one executor across "
+          "repeated episodes (an RL training loop, a walk-forward fold) "
+          "must call this explicitly or fills keep growing forever.")
+      .def(
           "set_rate_limit_policy",
           [](flox::SimulatedExecutor& self, const flox::RateLimitPolicy& p)
           { self.setRateLimitPolicy(p); },

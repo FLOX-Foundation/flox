@@ -48,6 +48,15 @@ STUB_FILES = (
     Path("__init__.pyi"),
     Path("_flox_py") / "__init__.pyi",
     Path("_flox_py") / "targets.pyi",
+    # `_heatmap` is a second bound submodule of the C extension (same
+    # shape as `targets`, just for the heatmap-export helpers) and gets
+    # its own stub from stubgen. It was missing from this list, so
+    # `_flox_py/__init__.pyi`'s own `from . import _heatmap` pointed at
+    # a stub that was never written to the committed package: mypy
+    # reported "Module flox_py._flox_py does not explicitly export
+    # attribute _heatmap" because, as far as the committed tree was
+    # concerned, there was nothing there to export.
+    Path("_flox_py") / "_heatmap.pyi",
 )
 
 # `(anonymous namespace)::PyExtBar` shows up as a return-type annotation
@@ -109,8 +118,39 @@ _NDARRAY_REWRITES = (
     ("numpy.typing.NDArray[PyExtBar]", _NDARRAY_VOID),
 )
 
+# A parameter stubgen could not resolve a type for is emitted as a bare
+# `...` (the same placeholder used elsewhere for an unresolved return
+# type, e.g. `set_rate_limit_policy(self, policy: ...)` for an argument
+# bound as a raw `py::object`/pointer). As a VALUE `...` is the Ellipsis
+# object mypy is happy with; as the annotation of a parameter that sits
+# next to typed siblings (`self` counts once its own type is inferred),
+# mypy rejects the whole signature with "Ellipses cannot accompany other
+# argument types in function type signature" [syntax] and skips the
+# function entirely. `typing.Any` says the same thing stubgen meant
+# ("no idea what this type is") in a form mypy actually parses. Matches
+# only `: ...` immediately followed by `,` or `)` -- a parameter
+# position -- so it does not touch a stub function's own `...` body
+# (followed by a newline into the next `def`/`class`, never a comma or
+# paren) or the `NDArray[...]` placeholder already rewritten above
+# (preceded by `[`, not `:`).
+_BARE_ELLIPSIS_PARAM_RE = re.compile(r"(:\s*)\.\.\.(?=\s*[,)])")
 
-def fix_invalid_annotations(text: str) -> str:
+# `from . import _heatmap` (a private, underscore-prefixed submodule
+# deliberately left out of `__all__`) reads to mypy as "imported but
+# not re-exported": with `implicit_reexport` off it holds every import
+# in a stub to the same explicit-export bar `__all__` enforces for
+# everything else. Fixing it takes both halves of that bar: `import X
+# as X` is the standard spelling for "yes, this really is meant to be
+# visible under this name" (recognised by every mypy version this
+# project has tested against), AND -- for a submodule specifically,
+# empirically -- `X` itself still has to appear in `__all__`, or mypy
+# reports the same "does not explicitly export" error regardless of
+# the `as X` alias.
+_PRIVATE_SUBMODULE_IMPORT_RE = re.compile(r"^from \. import (_\w+)$", re.MULTILINE)
+_ALL_LIST_RE = re.compile(r"^__all__: list\[str\] = \[", re.MULTILINE)
+
+
+def fix_invalid_annotations(text: str, *, rel: Path | None = None) -> str:
     for old, new in _NDARRAY_REWRITES:
         text = text.replace(old, new)
     # pybind11 binds `__eq__(self, other: T)` literally as `T`, but
@@ -122,11 +162,30 @@ def fix_invalid_annotations(text: str) -> str:
         "def __eq__(self, arg0: object) -> bool:",
         text,
     )
+    text = _BARE_ELLIPSIS_PARAM_RE.sub(r"\1typing.Any", text)
+    private_submodules = _PRIVATE_SUBMODULE_IMPORT_RE.findall(text)
+    text = _PRIVATE_SUBMODULE_IMPORT_RE.sub(r"from . import \1 as \1", text)
+    for name in private_submodules:
+        if f"'{name}'" not in text:
+            text = _ALL_LIST_RE.sub(f"__all__: list[str] = ['{name}', ", text, count=1)
+    if rel is not None and rel.parent.name == "_flox_py":
+        # This file's own fully-qualified module name IS
+        # `flox_py._flox_py` -- stubgen occasionally qualifies a type
+        # this fully even for a class defined earlier in this very
+        # file (seen on `ReplaySource.next() -> flox_py._flox_py.
+        # ReplayEvent | None`), and nothing in the file ever imports
+        # the top-level `flox_py` package to make that name resolve,
+        # so mypy reports "Name flox_py is not defined". Every such
+        # reference is self-referential by construction, so dropping
+        # the redundant prefix is always correct here (never in the
+        # sibling `flox_py/__init__.pyi`, where the same prefix is a
+        # real cross-module reference).
+        text = text.replace("flox_py._flox_py.", "")
     return text
 
 
-def post_process(text: str) -> str:
-    return fix_invalid_annotations(sort_import_lines(text))
+def post_process(text: str, *, rel: Path | None = None) -> str:
+    return fix_invalid_annotations(sort_import_lines(text), rel=rel)
 
 
 def run_stubgen(out_dir: Path) -> None:
@@ -177,7 +236,7 @@ def main() -> int:
             ok = True
             for rel in STUB_FILES:
                 committed = PKG_SRC / rel
-                generated = post_process((gen_pkg / rel).read_text())
+                generated = post_process((gen_pkg / rel).read_text(), rel=rel)
                 current = committed.read_text() if committed.exists() else ""
                 if current != generated:
                     print(
@@ -197,7 +256,7 @@ def main() -> int:
         for rel in STUB_FILES:
             dst = PKG_SRC / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            dst.write_text(post_process((gen_pkg / rel).read_text()))
+            dst.write_text(post_process((gen_pkg / rel).read_text(), rel=rel))
             print(
                 f"wrote {dst.relative_to(REPO)} "
                 f"({dst.stat().st_size:,} bytes)"

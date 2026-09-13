@@ -88,6 +88,7 @@ What changes versus `from_tape`:
 - The cross-margin Account's `set_mark` is called every step, and `stack.liquidation().on_mark(...)` runs the liquidation walk. Episodes terminate on the first liquidation event.
 - Reward is the change in `account.equity() + account.total_unrealised_pnl()` since the previous step. Fees, funding accruals, realized PnL on close, and unrealized PnL on mark all fold in naturally.
 - `info` gains `equity`, `unrealized_pnl`, `equity_at_mark`, `fee_tier`, and `liquidation_outcome` fields so the agent's training loop can log the venue-side state.
+- `reset()` restores the stack's account to the equity it had when the env was constructed, clears open positions and fills, and cancels resting orders — the standard training loop resets the env every episode, so this keeps repeated episodes on the same tape independent of each other. The one thing `reset()` does not clear is the executor's own order-matching and queue-position state, so a market fill's simulated price can differ by a tick between two otherwise-identical episodes.
 
 Same strategy class, same data, the only thing that differs from `from_tape` is the realism around the fills. Pick this path for any training that will hand the trained policy to `PaperBroker` or `CcxtBroker` — the physics will match.
 

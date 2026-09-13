@@ -31,7 +31,7 @@ import ast
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Iterator, List, Optional, Sequence
 
 
 # Function names that are entered when scanning hot-path callbacks.
@@ -97,6 +97,20 @@ def _is_negative_int_literal(node: ast.AST) -> Optional[int]:
     return None
 
 
+def _dict_literal_int(node: ast.AST, key: str) -> Optional[ast.AST]:
+    """If `node` is a literal ``{...}`` with a literal string key `key`,
+    return the value expression for that key. Used to look inside
+    ``foo(**{"periods": -1})`` -- a call whose only keyword argument is
+    a starred literal dict -- since that is still statically resolvable
+    even though it never shows up as an ``ast.keyword`` with a name."""
+    if not isinstance(node, ast.Dict):
+        return None
+    for k, v in zip(node.keys, node.values):
+        if isinstance(k, ast.Constant) and k.value == key:
+            return v
+    return None
+
+
 class _Visitor(ast.NodeVisitor):
     def __init__(self, source_lines: Sequence[str]) -> None:
         self.findings: List[Finding] = []
@@ -133,12 +147,31 @@ class _Visitor(ast.NodeVisitor):
         # Treat the same as the sync form.
         self.visit_FunctionDef(node)  # type: ignore[arg-type]
 
-    # ── shift(-N) on any object ──────────────────────────────────
+    # ── shift(-N) on any object, and its numpy cousin np.roll(a, -N) ──
+
+    def _shift_arg(self, node: ast.Call) -> Optional[ast.AST]:
+        """The expression carrying the shift amount, from whichever
+        form the call used: positional, a `periods=` keyword (pandas),
+        or a `**{"periods": -1}` starred literal dict. Returns None if
+        none of those apply -- including the genuinely dynamic
+        `shift(-k)` / `**kwargs` forms, which are not statically
+        resolvable and are left alone rather than guessed at."""
+        if node.args:
+            return node.args[0]
+        for kw in node.keywords:
+            if kw.arg == "periods":
+                return kw.value
+            if kw.arg is None:  # **something
+                val = _dict_literal_int(kw.value, "periods")
+                if val is not None:
+                    return val
+        return None
 
     def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
         if isinstance(node.func, ast.Attribute) and node.func.attr == "shift":
-            if node.args:
-                neg = _is_negative_int_literal(node.args[0])
+            arg = self._shift_arg(node)
+            if arg is not None:
+                neg = _is_negative_int_literal(arg)
                 if neg is not None:
                     self._add(
                         "shift_negative",
@@ -147,16 +180,63 @@ class _Visitor(ast.NodeVisitor):
                         "is the canonical lookahead bug.",
                         node,
                     )
+        elif isinstance(node.func, ast.Attribute) and node.func.attr == "roll":
+            # numpy.roll(a, shift, axis=None): a negative shift moves
+            # future elements into the current position, same idea as
+            # pandas' negative .shift(). Positional arg 1 or the
+            # `shift=` keyword.
+            arg = node.args[1] if len(node.args) > 1 else None
+            if arg is None:
+                for kw in node.keywords:
+                    if kw.arg == "shift":
+                        arg = kw.value
+                        break
+            if arg is not None:
+                neg = _is_negative_int_literal(arg)
+                if neg is not None:
+                    self._add(
+                        "shift_negative",
+                        f"`np.roll(..., {neg})` reads from the future "
+                        "the same way `.shift()` with a negative offset "
+                        "does: elements from ahead of the current "
+                        "position are rolled backward into it.",
+                        node,
+                    )
         self.generic_visit(node)
 
     # ── df.iloc[i + N], arr[i + N], df.loc[i + N] (forward index) ─
 
+    def _forward_index_candidates(self, slc: ast.AST) -> Iterator[ast.BinOp]:
+        """Yield every BinOp that is a direct index expression under
+        `slc` -- either `slc` itself, or one of its elements when the
+        subscript is a tuple index (`df.iloc[i + 1, 0]`)."""
+        if isinstance(slc, ast.BinOp):
+            yield slc
+        elif isinstance(slc, ast.Tuple):
+            for elt in slc.elts:
+                if isinstance(elt, ast.BinOp):
+                    yield elt
+
     def visit_Subscript(self, node: ast.Subscript) -> None:  # noqa: N802
-        # Detect open-upper slices like df[i:] in a per-bar callback:
-        # the slice spans all future rows. Only flag inside callbacks.
+        # A write (`out[i + 1] = v`) or delete is not a lookahead read;
+        # only flag subscripts actually being read.
+        is_read = isinstance(node.ctx, ast.Load)
         slc = node.slice
-        if isinstance(slc, ast.Slice):
-            if self._in_callback_depth > 0 and slc.upper is None and slc.lower is not None:
+
+        if is_read and isinstance(slc, ast.Slice):
+            # Open-upper slice like `bar.history[i:]` in a per-bar
+            # callback spans every future row -- but only when the
+            # lower bound is itself a variable that plausibly tracks
+            # "the current position" (`i`, `idx`, ...). A literal lower
+            # bound (`buf[1:]`, a ring-buffer eviction; `buf[-20:]`, a
+            # fixed tail window) has no relationship to "the current
+            # bar" at all and is not a lookahead pattern -- treating it
+            # as one was the detector's worst false-positive source.
+            if (
+                self._in_callback_depth > 0
+                and slc.upper is None
+                and isinstance(slc.lower, ast.Name)
+            ):
                 self._add(
                     "open_upper_slice_in_callback",
                     "Open-upper slice inside a per-bar callback "
@@ -164,18 +244,42 @@ class _Visitor(ast.NodeVisitor):
                     "the current bar index.",
                     node,
                 )
+            # Forward slice like `close[i:i+3]`: the upper bound
+            # itself walks past the current index, so this is a
+            # lookahead read regardless of callback depth (the tape
+            # replay convention that makes `future_data[i:]` dangerous
+            # inside a callback does not need to hold for this to be a
+            # bug -- `i + N` as an explicit upper bound always is one).
+            elif slc.upper is not None:
+                for cand in self._forward_index_candidates(slc.upper):
+                    if isinstance(cand.op, ast.Add):
+                        n = _is_positive_int_literal(cand.right) or _is_positive_int_literal(cand.left)
+                        if n is not None:
+                            self._add(
+                                "forward_slice",
+                                f"Slice upper bound `... + {n}` walks "
+                                "forward from the current index; this "
+                                "reads future rows.",
+                                node,
+                            )
+                            break
 
-        # Detect i + N where N is a positive int literal as the index
-        # expression. Includes plain subscripts and BinOp Adds.
-        if isinstance(slc, ast.BinOp) and isinstance(slc.op, ast.Add):
-            n = _is_positive_int_literal(slc.right)
-            if n is not None:
-                self._add(
-                    "forward_index_add",
-                    f"Index `i + {n}` walks forward from the current "
-                    "bar; this reads a future row.",
-                    node,
-                )
+        # Detect i + N (or N + i) where N is a positive int literal as
+        # the index expression. Includes plain subscripts, BinOp Adds,
+        # and tuple indices (`df.iloc[i + 1, 0]`).
+        if is_read:
+            for cand in self._forward_index_candidates(slc):
+                if isinstance(cand.op, ast.Add):
+                    n = _is_positive_int_literal(cand.right)
+                    if n is None:
+                        n = _is_positive_int_literal(cand.left)
+                    if n is not None:
+                        self._add(
+                            "forward_index_add",
+                            f"Index `... + {n}` walks forward from the "
+                            "current bar; this reads a future row.",
+                            node,
+                        )
         self.generic_visit(node)
 
     # ── trade.next_*, bar.future_*, ctx.lookahead_* ──────────────
@@ -221,8 +325,33 @@ def analyze_source(source: str, *, path: Optional[str] = None) -> Report:
 
 
 def analyze_path(path: str | Path) -> Report:
+    """Read and analyze the file at ``path``. Mirrors
+    :func:`analyze_source`'s "never raise, report instead" contract:
+    a file that cannot be decoded as UTF-8, that no longer exists by
+    the time this reads it, or that this process lacks permission for
+    surfaces as a single ``read_error`` finding rather than an
+    exception. The documented CI recipe (``set -e``; lint every file
+    in ``strategies/*.py``) needs this -- one strategy file saved in
+    the author's editor's default Latin-1 encoding, or briefly
+    unreadable mid-deploy, used to take the whole lint job down with
+    it, the exact failure mode ``analyze_source`` already guards
+    against for a bad *parse*.
+    """
     p = Path(path).expanduser()
-    return analyze_source(p.read_text(), path=str(p))
+    try:
+        source = p.read_text()
+    except (OSError, UnicodeDecodeError) as exc:
+        return Report(
+            path=str(p),
+            findings=[Finding(
+                rule="read_error",
+                message=f"could not read {p}: {exc}",
+                line=0,
+                col=0,
+                snippet="",
+            )],
+        )
+    return analyze_source(source, path=str(p))
 
 
 def validate_strategy_no_lookahead(code: str) -> str:

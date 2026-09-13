@@ -56,7 +56,7 @@ asyncio.run(main())
 
 Other constructor keywords: `password` (for venues that need a passphrase), `on_error` (a `Callable[[str, BaseException], None]` invoked per stream failure with a tag like `"balance"` / `"orders"`; the default logs at WARN), and `exchange` (dependency injection for tests — production callers leave it `None` and the broker constructs the ccxt.pro exchange itself).
 
-`add_symbol` calls `exchange.load_markets()` once and reads tick size from `markets[sym]["precision"]["price"]`. `add_strategy` attaches to the broker's internal `Runner`. The runner's signal callback is wired to `_handle_signal`, which dispatches to a per-order-type method (`_place_market`, `_place_limit`, `_place_stop_market`, ...). Calling `self.market_buy(...)` inside the strategy ends up calling `exchange.create_market_buy_order(...)`.
+`add_symbol` calls `exchange.load_markets()` once and reads tick size from `markets[sym]["precision"]["price"]`, resolved against `exchange.precisionMode` when the exchange exposes it, since ccxt's three precision conventions (`DECIMAL_PLACES`, `SIGNIFICANT_DIGITS`, `TICK_SIZE`) are not interchangeable. `add_strategy` attaches to the broker's internal `Runner`. The runner's signal callback is wired to `_handle_signal`, which dispatches to a per-order-type method (`_place_market`, `_place_limit`, `_place_stop_market`, ...). Calling `self.market_buy(...)` inside the strategy ends up calling `exchange.create_market_buy_order(...)`.
 
 ## Lifecycle
 

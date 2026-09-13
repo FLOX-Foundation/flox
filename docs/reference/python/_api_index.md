@@ -178,6 +178,7 @@ Surface: 118 classes, 76 functions, 39 constants.
 - `open_position(self, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, isolated_equity: typing.SupportsFloat | typing.SupportsIndex = 0.0, contract_multiplier: typing.SupportsFloat | typing.SupportsIndex = 1.0, is_long_option: bool = False) -> None`
 - `position_count(self) -> int`
 - `record_fill(self, ts_ns: typing.SupportsInt | typing.SupportsIndex, notional: typing.SupportsFloat | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
+- `reset(self, equity: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `reset_rolling(self) -> None`
 - `rolling_notional_30d(self) -> float`
 - `rolling_notional_by_symbol_30d(self) -> list[tuple[int, float]]`
@@ -1016,7 +1017,7 @@ Members:
 - `max_cascade_depth(self) -> int`
 - `on_mark(self, symbol: typing.SupportsInt | typing.SupportsIndex, mark_price: typing.SupportsFloat | typing.SupportsIndex) -> dict`
 - `on_marks(self, marks: collections.abc.Sequence[tuple[typing.SupportsInt | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]], ts_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> dict`
-- `open_position(self, account_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, equity: typing.SupportsFloat | typing.SupportsIndex) -> None`
+- `open_position(self, account_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, equity: typing.SupportsFloat | typing.SupportsIndex, contract_multiplier: typing.SupportsFloat | typing.SupportsIndex = 1.0, is_long_option: bool = False) -> None`
 - `position_count(self) -> int`
 - `reset_stats(self) -> None`
 - `set_adl_enabled(self, enabled: bool) -> None`
@@ -1664,7 +1665,7 @@ Members:
 
 **Members**
 
-- `next(self) -> flox_py._flox_py.ReplayEvent | None`
+- `next(self) -> ReplayEvent | None`
 - `on_start(self) -> None`
 - `on_stop(self) -> None`
 - `seek_to(self, ts_ns: typing.SupportsInt | typing.SupportsIndex) -> bool`
@@ -1859,7 +1860,7 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 - `set_queue_fifo_top_n(self, top_n: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `set_queue_model(self, model: str, depth: typing.SupportsInt | typing.SupportsIndex = 1) -> None`
 - `set_queue_position_min_change_fraction(self, fraction: typing.SupportsFloat | typing.SupportsIndex) -> None`
-- `set_rate_limit_policy(self, policy: ...) -> None`
+- `set_rate_limit_policy(self, policy: typing.Any) -> None`
 - `set_replace_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_replace_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
 - `set_stp_group_membership(self, account_id: typing.SupportsInt | typing.SupportsIndex, group_id: typing.SupportsInt | typing.SupportsIndex) -> None`
@@ -1868,7 +1869,7 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 - `set_submit_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
 - `set_symbol_slippage(self, symbol: typing.SupportsInt | typing.SupportsIndex, model: str, ticks: typing.SupportsInt | typing.SupportsIndex = 0, tick_size: typing.SupportsFloat | typing.SupportsIndex = 0.0, bps: typing.SupportsFloat | typing.SupportsIndex = 0.0, impact_coeff: typing.SupportsFloat | typing.SupportsIndex = 0.0) -> None`
 - `set_top_priority_share(self, share: typing.SupportsFloat | typing.SupportsIndex) -> None`
-- `set_venue_availability(self, availability: ...) -> None`
+- `set_venue_availability(self, availability: typing.Any) -> None`
 - `stp_group_for(self, account_id: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `submit_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, entry_side: str, entry_type: str, entry_price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, tp_side: str, tp_type: str, tp_price: typing.SupportsFloat | typing.SupportsIndex, stop_side: str, stop_type: str, stop_trigger_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `submit_iceberg(self, order_id: typing.SupportsInt | typing.SupportsIndex, side: str, price: typing.SupportsFloat | typing.SupportsIndex, total_quantity: typing.SupportsFloat | typing.SupportsIndex, visible_quantity: typing.SupportsFloat | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex = 1) -> None`
@@ -2182,6 +2183,7 @@ Executor handed out by VenueStack.executor(). Same simulated
 
 - `cancel_all(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
+- `clear_fills(self) -> None`
 - `clear_rate_limit_policy(self) -> None`
 - `fills_list(self) -> list`
 - `on_bar(self, symbol: typing.SupportsInt | typing.SupportsIndex, close_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
@@ -2266,7 +2268,7 @@ Volume Profile aggregator. Tracks volume distribution across price levels.
 
 **Constructor**
 
-- `WalkForwardRunner(registry: ..., fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0004, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 10000.0, mode: str = 'anchored', train_size: typing.SupportsInt | typing.SupportsIndex = 0, test_size: typing.SupportsInt | typing.SupportsIndex = 0, step: typing.SupportsInt | typing.SupportsIndex = 0, min_train_size: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
+- `WalkForwardRunner(registry: typing.Any, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0004, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 10000.0, mode: str = 'anchored', train_size: typing.SupportsInt | typing.SupportsIndex = 0, test_size: typing.SupportsInt | typing.SupportsIndex = 0, step: typing.SupportsInt | typing.SupportsIndex = 0, min_train_size: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 
 **Members**
 
