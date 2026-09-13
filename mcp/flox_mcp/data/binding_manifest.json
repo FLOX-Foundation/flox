@@ -13891,6 +13891,16 @@
         },
         {
           "kind": "method",
+          "name": "claimBlocking",
+          "parent": "AliveGuard"
+        },
+        {
+          "kind": "method",
+          "name": "claimBounded",
+          "parent": "AliveGuard"
+        },
+        {
+          "kind": "method",
           "name": "consumerLoop",
           "parent": "AliveGuard"
         },
