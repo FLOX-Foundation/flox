@@ -58,6 +58,7 @@ set(FLOX_PY_OPTIONAL_ROOT_STUBS
 set(FLOX_PY_OPTIONAL_EXT_STUBS
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/_flox_py/__init__.pyi
   ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/_flox_py/targets.pyi
+  ${CMAKE_CURRENT_SOURCE_DIR}/flox_py/_flox_py/_heatmap.pyi
 )
 add_custom_command(TARGET _flox_py POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/flox_py

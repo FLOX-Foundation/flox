@@ -37,7 +37,10 @@ build_dir = os.path.join(os.path.dirname(__file__), "..", "..", "build", "python
 sys.path.insert(0, os.path.abspath(build_dir))
 
 import flox_py as flox
-from flox_py.ccxt import CcxtBroker, UnsupportedOrderType, _market_tick_size
+from flox_py.ccxt import (
+    CcxtBroker, UnsupportedOrderType, _market_tick_size, _precision_digits,
+    _precision_step,
+)
 
 
 # ── Fake exchange ─────────────────────────────────────────────────────
@@ -64,6 +67,7 @@ class FakeCcxtExchange:
         self._next_id = 1
         self.sandbox = False
         self.closed = False
+        self.precisionMode = None  # tests override to exercise the precisionMode-aware path
 
     # Setup -----------------------------------------------------------
     def init_queues(self):
@@ -173,6 +177,33 @@ class CcxtBrokerTests(unittest.TestCase):
         self.assertEqual(_market_tick_size({"precision": {"price": 5}}), 0.00001)
         self.assertEqual(_market_tick_size({}), 0.01)
         self.assertEqual(_market_tick_size({"precision": {"price": "weird"}}), 0.01)
+
+    def test_tick_size_mode_disambiguates_values_ge_one(self):
+        # without precisionMode, a >= 1 value is guessed to be
+        # a decimal-digit count -- correct on a DECIMAL_PLACES
+        # exchange, off by 10x-10^11x on a TICK_SIZE one, where a
+        # literal tick >= 1 (a $1, $2, $5, $10 tick) is common on
+        # options and inverse futures.
+        _TICK_SIZE = 4
+        self.assertEqual(
+            _market_tick_size({"precision": {"price": 1}}, _TICK_SIZE), 1.0
+        )
+        self.assertEqual(
+            _market_tick_size({"precision": {"price": 5}}, _TICK_SIZE), 5.0
+        )
+        self.assertEqual(
+            _market_tick_size({"precision": {"price": 10}}, _TICK_SIZE), 10.0
+        )
+
+    def test_decimal_places_mode_rejects_non_integer_digit_count(self):
+        _DECIMAL_PLACES = 2
+        self.assertIsNone(_precision_step(2.5, _DECIMAL_PLACES))
+
+    def test_precision_digits_matches_market_tick_size(self):
+        self.assertEqual(_precision_digits(1e-5), 5)
+        self.assertEqual(_precision_digits(1e-8), 8)
+        self.assertEqual(_precision_digits(0.01), 2)
+        self.assertEqual(_precision_digits(1.0), 0)
 
     def test_invalid_backoff_params(self):
         fake = FakeCcxtExchange()
@@ -806,6 +837,62 @@ class CcxtBrokerTests(unittest.TestCase):
 
         btc_id = asyncio.run(go())
         self.assertEqual(rec.added, [(btc_id, "BTCUSDT")])
+
+    def test_recorder_gets_the_real_precision_not_constants(self):
+        # add_symbol used to pass the recorder hardcoded
+        # constants (2, 8) instead of the precision actually computed
+        # for the symbol's tick, regardless of what that tick was.
+        fake = FakeCcxtExchange(markets={
+            "DOGE/USDT": {"precision": {"price": 1e-05, "amount": 1e-08}},
+        })
+        broker = CcxtBroker("binance", exchange=fake)
+
+        class FakeRecorder:
+            def __init__(self):
+                self.added = []
+
+            def add_symbol(self, sid, name, base, quote, price_precision, qty_precision):
+                self.added.append((sid, name, price_precision, qty_precision))
+
+        rec = FakeRecorder()
+        broker.set_market_data_recorder(rec)
+
+        async def go():
+            return await broker.add_symbol("DOGE/USDT")
+
+        asyncio.run(go())
+        self.assertEqual(len(rec.added), 1)
+        _, name, price_precision, qty_precision = rec.added[0]
+        self.assertEqual(name, "DOGEUSDT")
+        self.assertEqual(price_precision, 5)
+        self.assertEqual(qty_precision, 8)
+
+    def test_recorder_precision_survives_attach_after_add_symbol(self):
+        # The late-attach mirror path (set_market_data_recorder after
+        # add_symbol already ran) must also carry the real precision,
+        # not the (2, 8) fallback.
+        fake = FakeCcxtExchange(markets={
+            "DOGE/USDT": {"precision": {"price": 1e-05, "amount": 1e-08}},
+        })
+        broker = CcxtBroker("binance", exchange=fake)
+
+        async def go():
+            return await broker.add_symbol("DOGE/USDT")
+
+        asyncio.run(go())
+
+        class FakeRecorder:
+            def __init__(self):
+                self.added = []
+
+            def add_symbol(self, sid, name, base, quote, price_precision, qty_precision):
+                self.added.append((sid, name, price_precision, qty_precision))
+
+        rec = FakeRecorder()
+        broker.set_market_data_recorder(rec)
+        self.assertEqual(len(rec.added), 1)
+        self.assertEqual(rec.added[0][2], 5)
+        self.assertEqual(rec.added[0][3], 8)
 
 
 if __name__ == "__main__":

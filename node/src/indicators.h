@@ -3,6 +3,7 @@
 #pragma once
 #include <napi.h>
 
+#include "bindings_common.h"
 #include "flox/indicator/adx.h"
 #include "flox/indicator/atr.h"
 #include "flox/indicator/bollinger.h"
@@ -58,22 +59,9 @@ inline std::span<const double> arr2span(Napi::Float64Array& a)
 // out of whatever memory followed the allocation), or with a SIGSEGV once
 // the read crossed a page boundary. Every call site below must check
 // lengths before touching `.Data()` on anything but the first array.
-inline bool requireSameLength(Napi::Env env, const char* fnName,
-                              std::initializer_list<size_t> lens)
-{
-  auto it = lens.begin();
-  size_t n = *it;
-  for (++it; it != lens.end(); ++it)
-  {
-    if (*it != n)
-    {
-      Napi::RangeError::New(env, std::string(fnName) + ": input arrays must have the same length")
-          .ThrowAsJavaScriptException();
-      return false;
-    }
-  }
-  return true;
-}
+// requireSameLength itself now lives in bindings_common.h, included
+// above: aggregators.h and stats.h need the identical check for the
+// same reason and are included before this file in flox_node.cpp.
 
 // ── Batch: single-input indicators ──────────────────────────────────
 

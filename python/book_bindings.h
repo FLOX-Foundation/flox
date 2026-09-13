@@ -6,6 +6,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "bindings_common.h"
 #include "flox/book/book_update.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/l3/l3_order_book.h"
@@ -31,14 +32,18 @@ class PyOrderBook
  public:
   explicit PyOrderBook(double tickSize) : _book(Price::fromDouble(tickSize)) {}
 
-  void applySnapshot(py::array_t<double> bidPx, py::array_t<double> bidQty,
-                     py::array_t<double> askPx, py::array_t<double> askQty)
+  void applySnapshot(py::array_t<double, py::array::c_style | py::array::forcecast> bidPx,
+                     py::array_t<double, py::array::c_style | py::array::forcecast> bidQty,
+                     py::array_t<double, py::array::c_style | py::array::forcecast> askPx,
+                     py::array_t<double, py::array::c_style | py::array::forcecast> askQty)
   {
     applyUpdate(bidPx, bidQty, askPx, askQty, BookUpdateType::SNAPSHOT);
   }
 
-  void applyDelta(py::array_t<double> bidPx, py::array_t<double> bidQty,
-                  py::array_t<double> askPx, py::array_t<double> askQty)
+  void applyDelta(py::array_t<double, py::array::c_style | py::array::forcecast> bidPx,
+                  py::array_t<double, py::array::c_style | py::array::forcecast> bidQty,
+                  py::array_t<double, py::array::c_style | py::array::forcecast> askPx,
+                  py::array_t<double, py::array::c_style | py::array::forcecast> askQty)
   {
     applyUpdate(bidPx, bidQty, askPx, askQty, BookUpdateType::DELTA);
   }
@@ -135,12 +140,20 @@ class PyOrderBook
   void clear() { _book.clear(); }
 
  private:
-  void applyUpdate(py::array_t<double> bidPx, py::array_t<double> bidQty,
-                   py::array_t<double> askPx, py::array_t<double> askQty,
+  void applyUpdate(py::array_t<double, py::array::c_style | py::array::forcecast> bidPx,
+                   py::array_t<double, py::array::c_style | py::array::forcecast> bidQty,
+                   py::array_t<double, py::array::c_style | py::array::forcecast> askPx,
+                   py::array_t<double, py::array::c_style | py::array::forcecast> askQty,
                    BookUpdateType type)
   {
     size_t nb = bidPx.size();
     size_t na = askPx.size();
+    // bidQty/askQty were read alongside bidPx/askPx up to nb/na with no
+    // check that they actually have nb/na elements -- a caller passing a
+    // shorter quantities array (a truncated column, a bad zip) read past
+    // its end.
+    checkSameSize(nb, static_cast<size_t>(bidQty.size()), "bid_px and bid_qty size");
+    checkSameSize(na, static_cast<size_t>(askQty.size()), "ask_px and ask_qty size");
     auto* bp = bidPx.data();
     auto* bq = bidQty.data();
     auto* ap = askPx.data();

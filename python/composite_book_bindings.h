@@ -2,9 +2,11 @@
 
 #pragma once
 
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "bindings_common.h"
 #include "flox/book/composite_book_matrix.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/common.h"
@@ -28,12 +30,18 @@ class PyCompositeBookMatrix
   }
 
   void updateBook(uint16_t exchange, uint32_t symbol,
-                  py::array_t<double> bidPx, py::array_t<double> bidQty,
-                  py::array_t<double> askPx, py::array_t<double> askQty,
+                  py::array_t<double, py::array::c_style | py::array::forcecast> bidPx,
+                  py::array_t<double, py::array::c_style | py::array::forcecast> bidQty,
+                  py::array_t<double, py::array::c_style | py::array::forcecast> askPx,
+                  py::array_t<double, py::array::c_style | py::array::forcecast> askQty,
                   int64_t recvNs, bool isDelta)
   {
     size_t nb = bidPx.size();
     size_t na = askPx.size();
+    // Same gap as PyOrderBook::applyUpdate: bidQty/askQty were read up to
+    // nb/na with no check that they actually have that many elements.
+    checkSameSize(nb, static_cast<size_t>(bidQty.size()), "bid_px and bid_qty size");
+    checkSameSize(na, static_cast<size_t>(askQty.size()), "ask_px and ask_qty size");
     const auto* bp = bidPx.data();
     const auto* bq = bidQty.data();
     const auto* ap = askPx.data();

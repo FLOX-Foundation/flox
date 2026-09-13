@@ -44,8 +44,9 @@ class PyFootprintBar
     _fp.addTrade(te);
   }
 
-  void addTrades(py::array_t<double> prices, py::array_t<double> quantities,
-                 py::array_t<uint8_t> isBuy)
+  void addTrades(py::array_t<double, py::array::c_style | py::array::forcecast> prices,
+                 py::array_t<double, py::array::c_style | py::array::forcecast> quantities,
+                 py::array_t<uint8_t, py::array::c_style | py::array::forcecast> isBuy)
   {
     const size_t n = prices.size();
     if (quantities.size() != static_cast<py::ssize_t>(n) ||
@@ -132,8 +133,9 @@ class PyVolumeProfile
     _vp.addTrade(te);
   }
 
-  void addTrades(py::array_t<double> prices, py::array_t<double> quantities,
-                 py::array_t<uint8_t> isBuy)
+  void addTrades(py::array_t<double, py::array::c_style | py::array::forcecast> prices,
+                 py::array_t<double, py::array::c_style | py::array::forcecast> quantities,
+                 py::array_t<uint8_t, py::array::c_style | py::array::forcecast> isBuy)
   {
     const size_t n = prices.size();
     if (quantities.size() != static_cast<py::ssize_t>(n) ||
@@ -217,8 +219,10 @@ class PyMarketProfile
     _mp.addTrade(te);
   }
 
-  void addTrades(py::array_t<int64_t> timestampsNs, py::array_t<double> prices,
-                 py::array_t<double> quantities, py::array_t<uint8_t> isBuy)
+  void addTrades(py::array_t<int64_t, py::array::c_style | py::array::forcecast> timestampsNs,
+                 py::array_t<double, py::array::c_style | py::array::forcecast> prices,
+                 py::array_t<double, py::array::c_style | py::array::forcecast> quantities,
+                 py::array_t<uint8_t, py::array::c_style | py::array::forcecast> isBuy)
   {
     const size_t n = prices.size();
     if (timestampsNs.size() != static_cast<py::ssize_t>(n) ||

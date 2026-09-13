@@ -15,7 +15,20 @@ import sys
 
 build_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'build', 'python')
 sys.path.insert(0, os.path.abspath(build_dir))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Do NOT also add the `python/` source tree to sys.path here. `flox_py`
+# is a regular (non-namespace) package, so once import machinery commits
+# to a `flox_py` found under the source tree, it never falls back to the
+# one under build_dir for submodules -- and `python/flox_py/_flox_py/`
+# in the source tree holds only `.pyi` stubs, no compiled extension. The
+# previous second `insert(0, ...)` put the source tree ahead of
+# build_dir (each insert(0, ...) wins over the last), so `flox_py`
+# resolved to the source tree and `flox_py._flox_py` resolved to that
+# stub-only namespace package instead of the real `_flox_py*.so` sitting
+# right next to it in build_dir -- every attribute lookup on `_core`
+# then failed with AttributeError. build_dir alone is already a
+# complete copy of the package (CMake copies every `flox_py/*.py` file
+# there alongside the compiled extension), so it is sufficient on its
+# own.
 
 import numpy as np
 

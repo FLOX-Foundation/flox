@@ -31,14 +31,27 @@ import hashlib
 import importlib.util
 import io
 import json
+import logging
 import shutil
 import sys
 import tarfile
 import tempfile
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+log = logging.getLogger("flox.bundle")
+
+
+class BundleTrustWarning(RuntimeWarning):
+    """Raised via ``warnings.warn`` every time a bundle's strategy code
+    is about to execute. Bundles are meant to be shared, so this is not
+    an error -- replaying a bundle from someone else's machine is the
+    feature -- but callers should see it rather than have arbitrary
+    code run silently."""
 
 
 BUNDLE_FORMAT_VERSION = 1
@@ -404,6 +417,12 @@ def pack_bundle(
 # ── Replay / validate ──────────────────────────────────────────────
 
 
+class BundleSecurityError(Exception):
+    """Raised when a bundle's tar archive contains a member that would
+    write outside the extraction directory, or when replaying it would
+    run code the caller has not acknowledged as trusted."""
+
+
 @dataclass
 class BundleResult:
     actual: Dict[str, Any]
@@ -415,9 +434,58 @@ class BundleResult:
 
 
 def _extract(bundle_path: Path) -> Path:
+    """Extract `bundle_path` into a fresh temp directory and return it.
+
+    A bundle is, by design, something you hand to someone else to
+    reproduce a result -- the whole feature only makes sense for
+    tarballs from people you have not audited. Two things need
+    guarding against on that path:
+
+    * Path traversal (`../etc/passwd`, an absolute member path, a
+      symlink whose target resolves outside the tree). `tarfile`
+      picked up a "data" extraction filter under PEP 706 that refuses
+      these, but it only rejects by default starting with Python
+      3.14; bundles are documented to support 3.10+, and CI runs
+      those older interpreters, where `extractall()` without a filter
+      still follows `../` members. Checking every member's resolved
+      destination against the extraction root here does not depend on
+      which interpreter this happens to run under.
+    * Arbitrary code execution: `replay_bundle`/`validate_bundle` load
+      and run `strategy/strategy.py` from whatever was inside the
+      tarball (see the warning where that happens). Nothing about
+      *extraction* can fix that -- the strategy module has to run for
+      the bundle to do its job -- so that risk is called out loudly at
+      the point it actually executes, not here.
+    """
     tmp = Path(tempfile.mkdtemp(prefix="flox-bundle-"))
+    tmp_resolved = tmp.resolve()
     with tarfile.open(bundle_path, "r") as tf:
-        tf.extractall(tmp)
+        for member in tf.getmembers():
+            dest = (tmp / member.name).resolve()
+            try:
+                dest.relative_to(tmp_resolved)
+            except ValueError:
+                raise BundleSecurityError(
+                    f"refusing to extract {bundle_path}: member "
+                    f"{member.name!r} would land outside the bundle root"
+                ) from None
+            if member.issym() or member.islnk():
+                link_dest = ((tmp / member.name).parent / member.linkname).resolve()
+                try:
+                    link_dest.relative_to(tmp_resolved)
+                except ValueError:
+                    raise BundleSecurityError(
+                        f"refusing to extract {bundle_path}: link "
+                        f"{member.name!r} points outside the bundle root"
+                    ) from None
+        if hasattr(tarfile, "data_filter"):
+            # Python's own "data" filter: also strips device/FIFO
+            # members, high-bit permission modes, and the like. Belt
+            # and suspenders with the manual check above, which is the
+            # part that still applies on interpreters without this.
+            tf.extractall(tmp, filter="data")
+        else:
+            tf.extractall(tmp)
     return tmp
 
 
@@ -436,10 +504,32 @@ def replay_bundle(bundle_path: Path) -> BundleResult:
     """Extract a bundle, replay the strategy against the bundled tape
     with the bundled config, and return the actual output alongside
     the expected output. Does not compare; use :func:`validate_bundle`
-    for the assertion."""
+    for the assertion.
+
+    **This runs the strategy code shipped inside the bundle.** A
+    bundle is a tarball someone else can hand you -- that is the
+    entire point of the format -- and replaying one calls
+    ``exec_module`` on ``strategy/strategy.py`` from it exactly the
+    way ``python -c "import untrusted_module"`` would. Only call this
+    (directly or via :func:`validate_bundle`, or ``flox bundle
+    validate`` / ``flox bundle replay`` on the CLI) on bundles from a
+    source you trust, the same way you would before running any other
+    downloaded code. Nothing in the bundle format authenticates who
+    produced it.
+    """
     bundle_path = Path(bundle_path).expanduser().resolve()
     if not bundle_path.is_file():
         raise FileNotFoundError(f"bundle not found: {bundle_path}")
+
+    msg = (
+        f"replay_bundle({bundle_path}) is about to execute "
+        "strategy/strategy.py from inside this bundle. A bundle is "
+        "designed to be shared, so treat this exactly like running "
+        "code you downloaded from someone else -- only replay or "
+        "validate bundles from a source you trust."
+    )
+    log.warning(msg)
+    warnings.warn(msg, BundleTrustWarning, stacklevel=2)
 
     work = _extract(bundle_path)
     try:
@@ -472,24 +562,58 @@ def replay_bundle(bundle_path: Path) -> BundleResult:
             floxrun_out=actual_floxrun,
         )
 
+        # Integrity check: the manifest carries a hash of the strategy
+        # file and of the tape directory plus the engine version the
+        # bundle was built with, but until now nothing ever read them
+        # back -- a bundle whose strategy.py was swapped for something
+        # else after packing (with expected_output.json re-recorded to
+        # match) reported `matches=True` as long as
+        # bundle_format_version was untouched. Recomputing both hashes
+        # from what actually got extracted and folding them into the
+        # same actual/expected dicts the JSON diff already compares
+        # makes a swap show up as an ordinary diff line instead of
+        # passing silently.
+        #
+        # This is not a substitute for signing the manifest: it is
+        # stored unsigned in the same archive it describes, so a
+        # repacker who edits strategy.py can also recompute these
+        # hashes and the flox_version string to match. What this does
+        # catch is the common case the format is actually for --
+        # accidental drift and unintentional edits -- and it makes a
+        # deliberate tamper attempt do strictly more work than editing
+        # one file.
+        actual["strategy_sha256"] = _sha256_file(strat_path)
+        expected["strategy_sha256"] = manifest.get("strategy_sha256")
+        actual["tape_sha256"] = _sha256_dir(tape_path)
+        expected["tape_sha256"] = manifest.get("tape_sha256")
+        actual["flox_version"] = _flox_version()
+        expected["flox_version"] = manifest.get("flox_version")
+
         expected_floxrun = work / _EXPECTED_FLOXRUN_DIR
-        actual["floxrun_present"] = actual_floxrun.is_dir()
-        expected["floxrun_present"] = expected_floxrun.is_dir()
-        if expected_floxrun.is_dir() and actual_floxrun.is_dir():
-            try:
-                from flox_py._flox_py import TraceReader
-                a_reader = TraceReader(str(actual_floxrun))
-                e_reader = TraceReader(str(expected_floxrun))
-                actual["floxrun_signal_count"] = len(a_reader.read_all_signals())
-                actual["floxrun_order_count"] = len(a_reader.read_all_order_events())
-                actual["floxrun_fill_count"] = len(a_reader.read_all_fills())
-                expected["floxrun_signal_count"] = len(e_reader.read_all_signals())
-                expected["floxrun_order_count"] = len(e_reader.read_all_order_events())
-                expected["floxrun_fill_count"] = len(e_reader.read_all_fills())
-            except Exception:
-                # Reader missing or corrupt: silently skip the
-                # floxrun diff; the JSON diff still runs.
-                pass
+        if expected_floxrun.is_dir():
+            actual["floxrun_present"] = actual_floxrun.is_dir()
+            expected["floxrun_present"] = True
+            if actual_floxrun.is_dir():
+                try:
+                    from flox_py._flox_py import TraceReader
+                    a_reader = TraceReader(str(actual_floxrun))
+                    e_reader = TraceReader(str(expected_floxrun))
+                    actual["floxrun_signal_count"] = len(a_reader.read_all_signals())
+                    actual["floxrun_order_count"] = len(a_reader.read_all_order_events())
+                    actual["floxrun_fill_count"] = len(a_reader.read_all_fills())
+                    expected["floxrun_signal_count"] = len(e_reader.read_all_signals())
+                    expected["floxrun_order_count"] = len(e_reader.read_all_order_events())
+                    expected["floxrun_fill_count"] = len(e_reader.read_all_fills())
+                except Exception:
+                    # Reader missing or corrupt: silently skip the
+                    # floxrun diff; the JSON diff still runs.
+                    pass
+        # else: this bundle predates the .floxrun ride-along. Leave
+        # `floxrun_present` out of both dicts entirely rather than
+        # comparing "actual has a fresh one" against "expected never
+        # had one" -- that pair always disagrees, which would fail
+        # every old bundle even when every other field matches
+        # byte-for-byte.
 
         return BundleResult(
             actual=actual,
@@ -503,7 +627,11 @@ def replay_bundle(bundle_path: Path) -> BundleResult:
 
 def validate_bundle(bundle_path: Path) -> BundleResult:
     """Replay a bundle and assert the output matches the recorded
-    expected output. Sets ``matches`` and populates ``diff``."""
+    expected output. Sets ``matches`` and populates ``diff``.
+
+    Executes the bundle's strategy code -- see the warning on
+    :func:`replay_bundle`, which this calls directly.
+    """
     res = replay_bundle(bundle_path)
     res.diff = _diff_dicts(res.actual, res.expected)
     res.matches = not res.diff
@@ -513,6 +641,8 @@ def validate_bundle(bundle_path: Path) -> BundleResult:
 __all__ = [
     "BUNDLE_FORMAT_VERSION",
     "BundleResult",
+    "BundleSecurityError",
+    "BundleTrustWarning",
     "pack_bundle",
     "replay_bundle",
     "validate_bundle",

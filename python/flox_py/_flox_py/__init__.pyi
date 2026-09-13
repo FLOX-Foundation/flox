@@ -6,9 +6,9 @@ import collections.abc
 import numpy
 import numpy.typing
 import typing
-from . import _heatmap
+from . import _heatmap as _heatmap
 from . import targets
-__all__: list[str] = ['ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AmmCurve', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'BookAnchored', 'BookOnly', 'BookSnapshotBinAggregator', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'Cross', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'FundingTapeEntry', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'Isolated', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarginMode', 'MarkImpactModel', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'None_', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'OptionType', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PoolReplay', 'PoolTape', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedClock', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VenueAvailability', 'VenueExecutor', 'VenueStack', 'VolSurface', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'baw_price', 'binomial_price', 'bollinger', 'bootstrap_ci', 'bs_price', 'bs_price_discrete_dividends', 'bs_vega', 'build_surface_as_of', 'calibrate_svi', 'cci', 'chop', 'correlation', 'cost_of_carry', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'forward_price', 'greeks', 'hurst_dfa', 'i256_roundtrip', 'implied_percentile_in_cone', 'implied_vol', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'realized_vol', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'second_order_greeks', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'u256_from_hex', 'u256_roundtrip', 'validate', 'validate_dataset', 'vol_cone', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
+__all__: list[str] = ['_heatmap', 'ALL_OR_NOTHING', 'ATR', 'Account', 'AdlRanking', 'AggregatorEventFilter', 'AmmCurve', 'AutoCorrelation', 'BEST_EFFORT', 'BacktestResult', 'BacktestRunner', 'BarData', 'BarDispatchRecorder', 'BinCountAggregator', 'Binance', 'BinaryLogRecorderHook', 'Bollinger', 'BookAnchored', 'BookOnly', 'BookSnapshotBinAggregator', 'Bybit', 'CANCELLED', 'CCI', 'CompositeBookMatrix', 'ConstantLatency', 'Correlation', 'Cross', 'DEMA', 'DataReader', 'DataWriter', 'DeltaBookEncoder', 'DeltaBookReplayer', 'EMA', 'EmpiricalLatency', 'Engine', 'EventTypeStatsAggregator', 'ExchangeCapabilities', 'ExecutionListener', 'Executor', 'ExponentialLatency', 'FAILED', 'FILLED', 'FIRE_ON_ANY', 'FeeSchedule', 'FeeTier', 'FeedClockPolicy', 'FillLiquidity', 'FloxError', 'FootprintBar', 'FundingPayment', 'FundingSchedule', 'FundingTapeEntry', 'GaussianLatency', 'GridSearch', 'IndicatorGraph', 'Isolated', 'KAMA', 'KillSwitch', 'Kurtosis', 'L3Book', 'LEADER_FOLLOWER', 'LatencyDistribution', 'LatencyModel', 'LatencySample', 'LegState', 'LiquidationEngine', 'LiveQueuePositionEstimator', 'MACD', 'MarginMode', 'MarkImpactModel', 'MarketDataRecorderHook', 'MarketProfile', 'MergedTapeReader', 'MultiFeedClock', 'None_', 'OHLCBinAggregator', 'ONE_SIDED', 'ORDER_FLAG_IOC', 'ORDER_FLAG_POST_ONLY', 'ORDER_FLAG_REDUCE_ONLY', 'OptionType', 'Order', 'OrderBook', 'OrderEventData', 'OrderEventKind', 'OrderGroup', 'OrderGroupPolicy', 'OrderGroupState', 'OrderJourneyTracer', 'OrderTracker', 'OrderValidator', 'PARTIALLY_FILLED', 'PENDING', 'PRICE_SCALE', 'ParkinsonVol', 'Partitioner', 'PeakAggregator', 'PnLTracker', 'PnlRatio', 'PoolReplay', 'PoolTape', 'PositionGroupTracker', 'PositionSize', 'PositionTracker', 'QUANTITY_SCALE', 'QUEUE_FULL', 'QUEUE_NONE', 'QUEUE_TOB', 'QuantileAggregator', 'REVERTING', 'RMA', 'RSI', 'RateLimitEndpointFamily', 'RateLimitPolicy', 'ReplayEvent', 'ReplaySource', 'RiskManager', 'RogersSatchellVol', 'RollingZScore', 'Runner', 'SIGNAL_FLAG_ENTER', 'SIGNAL_FLAG_EXIT', 'SIGNAL_FLAG_REBALANCE', 'SLIPPAGE_FIXED_BPS', 'SLIPPAGE_FIXED_TICKS', 'SLIPPAGE_NONE', 'SLIPPAGE_VOLUME_IMPACT', 'SMA', 'SUBMITTED', 'ShannonEntropy', 'Signal', 'SignalBuilder', 'SimulatedClock', 'SimulatedExecutor', 'Skewness', 'Slope', 'Stats', 'Stochastic', 'StorageSink', 'Strategy', 'StreamingIndicatorGraph', 'Symbol', 'SymbolContext', 'SymbolRegistry', 'TEMA', 'TapeRef', 'TraceReader', 'TraceRecorder', 'TradeData', 'VOLUME_SCALE', 'VenueAvailability', 'VenueExecutor', 'VenueStack', 'VolSurface', 'VolumeBinAggregator', 'VolumeProfile', 'WAIT_FOR_ALL', 'WalkForwardRunner', 'adf', 'adx', 'aggregate_heikin_ashi_bars', 'aggregate_range_bars', 'aggregate_renko_bars', 'aggregate_tick_bars', 'aggregate_time_bars', 'aggregate_volume_bars', 'atr', 'autocorrelation', 'bar_returns', 'baw_price', 'binomial_price', 'bollinger', 'bootstrap_ci', 'bs_price', 'bs_price_discrete_dividends', 'bs_vega', 'build_surface_as_of', 'calibrate_svi', 'cci', 'chop', 'correlation', 'cost_of_carry', 'cvd', 'dema', 'ema', 'export_data', 'extract_symbols', 'extract_time_range', 'forward_price', 'greeks', 'hurst_dfa', 'i256_roundtrip', 'implied_percentile_in_cone', 'implied_vol', 'inspect', 'kama', 'kurtosis', 'list_indicators', 'macd', 'merge', 'merge_dir', 'obv', 'parkinson_vol', 'permutation_test', 'prices_to_double', 'profit_factor', 'quantities_to_double', 'realized_vol', 'recompress', 'rma', 'rogers_satchell_vol', 'rolling_correlation', 'rolling_hurst', 'rolling_zscore', 'rsi', 'second_order_greeks', 'set_log_callback', 'shannon_entropy', 'skewness', 'slope', 'sma', 'split', 'stochastic', 'targets', 'tema', 'trade_pnl', 'u256_from_hex', 'u256_roundtrip', 'validate', 'validate_dataset', 'vol_cone', 'volumes_to_double', 'vwap', 'whites_reality_check', 'win_rate']
 class ATR:
     def __init__(self, period: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
@@ -58,6 +58,10 @@ class Account:
         ...
     def record_fill(self, ts_ns: typing.SupportsInt | typing.SupportsIndex, notional: typing.SupportsFloat | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
+    def reset(self, equity: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        Clear every open position and mark, reset the 30-day rolling notional window, and set equity to `equity`. Use this to reuse one Account across repeated backtest or RL-training episodes on the same tape -- without it, a position and its equity delta from one episode survive into the next.
+        """
     def reset_rolling(self) -> None:
         ...
     def rolling_notional_30d(self) -> float:
@@ -1379,7 +1383,7 @@ class LiquidationEngine:
         """
         Atomically update every attached account's mark for each (symbol, price) pair, then walk liquidations once per symbol. Returns aggregated outcome.
         """
-    def open_position(self, account_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, equity: typing.SupportsFloat | typing.SupportsIndex) -> None:
+    def open_position(self, account_id: typing.SupportsInt | typing.SupportsIndex, symbol: typing.SupportsInt | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, entry_price: typing.SupportsFloat | typing.SupportsIndex, equity: typing.SupportsFloat | typing.SupportsIndex, contract_multiplier: typing.SupportsFloat | typing.SupportsIndex = 1.0, is_long_option: bool = False) -> None:
         ...
     def position_count(self) -> int:
         ...
@@ -2496,7 +2500,7 @@ class ReplayEvent:
 class ReplaySource:
     def __init__(self) -> None:
         ...
-    def next(self) -> flox_py._flox_py.ReplayEvent | None:
+    def next(self) -> ReplayEvent | None:
         ...
     def on_start(self) -> None:
         ...
@@ -2831,7 +2835,7 @@ class SimulatedExecutor:
         """
         Minimum fractional change in queue-ahead required to emit a queue-position event. 0.0 = every change, 1.0 = disable.
         """
-    def set_rate_limit_policy(self, policy: ...) -> None:
+    def set_rate_limit_policy(self, policy: typing.Any) -> None:
         ...
     def set_replace_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
@@ -2857,7 +2861,7 @@ class SimulatedExecutor:
         """
         TOP_PRO_LMM: fraction of each trade reserved for the queue-front order.
         """
-    def set_venue_availability(self, availability: ...) -> None:
+    def set_venue_availability(self, availability: typing.Any) -> None:
         """
         Attach a VenueAvailability model. None to detach.
         """
@@ -3368,6 +3372,10 @@ class VenueExecutor:
         ...
     def cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...
+    def clear_fills(self) -> None:
+        """
+        Discard every fill recorded so far. `fills_list()` and `fill_count` read the same accumulating buffer as the plain PySimulatedExecutor wrapper; nothing resets it between runs on its own, so a caller that reuses one executor across repeated episodes (an RL training loop, a walk-forward fold) must call this explicitly or fills keep growing forever.
+        """
     def clear_rate_limit_policy(self) -> None:
         ...
     def fills_list(self) -> list:
@@ -3499,7 +3507,7 @@ class VolumeProfile:
     def volume_at(self, price: typing.SupportsFloat | typing.SupportsIndex) -> float:
         ...
 class WalkForwardRunner:
-    def __init__(self, registry: ..., fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0004, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 10000.0, mode: str = 'anchored', train_size: typing.SupportsInt | typing.SupportsIndex = 0, test_size: typing.SupportsInt | typing.SupportsIndex = 0, step: typing.SupportsInt | typing.SupportsIndex = 0, min_train_size: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
+    def __init__(self, registry: typing.Any, fee_rate: typing.SupportsFloat | typing.SupportsIndex = 0.0004, initial_capital: typing.SupportsFloat | typing.SupportsIndex = 10000.0, mode: str = 'anchored', train_size: typing.SupportsInt | typing.SupportsIndex = 0, test_size: typing.SupportsInt | typing.SupportsIndex = 0, step: typing.SupportsInt | typing.SupportsIndex = 0, min_train_size: typing.SupportsInt | typing.SupportsIndex = 0) -> None:
         ...
     def run_bars(self, start_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], end_time_ns: typing.Annotated[numpy.typing.ArrayLike, numpy.int64], open: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], high: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], low: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], close: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], volume: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], symbol: str, bar_type: typing.SupportsInt | typing.SupportsIndex = 0, bar_type_param: typing.SupportsInt | typing.SupportsIndex = 0) -> list:
         """

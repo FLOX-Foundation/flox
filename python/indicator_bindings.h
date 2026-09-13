@@ -4,6 +4,7 @@
 #include <pybind11/pybind11.h>
 
 #include <pybind11/stl.h>
+#include "bindings_common.h"
 #include "flox/error/flox_error.h"
 
 #include <algorithm>
@@ -44,14 +45,10 @@ namespace py = pybind11;
 
 namespace
 {
-
-inline void checkSameSize(size_t a, size_t b, const char* msg)
-{
-  if (a != b)
-  {
-    throw flox::FloxError("E_LEN_001", msg);
-  }
-}
+// checkSameSize lives in bindings_common.h (included above) now that
+// aggregator_bindings.h, optimizer_bindings.h, profile_bindings.h,
+// book_bindings.h, and composite_book_bindings.h need the same length
+// check this file already had.
 
 // The rolling-sum indicator family (SMA/RMA/Bollinger/VWAP/CCI) computes
 // `output[period - 1]` internally; with period == 0 that underflows to a huge
@@ -453,10 +450,16 @@ inline void bindIndicators(py::module_& m)
          contiguous_double log_returns) -> py::array_t<double>
       {
         size_t n = signal_long.request().shape[0];
+        checkSameSize(n, signal_short.request().shape[0], "signal_long and signal_short size");
+        checkSameSize(n, log_returns.request().shape[0], "signal_long and log_returns size");
         auto* sl = signal_long.data();
         auto* ss = signal_short.data();
         auto* lr = log_returns.data();
         py::array_t<double> out(n);
+        if (n == 0)
+        {
+          return out;
+        }
         auto* o = out.mutable_data();
         o[0] = 0.0;
         for (size_t i = 1; i < n; ++i)
@@ -473,6 +476,8 @@ inline void bindIndicators(py::module_& m)
          contiguous_double log_returns) -> py::array_t<double>
       {
         size_t n = signal_long.request().shape[0];
+        checkSameSize(n, signal_short.request().shape[0], "signal_long and signal_short size");
+        checkSameSize(n, log_returns.request().shape[0], "signal_long and log_returns size");
         auto* sl = signal_long.data();
         auto* ss = signal_short.data();
         auto* lr = log_returns.data();

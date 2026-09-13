@@ -13829,6 +13829,11 @@
         },
         {
           "kind": "method",
+          "name": "reset",
+          "parent": "Account"
+        },
+        {
+          "kind": "method",
           "name": "resetRolling",
           "parent": "Account"
         },
@@ -32856,6 +32861,11 @@
         },
         {
           "kind": "method",
+          "name": "reset",
+          "parent": "Account"
+        },
+        {
+          "kind": "method",
           "name": "reset_rolling",
           "parent": "Account"
         },
@@ -36972,6 +36982,11 @@
         {
           "kind": "method",
           "name": "cancel_order",
+          "parent": "VenueExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "clear_fills",
           "parent": "VenueExecutor"
         },
         {
