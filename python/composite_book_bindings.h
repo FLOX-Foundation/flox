@@ -30,7 +30,7 @@ class PyCompositeBookMatrix
   void updateBook(uint16_t exchange, uint32_t symbol,
                   py::array_t<double> bidPx, py::array_t<double> bidQty,
                   py::array_t<double> askPx, py::array_t<double> askQty,
-                  int64_t recvNs)
+                  int64_t recvNs, bool isDelta)
   {
     size_t nb = bidPx.size();
     size_t na = askPx.size();
@@ -43,6 +43,7 @@ class PyCompositeBookMatrix
     std::pmr::monotonic_buffer_resource res(buf, sizeof(buf));
     BookUpdateEvent ev(&res);
     ev.update.symbol = symbol;
+    ev.update.type = isDelta ? BookUpdateType::DELTA : BookUpdateType::SNAPSHOT;
     ev.sourceExchange = exchange;
     ev.recvNs = MonoNanos::fromRaw(static_cast<uint64_t>(recvNs));
 
@@ -162,11 +163,15 @@ inline void bindCompositeBook(py::module_& m)
            "Create a CompositeBookMatrix with staleness threshold in milliseconds",
            py::arg("staleness_threshold_ms") = 5000)
       .def("update_book", &PyCompositeBookMatrix::updateBook,
-           "Feed a book update from an exchange",
+           "Feed a book update from an exchange. is_delta=False (the default) replaces "
+           "both sides of that exchange's top-of-book wholesale, as a real snapshot "
+           "would. is_delta=True only updates the side(s) present in bid_prices/"
+           "ask_prices; a side not present in a delta call is left exactly as it was, "
+           "not cleared.",
            py::arg("exchange"), py::arg("symbol"),
            py::arg("bid_prices"), py::arg("bid_quantities"),
            py::arg("ask_prices"), py::arg("ask_quantities"),
-           py::arg("recv_ns") = 0)
+           py::arg("recv_ns") = 0, py::arg("is_delta") = false)
       .def("best_bid", &PyCompositeBookMatrix::bestBid,
            "Best bid across all exchanges (dict with price, quantity, exchange) or None",
            py::arg("symbol"))

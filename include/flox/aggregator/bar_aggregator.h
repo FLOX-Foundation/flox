@@ -49,7 +49,7 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
         {
           if (state.initialized)
           {
-            emitBar(symbol, state);
+            emitBar(symbol, state, BarCloseReason::Forced);
             state.initialized = false;
           }
         });
@@ -91,9 +91,9 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
     bool initialized = false;
   };
 
-  void emitBar(SymbolId symbol, SymbolState& state)
+  void emitBar(SymbolId symbol, SymbolState& state, BarCloseReason reason = BarCloseReason::Threshold)
   {
-    state.bar.reason = BarCloseReason::Threshold;
+    state.bar.reason = reason;
 
     BarEvent ev{.symbol = symbol,
                 .instrument = state.instrument,

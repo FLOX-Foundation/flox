@@ -34,7 +34,16 @@ class TimeBarPolicy
   {
     const auto tradeTs = fromUnixNs(trade.trade.exchangeTsNs);
     const auto alignedTradeTs = alignToInterval(tradeTs);
-    return alignedTradeTs != bar.startTime;
+    // Only a trade from a *later* interval closes the current bar. A `!=`
+    // comparison also closed on a trade from an *earlier* interval (an
+    // out-of-order / late-arriving trade, common when merging feeds from
+    // multiple venues): that trade would prematurely close the current bar
+    // one event early and then open a duplicate bucket for an interval
+    // that had already closed, breaking monotonicity of bar.startTime for
+    // any downstream consumer (BarSeries, BarMatrix). A late trade for an
+    // already-closed interval belongs to a bar that no longer exists; drop
+    // it into the current bar instead of using it as a spurious close.
+    return alignedTradeTs > bar.startTime;
   }
 
   void update(const TradeEvent& trade, Bar& bar) noexcept

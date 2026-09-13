@@ -316,16 +316,21 @@ class CompositeBookMatrixTest : public ::testing::Test
  protected:
   void SetUp() override { res_ = std::pmr::new_delete_resource(); }
 
+  // Defaults to SNAPSHOT for the pre-existing tests below, which model a
+  // full top-of-book replace. Pass BookUpdateType::DELTA explicitly to
+  // exercise the partial-update path (see the BOOK-12 tests further down).
   void setupBookUpdate(BookUpdateEvent& ev,
                        SymbolId symbol,
                        ExchangeId exchange,
                        int64_t bidPrice,
                        int64_t bidQty,
                        int64_t askPrice,
-                       int64_t askQty)
+                       int64_t askQty,
+                       BookUpdateType type = BookUpdateType::SNAPSHOT)
   {
     ev.update.symbol = symbol;
     ev.sourceExchange = exchange;
+    ev.update.type = type;
     ev.update.bids.clear();
     ev.update.asks.clear();
 
@@ -337,6 +342,19 @@ class CompositeBookMatrixTest : public ::testing::Test
     {
       ev.update.asks.emplace_back(Price::fromRaw(askPrice), Quantity::fromRaw(askQty));
     }
+  }
+
+  // A DELTA carrying only a bid-side level (the typical Bybit incremental
+  // frame): the ask side is intentionally absent from this update.
+  void setupBidOnlyDelta(BookUpdateEvent& ev, SymbolId symbol, ExchangeId exchange,
+                         int64_t bidPrice, int64_t bidQty)
+  {
+    ev.update.symbol = symbol;
+    ev.sourceExchange = exchange;
+    ev.update.type = BookUpdateType::DELTA;
+    ev.update.bids.clear();
+    ev.update.asks.clear();
+    ev.update.bids.emplace_back(Price::fromRaw(bidPrice), Quantity::fromRaw(bidQty));
   }
 
   std::pmr::memory_resource* res_;
@@ -434,6 +452,124 @@ TEST_F(CompositeBookMatrixTest, StalenessExclusion)
   // Should only see exchange 0
   EXPECT_EQ(bid.exchange, 0);
   EXPECT_EQ(bid.priceRaw, 50000 * 1'000'000LL);
+}
+
+// ---------------------------------------------------------------------------
+// BOOK-12: a delta touching one side must not wipe the other side.
+// ---------------------------------------------------------------------------
+
+TEST_F(CompositeBookMatrixTest, BidOnlyDeltaDoesNotWipeAskSide)
+{
+  CompositeBookMatrix<4> matrix;
+  BookUpdateEvent ev(res_);
+
+  // Full snapshot: bid 100.00, ask 100.05.
+  setupBookUpdate(ev, 1, 0, 100 * 1'000'000LL, 10 * 1'000'000LL, 10005 * 10'000LL,
+                  5 * 1'000'000LL, BookUpdateType::SNAPSHOT);
+  matrix.onBookUpdate(ev);
+
+  auto askBefore = matrix.askForExchange(1, 0);
+  ASSERT_TRUE(askBefore.valid);
+
+  // Bybit-style incremental delta that only touches the bid side.
+  setupBidOnlyDelta(ev, 1, 0, 9990 * 10'000LL, 3 * 1'000'000LL);
+  matrix.onBookUpdate(ev);
+
+  auto bidAfter = matrix.bidForExchange(1, 0);
+  auto askAfter = matrix.askForExchange(1, 0);
+
+  EXPECT_TRUE(bidAfter.valid);
+  EXPECT_EQ(bidAfter.priceRaw, 9990 * 10'000LL);
+
+  // The ask side was not present in the delta and must survive untouched.
+  EXPECT_TRUE(askAfter.valid) << "ask side must not be wiped by a bid-only delta";
+  EXPECT_EQ(askAfter.priceRaw, askBefore.priceRaw);
+}
+
+TEST_F(CompositeBookMatrixTest, AskOnlyDeltaDoesNotWipeBidSide)
+{
+  CompositeBookMatrix<4> matrix;
+  BookUpdateEvent ev(res_);
+
+  setupBookUpdate(ev, 1, 0, 100 * 1'000'000LL, 10 * 1'000'000LL, 10005 * 10'000LL,
+                  5 * 1'000'000LL, BookUpdateType::SNAPSHOT);
+  matrix.onBookUpdate(ev);
+
+  // Ask-only delta.
+  ev.update.type = BookUpdateType::DELTA;
+  ev.update.bids.clear();
+  ev.update.asks.clear();
+  ev.update.asks.emplace_back(Price::fromRaw(10010 * 10'000LL), Quantity::fromRaw(2 * 1'000'000LL));
+  matrix.onBookUpdate(ev);
+
+  auto bidAfter = matrix.bidForExchange(1, 0);
+  EXPECT_TRUE(bidAfter.valid) << "bid side must not be wiped by an ask-only delta";
+  EXPECT_EQ(bidAfter.priceRaw, 100 * 1'000'000LL);
+}
+
+TEST_F(CompositeBookMatrixTest, DeleteOnlyDeltaLeavesStaleSideRatherThanZero)
+{
+  CompositeBookMatrix<4> matrix;
+  BookUpdateEvent ev(res_);
+
+  setupBookUpdate(ev, 1, 0, 100 * 1'000'000LL, 10 * 1'000'000LL, 10005 * 10'000LL,
+                  5 * 1'000'000LL, BookUpdateType::SNAPSHOT);
+  matrix.onBookUpdate(ev);
+
+  // A delta that only carries a deletion (qty 0) on the bid side: no
+  // replacement level is known, so the cached top must not become a
+  // "valid" $0.00 quote (that asymmetry was BOOK-12(c)).
+  setupBidOnlyDelta(ev, 1, 0, 99 * 1'000'000LL, 0);
+  matrix.onBookUpdate(ev);
+
+  auto bidAfter = matrix.bidForExchange(1, 0);
+  EXPECT_TRUE(bidAfter.valid);
+  EXPECT_EQ(bidAfter.priceRaw, 100 * 1'000'000LL)
+      << "no replacement bid level was seen; the last known bid must be kept";
+}
+
+TEST_F(CompositeBookMatrixTest, SnapshotWithEmptySideInvalidatesThatSide)
+{
+  CompositeBookMatrix<4> matrix;
+  BookUpdateEvent ev(res_);
+
+  setupBookUpdate(ev, 1, 0, 100 * 1'000'000LL, 10 * 1'000'000LL, 10005 * 10'000LL,
+                  5 * 1'000'000LL, BookUpdateType::SNAPSHOT);
+  matrix.onBookUpdate(ev);
+
+  // A genuine SNAPSHOT with no ask levels means the ask side really is
+  // empty, unlike a DELTA that simply didn't mention the ask side.
+  ev.update.type = BookUpdateType::SNAPSHOT;
+  ev.update.bids.clear();
+  ev.update.asks.clear();
+  ev.update.bids.emplace_back(Price::fromRaw(101 * 1'000'000LL), Quantity::fromRaw(1 * 1'000'000LL));
+  matrix.onBookUpdate(ev);
+
+  auto askAfter = matrix.askForExchange(1, 0);
+  EXPECT_FALSE(askAfter.valid) << "a snapshot with no ask levels must invalidate the ask side";
+}
+
+TEST_F(CompositeBookMatrixTest, OverflowSymbolDoesNotCorruptSymbolZero)
+{
+  CompositeBookMatrix<4> matrix;
+  BookUpdateEvent ev(res_);
+
+  // Symbol 0 holds real, legitimate data.
+  setupBookUpdate(ev, 0, 0, 50 * 1'000'000LL, 1 * 1'000'000LL, 5001 * 10'000LL,
+                  1 * 1'000'000LL, BookUpdateType::SNAPSHOT);
+  matrix.onBookUpdate(ev);
+
+  // Symbol 300 is beyond SymbolStateMap's default 256-slot table for a
+  // non-movable State (CompositeBookMatrix's per-symbol state holds
+  // atomics, so it cannot use the movable-type overflow vector).
+  setupBookUpdate(ev, 300, 0, 7000 * 1'000'000LL, 1 * 1'000'000LL, 7001 * 1'000'000LL,
+                  1 * 1'000'000LL, BookUpdateType::SNAPSHOT);
+  matrix.onBookUpdate(ev);
+
+  auto bidZero = matrix.bestBid(0);
+  ASSERT_TRUE(bidZero.valid);
+  EXPECT_EQ(bidZero.priceRaw, 50 * 1'000'000LL)
+      << "writing an out-of-range symbol must not corrupt symbol 0's data";
 }
 
 // ============================================================================

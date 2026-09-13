@@ -33,16 +33,27 @@ class RangeBarPolicy
 
   constexpr uint64_t param() const noexcept
   {
-    // Return range size in ticks (fits in 28 bits)
-    return static_cast<uint32_t>(_rangeSizeRaw);
+    // Same units as TimeframeId::range(rangeSize): the price range in the
+    // instrument's own units (e.g. 5 for RangeBarPolicy::fromDouble(5.0)),
+    // not the internal Price::Scale-scaled fixed-point _raw
+    // representation. This used to truncate the raw value to 32 bits
+    // instead, which both lost precision and made distinct range sizes
+    // (e.g. 42.94967296 and 85.89934592) collide on the same param.
+    return static_cast<uint64_t>(_rangeSizeRaw / Price::Scale);
   }
 
   [[nodiscard]] bool shouldClose(const TradeEvent& trade, const Bar& bar) const noexcept
   {
-    // Range bar closes when high - low >= rangeSize
-    const auto newHigh = std::max(bar.high, trade.trade.price);
-    const auto newLow = std::min(bar.low, trade.trade.price);
-    return (newHigh.raw() - newLow.raw()) >= _rangeSizeRaw;
+    // Range bar closes when the bar's own accumulated high - low already
+    // reaches rangeSize. Checking against `newHigh`/`newLow` computed from
+    // the *candidate* trade (as this used to) excludes that trade from the
+    // closing bar, so the emitted bar's range never actually reaches the
+    // threshold -- it closes one trade short every time. Checking the
+    // bar's own state (already updated by the previous trade) matches how
+    // every other threshold policy in this file works (Tick counts,
+    // Volume sums) and means the closing trade opens the next bar, same as
+    // for those policies.
+    return (bar.high.raw() - bar.low.raw()) >= _rangeSizeRaw;
   }
 
   void update(const TradeEvent& trade, Bar& bar) noexcept

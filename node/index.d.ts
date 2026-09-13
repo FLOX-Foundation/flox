@@ -82,7 +82,9 @@ export interface BarData {
   barType: number;
   /** Interval / threshold for the active bar policy. */
   barTypeParam: number;
-  /** 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. */
+  /** 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine currently only ever
+   *  reports Threshold (normal close) or Forced (stop() flush); Gap and
+   *  Warmup are reserved (see docs/reference/api/aggregator/bar.md). */
   closeReason: number;
 }
 

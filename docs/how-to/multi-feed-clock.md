@@ -38,7 +38,7 @@ class PairTrade(Strategy):
 
 ## Out-of-band symbols
 
-Calling `tick()` with a symbol that was not in the original `symbols` list updates the per-symbol last-seen timestamp but never causes a fire on its own. This keeps the clock honest if a strategy is also subscribed to feeds beyond the cross-symbol decision.
+Calling `tick()` with a symbol that was not in the original `symbols` list returns immediately: it never fires, and it does not touch any last-seen timestamp, staleness value, or fire state, since the clock has no slot allocated for a symbol outside `symbols`. `triggered_by` on the returned snapshot still echoes the symbol you passed in, but `last_ts_ns` / `staleness_ns` only ever cover the registered symbols. This keeps the clock honest if a strategy is also subscribed to feeds beyond the cross-symbol decision: those feeds simply cannot influence it.
 
 ## Cross-binding
 
@@ -72,4 +72,4 @@ state = clock.tick(ts_ns, btc)
 
 ## Tests
 
-`python/tests/test_feed_clock.py` covers all three policies, the timeout fallback path, the staleness map, the leader / follower freshness check.
+`python/tests/test_feed_clock.py` covers all three policies, the timeout fallback path (including firing before any full WaitForAll fire, and surviving a first fire at timestamp zero), the staleness map, the leader / follower freshness check, and the out-of-band symbol path. `tests/test_multi_feed_clock.cpp` covers the same primitive directly in C++; `node/test/test_feed_clock.js` and `codon/examples/feed_clock_smoke.codon` mirror the timeout and out-of-band cases for their bindings.

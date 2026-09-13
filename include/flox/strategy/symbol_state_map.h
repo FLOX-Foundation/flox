@@ -10,6 +10,7 @@
 #pragma once
 
 #include "flox/common.h"
+#include "flox/log/log.h"
 
 #include <array>
 #include <cassert>
@@ -36,12 +37,22 @@ class SymbolStateMap
       _initialized[symbol] = true;
       return _flat[symbol];
     }
-    // For non-movable types, assert we're within bounds
+    // For non-movable types there is no growable overflow storage (a
+    // std::vector reallocation would need to move State, and State holds
+    // atomics). Route the write to a dedicated scratch slot instead of
+    // `_flat[0]`: aliasing symbol 0 silently corrupted a live, unrelated
+    // symbol's data (and the assert that was meant to catch this in
+    // debug compiles out entirely under NDEBUG, i.e. in every release
+    // build). The write is still lost — this map genuinely has no room
+    // for it — but it no longer lands on someone else's data.
     if constexpr (!std::is_move_constructible_v<State>)
     {
       assert(false && "SymbolId exceeds MaxSymbols for non-movable type");
-      // Return first element as fallback (UB protection)
-      return _flat[0];
+      FLOX_LOG_ERROR("SymbolStateMap: symbol "
+                     << symbol << " exceeds MaxSymbols (" << kMaxSymbols
+                     << ") for a non-movable State; routing to a shared overflow "
+                        "scratch slot instead of aliasing symbol 0");
+      return _overflowScratch;
     }
     else
     {
@@ -58,7 +69,11 @@ class SymbolStateMap
     if constexpr (!std::is_move_constructible_v<State>)
     {
       assert(false && "SymbolId exceeds MaxSymbols for non-movable type");
-      return _flat[0];
+      FLOX_LOG_ERROR("SymbolStateMap: symbol "
+                     << symbol << " exceeds MaxSymbols (" << kMaxSymbols
+                     << ") for a non-movable State; reading the shared overflow "
+                        "scratch slot instead of aliasing symbol 0");
+      return _overflowScratch;
     }
     else
     {
@@ -337,6 +352,13 @@ class SymbolStateMap
   alignas(64) std::array<State, kMaxSymbols> _flat{};
   std::array<bool, kMaxSymbols> _initialized{};
   OverflowStorage<State, std::is_move_constructible_v<State>> _overflowStorage;
+
+  // Single shared landing slot for out-of-range writes when State is not
+  // move-constructible (see operator[] above). Never aliases `_flat[0]` or
+  // any other real symbol; not reachable through tryGet/contains/forEach,
+  // so it never masquerades as a real symbol's data either.
+  [[no_unique_address]] std::conditional_t<std::is_move_constructible_v<State>, char, State>
+      _overflowScratch{};
 
   // Accessor for overflow (only valid for movable types)
   auto& overflow()

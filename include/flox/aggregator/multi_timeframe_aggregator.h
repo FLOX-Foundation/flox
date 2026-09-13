@@ -121,8 +121,15 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     const size_t idx = _numSlots++;
     auto& slot = slots()[idx];
     slot.tag = PolicyTag::Volume;
-    new (&slot.storage.volume) VolumeBarPolicy(VolumeBarPolicy::fromDouble(volumeThreshold));
-    slot.timeframeId = TimeframeId::volume(static_cast<uint32_t>(volumeThreshold));
+    const VolumeBarPolicy policy = VolumeBarPolicy::fromDouble(volumeThreshold);
+    new (&slot.storage.volume) VolumeBarPolicy(policy);
+    // Derive the TimeframeId from the policy's own param() rather than
+    // recomputing it independently from volumeThreshold: BOOK-06 was
+    // exactly this kind of drift (BarAggregator<VolumeBarPolicy> and
+    // MultiTimeframeAggregator disagreeing on what param a given threshold
+    // maps to, so a BarMatrix configured against one producer silently
+    // dropped every bar from the other).
+    slot.timeframeId = TimeframeId::volume(policy.param());
     return idx;
   }
 
@@ -144,7 +151,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
           {
             if (state.initialized)
             {
-              emitBar(slotIdx, symbol, state);
+              emitBar(slotIdx, symbol, state, BarCloseReason::Forced);
               state.initialized = false;
             }
           });
@@ -217,9 +224,10 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     policy.update(trade, state.bar);
   }
 
-  void emitBar(size_t slotIdx, SymbolId symbol, SymbolState& state)
+  void emitBar(size_t slotIdx, SymbolId symbol, SymbolState& state,
+               BarCloseReason reason = BarCloseReason::Threshold)
   {
-    state.bar.reason = BarCloseReason::Threshold;
+    state.bar.reason = reason;
 
     const auto& slot = slots()[slotIdx];
     BarEvent ev{.symbol = symbol,

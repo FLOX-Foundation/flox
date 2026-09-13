@@ -83,6 +83,8 @@ TickBarAggregator aggregator(TickBarPolicy(100), &bus);  // 100 trades per bar
 
 **Example**: A 100-tick bar during high volatility might span 1 second; during quiet periods, 10 minutes. But each bar represents the same amount of "market activity."
 
+**Publication lag**: a tick bar's *contents* are always exactly N trades, but the aggregator only recognizes a bar as complete when it sees a trade that doesn't belong to it -- so a 100-tick bar is emitted on the 101st trade, not the 100th. This is the same structural lag every closing rule in this aggregator has (a time bar likewise cannot close without a trade from the next interval); it is not data loss or corruption, only a one-event delay before the already-correct bar is handed to a subscriber.
+
 ## Volume Bars
 
 ```cpp
@@ -110,6 +112,8 @@ VolumeBarAggregator aggregator(VolumeBarPolicy::fromDouble(1000000.0), &bus);
 
 **Example**: $1M volume bars on BTC might close every few seconds during active trading, but take hours overnight.
 
+`param()` reports the threshold in the same units you passed to `fromDouble()` (e.g. `1000000` for the example above), which is also what `TimeframeId::volume(threshold)` expects -- the two must agree for `BarMatrix` to find the bars this policy emits.
+
 ## Renko Bars
 
 ```cpp
@@ -128,7 +132,7 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
 
 - Loses timing information
 - Can miss reversals within brick
-- Gaps create multiple bricks
+- A single trade that gaps past the brick size does not get split into the intermediate bricks (see "Gaps" below)
 
 **Use when**:
 
@@ -137,6 +141,10 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
 - Filtering out market noise
 
 **Unique property**: Renko bars only move one direction until reversal. A series of up-bricks means consistent upward movement without significant pullbacks.
+
+**Gaps**: a brick closes when a trade's price is at least one brick size away from the brick's open (which is the previous brick's close). If a single trade jumps several brick sizes at once -- a real gap, or just a thin book -- Flox does not synthesize the intermediate bricks a continuous price path would have produced. The current brick closes as it stood before that trade, and the next brick opens directly at the new trade's price; a large, sudden move can therefore appear as one ordinary-looking brick with no record of how far the price actually travelled. If your strategy depends on seeing every intermediate brick, replay the tape at a tick resolution fine enough that no single trade can cross more than one brick, rather than relying on gap-splitting.
+
+`param()` reports the brick size in the instrument's own price units (e.g. `10` for `RenkoBarPolicy::fromDouble(10.0)`), matching `TimeframeId::renko(brickSize)`.
 
 ## Range Bars
 
@@ -164,6 +172,10 @@ RangeBarAggregator aggregator(RangeBarPolicy::fromDouble(5.0), &bus);
 - Options-related strategies
 
 **Example**: $5 range bars will close quickly during volatile periods (many bars) and slowly during consolidation (fewer bars).
+
+The closed bar's own high-low range always reaches the threshold (the trade that pushes the accumulated range to the threshold is folded into that bar before it closes); as with Tick bars, the *close is only detected* on the following trade, which then opens the next bar.
+
+`param()` reports the range size in the instrument's own price units (e.g. `5` for `RangeBarPolicy::fromDouble(5.0)`), matching `TimeframeId::range(rangeSize)`.
 
 ## BpsRange Bars
 

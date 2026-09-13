@@ -35,8 +35,13 @@ class RenkoBarPolicy
 
   constexpr uint64_t param() const noexcept
   {
-    // Return brick size in ticks (fits in 28 bits)
-    return static_cast<uint32_t>(_brickSizeRaw);
+    // Same units as TimeframeId::renko(brickSize): the brick size in the
+    // instrument's own price units (e.g. 100 for
+    // RenkoBarPolicy::fromDouble(100.0)), not the internal
+    // Price::Scale-scaled fixed-point _raw representation -- see
+    // RangeBarPolicy::param() for the matching rationale and the
+    // BarMatrix lookup this has to agree with.
+    return static_cast<uint64_t>(_brickSizeRaw / Price::Scale);
   }
 
   [[nodiscard]] bool shouldClose(const TradeEvent& trade, const Bar& bar) const noexcept

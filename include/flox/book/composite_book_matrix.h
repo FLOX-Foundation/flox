@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "flox/book/book_update.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/common.h"
 #include "flox/engine/abstract_market_data_subscriber.h"
@@ -48,42 +49,63 @@ class CompositeBookMatrix : public IMarketDataSubscriber
     auto& state = _books[ev.update.symbol];
     auto& exState = state.byExchange[ex];
 
-    // Update top-of-book from the update
+    // Find the best bid/ask level actually carried by this update, if any.
+    bool hasBidLevel = false;
     int64_t bestBidPrice = 0;
     int64_t bestBidQty = 0;
-    int64_t bestAskPrice = std::numeric_limits<int64_t>::max();
-    int64_t bestAskQty = 0;
-
-    // Find best bid from update
     for (const auto& [price, qty] : ev.update.bids)
     {
-      if (price.raw() > bestBidPrice && !qty.isZero())
+      if (qty.isZero())
+      {
+        continue;
+      }
+      hasBidLevel = true;
+      if (price.raw() > bestBidPrice)
       {
         bestBidPrice = price.raw();
         bestBidQty = qty.raw();
       }
     }
 
-    // Find best ask from update
+    bool hasAskLevel = false;
+    int64_t bestAskPrice = std::numeric_limits<int64_t>::max();
+    int64_t bestAskQty = 0;
     for (const auto& [price, qty] : ev.update.asks)
     {
-      if (price.raw() < bestAskPrice && !qty.isZero())
+      if (qty.isZero())
+      {
+        continue;
+      }
+      hasAskLevel = true;
+      if (price.raw() < bestAskPrice)
       {
         bestAskPrice = price.raw();
         bestAskQty = qty.raw();
       }
     }
-
-    if (bestAskPrice == std::numeric_limits<int64_t>::max())
+    if (!hasAskLevel)
     {
       bestAskPrice = 0;  // No valid ask
     }
 
-    // Atomic publish of top-of-book snapshot
-    exState.bidPrice.store(bestBidPrice, std::memory_order_release);
-    exState.bidQty.store(bestBidQty, std::memory_order_release);
-    exState.askPrice.store(bestAskPrice, std::memory_order_release);
-    exState.askQty.store(bestAskQty, std::memory_order_release);
+    // A SNAPSHOT replaces both sides wholesale, so a side that is empty in
+    // the update really is empty (e.g. no bids left) and must be published
+    // as such. A DELTA only carries the side(s) that changed (a typical
+    // Bybit delta touches only bids or only asks); a side absent from the
+    // delta must be left exactly as it was, not zeroed out. Zeroing the
+    // untouched side used to make one exchange's ask (or bid) vanish from
+    // cross-venue comparison on every bid-only (or ask-only) delta.
+    const bool isSnapshot = ev.update.type == BookUpdateType::SNAPSHOT;
+    if (isSnapshot || hasBidLevel)
+    {
+      exState.bidPrice.store(bestBidPrice, std::memory_order_release);
+      exState.bidQty.store(bestBidQty, std::memory_order_release);
+    }
+    if (isSnapshot || hasAskLevel)
+    {
+      exState.askPrice.store(bestAskPrice, std::memory_order_release);
+      exState.askQty.store(bestAskQty, std::memory_order_release);
+    }
     exState.lastUpdateNs.store(static_cast<int64_t>(ev.recvNs.raw()), std::memory_order_release);
     exState.stale.store(false, std::memory_order_release);
   }
@@ -230,8 +252,18 @@ class CompositeBookMatrix : public IMarketDataSubscriber
       return {};
     }
 
+    int64_t price = exState.bidPrice.load(std::memory_order_acquire);
+    if (price == 0)
+    {
+      // Symmetric with askForExchange: a zero price means "no bid known",
+      // not "a bid at price zero". Previously only the ask side checked
+      // this, so a bid-side price of zero (e.g. after a delete-only delta
+      // left no bid level) was reported as a valid $0.00 quote.
+      return {};
+    }
+
     BestQuote result{};
-    result.priceRaw = exState.bidPrice.load(std::memory_order_acquire);
+    result.priceRaw = price;
     result.qtyRaw = exState.bidQty.load(std::memory_order_acquire);
     result.exchange = exchange;
     result.valid = true;
