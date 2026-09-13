@@ -180,7 +180,7 @@ matrix = flox.CompositeBookMatrix(staleness_threshold_ms=5000)
 
 ### Methods
 
-#### `update_book(exchange, symbol, bid_prices, bid_quantities, ask_prices, ask_quantities, recv_ns=0)`
+#### `update_book(exchange, symbol, bid_prices, bid_quantities, ask_prices, ask_quantities, recv_ns=0, is_delta=False)`
 
 Feed a book update from an exchange.
 
@@ -192,6 +192,22 @@ matrix.update_book(
     ask_prices=np.array([50001.0]),
     ask_quantities=np.array([2.0]),
     recv_ns=1704067200_000_000_000,
+)
+```
+
+`is_delta` controls how the two sides are combined with what this exchange already published:
+
+- `is_delta=False` (the default) is a **snapshot**: both sides are replaced wholesale, so an empty `bid_prices`/`ask_prices` means that side is genuinely empty.
+- `is_delta=True` is a **delta**: only the side(s) you pass a non-empty array for are updated. A side you leave empty is left exactly as it was -- it is not cleared. This matters because a real exchange delta commonly touches only one side per message:
+
+```python
+# Bybit-style incremental frame that only touches the bid side; the ask
+# side keeps whatever it already was.
+matrix.update_book(
+    exchange=0, symbol=1,
+    bid_prices=np.array([49999.9]), bid_quantities=np.array([3.0]),
+    ask_prices=np.array([]), ask_quantities=np.array([]),
+    is_delta=True,
 )
 ```
 

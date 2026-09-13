@@ -166,7 +166,9 @@ class BarData:
     buy_volume: float
     start_time_ns: int
     end_time_ns: int
-    close_reason: int      # 0=Threshold, 1=Gap, 2=Forced, 3=Warmup
+    close_reason: int      # 0=Threshold, 1=Gap, 2=Forced, 3=Warmup (engine
+                           # only ever emits 0 or 2 today; see
+                           # docs/reference/api/aggregator/bar.md)
 
     def __init__(self):
         self.symbol = 0

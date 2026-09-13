@@ -44,7 +44,12 @@ class HeikinAshiBarPolicy
   {
     const auto tradeTs = fromUnixNs(trade.trade.exchangeTsNs);
     const auto alignedTradeTs = alignToInterval(tradeTs);
-    return alignedTradeTs != bar.startTime;
+    // See TimeBarPolicy::shouldClose (BOOK-10): only a *later* interval
+    // closes the current bar. A `!=` comparison also closed on a late
+    // (out-of-order) trade aligned to an earlier interval, prematurely
+    // closing the live bar and opening a duplicate bucket for an interval
+    // that had already been emitted.
+    return alignedTradeTs > bar.startTime;
   }
 
   void update(const TradeEvent& trade, Bar& bar) noexcept

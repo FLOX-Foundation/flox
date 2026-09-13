@@ -47,7 +47,7 @@ struct Bar {
 | `tradeCount` | `Quantity` | Number of trades aggregated into this bar. |
 | `startTime` | `TimePoint` | Bar open timestamp. |
 | `endTime` | `TimePoint` | Bar close timestamp. |
-| `reason` | `BarCloseReason` | Why this bar was closed. |
+| `reason` | `BarCloseReason` | Why this bar was closed. `BarAggregator` and `MultiTimeframeAggregator` currently set `Threshold` for a normal close and `Forced` for a `stop()` flush; they never set `Gap`. `Warmup` is not assigned by the engine at all -- it is for callers who build their own `Bar` history before calling `BarMatrix::warmup()`. |
 
 ## Delta Calculation
 

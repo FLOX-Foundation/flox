@@ -76,6 +76,14 @@ class MultiFeedClock
       return snapshot(tsNs, /*fired=*/false, /*triggeredBy=*/sym);
     }
 
+    if (!_hasTicked)
+    {
+      // Bootstrap baseline for the timeout fallback below, covering the
+      // window before the clock has ever fired even once (see WaitForAll).
+      _hasTicked = true;
+      _firstTickTs = tsNs;
+    }
+
     _lastSeen[idx] = tsNs;
     _seenSinceFire.insert(sym);
 
@@ -97,8 +105,17 @@ class MultiFeedClock
         {
           fired = true;
         }
-        else if (_lastFireTs > 0 && (tsNs - _lastFireTs) > _timeoutNs)
+        else if (_hasFired && (tsNs - _lastFireTs) > _timeoutNs)
         {
+          fired = true;
+        }
+        else if (!_hasFired && (tsNs - _firstTickTs) > _timeoutNs)
+        {
+          // Before the very first full fire there is no `_lastFireTs` to
+          // measure from. The fallback still has to work here -- a feed
+          // that never shows up at all must not disable the timeout for
+          // the entire run -- so measure from the first tick this clock
+          // ever saw instead.
           fired = true;
         }
         break;
@@ -131,6 +148,7 @@ class MultiFeedClock
     if (fired)
     {
       _lastFireTs = tsNs;
+      _hasFired = true;
       _seenSinceFire.clear();
     }
     return snapshot(tsNs, fired, sym);
@@ -140,6 +158,9 @@ class MultiFeedClock
   {
     std::fill(_lastSeen.begin(), _lastSeen.end(), 0);
     _lastFireTs = 0;
+    _hasFired = false;
+    _hasTicked = false;
+    _firstTickTs = 0;
     _seenSinceFire.clear();
   }
 
@@ -169,6 +190,20 @@ class MultiFeedClock
   int64_t _stalenessBudgetNs;
   std::vector<int64_t> _lastSeen;
   int64_t _lastFireTs = 0;
+  // Whether the clock has ever fired. `_lastFireTs > 0` used to stand in
+  // for this and was wrong two ways: it stayed false forever if a feed
+  // never showed up at all (the WaitForAll timeout fallback never
+  // activated, no matter how long the wait), and if the first fire
+  // happened to land exactly on tsNs == 0 (a backtest replayed from a
+  // zero-based clock) the timeout was disabled permanently even though the
+  // clock genuinely had fired once.
+  bool _hasFired = false;
+  // Bootstrap baseline for the WaitForAll timeout fallback before the
+  // clock has ever fired: the timestamp of the very first tick this
+  // clock ever saw (any registered symbol), and whether that has
+  // happened yet.
+  bool _hasTicked = false;
+  int64_t _firstTickTs = 0;
   std::unordered_set<SymbolId> _seenSinceFire;
 };
 
