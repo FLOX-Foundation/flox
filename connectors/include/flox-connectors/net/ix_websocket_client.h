@@ -12,6 +12,7 @@
 #include <ixwebsocket/IXWebSocket.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -35,7 +36,11 @@ class IxWebSocketClient : public IWebSocketClient
   void onMessage(MoveOnlyFunction<void(std::string_view)> cb) override;
   void onClose(MoveOnlyFunction<void(int, std::string_view)> cb) override;
 
-  void send(const std::string& data) override;
+  // Returns whether the frame was actually handed to the socket
+  // (ix::WebSocket::send()'s own success flag). false on a closed/not-yet-open
+  // socket -- callers that need the frame delivered (e.g. gap resync) must
+  // check it instead of assuming the write always lands.
+  bool send(const std::string& data) override;
   void start() override;
   void stop() override;
 
@@ -54,11 +59,22 @@ class IxWebSocketClient : public IWebSocketClient
   std::thread _thread;
   std::mutex _sendMutex;
 
+  // Guards the reconnect backoff wait so stop() can interrupt it instead of
+  // sleeping it out (see CONN-11: an uninterruptible sleep_for here made
+  // shutdown take up to MAX_BACKOFF_MS instead of one wait-loop tick).
+  std::mutex _backoffMutex;
+  std::condition_variable _backoffCv;
+
   MoveOnlyFunction<void()> _onOpen;
   MoveOnlyFunction<void(std::string_view)> _onMessage;
   MoveOnlyFunction<void(int, std::string_view)> _onClose;
 
-  int _consecutiveFailures{0};
+  // Written from the ix callback thread (reset to 0 on Open), read and
+  // incremented from run(). Plain int next to a deliberately atomic _running
+  // was flagged as a hygiene risk (CONN-10): the only path that could race it
+  // requires ix::WebSocket::stop() to throw and leave its worker thread
+  // alive, which was not reproduced, but atomic costs nothing here.
+  std::atomic<int> _consecutiveFailures{0};
 };
 
 }  // namespace flox

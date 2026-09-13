@@ -110,8 +110,12 @@ TEST(BybitBookGap, DeltaGapDropsAndResyncs)
   auto logger = std::make_shared<AtomicLogger>(logOpts);
 
   BybitExchangeConnector connector(cfg, &bookBus, &tradeBus, nullptr, &registry, logger);
-  // Never started: frames are fed directly; resubscribe is a no-op without a
-  // socket, which is exactly what the offline path needs.
+  // Never started, but the constructor creates _wsClient unconditionally, so
+  // the gap path below does reach a real (never-opened) IxWebSocketClient and
+  // calls send() on a closed socket, which now correctly reports failure
+  // instead of silently doing nothing. This test only checks the offline
+  // book-continuity bookkeeping (gap count, dropped deltas); it does not
+  // assert on the resubscribe send outcome.
 
   connector.handleMessage(bookFrame("snapshot", 100, 1000));  // baseline
   connector.handleMessage(bookFrame("delta", 101, 1001));     // contiguous -> applied

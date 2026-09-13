@@ -72,12 +72,18 @@ void IxWebSocketClient::stop()
   // the run() thread, because the exception leaves the thread body), and an
   // unsynchronized read of _ws while run() swaps in a fresh socket. The cost
   // of the single-owner rule is shutdown latency of one wait-loop tick.
+  //
+  // The reconnect backoff sleep is a separate wait, not this tick: wake it up
+  // explicitly so a stop() that lands while run() is backing off does not
+  // have to wait out the remainder (up to MAX_BACKOFF_MS) of an
+  // uninterruptible sleep_for (CONN-11).
+  _backoffCv.notify_all();
 }
 
-void IxWebSocketClient::send(const std::string& data)
+bool IxWebSocketClient::send(const std::string& data)
 {
   std::lock_guard lock(_sendMutex);
-  _ws->send(data);
+  return _ws->send(data).success;
 }
 
 void IxWebSocketClient::run()
@@ -186,12 +192,20 @@ void IxWebSocketClient::run()
 
     if (_running)
     {
-      ++_consecutiveFailures;
-      int backoffMs =
-          std::min(_reconnectDelayMs * (1 << std::min(_consecutiveFailures, 4)), MAX_BACKOFF_MS);
+      const int failures = ++_consecutiveFailures;
+      int backoffMs = std::min(_reconnectDelayMs * (1 << std::min(failures, 4)), MAX_BACKOFF_MS);
       _logger->warn("WebSocket disconnected, retrying in " + std::to_string(backoffMs) +
-                    "ms... (attempt " + std::to_string(_consecutiveFailures) + ")");
-      std::this_thread::sleep_for(std::chrono::milliseconds(backoffMs));
+                    "ms... (attempt " + std::to_string(failures) + ")");
+      // Interruptible wait: stop() calls _backoffCv.notify_all() so shutdown
+      // does not have to sleep out the remainder of a backoff up to
+      // MAX_BACKOFF_MS (CONN-11) -- it returns as soon as _running goes
+      // false, same tick-latency budget as the connectionClosed wait above.
+      std::unique_lock<std::mutex> backoffLock(_backoffMutex);
+      _backoffCv.wait_for(backoffLock, std::chrono::milliseconds(backoffMs),
+                          [this]
+                          {
+                            return !_running.load();
+                          });
     }
   }
 }

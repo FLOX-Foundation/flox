@@ -27,7 +27,11 @@ class IWebSocketClient : public ISubsystem
   virtual void onMessage(MoveOnlyFunction<void(std::string_view)> cb) = 0;
   virtual void onClose(MoveOnlyFunction<void(int, std::string_view)> cb) = 0;
 
-  virtual void send(const std::string& data) = 0;
+  // Returns whether the frame was handed to the transport successfully.
+  // Implementations must not discard this: a caller that needs the frame
+  // delivered (subscription/resubscription control frames in particular)
+  // has no other way to learn that a send silently failed.
+  virtual bool send(const std::string& data) = 0;
 };
 
 }  // namespace flox
