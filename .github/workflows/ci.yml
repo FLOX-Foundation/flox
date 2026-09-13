@@ -26,7 +26,15 @@ jobs:
     - uses: actions/checkout@v5
 
     - name: Install clang-format
-      run: sudo apt-get update && sudo apt-get install -y clang-format
+      # Pinned to an exact version via the PyPI wheel instead of
+      # `apt-get install clang-format` (whatever the distro currently
+      # ships): the pin lives in scripts/clang-format-version.sh, the one
+      # place scripts/check-format.sh and scripts/pre-commit also read it
+      # from, so CI's baseline can't drift out from under either without
+      # a deliberate change to that file.
+      run: |
+        . scripts/clang-format-version.sh
+        python3 -m pip install --break-system-packages "clang-format==${CLANG_FORMAT_REQUIRED_VERSION}"
 
     - name: Check formatting
       run: ./scripts/check-format.sh
@@ -100,6 +108,24 @@ jobs:
       # CI was green on 1.x and users got the 2.0 SDK, which crashes on start.
       run: python3 scripts/check_dep_pins.py
 
+    - name: Build flox_py (needed by mcp/tests)
+      # flox_mcp's bundled-data-reader and runtime-tool tests import
+      # flox_py; without a build on PYTHONPATH, ~20 of ~194 mcp/tests cases
+      # hit importorskip and silently skip -- the job's own "N passed, 1
+      # skipped" summary reads identical to fully healthy either way.
+      # Mirrors linux-gcc's configure/build, minus the bindings this job
+      # doesn't need.
+      run: |
+        sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends cmake ninja-build g++-14
+        python3 -m pip install --break-system-packages "pybind11<3.1.0" numpy
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_BUILD_PYTHON=ON \
+              -DFLOX_ENABLE_BACKTEST=ON \
+              -Dpybind11_DIR="$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')"
+        cmake --build build -j$(nproc)
+
     - name: flox-mcp unit tests
       # `mcp` was never installed, so flox_mcp.server was unimportable and
       # nothing tested the 38 tool schemas or the dispatch chain that has to
@@ -108,7 +134,7 @@ jobs:
         # Keep this range identical to mcp/pyproject.toml; check_dep_pins.py
         # enforces that.
         python3 -m pip install --break-system-packages pytest "mcp>=2.0,<3"
-        python3 -m pytest mcp/tests/ -q
+        PYTHONPATH=build/python python3 -m pytest mcp/tests/ -q
 
   linux-gcc:
     needs: [format-check, verify-docs-current]
@@ -130,7 +156,12 @@ jobs:
       # pybind11 pinned below 3.1.0: 3.1.0 changed the signatures stubgen
       # renders, so the committed .pyi (generated with 3.0.x) drifts against
       # an unpinned install. Bump this pin together with a stub regeneration.
-      run: python3 -m pip install --break-system-packages "pybind11<3.1.0" numpy pybind11-stubgen mypy pyright pytest
+      # scipy is the only workflow that installs it: LiveQueueCalibrator's
+      # continuous-fit method is lazy-import-optional, and without scipy
+      # here test_fit_scipy_matches_or_beats_grid_rmse always skips while
+      # its mirror (missing-dependency error message) always passes, so the
+      # suite summary reads clean either way.
+      run: python3 -m pip install --break-system-packages "pybind11<3.1.0" numpy scipy pybind11-stubgen mypy pyright pytest
 
     - name: Install Codon
       env:
@@ -791,22 +822,42 @@ jobs:
         sudo apt-get install -y cmake ninja-build g++-14 \
                                 libssl-dev zlib1g-dev libcurl4-openssl-dev
 
+    - name: Install GoogleTest
+      # connectors/tests/CMakeLists.txt requires it (find_package(GTest
+      # REQUIRED)) once FLOX_BUILD_TESTS pulls that directory in below.
+      run: |
+        git clone --depth=1 https://github.com/google/googletest.git
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_INSTALL_PREFIX=$HOME/gtest-install
+        cmake --build gtest-build
+        cmake --install gtest-build
+
     # Network deps (ixwebsocket, simdjson) come in via FetchContent
     # at configure time. Polymarket Rust FFI is opt-OUT here so the
-    # job doesn't need a Rust toolchain.
+    # job doesn't need a Rust toolchain. FLOX_BUILD_TESTS is required
+    # alongside FLOX_BUILD_CONNECTORS: connectors/CMakeLists.txt only
+    # adds its own tests/ subdirectory when that flag is on, so without
+    # it the unit_test_* targets never exist for ctest to run -- no
+    # workflow set both flags together before this.
     - name: Configure
       run: |
         cmake -B build -G Ninja \
               -DCMAKE_CXX_COMPILER=g++-14 \
               -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_PREFIX_PATH=$HOME/gtest-install \
               -DFLOX_BUILD_CONNECTORS=ON \
-              -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF
+              -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF \
+              -DFLOX_BUILD_TESTS=ON
 
-    - name: Build connectors target
-      run: cmake --build build --target flox-connectors -j$(nproc)
+    - name: Build connectors target and tests
+      run: cmake --build build -j$(nproc)
 
     - name: Verify static archive exists
       run: test -f build/connectors/libflox-connectors.a
+
+    - name: Run connector unit tests
+      run: ctest --output-on-failure --test-dir build
 
   # The venue module must stay genuinely optional: a build with it OFF has to
   # configure, compile and pass its suite with no venue code involved. Cheap

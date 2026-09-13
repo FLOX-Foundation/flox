@@ -14,6 +14,16 @@ The check is conservative — only direct `#include` lines are inspected,
 so transitive includes through engine headers are not chased. T020
 caught one case (`test_live_queue_position`); this script automates the
 audit for every future PR.
+
+This also runs the reverse pass: every `tests/*.cpp` file must be named
+by some `add_flox_test(...)` call or a manual `add_executable(...)` in
+`tests/CMakeLists.txt`, or it is never compiled and never run — ctest
+can only run what CMake was told to configure. A file left off the list
+(add_flox_test) or off the manual add_executable() source list fails
+the check. This only covers tests/ itself; venue/tests/ and
+connectors/tests/ use file(GLOB ...) instead of a name list, so a file
+dropped there is auto-discovered rather than silently orphaned, and
+falls outside this script's scope (see check_suite_discovery.py).
 """
 from __future__ import annotations
 
@@ -56,6 +66,15 @@ def expand_flags(flags: list[str]) -> set[str]:
     return out
 
 ADD_TEST_RE = re.compile(r"^\s*add_flox_test\(\s*([A-Za-z0-9_]+)\s*\)")
+# Manual registration path (bypasses add_flox_test entirely): e.g.
+#   add_executable(test_capi_logger test_capi_logger.cpp)
+# The function's own template line, `add_executable(${name} ${name}.cpp)`,
+# does not match this — `${name}` contains characters outside
+# [A-Za-z0-9_.], so the literal-source-list form below only matches real
+# manual registrations.
+ADD_EXECUTABLE_RE = re.compile(
+    r"^\s*add_executable\(\s*[A-Za-z0-9_]+\s+((?:[A-Za-z0-9_./]+\.cpp\s*)+)\)"
+)
 # Track every if(...) so the depth stays balanced. Non-flag forms
 # (if(TARGET ...), if(NOT ...), etc.) get a sentinel that contributes
 # no flag but still occupies a stack slot.
@@ -86,6 +105,29 @@ def parse_cmake_gating(cmake_text: str) -> dict[str, list[str]]:
     return targets
 
 
+def find_unregistered(cmake_text: str) -> list[str]:
+    """Return tests/*.cpp basenames that no add_flox_test(...) or manual
+    add_executable(...) call in tests/CMakeLists.txt compiles.
+
+    ctest only runs what CMake was told to configure; a source file that
+    is not an argument to either registration form is never built and
+    never run, and nothing else in the C++ toolchain would ever say so.
+    """
+    registered: set[str] = set()
+    for raw in cmake_text.splitlines():
+        line = raw.split("#", 1)[0]
+        if (m := ADD_TEST_RE.match(line)):
+            registered.add(f"{m.group(1)}.cpp")
+            continue
+        if (m := ADD_EXECUTABLE_RE.match(line)):
+            for src in m.group(1).split():
+                registered.add(Path(src).name)
+
+    return sorted(
+        p.name for p in TESTS_DIR.glob("*.cpp") if p.name not in registered
+    )
+
+
 def scan_includes(cpp_path: Path) -> set[str]:
     out: set[str] = set()
     try:
@@ -113,9 +155,19 @@ def main() -> int:
         print(f"::error::{CMAKE_PATH} not found", file=sys.stderr)
         return 2
 
-    targets = parse_cmake_gating(CMAKE_PATH.read_text(encoding="utf-8"))
+    cmake_text = CMAKE_PATH.read_text(encoding="utf-8")
+    targets = parse_cmake_gating(cmake_text)
     failures: list[str] = []
     coverage_lines: list[str] = []
+
+    unregistered = find_unregistered(cmake_text)
+    for name in unregistered:
+        failures.append(
+            f"::error::tests/{name} exists but is not named by any "
+            f"add_flox_test(...) or add_executable(...) call in "
+            f"{CMAKE_PATH.relative_to(REPO_ROOT)} — it is never compiled "
+            f"and never runs."
+        )
 
     for target, current_flags in sorted(targets.items()):
         cpp = TESTS_DIR / f"{target}.cpp"
@@ -137,12 +189,17 @@ def main() -> int:
     for line in coverage_lines:
         print(line)
     print()
+    print(
+        f"Registration completeness: {len(list(TESTS_DIR.glob('*.cpp')))} "
+        f"tests/*.cpp file(s), {len(unregistered)} unregistered."
+    )
 
     if failures:
         for f in failures:
             print(f, file=sys.stderr)
         return 1
-    print(f"OK — {len(targets)} test targets, gating consistent.")
+    print(f"OK — {len(targets)} test targets, gating consistent, "
+          f"every tests/*.cpp file is registered.")
     return 0
 
 

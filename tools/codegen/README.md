@@ -9,9 +9,10 @@ Status: **full coverage** + three header emitters (`emit-capi`,
 `emit-codon`, `emit-llms`) plus `flox_codegen.manifest` for the
 flox-mcp data bundle. The spec covers ~340 functions, ~32 handles,
 ~41 structs, ~33 callback typedefs, and 2 enums in the live
-`flox_capi.h`. The CI gate enforces full signature equivalence
-(`--require-full-coverage`) and committed-vs-fresh equality across
-all three golden artifacts and the bundled MCP data.
+`flox_capi.h`. The CI gate enforces function, macro-constant, and
+struct-field equivalence (`--require-full-coverage`; enums and unions
+are not yet compared) and committed-vs-fresh equality across all
+three golden artifacts and the bundled MCP data.
 
 The pybind11 (Python) and NAPI (Node) bindings expose richer
 language-native APIs and are not codegen-driven; their stubs

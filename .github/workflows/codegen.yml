@@ -51,7 +51,7 @@ jobs:
             fi
           done
 
-      - name: Verify full-coverage signature equivalence with live flox_capi.h
+      - name: Verify function, macro, and struct-field equivalence with live flox_capi.h
         env:
           PYTHONPATH: tools/codegen
         run: |
@@ -63,15 +63,28 @@ jobs:
       - name: ABI snapshot diff
         env:
           PYTHONPATH: tools/codegen
+          EVENT_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           # If a commit on this branch carries `BREAKING:` in its message,
           # accept ABI breaks. Otherwise, breaks fail the gate.
+          #
+          # On a PR, the range is the PR's own commits -- correct by
+          # construction. On a push, it used to be a fixed HEAD~10..HEAD
+          # window, which kept a BREAKING: label armed for the next nine
+          # pushes after the one that carried it. Use the range GitHub
+          # actually reports for this push (`before`..`sha`) instead, so the
+          # label only covers the commits this push introduced. A missing or
+          # zero `before` (new branch, or a history git can't resolve) falls
+          # back to just the tip commit -- finding no BREAKING: there fails
+          # closed into strict mode, same as today.
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             base="origin/${GITHUB_BASE_REF}"
             range="$base..HEAD"
+          elif [[ -n "${EVENT_BEFORE}" && "${EVENT_BEFORE}" != "0000000000000000000000000000000000000000" ]]; then
+            range="${EVENT_BEFORE}..${GITHUB_SHA}"
           else
-            range="HEAD~10..HEAD"
+            range="HEAD~1..HEAD"
           fi
           if git log --pretty=%B "$range" 2>/dev/null | grep -qE '^[[:space:]]*BREAKING:'; then
             echo "Found BREAKING: in commit messages — allowing ABI break."
