@@ -2,6 +2,7 @@
 
 #pragma once
 #include <napi.h>
+#include "data_ops.h"
 #include "flox/capi/flox_capi.h"
 
 namespace node_flox
@@ -58,7 +59,7 @@ class MarketProfileWrap : public Napi::ObjectWrap<MarketProfileWrap>
   }
   MarketProfileWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<MarketProfileWrap>(info),
                                                       _h(flox_market_profile_create(info[0].As<Napi::Number>().DoubleValue(),
-                                                                                    info[1].As<Napi::Number>().Uint32Value(), info[2].As<Napi::Number>().Int64Value())) {}
+                                                                                    info[1].As<Napi::Number>().Uint32Value(), toInt64Ns(info[2]))) {}
   ~MarketProfileWrap()
   {
     if (_h)
@@ -68,7 +69,7 @@ class MarketProfileWrap : public Napi::ObjectWrap<MarketProfileWrap>
   }
 
  private:
-  void AddTrade(const Napi::CallbackInfo& info) { flox_market_profile_add_trade(_h, info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Boolean>().Value() ? 1 : 0); }
+  void AddTrade(const Napi::CallbackInfo& info) { flox_market_profile_add_trade(_h, toInt64Ns(info[0]), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Number>().DoubleValue(), info[3].As<Napi::Boolean>().Value() ? 1 : 0); }
   Napi::Value Poc(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_poc(_h)); }
   Napi::Value Vah(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_vah(_h)); }
   Napi::Value Val(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), flox_market_profile_val(_h)); }

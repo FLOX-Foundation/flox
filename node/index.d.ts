@@ -365,29 +365,6 @@ export interface MarketDataRecorderHook {
   onStop?(): void;
 }
 
-/** A binding-supplied event source for `BacktestRunner.runReplaySource`.
- *  `next()` is called repeatedly; return `null` when the stream ends. */
-export interface ReplayEvent {
-  type: "trade" | "book_snapshot" | "book_delta";
-  timestampNs: number;
-  // Trade payload (when type === "trade")
-  tradeSymbol?: number;
-  tradeIsBuy?: boolean;
-  tradePrice?: number;
-  tradeQuantity?: number;
-  // Book payload (when type === "book_snapshot" | "book_delta")
-  bookSymbol?: number;
-  bids?: ReadonlyArray<readonly [number, number]>;
-  asks?: ReadonlyArray<readonly [number, number]>;
-}
-
-export interface ReplaySource {
-  onStart?(): void;
-  onStop?(): void;
-  seekTo?(timestampNs: number): boolean;
-  next?(): ReplayEvent | null | undefined;
-}
-
 /** Replaces the built-in SimulatedExecutor with a binding-supplied one
  *  (real broker, paper-trading bridge, custom simulator). Sync only —
  *  `capabilities()` is queried inline by the engine. */
@@ -1466,7 +1443,14 @@ export function shannon_entropy(input: Float64Array, period: number, bins: numbe
 export function autocorrelation(input: Float64Array, window: number, lag: number): Float64Array;
 /** Rolling Pearson correlation over a moving `period` window. */
 export function rollingCorrelation(x: Float64Array, y: Float64Array, period: number): Float64Array;
-export function adf(input: Float64Array, lag: number): number;
+/** Augmented Dickey-Fuller unit-root test. `regression` is the
+ *  deterministic term: "c" (constant, default), "ct" (constant + trend),
+ *  or "n" (none). */
+export function adf(
+  input: Float64Array,
+  maxLag?: number,
+  regression?: "c" | "ct" | "n",
+): { testStat: number; pValue: number; usedLag: number };
 export function chop(high: Float64Array, low: Float64Array, close: Float64Array, period: number): Float64Array;
 export function atr(high: Float64Array, low: Float64Array, close: Float64Array, period: number): Float64Array;
 export function cci(high: Float64Array, low: Float64Array, close: Float64Array, period: number): Float64Array;

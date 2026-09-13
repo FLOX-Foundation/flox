@@ -121,15 +121,15 @@ walk[0] = 0;
 for (let i = 1; i < N; ++i) walk[i] = walk[i - 1] + gen();
 
 const r = flox.adf(walk, 4, 'c');
-check(r.used_lag <= 4, 'adf used_lag <= max_lag');
-check(r.p_value > 0.05, 'adf does not reject H0 for random walk');
+check(r.usedLag <= 4, 'adf usedLag <= max_lag');
+check(r.pValue > 0.05, 'adf does not reject H0 for random walk');
 
 const gen2 = gaussian(7);
 const noise = new Float64Array(N);
 for (let i = 0; i < N; ++i) noise[i] = gen2() * 0.5;
 const r2 = flox.adf(noise, 4, 'c');
-check(r2.test_stat < r.test_stat, 'stationary series produces lower test_stat');
-check(r2.p_value < 0.05, 'adf rejects H0 for white noise');
+check(r2.testStat < r.testStat, 'stationary series produces lower testStat');
+check(r2.pValue < 0.05, 'adf rejects H0 for white noise');
 // ── AutoCorrelation ───────────────────────────────────────────────────
 
 console.log('=== AutoCorrelation ===');

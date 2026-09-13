@@ -30,6 +30,7 @@
 
 #include "flox/capi/flox_capi.h"
 #include "flox/capi/order_type_names.hpp"
+#include "tsfn_util.h"
 
 #include <cmath>
 #include <cstring>
@@ -166,7 +167,7 @@ struct PnLTrackerHost
     if (mode == HookMode::Threaded)
     {
       auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_pnl_cb", 0, 1);
+      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_pnl_cb", kTsfnMaxQueueSize, 1);
     }
     FloxPnLTrackerCallbacks cb{};
     cb.on_signal = &PnLTrackerHost::onSignalBridge;
@@ -200,12 +201,12 @@ struct PnLTrackerHost
       return;
     }
     auto* sig_copy = new FloxSignal(*sig);
-    self->tsfn.NonBlockingCall(sig_copy,
-                               [self](Napi::Env env, Napi::Function, FloxSignal* s)
-                               {
-                                 self->on_signal_fn.Call({signalToJs(env, s)});
-                                 delete s;
-                               });
+    tsfnCall(self->tsfn, sig_copy,
+             [self](Napi::Env env, Napi::Function, FloxSignal* s)
+             {
+               std::unique_ptr<FloxSignal> guard(s);
+               self->on_signal_fn.Call({signalToJs(env, s)});
+             });
   }
 };
 
@@ -225,7 +226,7 @@ struct StorageSinkHost
     if (mode == HookMode::Threaded)
     {
       auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_storage_cb", 0, 1);
+      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_storage_cb", kTsfnMaxQueueSize, 1);
     }
     FloxStorageSinkCallbacks cb{};
     cb.store = &StorageSinkHost::storeBridge;
@@ -259,12 +260,12 @@ struct StorageSinkHost
       return;
     }
     auto* sig_copy = new FloxSignal(*sig);
-    self->tsfn.NonBlockingCall(sig_copy,
-                               [self](Napi::Env env, Napi::Function, FloxSignal* s)
-                               {
-                                 self->store_fn.Call({signalToJs(env, s)});
-                                 delete s;
-                               });
+    tsfnCall(self->tsfn, sig_copy,
+             [self](Napi::Env env, Napi::Function, FloxSignal* s)
+             {
+               std::unique_ptr<FloxSignal> guard(s);
+               self->store_fn.Call({signalToJs(env, s)});
+             });
   }
 };
 
@@ -445,7 +446,7 @@ struct MarketDataRecorderHookHost
     if (mode == HookMode::Threaded)
     {
       auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_recorder_cb", 0, 1);
+      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_recorder_cb", kTsfnMaxQueueSize, 1);
     }
     FloxMarketDataRecorderCallbacks cb{};
     cb.on_trade = &MarketDataRecorderHookHost::onTradeBridge;
@@ -482,12 +483,12 @@ struct MarketDataRecorderHookHost
       return;
     }
     auto* p = new TradePayload{*t};
-    self->tsfn.NonBlockingCall(p,
-                               [self](Napi::Env env, Napi::Function, TradePayload* tp)
-                               {
-                                 self->on_trade_fn.Call({tradeToJs(env, &tp->t)});
-                                 delete tp;
-                               });
+    tsfnCall(self->tsfn, p,
+             [self](Napi::Env env, Napi::Function, TradePayload* tp)
+             {
+               std::unique_ptr<TradePayload> guard(tp);
+               self->on_trade_fn.Call({tradeToJs(env, &tp->t)});
+             });
   }
   static void onBookBridge(void* ud, uint32_t symbol, uint8_t is_snap,
                            const FloxBookLevel* bids, uint32_t n_bids,
@@ -513,20 +514,20 @@ struct MarketDataRecorderHookHost
     auto* p = new BookPayload{symbol, is_snap, {}, {}, ts};
     p->bids.assign(bids, bids + n_bids);
     p->asks.assign(asks, asks + n_asks);
-    self->tsfn.NonBlockingCall(p,
-                               [self](Napi::Env env, Napi::Function, BookPayload* bp)
-                               {
-                                 self->on_book_fn.Call({
-                                     Napi::Number::New(env, bp->symbol),
-                                     Napi::Boolean::New(env, bp->is_snap != 0),
-                                     bookLevelsToBigInt64(env, bp->bids.data(),
-                                                          static_cast<uint32_t>(bp->bids.size())),
-                                     bookLevelsToBigInt64(env, bp->asks.data(),
-                                                          static_cast<uint32_t>(bp->asks.size())),
-                                     Napi::BigInt::New(env, bp->ts),
-                                 });
-                                 delete bp;
-                               });
+    tsfnCall(self->tsfn, p,
+             [self](Napi::Env env, Napi::Function, BookPayload* bp)
+             {
+               std::unique_ptr<BookPayload> guard(bp);
+               self->on_book_fn.Call({
+                   Napi::Number::New(env, bp->symbol),
+                   Napi::Boolean::New(env, bp->is_snap != 0),
+                   bookLevelsToBigInt64(env, bp->bids.data(),
+                                        static_cast<uint32_t>(bp->bids.size())),
+                   bookLevelsToBigInt64(env, bp->asks.data(),
+                                        static_cast<uint32_t>(bp->asks.size())),
+                   Napi::BigInt::New(env, bp->ts),
+               });
+             });
   }
   static void onStartBridge(void* ud)
   {
@@ -593,7 +594,7 @@ struct ExecutorHost
     if (mode == HookMode::Threaded)
     {
       auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_executor_cb", 0, 1);
+      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_executor_cb", kTsfnMaxQueueSize, 1);
     }
     FloxExecutorCallbacks cb{};
     cb.submit = &ExecutorHost::submitBridge;
@@ -649,12 +650,12 @@ struct ExecutorHost
       return;
     }
     auto* p = new OrderPayload{*o};
-    self->tsfn.NonBlockingCall(p,
-                               [self](Napi::Env env, Napi::Function, OrderPayload* op)
-                               {
-                                 self->submit_fn.Call({orderToJs(env, &op->o)});
-                                 delete op;
-                               });
+    tsfnCall(self->tsfn, p,
+             [self](Napi::Env env, Napi::Function, OrderPayload* op)
+             {
+               std::unique_ptr<OrderPayload> guard(op);
+               self->submit_fn.Call({orderToJs(env, &op->o)});
+             });
   }
   static void cancelBridge(void* ud, uint64_t id)
   {
@@ -669,13 +670,13 @@ struct ExecutorHost
       return;
     }
     auto* p = new uint64_t(id);
-    self->tsfn.NonBlockingCall(p,
-                               [self](Napi::Env env, Napi::Function, uint64_t* idp)
-                               {
-                                 self->cancel_fn.Call(
-                                     {Napi::Number::New(env, static_cast<double>(*idp))});
-                                 delete idp;
-                               });
+    tsfnCall(self->tsfn, p,
+             [self](Napi::Env env, Napi::Function, uint64_t* idp)
+             {
+               std::unique_ptr<uint64_t> guard(idp);
+               self->cancel_fn.Call(
+                   {Napi::Number::New(env, static_cast<double>(*idp))});
+             });
   }
   static void cancelAllBridge(void* ud, uint32_t s)
   {
@@ -690,12 +691,12 @@ struct ExecutorHost
       return;
     }
     auto* p = new uint32_t(s);
-    self->tsfn.NonBlockingCall(p,
-                               [self](Napi::Env env, Napi::Function, uint32_t* sp)
-                               {
-                                 self->cancel_all_fn.Call({Napi::Number::New(env, *sp)});
-                                 delete sp;
-                               });
+    tsfnCall(self->tsfn, p,
+             [self](Napi::Env env, Napi::Function, uint32_t* sp)
+             {
+               std::unique_ptr<uint32_t> guard(sp);
+               self->cancel_all_fn.Call({Napi::Number::New(env, *sp)});
+             });
   }
   static void replaceBridge(void* ud, uint64_t old_id, const FloxOrder* o)
   {
@@ -713,15 +714,15 @@ struct ExecutorHost
       return;
     }
     auto* p = new ReplacePayload{old_id, *o};
-    self->tsfn.NonBlockingCall(p,
-                               [self](Napi::Env env, Napi::Function, ReplacePayload* rp)
-                               {
-                                 self->replace_fn.Call({
-                                     Napi::Number::New(env, static_cast<double>(rp->old_id)),
-                                     orderToJs(env, &rp->o),
-                                 });
-                                 delete rp;
-                               });
+    tsfnCall(self->tsfn, p,
+             [self](Napi::Env env, Napi::Function, ReplacePayload* rp)
+             {
+               std::unique_ptr<ReplacePayload> guard(rp);
+               self->replace_fn.Call({
+                   Napi::Number::New(env, static_cast<double>(rp->old_id)),
+                   orderToJs(env, &rp->o),
+               });
+             });
   }
   static void submitOcoBridge(void* ud, const FloxOrder* a, const FloxOrder* b)
   {
@@ -736,15 +737,15 @@ struct ExecutorHost
       return;
     }
     auto* p = new OcoPayload{*a, *b};
-    self->tsfn.NonBlockingCall(p,
-                               [self](Napi::Env env, Napi::Function, OcoPayload* op)
-                               {
-                                 self->submit_oco_fn.Call({
-                                     orderToJs(env, &op->a),
-                                     orderToJs(env, &op->b),
-                                 });
-                                 delete op;
-                               });
+    tsfnCall(self->tsfn, p,
+             [self](Napi::Env env, Napi::Function, OcoPayload* op)
+             {
+               std::unique_ptr<OcoPayload> guard(op);
+               self->submit_oco_fn.Call({
+                   orderToJs(env, &op->a),
+                   orderToJs(env, &op->b),
+               });
+             });
   }
   // Capabilities is synchronous — engine queries it inline. Only safe
   // to call from the JS thread (sync Runner / BacktestRunner).
@@ -855,7 +856,7 @@ struct ExecutionListenerHost
     if (mode == HookMode::Threaded)
     {
       auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_listener_cb", 0, 1);
+      tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_listener_cb", kTsfnMaxQueueSize, 1);
     }
     FloxExecutionListenerCallbacks cb{};
     cb.on_submitted = &ExecutionListenerHost::onSubmittedBridge;
@@ -925,12 +926,12 @@ struct ExecutionListenerHost
       return;
     }
     auto* ev = new OrderEv{*o};
-    self->tsfn.NonBlockingCall(ev,
-                               [&fn](Napi::Env env, Napi::Function, OrderEv* e)
-                               {
-                                 fn.Call({orderToJs(env, &e->o)});
-                                 delete e;
-                               });
+    tsfnCall(self->tsfn, ev,
+             [&fn](Napi::Env env, Napi::Function, OrderEv* e)
+             {
+               std::unique_ptr<OrderEv> guard(e);
+               fn.Call({orderToJs(env, &e->o)});
+             });
   }
 
   static void onSubmittedBridge(void* ud, const FloxOrder* o)
@@ -981,15 +982,15 @@ struct ExecutionListenerHost
       return;
     }
     auto* ev = new PartialEv{*o, fill_qty};
-    self->tsfn.NonBlockingCall(ev,
-                               [self](Napi::Env env, Napi::Function, PartialEv* e)
-                               {
-                                 self->on_partial_fn.Call({
-                                     orderToJs(env, &e->o),
-                                     Napi::Number::New(env, e->fill_qty / 1e8),
-                                 });
-                                 delete e;
-                               });
+    tsfnCall(self->tsfn, ev,
+             [self](Napi::Env env, Napi::Function, PartialEv* e)
+             {
+               std::unique_ptr<PartialEv> guard(e);
+               self->on_partial_fn.Call({
+                   orderToJs(env, &e->o),
+                   Napi::Number::New(env, e->fill_qty / 1e8),
+               });
+             });
   }
   static void onRejectedBridge(void* ud, const FloxOrder* o, const char* reason)
   {
@@ -999,15 +1000,15 @@ struct ExecutionListenerHost
       return;
     }
     auto* ev = new RejectEv{*o, reason ? std::string(reason) : std::string{}};
-    self->tsfn.NonBlockingCall(ev,
-                               [self](Napi::Env env, Napi::Function, RejectEv* e)
-                               {
-                                 self->on_rejected_fn.Call({
-                                     orderToJs(env, &e->o),
-                                     Napi::String::New(env, e->reason),
-                                 });
-                                 delete e;
-                               });
+    tsfnCall(self->tsfn, ev,
+             [self](Napi::Env env, Napi::Function, RejectEv* e)
+             {
+               std::unique_ptr<RejectEv> guard(e);
+               self->on_rejected_fn.Call({
+                   orderToJs(env, &e->o),
+                   Napi::String::New(env, e->reason),
+               });
+             });
   }
   static void onReplacedBridge(void* ud, const FloxOrder* a, const FloxOrder* b)
   {
@@ -1017,15 +1018,15 @@ struct ExecutionListenerHost
       return;
     }
     auto* ev = new ReplaceEv{*a, *b};
-    self->tsfn.NonBlockingCall(ev,
-                               [self](Napi::Env env, Napi::Function, ReplaceEv* e)
-                               {
-                                 self->on_replaced_fn.Call({
-                                     orderToJs(env, &e->a),
-                                     orderToJs(env, &e->b),
-                                 });
-                                 delete e;
-                               });
+    tsfnCall(self->tsfn, ev,
+             [self](Napi::Env env, Napi::Function, ReplaceEv* e)
+             {
+               std::unique_ptr<ReplaceEv> guard(e);
+               self->on_replaced_fn.Call({
+                   orderToJs(env, &e->a),
+                   orderToJs(env, &e->b),
+               });
+             });
   }
   static void onTrailingUpdateBridge(void* ud, const FloxOrder* o, int64_t new_trigger_raw)
   {
@@ -1035,163 +1036,15 @@ struct ExecutionListenerHost
       return;
     }
     auto* ev = new TrailingEv{*o, new_trigger_raw};
-    self->tsfn.NonBlockingCall(ev,
-                               [self](Napi::Env env, Napi::Function, TrailingEv* e)
-                               {
-                                 self->on_trailing_update_fn.Call({
-                                     orderToJs(env, &e->o),
-                                     Napi::Number::New(env, e->new_trigger / 1e8),
-                                 });
-                                 delete e;
-                               });
-  }
-};
-
-// ── ReplaySource ────────────────────────────────────────────────────────
-//
-// ReplaySource is pull-based — the engine calls next() to get events.
-// This means the JS callback must be invoked **synchronously** so the
-// engine can read the result. Live engine doesn't pull replay sources,
-// so this is only used with BacktestRunner.runReplaySource() — always
-// from the JS thread.
-
-struct ReplaySourceHost
-{
-  Napi::FunctionReference on_start_fn;
-  Napi::FunctionReference on_stop_fn;
-  Napi::FunctionReference seek_to_fn;
-  Napi::FunctionReference next_fn;
-  Napi::Env env;
-  FloxReplaySourceHandle handle{nullptr};
-  // Buffers for the most recent next() — bid/ask pointers must remain
-  // valid until the engine reads them (before next() is called again).
-  std::vector<FloxBookLevel> _bids_buf;
-  std::vector<FloxBookLevel> _asks_buf;
-
-  ReplaySourceHost(Napi::Env env_, Napi::Object obj)
-      : on_start_fn(takeFn(obj, "onStart")),
-        on_stop_fn(takeFn(obj, "onStop")),
-        seek_to_fn(takeFn(obj, "seekTo")),
-        next_fn(takeFn(obj, "next")),
-        env(env_)
-  {
-    FloxReplaySourceCallbacks cb{};
-    cb.on_start = &ReplaySourceHost::onStartBridge;
-    cb.on_stop = &ReplaySourceHost::onStopBridge;
-    cb.seek_to = &ReplaySourceHost::seekBridge;
-    cb.next = &ReplaySourceHost::nextBridge;
-    cb.user_data = this;
-    handle = flox_replay_source_create(cb);
-  }
-  ~ReplaySourceHost()
-  {
-    if (handle)
-    {
-      flox_replay_source_destroy(handle);
-    }
-  }
-  ReplaySourceHost(const ReplaySourceHost&) = delete;
-  ReplaySourceHost& operator=(const ReplaySourceHost&) = delete;
-
-  static void onStartBridge(void* ud)
-  {
-    auto* self = static_cast<ReplaySourceHost*>(ud);
-    if (!self->on_start_fn.IsEmpty())
-    {
-      self->on_start_fn.Call({});
-    }
-  }
-  static void onStopBridge(void* ud)
-  {
-    auto* self = static_cast<ReplaySourceHost*>(ud);
-    if (!self->on_stop_fn.IsEmpty())
-    {
-      self->on_stop_fn.Call({});
-    }
-  }
-  static uint8_t seekBridge(void* ud, int64_t ts)
-  {
-    auto* self = static_cast<ReplaySourceHost*>(ud);
-    if (self->seek_to_fn.IsEmpty())
-    {
-      return 0;
-    }
-    auto result = self->seek_to_fn.Call(
-        {Napi::Number::New(self->env, static_cast<double>(ts))});
-    return (result.IsBoolean() && result.As<Napi::Boolean>().Value()) ? 1u : 0u;
-  }
-  static uint8_t nextBridge(void* ud, FloxReplayEvent* out)
-  {
-    auto* self = static_cast<ReplaySourceHost*>(ud);
-    if (self->next_fn.IsEmpty())
-    {
-      return 0;
-    }
-    auto result = self->next_fn.Call({});
-    if (!result.IsObject())
-    {
-      return 0;
-    }
-    auto obj = result.As<Napi::Object>();
-    auto type = obj.Get("type").As<Napi::String>().Utf8Value();
-    auto ts = obj.Get("timestampNs");
-    out->timestamp_ns = ts.IsNumber() ? static_cast<int64_t>(ts.As<Napi::Number>().DoubleValue())
-                                      : 0;
-    if (type == "trade")
-    {
-      out->type = 1;
-      out->trade_symbol = obj.Get("tradeSymbol").As<Napi::Number>().Uint32Value();
-      out->trade_is_buy =
-          obj.Get("tradeIsBuy").As<Napi::Boolean>().Value() ? 1u : 0u;
-      out->trade_price_raw = static_cast<int64_t>(std::llround(
-          obj.Get("tradePrice").As<Napi::Number>().DoubleValue() * 1e8));
-      out->trade_quantity_raw = static_cast<int64_t>(std::llround(
-          obj.Get("tradeQuantity").As<Napi::Number>().DoubleValue() * 1e8));
-      out->n_bids = 0;
-      out->n_asks = 0;
-      out->bids = nullptr;
-      out->asks = nullptr;
-      return 1;
-    }
-    if (type == "book_snapshot" || type == "book_delta")
-    {
-      out->type = (type == "book_snapshot") ? 2u : 3u;
-      out->book_symbol = obj.Get("bookSymbol").As<Napi::Number>().Uint32Value();
-      auto bids = obj.Get("bids");
-      auto asks = obj.Get("asks");
-      self->_bids_buf.clear();
-      self->_asks_buf.clear();
-      if (bids.IsArray())
-      {
-        auto arr = bids.As<Napi::Array>();
-        for (uint32_t i = 0; i < arr.Length(); ++i)
-        {
-          auto pair = arr.Get(i).As<Napi::Array>();
-          self->_bids_buf.push_back({
-              static_cast<int64_t>(std::llround(pair.Get(uint32_t{0}).As<Napi::Number>().DoubleValue() * 1e8)),
-              static_cast<int64_t>(std::llround(pair.Get(uint32_t{1}).As<Napi::Number>().DoubleValue() * 1e8)),
-          });
-        }
-      }
-      if (asks.IsArray())
-      {
-        auto arr = asks.As<Napi::Array>();
-        for (uint32_t i = 0; i < arr.Length(); ++i)
-        {
-          auto pair = arr.Get(i).As<Napi::Array>();
-          self->_asks_buf.push_back({
-              static_cast<int64_t>(std::llround(pair.Get(uint32_t{0}).As<Napi::Number>().DoubleValue() * 1e8)),
-              static_cast<int64_t>(std::llround(pair.Get(uint32_t{1}).As<Napi::Number>().DoubleValue() * 1e8)),
-          });
-        }
-      }
-      out->n_bids = static_cast<uint32_t>(self->_bids_buf.size());
-      out->n_asks = static_cast<uint32_t>(self->_asks_buf.size());
-      out->bids = self->_bids_buf.empty() ? nullptr : self->_bids_buf.data();
-      out->asks = self->_asks_buf.empty() ? nullptr : self->_asks_buf.data();
-      return 1;
-    }
-    return 0;
+    tsfnCall(self->tsfn, ev,
+             [self](Napi::Env env, Napi::Function, TrailingEv* e)
+             {
+               std::unique_ptr<TrailingEv> guard(e);
+               self->on_trailing_update_fn.Call({
+                   orderToJs(env, &e->o),
+                   Napi::Number::New(env, e->new_trigger / 1e8),
+               });
+             });
   }
 };
 
@@ -1211,7 +1064,7 @@ struct LoggerCallback
     }
     fn = Napi::Persistent(f);
     auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-    tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_logger_cb", 0, 1);
+    tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_logger_cb", kTsfnMaxQueueSize, 1);
     flox_set_log_callback(&LoggerCallback::bridge, this);
     active = true;
   }
@@ -1239,15 +1092,15 @@ struct LoggerCallback
       std::string msg;
     };
     auto* p = new LogPayload{level, msg ? std::string(msg) : std::string{}};
-    self->tsfn.NonBlockingCall(p,
-                               [self](Napi::Env env, Napi::Function, LogPayload* lp)
-                               {
-                                 self->fn.Call({
-                                     Napi::Number::New(env, lp->level),
-                                     Napi::String::New(env, lp->msg),
-                                 });
-                                 delete lp;
-                               });
+    tsfnCall(self->tsfn, p,
+             [self](Napi::Env env, Napi::Function, LogPayload* lp)
+             {
+               std::unique_ptr<LogPayload> guard(lp);
+               self->fn.Call({
+                   Napi::Number::New(env, lp->level),
+                   Napi::String::New(env, lp->msg),
+               });
+             });
   }
 };
 

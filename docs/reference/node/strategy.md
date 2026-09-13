@@ -148,6 +148,17 @@ In threaded mode, events are published to a lock-free ring buffer and callbacks 
 | `onBar(symbol, { open, high, low, close, volume?, ... })` | Inject a closed OHLC bar |
 
 `symbol` accepts a `Symbol` object or a raw number. `tsNs` accepts a number or a `bigint`.
+`bidPrices` / `bidQtys` / `askPrices` / `askQtys` are `Float64Array`, one entry per book
+level; each price array must be the same length as its matching quantity array.
+
+Exceptions behave differently in the two modes. In sync mode, a throw from
+`onTrade` / `onBookSnapshot` / `onBar` propagates straight out of the call,
+so a `try`/`catch` around it works normally. In threaded mode there's no
+caller waiting on the call (it runs on a libuv-scheduled turn), so Node
+just logs a one-time `DEP0168` deprecation warning and drops the
+exception; the strategy quietly misses that event. Put the `try`/`catch`
+inside the callback itself if a threaded strategy needs to see its own
+exceptions.
 
 ### Hook setters
 

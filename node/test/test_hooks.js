@@ -2,7 +2,7 @@
 /**
  * node/test/test_hooks.js — smoke-test NAPI wrappers for the extension
  * hooks (PnLTracker, StorageSink, RiskManager, KillSwitch,
- * OrderValidator, MarketDataRecorderHook, ReplaySource, Executor,
+ * OrderValidator, MarketDataRecorderHook, Executor,
  * ExecutionListener, setLogCallback).
  *
  * Run from repo root:
@@ -151,9 +151,10 @@ function testMarketDataRecorder() {
   runner.start();
   check(starts === 1, `MarketDataRecorderHook.onStart fired (${starts})`);
   runner.onTrade(Number(sym), 101.5, 0.5, true, 5000);
+  // index.d.ts declares Float64Array for these four arguments.
   runner.onBookSnapshot(Number(sym),
-    [100, 99], [1, 2],
-    [102, 103], [1, 2],
+    new Float64Array([100, 99]), new Float64Array([1, 2]),
+    new Float64Array([102, 103]), new Float64Array([1, 2]),
     6000);
   runner.stop();
   check(trades.length === 1, `recorder.onTrade fired once (got ${trades.length})`);

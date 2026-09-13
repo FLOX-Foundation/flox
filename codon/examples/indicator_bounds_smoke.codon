@@ -1,0 +1,85 @@
+# Smoke test: batch indicator functions that take more than one input
+# array must reject mismatched lengths instead of reading past the end
+# of the shorter array. Each one used to take its element count from
+# the first array only and index the rest at that length -- on small
+# inputs that reads garbage from whatever memory follows the short
+# array's allocation, on large inputs it segfaults.
+#
+# Also covers the flox.indicators / flox.tools `correlation` name
+# collision: flox.indicators has a rolling (List[float]) correlation
+# and flox.tools has a single-number Pearson correlation, and
+# __init__.codon imports both `import *`. They are exposed under
+# different names (rolling_correlation vs correlation) so both are
+# reachable and neither silently shadows the other with the wrong
+# contract.
+
+from flox.indicators import (
+    atr, cci, chop, obv, vwap, cvd, parkinson_vol, rogers_satchell_vol,
+    rolling_correlation, stochastic, adx,
+)
+from flox.tools import correlation as scalar_correlation
+
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL  " + msg)
+
+
+def raises_value_error(fn) -> bool:
+    try:
+        fn()
+        return False
+    except ValueError:
+        return True
+
+
+long5 = [1.0, 2.0, 3.0, 4.0, 5.0]
+short1 = [1.0]
+
+check(raises_value_error(lambda: atr(long5, short1, long5, 3)),
+      "atr rejects mismatched low length")
+check(raises_value_error(lambda: cci(long5, short1, long5, 3)),
+      "cci rejects mismatched low length")
+check(raises_value_error(lambda: chop(long5, short1, long5, 3)),
+      "chop rejects mismatched low length")
+check(raises_value_error(lambda: obv(long5, short1)),
+      "obv rejects mismatched volume length")
+check(raises_value_error(lambda: vwap(long5, short1, 3)),
+      "vwap rejects mismatched volume length")
+check(raises_value_error(lambda: cvd(long5, long5, long5, long5, short1)),
+      "cvd rejects mismatched volume length")
+check(raises_value_error(lambda: parkinson_vol(long5, short1, 3)),
+      "parkinson_vol rejects mismatched low length")
+check(raises_value_error(lambda: rogers_satchell_vol(long5, long5, long5, short1, 3)),
+      "rogers_satchell_vol rejects mismatched close length")
+check(raises_value_error(lambda: rolling_correlation(long5, short1, 3)),
+      "rolling_correlation rejects mismatched y length")
+check(raises_value_error(lambda: stochastic(long5, short1, long5)),
+      "stochastic rejects mismatched low length")
+check(raises_value_error(lambda: adx(long5, short1, long5)),
+      "adx rejects mismatched low length")
+
+# Same-length calls still work (the check does not misfire on valid input).
+check(len(atr(long5, long5, long5, 3)) == 5, "atr still computes on matched lengths")
+check(len(rolling_correlation(long5, long5, 3)) == 5,
+      "rolling_correlation still computes on matched lengths")
+
+# The two `correlation`s are reachable under different names and keep
+# their own contract: the rolling one returns a list, the scalar
+# Pearson one (imported explicitly from flox.tools) returns a float.
+rc = rolling_correlation(long5, long5, 3)
+check(len(rc) == 5, "rolling_correlation returns one value per input element")
+sc = scalar_correlation(long5, long5)
+check(sc > 0.99, f"flox.tools.correlation is the scalar Pearson correlation (got {sc})")
+
+if failed:
+    print(f"FAILED: {failed}")
+    from sys import exit
+    exit(1)
+print("done")

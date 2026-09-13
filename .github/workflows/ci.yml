@@ -376,6 +376,8 @@ jobs:
           ./build/codon/codon_bar_close_ordering_parity_smoke
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_order_type_codes_smoke
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_indicator_bounds_smoke
 
     - name: Verify QuickJS runner
       run: |
@@ -410,6 +412,18 @@ jobs:
         npx tsc -p authoring/tsconfig.json
         npx tsc -p test/tsconfig.authoring.json
         node .test-build/test_authoring.js
+
+    # `npm run typecheck` (above) only runs `tsc --noEmit` on test_types.ts,
+    # which confirms every call matches index.d.ts but never executes the
+    # calls -- a declared type that drifted from what the addon actually
+    # accepts at runtime passes tsc and then throws (or silently returns
+    # the wrong JS type) the first time real code runs. Compile it to JS
+    # and run it against the built addon so that drift fails CI.
+    - name: Run node/test/test_types.ts against the built addon
+      run: |
+        cd node
+        npx tsc -p test/tsconfig.types.json
+        node .test-build/test_types.js
 
     - name: Cross-binding parity (Python ↔ Node, same C++ math)
       run: PYTHONPATH=build/python python3 scripts/cross_binding_parity.py
