@@ -11,7 +11,7 @@ public:
   virtual void onMessage(MoveOnlyFunction<void(std::string_view)> cb) = 0;
   virtual void onClose(MoveOnlyFunction<void(int, std::string_view)> cb) = 0;
 
-  virtual void send(const std::string& data) = 0;
+  virtual bool send(const std::string& data) = 0;
 };
 ```
 
@@ -27,6 +27,6 @@ public:
 | `onOpen()`    | Registers a callback to be invoked when the connection is successfully opened.                            |
 | `onMessage()` | Registers a callback for receiving incoming text messages.                                                |
 | `onClose()`   | Registers a callback to handle disconnection events with code and reason.                                 |
-| `send()`      | Sends a text message over the active WebSocket connection.                                                |
+| `send()`      | Sends a text message over the active WebSocket connection. Returns `false` if the frame was not handed to the transport (e.g. the socket is closed or not yet open); callers that need delivery confirmed must check it. |
 | `start()`     | Initiates the WebSocket connection and starts event processing (inherited from ISubsystem)                |
 | `stop()`      | Gracefully closes the connection and stops background processing (inherited from ISubsystem)              |

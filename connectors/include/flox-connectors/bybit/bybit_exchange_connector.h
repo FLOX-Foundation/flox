@@ -64,6 +64,12 @@ class BybitExchangeConnector : public IExchangeConnector
                          TradeBus* tradeBus, OrderExecutionBus* orderBus, SymbolRegistry* registry,
                          std::shared_ptr<ILogger> logger);
 
+  // _pingThread is a joinable std::thread once start() has run; destroying it
+  // joinable is std::terminate. stop() already joins it, so the destructor
+  // only needs to make sure stop() has happened on every teardown path, not
+  // just the ones that call it explicitly.
+  ~BybitExchangeConnector() override { stop(); }
+
   void start() override;
   void stop() override;
 
@@ -82,7 +88,12 @@ class BybitExchangeConnector : public IExchangeConnector
   void handlePrivateMessage(std::string_view payload);
 
   // Re-subscribe one symbol's orderbook topic so the exchange re-sends a
-  // snapshot (gap recovery). No-op before start() (no socket yet).
+  // snapshot (gap recovery). The constructor creates _wsClient unconditionally,
+  // so this is never a no-op "before start()" -- the guard below only fires
+  // once stop() has reset() the socket. If the send itself fails (closed
+  // socket, no connection yet), the resubscribe request never reaches the
+  // exchange and the caller's resync latch stays set until the next full
+  // reconnect re-subscribes everything from onOpen.
   void resubscribeBook(std::string_view symbolName);
 
   BybitConfig _config;

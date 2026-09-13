@@ -16207,6 +16207,11 @@
         },
         {
           "kind": "method",
+          "name": "stopAll",
+          "parent": "ConnectorManager"
+        },
+        {
+          "kind": "method",
           "name": "error",
           "parent": "ConsoleLogger"
         },
