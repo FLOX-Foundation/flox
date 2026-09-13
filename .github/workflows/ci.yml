@@ -26,7 +26,15 @@ jobs:
     - uses: actions/checkout@v5
 
     - name: Install clang-format
-      run: sudo apt-get update && sudo apt-get install -y clang-format
+      # Pinned to an exact version via the PyPI wheel instead of
+      # `apt-get install clang-format` (whatever the distro currently
+      # ships): the pin lives in scripts/clang-format-version.sh, the one
+      # place scripts/check-format.sh and scripts/pre-commit also read it
+      # from, so CI's baseline can't drift out from under either without
+      # a deliberate change to that file.
+      run: |
+        . scripts/clang-format-version.sh
+        python3 -m pip install --break-system-packages "clang-format==${CLANG_FORMAT_REQUIRED_VERSION}"
 
     - name: Check formatting
       run: ./scripts/check-format.sh

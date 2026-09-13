@@ -45,6 +45,14 @@ DOCS_TOUCHED=0
 # ── clang-format ────────────────────────────────────────────────────
 CPP_FILES=$(echo "$FILES" | grep -E '\.(cpp|h)$' || true)
 if [ -n "$CPP_FILES" ]; then
+  # A mismatched clang-format major version would rewrite these files
+  # into CI's wrong style on every commit -- see
+  # scripts/clang-format-version.sh for why the version is pinned.
+  . "$ROOT_DIR/scripts/clang-format-version.sh"
+  if ! clang_format_version_check; then
+    echo "[pre-commit] refusing to auto-format with the wrong clang-format version." >&2
+    exit 1
+  fi
   echo "[pre-commit] clang-format..."
   for file in $CPP_FILES; do
     clang-format -i "$file"
