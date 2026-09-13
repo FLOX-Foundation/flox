@@ -35,9 +35,13 @@ size_t writeCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
 // parses the response with simdjson in "exceptions on" mode (the default),
 // and none of the five REST callbacks across the connectors guarded against
 // that -- a malformed or unexpected response (e.g. HTTP 200 with a body that
-// has no "retCode") threw out of postImpl into whoever called post(), most
-// often the event-bus consumer thread, which marks itself dead on an
-// uncaught exception and stalls the pipeline on a required subscriber.
+// has no "retCode") threw out of postImpl into whoever called post(). On the
+// normal per-event path that is the event-bus consumer thread: EventBus's
+// run loop catches around EventDispatcher::dispatch, marks that consumer
+// dead, and (for a REQUIRED consumer) stalls gating there for checkHealth()
+// to surface -- no process-wide abort on that path. The drain-on-stop path
+// is different: its dispatch call is not wrapped the same way, so an
+// exception there is not this connector's to catch, only to avoid causing.
 // One guard here protects every current and future caller instead of
 // wrapping each callback individually.
 void invokeSafely(MoveOnlyFunction<void(std::string_view)>& fn, std::string_view arg,
