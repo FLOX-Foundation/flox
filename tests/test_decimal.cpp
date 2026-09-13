@@ -95,6 +95,37 @@ TEST(DecimalTest, FromDoublePositiveRoundCorrectly)
   EXPECT_EQ(Price::fromDouble(0.0000001).raw(), 0);
 }
 
+// A double scaled past the int64 range, or one that is not a number at all,
+// reaches fromDouble from every wire surface that accepts a JSON number. The
+// cast has to be defined for those, not merely defined on the machine the test
+// happens to run on: casting out of range is undefined behaviour, and the two
+// architectures this engine builds for pick different answers.
+TEST(DecimalTest, FromDoubleOutOfRangeSaturates)
+{
+  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+  constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
+
+  EXPECT_EQ(Price::fromDouble(1e300).raw(), kMax);
+  EXPECT_EQ(Price::fromDouble(-1e300).raw(), kMin);
+  EXPECT_EQ(Price::fromDouble(std::numeric_limits<double>::infinity()).raw(), kMax);
+  EXPECT_EQ(Price::fromDouble(-std::numeric_limits<double>::infinity()).raw(), kMin);
+
+  // 1e13 at this scale is 1e19 raw: past the ceiling on a plausible typo
+  // rather than on a hostile number.
+  EXPECT_EQ(Price::fromDouble(1e13).raw(), kMax);
+
+  // Not a number has no nearest representable value; zero is the only answer
+  // that cannot be mistaken for a price.
+  EXPECT_EQ(Price::fromDouble(std::numeric_limits<double>::quiet_NaN()).raw(), 0);
+
+  // The scale-aware overload goes through the same narrowing.
+  EXPECT_EQ(Price::fromDouble(1e300, 1000).raw(), kMax);
+  EXPECT_EQ(Price::fromDouble(std::numeric_limits<double>::quiet_NaN(), 1000).raw(), 0);
+
+  // And ordinary values are untouched.
+  EXPECT_EQ(Price::fromDouble(123.456789).raw(), 123456789);
+}
+
 // ---------------------------------------------------------------------------
 // BOOK-08: operator+= must saturate instead of silently overflowing.
 //

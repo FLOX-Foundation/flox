@@ -11788,6 +11788,11 @@
           "name": "FrameHeader"
         },
         {
+          "header": "include/flox/util/transport.h",
+          "kind": "type",
+          "name": "FrameReader"
+        },
+        {
           "header": "include/flox/backtest/funding_schedule.h",
           "kind": "type",
           "name": "FundingPayment"
@@ -17376,6 +17381,26 @@
           "kind": "method",
           "name": "sizeof",
           "parent": "FrameHeader"
+        },
+        {
+          "kind": "method",
+          "name": "bytesRead",
+          "parent": "FrameReader"
+        },
+        {
+          "kind": "method",
+          "name": "fill",
+          "parent": "FrameReader"
+        },
+        {
+          "kind": "method",
+          "name": "inProgress",
+          "parent": "FrameReader"
+        },
+        {
+          "kind": "method",
+          "name": "read",
+          "parent": "FrameReader"
         },
         {
           "kind": "method",

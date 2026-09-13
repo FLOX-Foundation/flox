@@ -169,13 +169,18 @@ class TcpGateway
     const int64_t tickMs = fixMode ? std::min<int64_t>(idleMs > 0 ? idleMs : 250, 250) : idleMs;
     setRecvTimeoutMs(fd, tickMs);
 
+    // Reading through a FrameReader rather than net::readFrame: the timeout
+    // below fires in the middle of a frame whenever the peer's message spans
+    // two packets, and the bytes already read have to survive that wake-up or
+    // the stream silently shifts under the decoder.
+    net::FrameReader reader;
     std::vector<uint8_t> frame;
     while (acceptor_.running())
     {
-      errno = 0;
-      if (!net::readFrame(fd, frame))
+      const net::FrameReader::Status status = reader.read(fd, frame);
+      if (status != net::FrameReader::Status::Frame)
       {
-        if (wasRecvTimeout())
+        if (status == net::FrameReader::Status::Incomplete)
         {
           if (fixMode)
           {
@@ -189,11 +194,18 @@ class TcpGateway
               counters_->idleDisconnects.fetch_add(1, std::memory_order_relaxed);
             }
           }
-          else if (idleMs > 0 && counters_ != nullptr)
+          else
           {
-            // No inbound bytes for the whole idle window: half-open or wedged
-            // peer. Close the session; COD sweeps its orders below.
-            counters_->idleDisconnects.fetch_add(1, std::memory_order_relaxed);
+            if (reader.bytesRead() != 0)
+            {
+              continue;  // mid-frame: the peer is sending, just not fast enough
+            }
+            if (idleMs > 0 && counters_ != nullptr)
+            {
+              // No inbound bytes for the whole idle window: half-open or wedged
+              // peer. Close the session; COD sweeps its orders below.
+              counters_->idleDisconnects.fetch_add(1, std::memory_order_relaxed);
+            }
           }
         }
         break;

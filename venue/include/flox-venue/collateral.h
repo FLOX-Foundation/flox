@@ -59,6 +59,16 @@ class CollateralSchedule
     }
     const __int128 gross =
         static_cast<__int128>(balanceRaw) * it->second.priceRaw / static_cast<__int128>(Price::Scale);
+    // The haircut discounts what an account owns, never what it owes. A
+    // negative balance is a debt -- funding can drive a wallet there, which the
+    // segregation notes call out as reachable -- and discounting a debt writes
+    // down the liability: a coin owed at a 20% haircut counted as four fifths
+    // of itself, and the missing fifth read as equity the account could
+    // withdraw or trade against.
+    if (gross <= 0)
+    {
+      return static_cast<Amount>(gross);
+    }
     return static_cast<Amount>(gross * (10000 - it->second.haircutBps) / 10000);
   }
 

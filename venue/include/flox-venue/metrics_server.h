@@ -62,8 +62,7 @@ class MetricsServer
       const ssize_t r = ::read(fd, tmp, sizeof tmp);
       if (r <= 0 || req.size() > (1u << 16))
       {
-        ::close(fd);
-        return;
+        return;  // the acceptor owns the descriptor and closes it
       }
       req.append(reinterpret_cast<char*>(tmp), static_cast<size_t>(r));
     }
@@ -100,7 +99,11 @@ class MetricsServer
     {
       respond(fd, "404 Not Found", "text/plain", "not found\n");
     }
-    ::close(fd);
+    // No close here either. The acceptor deregisters the descriptor under its
+    // lock and closes it once the handler returns (socket_acceptor.h); closing
+    // it a second time returns the number to the process while the acceptor
+    // still holds it, and under a scrape-every-few-seconds load the second
+    // close lands on whatever another thread has since been given.
   }
 
   Snapshot snap_;
