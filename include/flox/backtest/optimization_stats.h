@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -110,12 +111,20 @@ class OptimizationStatistics
     double upper;
   };
 
+  // `seed` defaults to a fixed value (matching
+  // `flox::stats::whitesRealityCheck`) so the same data always produces the
+  // same p-value. BT-07/TD-06: the previous implementation seeded from
+  // `std::random_device` on every call, so the same input could read
+  // "significant" on one run and "not significant" on the next at a
+  // parameter's decision threshold -- pass an explicit seed only when
+  // independent resamples across repeated calls are actually wanted.
   static double permutationTest(
       const std::vector<double>& group1,
       const std::vector<double>& group2,
-      size_t numPermutations = 10000)
+      size_t numPermutations = 10000,
+      std::uint64_t seed = 42u)
   {
-    if (group1.empty() || group2.empty())
+    if (group1.empty() || group2.empty() || numPermutations == 0)
     {
       return 1.0;
     }
@@ -127,8 +136,7 @@ class OptimizationStatistics
     combined.insert(combined.end(), group1.begin(), group1.end());
     combined.insert(combined.end(), group2.begin(), group2.end());
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    std::mt19937 gen(static_cast<std::mt19937::result_type>(seed));
 
     size_t extremeCount = 0;
     for (size_t i = 0; i < numPermutations; ++i)
@@ -145,7 +153,11 @@ class OptimizationStatistics
       }
     }
 
-    return static_cast<double>(extremeCount) / static_cast<double>(numPermutations);
+    // Add-one (Laplace) correction: the observed arrangement is itself one of
+    // the numPermutations + 1 possible arrangements under the null, so a
+    // permutation test can never honestly report exactly 0 -- the smallest
+    // representable p-value is 1/(numPermutations + 1).
+    return static_cast<double>(extremeCount + 1) / static_cast<double>(numPermutations + 1);
   }
 
   static double correlation(const std::vector<double>& x, const std::vector<double>& y)
@@ -175,18 +187,27 @@ class OptimizationStatistics
     return num / std::sqrt(denX * denY);
   }
 
+  // `seed` defaults to a fixed value for the same reason as `permutationTest`
+  // above: reproducible resampling by default, override to vary it.
   static ConfidenceInterval bootstrapCI(
       const std::vector<double>& data,
       double confidenceLevel = 0.95,
-      size_t numSamples = 10000)
+      size_t numSamples = 10000,
+      std::uint64_t seed = 42u)
   {
-    if (data.empty())
+    if (data.empty() || numSamples == 0)
     {
       return {0.0, 0.0, 0.0};
     }
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    // BT-07: confidenceLevel is only meaningful in (0, 1). At exactly 1.0 the
+    // unclamped formula below computes upperIdx == numSamples, one past the
+    // end of bootstrapMeans (a confirmed heap-buffer-overflow read); anything
+    // outside [0, 1] is equally nonsensical. Clamp instead of trusting the
+    // caller.
+    const double level = std::clamp(confidenceLevel, 0.0, 1.0);
+
+    std::mt19937 gen(static_cast<std::mt19937::result_type>(seed));
     std::uniform_int_distribution<size_t> dist(0, data.size() - 1);
 
     std::vector<double> bootstrapMeans;
@@ -205,9 +226,15 @@ class OptimizationStatistics
 
     std::sort(bootstrapMeans.begin(), bootstrapMeans.end());
 
-    size_t lowerIdx = static_cast<size_t>((1.0 - confidenceLevel) / 2.0 * static_cast<double>(numSamples));
-    size_t upperIdx = static_cast<size_t>((1.0 + confidenceLevel) / 2.0 * static_cast<double>(numSamples));
-    size_t medianIdx = numSamples / 2;
+    const size_t lastIdx = numSamples - 1;
+    size_t lowerIdx = static_cast<size_t>((1.0 - level) / 2.0 * static_cast<double>(numSamples));
+    size_t upperIdx = static_cast<size_t>((1.0 + level) / 2.0 * static_cast<double>(numSamples));
+    // Belt-and-suspenders clamp: even a valid level rounds up to exactly
+    // numSamples at the boundary (level == 1.0), so clamp the indices
+    // themselves rather than relying solely on the level clamp above.
+    lowerIdx = std::min(lowerIdx, lastIdx);
+    upperIdx = std::min(upperIdx, lastIdx);
+    const size_t medianIdx = std::min(numSamples / 2, lastIdx);
 
     return {bootstrapMeans[lowerIdx], bootstrapMeans[medianIdx], bootstrapMeans[upperIdx]};
   }
@@ -240,7 +267,11 @@ class OptimizationStatistics
                                   << " Params=" << best->parameters.toString());
   }
 
-  static void generateReport(
+  // TD-07: returns whether the report was actually written. Failure to open
+  // `outputPath` (e.g. a nonexistent directory) already logged an error, but
+  // the old `void` return gave callers no way to tell success from a lost
+  // report short of parsing the log stream.
+  static bool generateReport(
       const std::vector<OptimizationResult<ParamsT>>& results,
       const std::filesystem::path& outputPath)
   {
@@ -248,7 +279,7 @@ class OptimizationStatistics
     if (!file.is_open())
     {
       FLOX_LOG_ERROR("Failed to open report file: " << outputPath.string());
-      return;
+      return false;
     }
 
     file << "# Optimization Report\n\n";
@@ -280,6 +311,7 @@ class OptimizationStatistics
     file << "- Std Dev Sharpe: " << detail::stddev(metricValues) << "\n";
 
     FLOX_LOG_INFO("Report generated: " << outputPath.string());
+    return true;
   }
 };
 

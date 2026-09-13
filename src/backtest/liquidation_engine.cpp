@@ -388,7 +388,12 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
       filledQty = std::abs(p.quantity);
     }
     const double signedFilled = (p.quantity > 0.0) ? filledQty : -filledQty;
-    const double realized = signedFilled * (closePrice - p.entryPrice);
+    // BT-03: the maintenance-margin check above (and the notional/uPnL used to
+    // route the position here) scales by contractMultiplier; the realized loss
+    // booked on close must scale the same way, or a multiplier > 1 (options
+    // 100x, ES 50x) silently shrinks the deficit by that same factor and the
+    // insurance fund / ADL never see it.
+    const double realized = signedFilled * (closePrice - p.entryPrice) * p.contractMultiplier;
     // Equity attributed to the filled portion (proportional).
     const double filledEquity = p.equity * (filledQty / std::abs(p.quantity));
     const double residualEquity = filledEquity + realized;
@@ -475,19 +480,27 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
   };
   std::vector<AdlCandidate> candidates;
 
+  // BT-05: leverage-based rankings (PnlRatio, Binance, Bybit) need the equity
+  // actually backing the position. For an orphan or an isolated-mode leg that
+  // is `p.equity` (the posted margin slice); for a cross-margin leg
+  // `p.equity` is unconditionally 0.0 by construction (Account::openPosition:
+  // "Cross mode ignores per-position equity"), so leverage/ratio would
+  // divide by zero and every cross candidate would tie at score 0, falling
+  // through to the accountId tie-break -- inverting the venue's real ADL
+  // order. Cross legs use the account's shared equity instead.
   auto scorePosition = [this, markPrice](const LeveragedPosition& p,
-                                         double upnl) -> double
+                                         double upnl, double equity) -> double
   {
     switch (_adlRanking)
     {
       case AdlRanking::PnlRatio:
-        return (p.equity > 0.0) ? (upnl / p.equity) : upnl;
+        return (equity > 0.0) ? (upnl / equity) : upnl;
       case AdlRanking::Binance:
       case AdlRanking::Bybit:
       {
         const double notional = std::abs(p.quantity) * markPrice * p.contractMultiplier;
         const double leverage =
-            (p.equity > 0.0) ? (notional / p.equity) : 0.0;
+            (equity > 0.0) ? (notional / equity) : 0.0;
         return upnl * leverage;
       }
       case AdlRanking::PositionSize:
@@ -507,7 +520,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
     if (upnl > 0.0)
     {
-      candidates.push_back({nullptr, i, scorePosition(p, upnl), upnl, p.accountId});
+      candidates.push_back({nullptr, i, scorePosition(p, upnl, p.equity), upnl, p.accountId});
     }
   }
   // Account candidates.
@@ -528,7 +541,9 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
       const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
       if (upnl > 0.0)
       {
-        candidates.push_back({acct, i, scorePosition(p, upnl), upnl, p.accountId});
+        const double equity =
+            (acct->marginMode() == MarginMode::Cross) ? acct->equity() : p.equity;
+        candidates.push_back({acct, i, scorePosition(p, upnl, equity), upnl, p.accountId});
       }
     }
   }
@@ -579,15 +594,22 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     else
     {
       auto& p = c.owner->positionsMut()[c.idx];
-      // Credit the account's equity (cross) or the leg's isolated_equity
-      // (isolated) with the RETAINED PnL after the ADL haircut.
+      // Credit the account's equity with the RETAINED PnL after the ADL
+      // haircut. BT-04: an isolated leg is about to be erased from the
+      // account's position book a few lines below (acctClose), so writing
+      // the retained gain onto `p.equity` -- as the old code did -- throws
+      // it away along with the leg's own posted margin the moment it's
+      // erased: there is no position left afterward to hold that value.
+      // Route both the leg's margin and the retained gain back to the
+      // account's free balance now, exactly as closing the position
+      // normally would.
       if (c.owner->marginMode() == MarginMode::Cross)
       {
         c.owner->addEquity(realized);
       }
       else
       {
-        p.equity += realized;
+        c.owner->addEquity(p.equity + realized);
       }
       out.adlClosedOut.push_back(p.accountId);
       acctClose[c.owner].push_back(c.idx);
@@ -787,7 +809,10 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkIsolatedAccount(
       filledQty = std::abs(p.quantity);
     }
     const double signedFilled = (p.quantity > 0.0) ? filledQty : -filledQty;
-    const double realized = signedFilled * (closePrice - p.entryPrice);
+    // BT-03: same fix as the orphan path above -- the margin check that routed
+    // this position here (upnl, a few lines up) already scales by
+    // contractMultiplier, so the realized loss booked on close must too.
+    const double realized = signedFilled * (closePrice - p.entryPrice) * p.contractMultiplier;
     const double filledEquity = p.equity * (filledQty / std::abs(p.quantity));
     const double residualEquity = filledEquity + realized;
     result.outcome.liquidated.push_back(account.accountId());

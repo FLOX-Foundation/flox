@@ -147,8 +147,14 @@ The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permuta
     auto sharpes = extractMetric(results, RankMetric::SharpeRatio);
     auto ci      = Stats::bootstrapCI(sharpes, 0.95, 10000);     // .lower / .median / .upper
     auto pValue  = Stats::permutationTest(group1, group2, 10000);
-    Stats::generateReport(results, "report.md");
+    bool wrote   = Stats::generateReport(results, "report.md");  // false if the path can't be opened
     ```
+
+    `bootstrapCI` and `permutationTest` resample with a fixed default seed
+    (`42`), so the same inputs always return the same result; pass a trailing
+    `seed` argument for an independent resample. See
+    [`optimization_stats.h`](../reference/api/backtest/optimization_stats.md)
+    for the full signatures.
 
 ## Best practices
 
