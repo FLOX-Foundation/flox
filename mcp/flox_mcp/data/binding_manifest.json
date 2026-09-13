@@ -4803,6 +4803,10 @@
         },
         {
           "kind": "function",
+          "name": "order_type_code_from_str"
+        },
+        {
+          "kind": "function",
           "name": "parkinson_vol"
         },
         {
