@@ -204,6 +204,9 @@ class MatchingEngine
       matcher_.setFillLimitHook([this](const RestingOrder& maker, const NewOrder& taker,
                                        Quantity want)
                                 { return fillLimit(maker, taker, want); });
+      matcher_.setFillLimitDryHook([this](const RestingOrder& maker, const NewOrder& taker,
+                                          Quantity want, const PositionDeltas& deltas)
+                                   { return fillLimitDry(maker, taker, want, deltas); });
     }
   }
 
@@ -1196,6 +1199,10 @@ class MatchingEngine
           h = mix(h, static_cast<uint64_t>(o.side));
           h = mix(h, o.lastLook ? 1U : 0U);
           h = mix(h, o.reduceOnly ? 1U : 0U);
+          if (o.postOnly)
+          {
+            h = mix(h, 0xB00FU);  // only when set: a book without post-only orders hashes as before
+          }
           h = mix(h, static_cast<uint64_t>(expiryOf(o.id).raw()));
           h = mix(h, ocoOf(o.id));
         });
@@ -1564,8 +1571,9 @@ class MatchingEngine
     book_.forEachOrder(
         [&](const RestingOrder& o)
         {
-          RestoreOrder r{o.id, o.accountId, o.price, o.leaves, o.side, o.hidden,
-                         o.peak, o.lastLook, o.reduceOnly};
+          RestoreOrder r{o.id, o.accountId, o.price, o.leaves,
+                         o.side, o.hidden, o.peak, o.lastLook,
+                         o.reduceOnly, o.postOnly};
           r.expiryNs = expiryOf(o.id);
           r.ocoGroup = ocoOf(o.id);
           out.append(InboundCommand{r}, ts);
@@ -1988,8 +1996,15 @@ class MatchingEngine
     {
       return RejectReason::OrderTooLarge;  // fat-finger size
     }
+    // Notional at the SYMBOL's scale, the same arithmetic reservations, margin
+    // and fees use. `quantity * price` reads both raws under the compile-time
+    // 1e8 scale instead, so on a symbol that declared its own the gate compares
+    // a number that is off by (1e8/priceScale) * (1e8/qtyScale) -- coarser
+    // scales turn the fat-finger check off, finer ones reject everything.
+    // Bit-identical to the old expression at the default 1e8/1e8.
     if (o.type == OrderType::LIMIT && !cfg_.maxOrderNotional.isZero() &&
-        cfg_.maxOrderNotional < (o.quantity * o.price))
+        static_cast<Amount>(cfg_.maxOrderNotional.raw()) <
+            notionalRaw(o.price.raw(), o.quantity.raw(), cfg_.priceScale, cfg_.qtyScale))
     {
       return RejectReason::OrderTooLarge;  // fat-finger notional
     }
@@ -2101,9 +2116,19 @@ class MatchingEngine
     {
       const auto pit = positions_.find(o.accountId);
       const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
-      const int64_t reducible = (o.side == Side::BUY && posQ < 0)    ? -posQ
-                                : (o.side == Side::SELL && posQ > 0) ? posQ
-                                                                     : 0;
+      int64_t reducible = (o.side == Side::BUY && posQ < 0)    ? -posQ
+                          : (o.side == Side::SELL && posQ > 0) ? posQ
+                                                               : 0;
+      // The account's reduce-only orders already resting on this side are
+      // queued against the SAME position. Sizing each one against the whole
+      // position lets N of them rest against a position only one of them can
+      // close, so the book advertises reduce-only depth that cannot trade --
+      // and an all-or-none taker that believed the depth gets a partial print.
+      reducible -= restingReduceOnlyRaw(o.accountId, o.side, o.id);
+      if (reducible < 0)
+      {
+        reducible = 0;
+      }
       if (o.quantity.raw() > reducible)
       {
         o.quantity = Quantity::fromRaw(reducible);
@@ -2126,14 +2151,40 @@ class MatchingEngine
     return RejectReason::None;
   }
 
+  // Total reduce-only quantity the account already has resting on `side`
+  // (displayed peak plus hidden reserve), ignoring `exclude` -- the order being
+  // re-admitted on the modify and stop-trigger paths.
+  int64_t restingReduceOnlyRaw(uint64_t account, Side side, OrderId exclude) const
+  {
+    auto it = byAccount_.find(account);
+    if (it == byAccount_.end())
+    {
+      return 0;
+    }
+    int64_t sum = 0;
+    for (OrderId id : it->second)
+    {
+      if (id == exclude)
+      {
+        continue;
+      }
+      const RestingOrder* r = book_.find(id);
+      if (r != nullptr && r->reduceOnly && r->side == side)
+      {
+        sum += r->leaves.raw() + r->hidden.raw();
+      }
+    }
+    return sum;
+  }
+
   // How much of one leg's prospective fill the perp risk limits still allow,
   // measured against the position the account holds RIGHT NOW. `reason` names
   // the limit that cut it (meaningful only when the result is below `want`).
   int64_t legFillLimit(uint64_t account, Side side, bool reduceOnly, int64_t want,
-                       CancelReason& reason) const
+                       CancelReason& reason, int64_t posDeltaRaw = 0) const
   {
     const auto pit = positions_.find(account);
-    const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
+    const int64_t posQ = ((pit == positions_.end()) ? 0 : pit->second.qtyRaw) + posDeltaRaw;
     int64_t allowed = want;
     if (reduceOnly)
     {
@@ -2183,11 +2234,27 @@ class MatchingEngine
                          taker.reduceOnly, want);
   }
 
+  // fillLimit against a state the sweep has not reached yet: `deltas` holds the
+  // position change each account would already have taken on. Used by the
+  // all-or-none precheck, which has to ask about every maker in the crossing
+  // range as though the earlier ones had already printed.
+  FillLimit fillLimitDry(const RestingOrder& maker, const NewOrder& taker, Quantity want,
+                         const PositionDeltas& deltas) const
+  {
+    if (ledger_ == nullptr)
+    {
+      return FillLimit{want, want, want, false, false, CancelReason::ReduceOnlyNotReducing};
+    }
+    return pairFillLimit(maker.accountId, maker.side, maker.reduceOnly, taker.accountId, taker.side,
+                         taker.reduceOnly, want, deltas.of(maker.accountId),
+                         deltas.of(taker.accountId));
+  }
+
   // fillLimit over two legs described directly -- used by the auction uncross,
   // where BOTH legs are resting orders and neither is an incoming NewOrder.
   FillLimit pairFillLimit(uint64_t makerAcct, Side makerSide, bool makerReduceOnly,
-                          uint64_t takerAcct, Side takerSide, bool takerReduceOnly,
-                          Quantity want) const
+                          uint64_t takerAcct, Side takerSide, bool takerReduceOnly, Quantity want,
+                          int64_t makerPosDeltaRaw = 0, int64_t takerPosDeltaRaw = 0) const
   {
     FillLimit out;
     out.qty = want;
@@ -2195,10 +2262,10 @@ class MatchingEngine
     out.takerQty = want;
     CancelReason makerReason = CancelReason::ReduceOnlyNotReducing;
     CancelReason takerReason = CancelReason::ReduceOnlyNotReducing;
-    const int64_t makerAllowed =
-        legFillLimit(makerAcct, makerSide, makerReduceOnly, want.raw(), makerReason);
-    const int64_t takerAllowed =
-        legFillLimit(takerAcct, takerSide, takerReduceOnly, want.raw(), takerReason);
+    const int64_t makerAllowed = legFillLimit(makerAcct, makerSide, makerReduceOnly, want.raw(),
+                                              makerReason, makerPosDeltaRaw);
+    const int64_t takerAllowed = legFillLimit(takerAcct, takerSide, takerReduceOnly, want.raw(),
+                                              takerReason, takerPosDeltaRaw);
     out.makerQty = Quantity::fromRaw(makerAllowed);
     out.takerQty = Quantity::fromRaw(takerAllowed);
     // The maker is the leg reported as blocked when both are: it is the one the
@@ -2269,6 +2336,14 @@ class MatchingEngine
         }
       }
     } ocoCleanup{this, o.id, o.ocoGroup > 0, &committed};
+    // POST_ONLY is spelled two ways -- a time in force and a flag -- and the
+    // matcher reads only the flag. Every wire decoder sets the flag, so this
+    // normalization exists for the in-process caller that chose the other
+    // spelling and would otherwise get an ordinary aggressor.
+    if (o.tif == TimeInForce::POST_ONLY)
+    {
+      o.postOnly = true;
+    }
     if (o.peg != PegRef::None)
     {
       o.type = OrderType::LIMIT;  // a peg is a passive limit priced off the book
@@ -2334,11 +2409,34 @@ class MatchingEngine
       {
         restPx = (o.side == Side::BUY) ? cfg_.maxPrice : cfg_.minPrice;
       }
+      // Everything an order carries into continuous trading it also carries
+      // into an auction. The uncross prices on displayed-plus-hidden depth, so
+      // an iceberg's peak was never load-bearing for price discovery -- the one
+      // thing the peak does is limit what the public feed sees, and that is
+      // exactly what a book entry built without it gives away. A good-till-date
+      // order that never reaches expiry_ never expires at all, in the auction
+      // or after it.
       RestingOrder ro{o.id, o.accountId, restPx, o.quantity, o.side};
       ro.reduceOnly = o.reduceOnly;
+      ro.postOnly = o.postOnly;
+      ro.lastLook = o.lastLook && cfg_.lastLookWindowNs.count() > 0;
+      if (o.visibleQuantity.raw() > 0 && o.visibleQuantity < o.quantity)
+      {
+        ro.peak = o.visibleQuantity;
+        ro.leaves = o.visibleQuantity;
+        ro.hidden = o.quantity - o.visibleQuantity;
+      }
       book_.addResting(o.side, ro);
       trackResting(o.id, o.accountId, o.stp);
-      sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, Quantity{}, o.accountId});
+      if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
+      {
+        expiry_[o.id] = o.expiryNs;
+      }
+      if (o.peg != PegRef::None)
+      {
+        pegged_[o.id] = {o.side, o.peg, o.pegOffsetRaw};
+      }
+      sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, ro.leaves, o.accountId});
       return;
     }
 
@@ -2378,6 +2476,7 @@ class MatchingEngine
       RestingOrder ro{o.id, o.accountId, o.price, out.leaves, o.side};
       ro.lastLook = o.lastLook && cfg_.lastLookWindowNs.count() > 0;  // window 0 = feature off
       ro.reduceOnly = o.reduceOnly;                                   // carried so a later modify preserves it
+      ro.postOnly = o.postOnly;                                       // same reason
       if (o.visibleQuantity.raw() > 0 && o.visibleQuantity < out.leaves)
       {
         ro.peak = o.visibleQuantity;    // iceberg: show a peak, hide the rest
@@ -2693,6 +2792,13 @@ class MatchingEngine
       sink_(CancelRejected{m.id, m.symbol, RejectReason::AmendNotPermitted, m.accountId, true});
       return;
     }
+    // Ownership BEFORE any side effect: rejecting the order's holds is itself a
+    // change to the owner's position, so a stranger must not get that far.
+    if (ownershipRefused(m.id, m.accountId))
+    {
+      sink_(CancelRejected{m.id, m.symbol, RejectReason::NotOrderOwner, m.accountId, true});
+      return;
+    }
     // Resolve (reject) any last-look holds referencing this order FIRST: both
     // modify paths re-shape the order and its reservation, and a hold left
     // behind would later settle against a reservation that no longer covers it.
@@ -2713,7 +2819,10 @@ class MatchingEngine
     const uint64_t acct = cur->accountId;
     const Quantity curLeaves = cur->leaves;
     const Quantity curHidden = cur->hidden;
+    const Quantity curPeak = cur->peak;
     const bool curReduceOnly = cur->reduceOnly;
+    const bool curPostOnly = cur->postOnly;
+    const bool curLastLook = cur->lastLook;
     const Price curPrice = cur->price;
     const Price newPrice = (m.newPrice.raw() == 0) ? curPrice : m.newPrice;
 
@@ -2781,6 +2890,14 @@ class MatchingEngine
     // self-trade prevention the original order was admitted with. Rebuilding
     // the order from the resting record alone would silently drop it.
     re.stp = stpOf(m.id);
+    // Same reasoning for every other control the order was admitted with.
+    // post-only is the one that costs money when it goes missing: the amended
+    // order re-enters as a plain aggressor and lifts the book the original was
+    // guaranteed never to touch. The iceberg peak is the one that costs
+    // secrecy: without it the whole remaining size re-rests as displayed.
+    re.postOnly = curPostOnly;
+    re.lastLook = curLastLook;
+    re.visibleQuantity = curPeak;
 
     // Perp risk gate: a modified perp order re-enters matching HERE, not through
     // onNew, so it must run the same reduce-only cap + position-cap checks (spot:
@@ -2803,10 +2920,40 @@ class MatchingEngine
         matcher_.cross(re, book_, [this]()
                        { return ++tradeSeq_; }, emit_);
     stampFreshHolds();
+    // The amended order left the book at the top of this path, so every way the
+    // match can end has to say where it went. Reporting only the resting case
+    // acks a working order that is not on the book, leaves its reservation
+    // frozen and keeps its slot in the per-account open-order cap -- a phantom
+    // the owner cannot cancel, because cancel answers UnknownOrder.
+    if (out.reject != RejectReason::None)
+    {
+      releaseReservation(m.id);
+      forgetOrder(m.id);
+      sink_(OrderRejected{m.id, m.symbol, out.reject, acct});
+      return;
+    }
+    if (out.residualCanceled)
+    {
+      // Self-trade prevention or a fill-time risk block killed the re-entering
+      // order. Held slices stay reserved: their accept still has to settle.
+      releaseReservationExceptHeld(m.id);
+      forgetOrder(m.id);
+      sink_(OrderCanceled{m.id, m.symbol, out.residualCancelReason, acct});
+      processTriggers();
+      return;
+    }
     if (out.residualRests)
     {
       RestingOrder mro{m.id, acct, newPrice, out.leaves, side};
       mro.reduceOnly = re.reduceOnly;
+      mro.postOnly = re.postOnly;
+      mro.lastLook = re.lastLook && cfg_.lastLookWindowNs.count() > 0;
+      if (re.visibleQuantity.raw() > 0 && re.visibleQuantity < out.leaves)
+      {
+        mro.peak = re.visibleQuantity;
+        mro.leaves = re.visibleQuantity;
+        mro.hidden = out.leaves - re.visibleQuantity;
+      }
       book_.addResting(side, mro);
       trackResting(m.id, acct, re.stp);
     }
@@ -2825,6 +2972,11 @@ class MatchingEngine
     {
       ++admissionRejects_;
       sink_(CancelRejected{c.id, c.symbol, RejectReason::CancelNotPermitted, c.accountId, false});
+      return;
+    }
+    if (ownershipRefused(c.id, c.accountId))
+    {
+      sink_(CancelRejected{c.id, c.symbol, RejectReason::NotOrderOwner, c.accountId, false});
       return;
     }
     // Cancel-while-held: deterministically resolve (reject) the order's holds
@@ -2855,6 +3007,38 @@ class MatchingEngine
     {
       sink_(CancelRejected{c.id, c.symbol, RejectReason::UnknownOrder, c.accountId, false});
     }
+  }
+
+  // Whether `actor` is barred from acting on the order `id` names.
+  //
+  // An order id is one global namespace and the client picks the numbers in it,
+  // so an id proves nothing about who sent the command that carries it. What
+  // does carry the authorization claim is accountId: GatewaySession overwrites
+  // it with the session's authenticated account on every account-bearing
+  // command, precisely so a client cannot write someone else's number there.
+  // Checking the claim against the order it names is the other half of that,
+  // and without it the id alone is the capability -- modify, cancel and quote
+  // all address orders by id.
+  //
+  // accountId 0 is the "unbound / trusted-transport" sentinel the session
+  // itself documents: an in-process embedder, a replay driver and the
+  // single-tenant configuration all act as 0 and keep full control.
+  //
+  // An id nobody owns is not refused here. It is unknown, and the caller's own
+  // unknown-order path says so -- answering "not yours" to an id that does not
+  // exist would turn every rejection into an existence oracle.
+  bool ownershipRefused(OrderId id, uint64_t actor) const
+  {
+    if (actor == 0)
+    {
+      return false;
+    }
+    if (auto it = orderAccount_.find(id); it != orderAccount_.end())
+    {
+      return it->second != actor;
+    }
+    const uint64_t stopAcct = stops_.accountOf(id);
+    return stopAcct != 0 && stopAcct != actor;
   }
 
   // ---- per-account resting-order tracking (mass-cancel / MMP) ----
@@ -2910,14 +3094,16 @@ class MatchingEngine
       return;
     }
     const uint64_t acct = r->accountId;
-    const int64_t fromRaw = r->leaves.raw();
+    // Displayed peak plus hidden reserve: the auction decrement measures what
+    // the order holds, exactly as the continuous one does.
+    const int64_t fromRaw = r->leaves.raw() + r->hidden.raw();
     const int64_t toRaw = fromRaw - by.raw();
     if (toRaw <= 0)
     {
       cancelForStp(id, acct);
       return;
     }
-    book_.reduce(id, Quantity::fromRaw(toRaw));
+    book_.reduceTotal(id, Quantity::fromRaw(toRaw));
     releaseReservationPro(id, fromRaw, toRaw);
   }
 
@@ -3050,6 +3236,15 @@ class MatchingEngine
       sink_(OrderRejected{q.bidId, q.symbol, RejectReason::QuoteNotPermitted, q.accountId});
       return;
     }
+    // A quote replaces the orders its two ids name, so each id is a cancel
+    // command in disguise and answers to the same ownership rule. Refuse the
+    // whole quote rather than half of it: a maker that gets one side replaced
+    // and the other refused is quoting a book it did not ask for.
+    if (ownershipRefused(q.bidId, q.accountId) || ownershipRefused(q.askId, q.accountId))
+    {
+      sink_(OrderRejected{q.bidId, q.symbol, RejectReason::NotOrderOwner, q.accountId});
+      return;
+    }
     rejectHoldsFor(q.bidId);  // a replaced quote may carry open holds
     rejectHoldsFor(q.askId);
     if (book_.cancel(q.bidId).has_value())
@@ -3078,6 +3273,11 @@ class MatchingEngine
       b.accountId = q.accountId;
       b.stp = q.stp;
       b.lastLook = q.lastLook;
+      b.postOnly = q.postOnly;
+      b.reduceOnly = q.reduceOnly;
+      b.tif = q.tif;
+      b.visibleQuantity = q.visibleQuantity;
+      b.expiryNs = q.expiryNs;
       onNew(b);
     }
     if (q.askQty.raw() > 0)
@@ -3092,6 +3292,11 @@ class MatchingEngine
       a.accountId = q.accountId;
       a.stp = q.stp;
       a.lastLook = q.lastLook;
+      a.postOnly = q.postOnly;
+      a.reduceOnly = q.reduceOnly;
+      a.tif = q.tif;
+      a.visibleQuantity = q.visibleQuantity;
+      a.expiryNs = q.expiryNs;
       onNew(a);
     }
   }
@@ -3961,6 +4166,7 @@ class MatchingEngine
     ro.peak = r.peak;
     ro.lastLook = r.lastLook;
     ro.reduceOnly = r.reduceOnly;
+    ro.postOnly = r.postOnly;
     // Straight to the tail of its level, NO matching pass: the canonical write
     // order (levels best-first, FIFO within) makes tail-appends reproduce the
     // exact live book layout.

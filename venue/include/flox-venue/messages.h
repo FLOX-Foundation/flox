@@ -77,8 +77,12 @@ struct ModifyOrder  // cancel/replace
 {
   OrderId id{};
   SymbolId symbol{};
-  Price newPrice{};   // raw 0 = keep current price
-  Quantity newQty{};  // new leaves target
+  Price newPrice{};  // raw 0 = keep current price
+  // New leaves target. On an iceberg this is the TOTAL remaining -- displayed
+  // peak plus hidden reserve -- which is the same number an execution report
+  // gives as that order's leavesQty. The peak itself is preserved across the
+  // amend; there is no way to change it without a fresh order.
+  Quantity newQty{};
   uint64_t accountId{0};
 };
 
@@ -108,6 +112,16 @@ struct Quote  // two-sided market-maker quote (replace prior quote on this symbo
   // that could not be marked non-firm left that maker choosing between the
   // primitive built for it and the control it needs.
   bool lastLook{false};
+  // And the rest of the controls a single order has. post-only is the one a
+  // two-sided quote needs most: a maker repricing into a market that has
+  // already moved crosses the book with the near leg and pays to take the
+  // liquidity it meant to provide. The others follow the NewOrder semantics
+  // exactly and apply to both legs.
+  bool postOnly{false};
+  bool reduceOnly{false};
+  TimeInForce tif{TimeInForce::GTC};
+  Quantity visibleQuantity{};  // iceberg peak per leg (0 = show the whole leg)
+  SeqNanos expiryNs{};         // GTD expiry for both legs (0 = none)
 };
 
 struct LastLookDecision  // maker accepts or rejects a held last-look fill
@@ -383,6 +397,7 @@ struct RestoreOrder  // one resting book order, applied straight to the TAIL of 
   Quantity peak{};    // iceberg display size (0 = non-iceberg)
   bool lastLook{false};
   bool reduceOnly{false};
+  bool postOnly{false};  // may never take, including after an amend
   // The engine keeps only the per-account dedup SET (restored via
   // RestoreClOrdIds), not an order -> clientOrderId mapping, so writeSnapshot
   // emits 0 here; the field exists so the record stays self-contained if a

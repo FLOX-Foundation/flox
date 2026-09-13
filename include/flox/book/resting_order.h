@@ -31,6 +31,10 @@ struct RestingOrder
   Quantity peak{};    // iceberg display size (0 = non-iceberg)
   bool lastLook{};    // maker holds fills for a last-look window before confirming
   bool reduceOnly{};  // perp: may only reduce the account's position, never open/flip
+  // Post-only: this order may never take. Carried on the resting record because
+  // an amend re-enters matching as a fresh aggressor and has to know what the
+  // order was admitted with -- the incoming NewOrder is long gone by then.
+  bool postOnly{};
 };
 
 }  // namespace flox
