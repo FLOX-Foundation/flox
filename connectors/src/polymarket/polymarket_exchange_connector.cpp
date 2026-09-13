@@ -185,6 +185,45 @@ static std::optional<double> parseStringOrDouble(simdjson::ondemand::value val)
   return std::nullopt;
 }
 
+// Polymarket messages carry their own "timestamp" (epoch millis, sometimes a
+// JSON string, sometimes a bare number in test fixtures) but the field can
+// sit after content this connector has already read forward past (bids/asks,
+// price_changes...), and simdjson ondemand rejects a backward field access.
+// A second, independent parse of the same raw text sidesteps the ordering
+// constraint entirely: "timestamp" is the first (and only) field this fresh
+// iterator ever touches, so it is reachable regardless of its real position.
+// Falls back to processing time -- the documented honest fallback in
+// time.h -- if the field is absent or unparseable.
+static UnixNanos readVenueTimestampNs(std::string_view payload)
+{
+  static thread_local simdjson::ondemand::parser tsParser;
+  try
+  {
+    simdjson::padded_string padded(payload);
+    auto doc = tsParser.iterate(padded);
+    auto objResult = doc.get_object();
+    if (objResult.error())
+    {
+      return nowUnixNanos();
+    }
+    auto tsField = objResult.value()["timestamp"];
+    if (tsField.error())
+    {
+      return nowUnixNanos();
+    }
+    auto msOpt = parseStringOrDouble(tsField.value());
+    if (!msOpt)
+    {
+      return nowUnixNanos();
+    }
+    return msToUnixNs(static_cast<int64_t>(*msOpt));
+  }
+  catch (const simdjson::simdjson_error&)
+  {
+    return nowUnixNanos();
+  }
+}
+
 void PolymarketExchangeConnector::handleMessage(std::string_view payload)
 {
   static thread_local simdjson::ondemand::parser parser;
@@ -198,15 +237,19 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
     // Check first character to determine message type
     if (!payload.empty() && payload[0] == '[')
     {
-      // Initial snapshot - array of book snapshots
+      // Initial snapshot - array of book snapshots, one shared message with
+      // no reliable single top-level timestamp to key off; processing time
+      // is the honest fallback here (this is a connect-time state dump, not
+      // a streamed, possibly-delayed update).
       for (auto item : doc.get_array())
       {
-        processBookSnapshot(item.get_object().value(), recvNs);
+        processBookSnapshot(item.get_object().value(), recvNs, nowUnixNanos());
       }
       return;
     }
 
     auto obj = doc.get_object().value();
+    const UnixNanos venueTs = readVenueTimestampNs(payload);
 
     // event_type is the first field: read it first so every field access below
     // stays forward-only (simdjson ondemand throws OUT_OF_ORDER when a later
@@ -221,13 +264,13 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
 
     if (eventType == "book")
     {
-      processBookSnapshot(std::move(obj), recvNs);
+      processBookSnapshot(std::move(obj), recvNs, venueTs);
     }
     else if (eventType == "price_change")
     {
       // Incremental book updates: apply them (previously dropped, leaving the
       // book stale between snapshots).
-      processPriceChanges(std::move(obj), recvNs);
+      processPriceChanges(std::move(obj), recvNs, venueTs);
     }
     else if (eventType == "last_trade_price" || eventType == "trade")
     {
@@ -266,7 +309,7 @@ void PolymarketExchangeConnector::handleMessage(std::string_view payload)
             ev.trade.isBuy = (sideField.get_string().value() == "BUY");
           }
 
-          ev.trade.exchangeTsNs = nowUnixNanos();
+          ev.trade.exchangeTsNs = venueTs;
           ev.publishTsNs = nowMonoNanos();
           _tradeBus->publish(ev);
         }
@@ -311,7 +354,7 @@ void PolymarketExchangeConnector::sendSubscribe(const std::vector<std::string>& 
 }
 
 void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object obj,
-                                                      uint64_t recvNs)
+                                                      uint64_t recvNs, UnixNanos exchangeTs)
 {
   auto assetIdField = obj["asset_id"];
   if (assetIdField.error())
@@ -388,7 +431,7 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
     }
   }
 
-  ev->update.exchangeTsNs = nowUnixNanos();
+  ev->update.exchangeTsNs = exchangeTs;
   ev->publishTsNs = nowMonoNanos();
 
   _bookUpdateBus->publish(std::move(ev));
@@ -400,7 +443,7 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
 // changes are grouped per symbol into one DELTA BookUpdateEvent each so the
 // downstream book applies them atomically.
 void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object obj,
-                                                      uint64_t recvNs)
+                                                      uint64_t recvNs, UnixNanos exchangeTs)
 {
   auto pcField = obj["price_changes"];
   if (pcField.error())
@@ -504,7 +547,7 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
       }
     }
 
-    ev->update.exchangeTsNs = nowUnixNanos();
+    ev->update.exchangeTsNs = exchangeTs;
     ev->publishTsNs = nowMonoNanos();
     _bookUpdateBus->publish(std::move(ev));
   }

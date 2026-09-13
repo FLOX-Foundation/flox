@@ -81,12 +81,15 @@ class BybitExchangeConnector : public IExchangeConnector
   // by feeding raw frames without a live socket.
   void handleMessage(std::string_view payload);
 
+  // Same rationale as handleMessage: public so the private-stream (order /
+  // execution) protocol handling is testable offline by feeding raw frames,
+  // without a live authenticated socket.
+  void handlePrivateMessage(std::string_view payload);
+
   // Book deltas whose update id broke continuity (dropped + resync triggered).
   uint64_t bookGapCount() const noexcept { return _bookGapCount.load(std::memory_order_relaxed); }
 
  private:
-  void handlePrivateMessage(std::string_view payload);
-
   // Re-subscribe one symbol's orderbook topic so the exchange re-sends a
   // snapshot (gap recovery). The constructor creates _wsClient unconditionally,
   // so this is never a no-op "before start()" -- the guard below only fires
@@ -115,6 +118,15 @@ class BybitExchangeConnector : public IExchangeConnector
   };
   std::unordered_map<SymbolId, BookSeqState> _bookSeq;
   std::atomic<uint64_t> _bookGapCount{0};
+
+  // Filled quantity known so far for each order, last reported via the
+  // "order" topic. The order-topic message carries the venue's cumulative
+  // fill state (cumExecQty), not a per-message delta; this lets the
+  // handler derive the incremental fillQty that OrderEvent::dispatchTo()
+  // needs for onOrderPartiallyFilled(order, fillQty), which used to be
+  // left at its default of zero on every fill. Only touched from the
+  // private-stream callback, so no additional locking.
+  std::unordered_map<OrderId, Quantity> _filledSoFar;
 
   std::shared_ptr<ILogger> _logger;
 

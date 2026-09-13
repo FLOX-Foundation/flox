@@ -38,6 +38,16 @@ class HyperliquidOrderExecutorT
                             std::shared_ptr<ILogger> logger, std::string accountAddress,
                             std::optional<std::string> vaultAddress, bool mainnet);
 
+  // Transport-injecting overload. Production code always goes through the
+  // constructor above, which owns a real CurlTransport; this one exists so
+  // tests can hand in a fake ITransport and observe the exact request body
+  // this executor builds, without a live signing helper or network access.
+  HyperliquidOrderExecutorT(std::unique_ptr<ITransport> transport, std::string restUrl,
+                            std::string privateKeyHex, SymbolRegistry* registry,
+                            OrderTracker* orderTracker, std::shared_ptr<ILogger> logger,
+                            std::string accountAddress, std::optional<std::string> vaultAddress,
+                            bool mainnet);
+
   ~HyperliquidOrderExecutorT();
 
   template <typename P = Policies, typename = std::enable_if_t<P::RateLimitType::enabled>>
