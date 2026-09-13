@@ -42,7 +42,7 @@ The example above overrides several of these; a default-constructed
 | Method | Description |
 |--------|-------------|
 | `info(msg)` / `warn(msg)` / `error(msg)` | `ILogger` overrides. Lock-free on the caller's thread |
-| `flush()` | Drain the ring buffer to the file synchronously. Public; call it before shutdown or when you need the file to be current |
+| `flush()` | Drain the ring buffer to the file synchronously. Public; call it before shutdown or when you need the file to be current. Returns once every message claimed before the call has been written out and the file has been flushed |
 
 ## Implementation Details
 
@@ -53,9 +53,27 @@ The example above overrides several of these; a default-constructed
 
 ## Threading Model
 
-* **Writers**: lock-free, use atomic `_writeIndex`
-* **Flusher**: single thread consumes entries using `_readIndex`
-* **Coordination**: via condition variable (new entries or periodic wake-up)
+* **Writers**: lock-free. A writer claims a position by advancing an atomic
+  index, fills the entry, then publishes it.
+* **Flusher**: one background thread. It writes a published entry out and only
+  then hands the slot back to the writers.
+* **Slot state**: each slot carries its own ring position, so a writer can
+  claim it only after the flusher has finished with it. A writer cannot take
+  the slot the flusher is reading, and the flusher cannot clear a publication
+  that belongs to the next lap of the ring.
+* **Overflow**: a full ring means every slot still holds a message the flusher
+  has not written out. `Drop` discards the new message. `Overwrite` retires the
+  oldest message to make room, and drops the new one instead if another writer
+  is still filling the oldest.
+* **Wake-up**: a condition variable, signalled on a new entry and on a 1 ms
+  timer.
+* **File ownership**: the `FILE*` belongs to the flush thread alone, because
+  that thread is the one that rotates, which closes the handle and opens
+  another. `flush()` runs on the caller's thread, so it does not touch the
+  handle: it waits for the drain, raises a request, and waits for the flush
+  thread to acknowledge it. Reading the handle from the caller meant a
+  rotation landing mid-call left the caller flushing a descriptor that had
+  just been closed.
 
 ## Sample Usage
 
@@ -68,18 +86,26 @@ logger.error("Order failed: rejected by risk");
 
 ## Format
 
-Log entries are printed with timestamp and level prefix:
+Log entries carry a local timestamp with milliseconds, then the level:
 
 ```
-2025-07-14T08:42:03Z [INFO] Engine started
-2025-07-14T08:42:04Z [WARN] Order queue near capacity
-2025-07-14T08:42:05Z [ERROR] RiskManager::allow rejected order
+[20250714-084203.118] INFO: Engine started
+[20250714-084204.902] WARN: Order queue near capacity
+[20250714-084205.331] ERROR: RiskManager::allow rejected order
 ```
+
+## Rotation
+
+The current file is always `<directory>/<basename>`. On rotation it is renamed
+to `<basename>.<YYYYMMDD-HHMMSS.mmm>.log`; if that name is taken, a `-1`, `-2`
+suffix is appended until one is free. Size-based rotation fires many times a
+second on a busy logger, which is why the name carries milliseconds and why the
+suffix exists at all. Without them the second rename of a given second silently
+replaces the first archive.
 
 ## Notes
 
 * Buffer overflow behavior depends on `OverflowPolicy`
-* Log rotation renames the file with a timestamp suffix
 * Avoid writing long messages: max message size is 256 bytes
 * Log flushing is done in a separate thread to reduce latency
 

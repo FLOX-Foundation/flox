@@ -10,6 +10,7 @@
 #include "flox/engine/symbol_registry.h"
 
 #include <gtest/gtest.h>
+#include <atomic>
 #include <cstdio>
 #include <filesystem>
 #include <thread>
@@ -433,4 +434,129 @@ TEST(SymbolRegistryTest, LargeRegistrySerialization)
     EXPECT_EQ(info->symbol, symbol);
     EXPECT_EQ(info->type, static_cast<InstrumentType>(i % 4));
   }
+}
+
+// The multi-threaded test above runs eight writers and no readers, so the
+// getters were never exercised against a concurrent writer at all. These two
+// put a reader next to a writer, which is the shape the engine actually runs:
+// registration happens on a control path while routing reads the registry.
+
+TEST(SymbolRegistryTest, ConcurrentReadersSeeFullyPopulatedExchanges)
+{
+  SymbolRegistry registry;
+
+  std::atomic<bool> stop{false};
+  std::atomic<bool> readerRunning{false};
+  std::atomic<int> reads{0};
+  std::atomic<int> halfFilled{0};
+
+  std::thread reader(
+      [&]
+      {
+        readerRunning.store(true, std::memory_order_release);
+        while (!stop.load(std::memory_order_relaxed))
+        {
+          for (ExchangeId id = 0; id < 16; ++id)
+          {
+            const auto info = registry.getExchange(id);
+            if (!info.has_value())
+            {
+              continue;
+            }
+            reads.fetch_add(1, std::memory_order_relaxed);
+            // An id the registry admits must carry both fields already.
+            if (info->nameView().empty() || info->type != VenueType::AmmDex)
+            {
+              halfFilled.fetch_add(1, std::memory_order_relaxed);
+            }
+          }
+        }
+      });
+
+  while (!readerRunning.load(std::memory_order_acquire))
+  {
+    std::this_thread::yield();
+  }
+
+  // Driven by what the reader has actually seen rather than by a fixed round
+  // count. A fixed count races thread start-up: the writer finishes in well
+  // under a millisecond and can leave the reader nothing to look at, which
+  // turns the read counter below into a coin flip.
+  constexpr int kMinReads = 1000;
+  constexpr int kMaxRounds = 200000;
+  int rounds = 0;
+  while (rounds < kMaxRounds && reads.load(std::memory_order_relaxed) < kMinReads)
+  {
+    for (int i = 0; i < 16; ++i)
+    {
+      registry.registerExchange("venue-" + std::to_string(i), VenueType::AmmDex);
+    }
+    registry.clear();
+    ++rounds;
+  }
+
+  stop.store(true, std::memory_order_relaxed);
+  reader.join();
+
+  EXPECT_GE(reads.load(), kMinReads);
+  EXPECT_EQ(halfFilled.load(), 0);
+}
+
+TEST(SymbolRegistryTest, ConcurrentReadersSurviveSymbolTableGrowth)
+{
+  SymbolRegistry registry;
+  const ExchangeId venue = registry.registerExchange("growth-venue", VenueType::AmmDex);
+  ASSERT_NE(venue, InvalidExchangeId);
+
+  std::atomic<bool> stop{false};
+  std::atomic<bool> readerRunning{false};
+  std::atomic<int> reads{0};
+  std::atomic<int> wrong{0};
+
+  std::thread reader(
+      [&]
+      {
+        readerRunning.store(true, std::memory_order_release);
+        while (!stop.load(std::memory_order_relaxed))
+        {
+          for (SymbolId sym = 0; sym < 2000; ++sym)
+          {
+            const ExchangeId got = registry.getExchangeForSymbol(sym);
+            reads.fetch_add(1, std::memory_order_relaxed);
+            if (got != venue && got != InvalidExchangeId)
+            {
+              wrong.fetch_add(1, std::memory_order_relaxed);
+            }
+            if (registry.venueTypeForSymbol(sym) != VenueType::AmmDex &&
+                got != InvalidExchangeId)
+            {
+              wrong.fetch_add(1, std::memory_order_relaxed);
+            }
+          }
+        }
+      });
+
+  while (!readerRunning.load(std::memory_order_acquire))
+  {
+    std::this_thread::yield();
+  }
+
+  // Same reason as above: keep growing the table until the reader has done
+  // real work, so the read counter is not a race against thread start-up.
+  constexpr int kMinReads = 1000;
+  int next = 0;
+  while (next < 200000 && reads.load(std::memory_order_relaxed) < kMinReads)
+  {
+    for (int i = 0; i < 2000; ++i)
+    {
+      registry.registerSymbol(venue, "SYM" + std::to_string(next + i));
+    }
+    next += 2000;
+  }
+
+  stop.store(true, std::memory_order_relaxed);
+  reader.join();
+
+  EXPECT_GE(reads.load(), kMinReads);
+  EXPECT_EQ(wrong.load(), 0);
 }

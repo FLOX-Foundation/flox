@@ -9,7 +9,11 @@
 
 #include <gtest/gtest.h>
 
+#include <flox/util/eventing/event_bus.h>
 #include <flox/util/memory/pool.h>
+
+#include <atomic>
+#include <vector>
 
 using namespace flox;
 
@@ -26,7 +30,48 @@ class DummyEvent : public pool::PoolableBase<DummyEvent>
   bool cleared = false;
 };
 
+// A pooled event carried through a bus. The bus destroys the handle sitting in
+// a slot before it reuses the slot, which is what returns the object to its
+// pool, so this is where the pool's release path and the bus's slot protocol
+// meet.
+struct BusEvent : public pool::PoolableBase<BusEvent>
+{
+  struct IBusListener
+  {
+    virtual ~IBusListener() = default;
+    virtual void onBusEvent(const BusEvent& e) = 0;
+  };
+  using Listener = IBusListener;
+
+  explicit BusEvent(std::pmr::memory_resource*) {}
+
+  int value{0};
+  uint64_t tickSequence{0};
+
+  void clear() { value = 0; }
+};
+
+class CountingBusListener : public BusEvent::IBusListener
+{
+ public:
+  void onBusEvent(const BusEvent&) override { ++count; }
+  std::atomic<int> count{0};
+};
+
 }  // namespace
+
+namespace flox
+{
+template <>
+struct EventDispatcher<BusEvent>
+{
+  template <typename Sub>
+  static void dispatch(const BusEvent& ev, Sub& sub)
+  {
+    sub.onBusEvent(ev);
+  }
+};
+}  // namespace flox
 
 TEST(EventPoolTest, AcquireReturnsValidHandle)
 {
@@ -229,4 +274,112 @@ TEST(EventPoolTest, CapacityReturnsTemplateParam)
 {
   pool::Pool<DummyEvent, 63> pool;
   EXPECT_EQ(pool.capacity(), 63u);
+}
+
+// Two pools of the same object type are ordinary: a Pool<BookUpdateEvent, N>
+// is a connector member, and a process running two connectors holds two of
+// them. Releasing into one of those pools has to reach that pool and no
+// other.
+
+TEST(EventPoolTest, ReleaseSurvivesAnotherPoolOfTheSameTypeBeingDestroyed)
+{
+  pool::Pool<DummyEvent, 64> keep;
+
+  {
+    pool::Pool<DummyEvent, 64> temp;
+    auto th = temp.acquire();
+    ASSERT_TRUE(th.has_value());
+  }
+
+  auto h = keep.acquire();
+  ASSERT_TRUE(h.has_value());
+  ASSERT_EQ(keep.inUse(), 1u);
+
+  h.reset();
+
+  EXPECT_EQ(keep.releaseCount(), 1u);
+  EXPECT_EQ(keep.inUse(), 0u);
+}
+
+TEST(EventPoolTest, ReleaseGoesToTheOwningPoolNotTheLastConstructedOne)
+{
+  pool::Pool<DummyEvent, 64> big;
+  pool::Pool<DummyEvent, 2> small;
+
+  auto h = big.acquire();
+  ASSERT_TRUE(h.has_value());
+  h.reset();
+
+  EXPECT_EQ(big.releaseCount(), 1u);
+  EXPECT_EQ(big.inUse(), 0u);
+  EXPECT_EQ(small.releaseCount(), 0u);
+  EXPECT_EQ(small.acquireCount(), 0u);
+
+  // The released slot has to come back. Writing the freelist at a foreign
+  // pool's offsets loses it, and the count comes up one short.
+  std::vector<pool::Handle<DummyEvent>> all;
+  EXPECT_EQ(big.acquireBatch(all, 64), 64u);
+}
+
+// Every handle that goes through the bus has to come back to its pool, whether
+// its slot was overwritten mid-run or drained when the bus stopped. A pool
+// slot that never returns shows up here as a non-zero inUse() at the end.
+TEST(EventPoolTest, HandlesPublishedThroughABusReturnToTheirPool)
+{
+  using Handle = pool::Handle<BusEvent>;
+
+  pool::Pool<BusEvent, 64> objects;
+  EventBus<Handle, 8> bus;
+  CountingBusListener listener;
+
+  bus.subscribe(&listener);
+  bus.start();
+
+  for (int i = 0; i < 500; ++i)
+  {
+    auto h = objects.acquire();
+    ASSERT_TRUE(h.has_value());
+    h->get()->value = i;
+    bus.publish(std::move(*h));
+  }
+
+  bus.flush();
+  bus.stop();
+
+  EXPECT_EQ(listener.count.load(), 500);
+  EXPECT_EQ(objects.inUse(), 0u);
+  EXPECT_EQ(objects.releaseCount(), objects.acquireCount());
+}
+
+// The same with a second pool of the same type alive alongside. Releases from
+// the bus must land in the pool the object came from, not in whichever pool
+// was constructed last.
+TEST(EventPoolTest, BusReleasesReachTheOwningPoolWithASecondPoolAlive)
+{
+  using Handle = pool::Handle<BusEvent>;
+
+  pool::Pool<BusEvent, 64> objects;
+  pool::Pool<BusEvent, 4> bystander;
+
+  EventBus<Handle, 8> bus;
+  CountingBusListener listener;
+
+  bus.subscribe(&listener);
+  bus.start();
+
+  for (int i = 0; i < 200; ++i)
+  {
+    auto h = objects.acquire();
+    ASSERT_TRUE(h.has_value());
+    h->get()->value = i;
+    bus.publish(std::move(*h));
+  }
+
+  bus.flush();
+  bus.stop();
+
+  EXPECT_EQ(listener.count.load(), 200);
+  EXPECT_EQ(objects.inUse(), 0u);
+  EXPECT_EQ(bystander.releaseCount(), 0u);
+  EXPECT_EQ(bystander.inUse(), 0u);
 }

@@ -12,6 +12,9 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <fstream>
+#include <set>
+#include <string>
+#include <thread>
 
 using namespace flox;
 namespace fs = std::filesystem;
@@ -121,4 +124,197 @@ TEST(AtomicLoggerTest, RotatesBySize)
   }
 
   EXPECT_GT(rotatedCount, 0);
+}
+
+// A burst larger than the ring is the ordinary shape of a bad minute: a
+// reconnect storm, a rejected-order flood. The default policy is free to drop
+// once the ring is full. What it is not free to do is stop: the flush thread
+// used to move the read index before reading the slot, a producer reused the
+// slot underneath it, and the flush thread then cleared a publication of its
+// own and spun on that slot forever. The destructor joins that thread, so the
+// process could not exit. This test hangs rather than fails when that comes
+// back.
+TEST(AtomicLoggerTest, DefaultPolicyBurstPastTheRingTerminates)
+{
+  cleanLogs();
+  auto logDir = getLogDir();
+
+  constexpr int kMessages = 20000;
+
+  {
+    AtomicLoggerOptions opts;
+    opts.directory = logDir.string();
+    opts.basename = "burst.log";
+    opts.rotateInterval = std::chrono::minutes(999);
+    opts.maxFileSize = 0;
+    opts.flushImmediately = false;
+
+    AtomicLogger logger(opts);
+    for (int i = 0; i < kMessages; ++i)
+    {
+      logger.info("burst-message-" + std::to_string(i));
+    }
+    logger.flush();
+  }
+
+  auto lines = readLines((logDir / "burst.log").string());
+  EXPECT_GT(lines.size(), 0u);
+  EXPECT_LE(lines.size(), static_cast<size_t>(kMessages));
+  for (const auto& line : lines)
+  {
+    EXPECT_NE(line.find("burst-message-"), std::string::npos);
+  }
+}
+
+// Dropping is for a ring that is genuinely full. A consumer that keeps up
+// must lose nothing, however far past the ring size the run goes.
+TEST(AtomicLoggerTest, NothingIsLostWhileTheConsumerKeepsUp)
+{
+  cleanLogs();
+  auto logDir = getLogDir();
+
+  constexpr int kMessages = 20000;
+
+  {
+    AtomicLoggerOptions opts;
+    opts.directory = logDir.string();
+    opts.basename = "paced.log";
+    opts.rotateInterval = std::chrono::minutes(999);
+    opts.maxFileSize = 0;
+    opts.flushImmediately = false;
+
+    AtomicLogger logger(opts);
+    for (int i = 0; i < kMessages; ++i)
+    {
+      logger.info("paced-message-" + std::to_string(i));
+      if ((i % 256) == 255)
+      {
+        logger.flush();
+      }
+    }
+    logger.flush();
+  }
+
+  auto lines = readLines((logDir / "paced.log").string());
+  ASSERT_EQ(lines.size(), static_cast<size_t>(kMessages));
+  EXPECT_NE(lines.front().find("paced-message-0"), std::string::npos);
+  EXPECT_NE(lines.back().find("paced-message-" + std::to_string(kMessages - 1)),
+            std::string::npos);
+}
+
+// The overwrite policy is allowed to lose the oldest messages. It is not
+// allowed to wedge the flush thread, which is what held the destructor -- and
+// with it the whole process -- open forever.
+TEST(AtomicLoggerTest, OverwritePolicyKeepsDrainingUnderABurst)
+{
+  cleanLogs();
+  auto logDir = getLogDir();
+
+  {
+    AtomicLoggerOptions opts;
+    opts.directory = logDir.string();
+    opts.basename = "overwrite.log";
+    opts.rotateInterval = std::chrono::minutes(999);
+    opts.maxFileSize = 0;
+    opts.overflow = OverflowPolicy::Overwrite;
+    opts.flushImmediately = false;
+
+    AtomicLogger logger(opts);
+    for (int i = 0; i < 20000; ++i)
+    {
+      logger.info("overwrite-message-" + std::to_string(i));
+    }
+    logger.flush();
+  }
+
+  auto lines = readLines((logDir / "overwrite.log").string());
+  EXPECT_GT(lines.size(), 0u);
+  for (const auto& line : lines)
+  {
+    EXPECT_NE(line.find("overwrite-message-"), std::string::npos);
+  }
+}
+
+TEST(AtomicLoggerTest, ConcurrentProducersAllReachTheFile)
+{
+  cleanLogs();
+  auto logDir = getLogDir();
+
+  constexpr int kThreads = 4;
+  constexpr int kPerThread = 500;
+
+  {
+    AtomicLoggerOptions opts;
+    opts.directory = logDir.string();
+    opts.basename = "threads.log";
+    opts.rotateInterval = std::chrono::minutes(999);
+    opts.maxFileSize = 0;
+    opts.flushImmediately = false;
+
+    AtomicLogger logger(opts);
+
+    std::vector<std::thread> producers;
+    for (int t = 0; t < kThreads; ++t)
+    {
+      producers.emplace_back(
+          [&logger, t]
+          {
+            for (int i = 0; i < kPerThread; ++i)
+            {
+              logger.info("t" + std::to_string(t) + "-m" + std::to_string(i));
+              if ((i % 64) == 63)
+              {
+                logger.flush();
+              }
+            }
+          });
+    }
+    for (auto& p : producers)
+    {
+      p.join();
+    }
+    logger.flush();
+  }
+
+  auto lines = readLines((logDir / "threads.log").string());
+  EXPECT_EQ(lines.size(), static_cast<size_t>(kThreads * kPerThread));
+}
+
+// Rotation names used to carry whole seconds, so a burst that rotated twenty
+// times inside one second left one archive behind and the rest went to the
+// same name, each rename replacing the last.
+TEST(AtomicLoggerTest, FastRotationKeepsEveryArchive)
+{
+  cleanLogs();
+  auto logDir = getLogDir();
+
+  constexpr int kMessages = 40;
+
+  {
+    AtomicLoggerOptions opts;
+    opts.directory = logDir.string();
+    opts.basename = "fast.log";
+    opts.maxFileSize = 60;  // roughly one message per file
+    opts.rotateInterval = std::chrono::minutes(999);
+
+    AtomicLogger logger(opts);
+    for (int i = 0; i < kMessages; ++i)
+    {
+      logger.info("message-number-" + std::to_string(i) + "-padding-padding");
+      logger.flush();
+    }
+  }
+
+  std::set<std::string> names;
+  size_t survived = 0;
+  for (const auto& file : fs::directory_iterator(logDir))
+  {
+    names.insert(file.path().filename().string());
+    survived += readLines(file.path().string()).size();
+  }
+
+  // Every archive has its own name, so nothing was replaced. Allowing for the
+  // rotation that trails the last message, the bulk of the run is on disk.
+  EXPECT_GE(names.size(), 20u);
+  EXPECT_GE(survived, static_cast<size_t>(kMessages) - 2);
 }

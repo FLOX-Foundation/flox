@@ -223,4 +223,40 @@ TEST_F(SPSCQueueTest, MultiThreadedPushPop)
   EXPECT_EQ(consumed.load(), 100000);
 }
 
+// The pointer try_pop returns is borrowed from the ring, and the contract is
+// that it stays valid only until the consumer's next pop. Everything below
+// pins the part of that contract the ring itself guarantees: while exactly
+// one pointer is outstanding, a producer filling the queue stops one slot
+// short of it, so the element under the pointer is still the element that was
+// handed out.
+TEST_F(SPSCQueueTest, PointerFromTryPopSurvivesAProducerFillingTheQueue)
+{
+  Queue q;
+  for (int i = 0; i < kCap - 1; ++i)
+  {
+    ASSERT_TRUE(q.try_emplace(i + 1));
+  }
+  ASSERT_TRUE(q.full());
+
+  Counter* held = q.try_pop();
+  ASSERT_NE(held, nullptr);
+  ASSERT_EQ(held->value, 1);
+
+  // One free slot opened up, so exactly one push is accepted; the rest are
+  // refused because the ring keeps a slot empty, which is what keeps the
+  // outstanding pointer intact.
+  int accepted = 0;
+  for (int i = 0; i < 10; ++i)
+  {
+    if (q.try_emplace(100 + i))
+    {
+      ++accepted;
+    }
+  }
+  EXPECT_EQ(accepted, 1);
+  EXPECT_EQ(held->value, 1);
+
+  held->~Counter();
+}
+
 }  // namespace
