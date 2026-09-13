@@ -47,7 +47,7 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `ctx.symbol` | `string` | Symbol name |
 | `ctx.symbolId` | `number` | Numeric symbol ID |
 | `ctx.position` | `number` | Current position size |
-| `ctx.avgEntryPrice` | `number` | Average entry price |
+| `ctx.avgEntryPrice` | `number` | Average entry price, `NaN` when the position manager reports none |
 | `ctx.book.bidPrice` | `number` | Best bid |
 | `ctx.book.askPrice` | `number` | Best ask |
 | `trade.symbol` | `string` | Symbol name |

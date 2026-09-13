@@ -3805,11 +3805,18 @@ anything else falls back to `gtc`.
 Node's `SymbolContext` is the narrower set: `position`, `symbolId`,
 `lastTradePrice`, `bestBid`, `bestAsk`, `midPrice`.
 
+Give every C++ strategy in a process its own `SubscriberId`. Nothing checks it,
+and the id does double duty: the buses route on it, and it is also the
+namespace for that strategy's order ids, which number from 1 within each
+strategy. Duplicate ids mean duplicate order ids, which the executor and the
+order tracker cannot tell apart. The bindings assign ids for you.
+
 Allocate a C++ `Strategy` on the heap. It holds 256 per-symbol context slots by
 value and each one carries a full 512-level book, so the object comes to about
-4.3 MB. One fits on a default 8 MB stack, two in the same function do not, and
-the overflow lands in the constructor prologue before a single line of the
-strategy has run. The bindings allocate for you.
+2 MB in a release build and about 4 MB in a checked one. Two in the same
+function overrun a default 8 MB stack wherever scale checks are on, and the
+overflow lands in the constructor prologue before a single line of the strategy
+has run. The bindings allocate for you.
 
 `unrealized_pnl` is measured against the average entry price the attached
 position manager reports. A manager that keeps no cost basis reports none, and
@@ -16655,7 +16662,7 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `ctx.symbol` | `string` | Symbol name |
 | `ctx.symbolId` | `number` | Numeric symbol ID |
 | `ctx.position` | `number` | Current position size |
-| `ctx.avgEntryPrice` | `number` | Average entry price |
+| `ctx.avgEntryPrice` | `number` | Average entry price, `NaN` when the position manager reports none |
 | `ctx.book.bidPrice` | `number` | Best bid |
 | `ctx.book.askPrice` | `number` | Best ask |
 | `trade.symbol` | `string` | Symbol name |

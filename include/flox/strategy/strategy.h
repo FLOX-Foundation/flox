@@ -472,10 +472,12 @@ class Strategy : public IStrategy
   std::vector<SymbolId> _symbols;
   std::set<SymbolId> _symbolSet;
   // Heap-allocate your Strategy. This map holds 256 SymbolContext slots by
-  // value and each one carries a full 512-level book, so the object comes to
-  // about 4.3 MB: one fits on a default 8 MB stack, two in the same frame do
-  // not, and the overflow lands in the constructor prologue before a single
-  // line of the strategy has run.
+  // value and each one carries a full 512-level book: 8,384 bytes per slot in
+  // a release build, 16,640 with FLOX_SCALE_CHECKS on, which puts the strategy
+  // object at roughly 2 MB release and 4 MB checked. Two of them in one stack
+  // frame overrun a default 8 MB stack in a checked build, and the overflow
+  // lands in the constructor prologue before a single line of the strategy has
+  // run.
   mutable SymbolStateMap<SymbolContext> _contexts;
 
   // Per-(symbol, timeframe) ring of the most recent closed bars.

@@ -124,8 +124,9 @@ etc.) which points at the responsible subsystem.
   subscriber id. A second run of the same tape in the same process,
   under a grid search or a batch runner, hands out the same IDs as
   the first, so two traces of an identical run compare equal byte
-  for byte. Two strategies sharing a subscriber id share an id
-  space; a subscriber id is meant to be unique per bus.
+  for byte. The subscriber id is the namespace, so it has to be
+  unique across the strategies in a process: two built with the
+  same one emit colliding order ids, and nothing checks it.
 
 - `VenueAvailability::auto_random_outages` is non-deterministic
   unless seeded. The default venue stacks do not enable random

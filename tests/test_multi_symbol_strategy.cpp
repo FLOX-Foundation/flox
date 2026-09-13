@@ -737,9 +737,9 @@ TEST_F(StrategyIntegrationTest, OrderIdsAreUniqueAcrossStrategies)
   };
 
   // On the heap deliberately. A Strategy carries its per-symbol contexts by
-  // value and each context holds a full 512-level book, which is about 4.3 MB
-  // per object -- two of them in one stack frame overruns the default 8 MB
-  // stack, and under the address sanitizer the frame is larger still.
+  // value and each context holds a full 512-level book: roughly 2 MB per
+  // object in a release build and 4 MB in a checked one, so two in a single
+  // stack frame overrun the default 8 MB stack wherever scale checks are on.
   auto strategy1 = std::make_unique<TestableStrategy>(SubscriberId{1},
                                                       std::vector<SymbolId>{1}, registry);
   auto strategy2 = std::make_unique<TestableStrategy>(SubscriberId{2},

@@ -50,6 +50,17 @@ snap.netQty();      // longQty - shortQty
 snap.unrealizedPnl(currentPrice);  // mark-to-market
 ```
 
+## Net entry price
+
+```cpp
+std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override;
+```
+
+The `IPositionManager` override the strategy context reads. Empty when the
+symbol is flat. In PER_SIDE mode a book that is long and short at once has no
+single entry price, so the two sides are blended by quantity the same way the
+net position is.
+
 ## Position Change Callback
 
 ```cpp
@@ -58,7 +69,9 @@ tracker.onPositionChange([](SymbolId sym, const auto& snap) {
 });
 ```
 
-Fires after every fill. Called under the lock.
+Fires after a fill that moves the position. A fill that moves nothing, such as
+a reduce-only order against no position, does not call it; subscribers used to be
+told the position had changed and handed back the snapshot they already had.
 
 ## Exchange Integration
 
