@@ -18,7 +18,7 @@ Pass a period of `1` or more:
 
 === "Python"
     ```python
-    import flox
+    import flox_py as flox
 
     # OK
     flox.sma(prices, period=20)
