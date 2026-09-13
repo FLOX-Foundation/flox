@@ -8,6 +8,7 @@
 #pragma once
 
 #include "flox/capi/flox_capi.h"
+#include "flox/capi/order_type_names.hpp"
 
 #include <cstdint>
 #include <string>
@@ -45,15 +46,11 @@ struct PySignal
 
 inline PySignal pySignalFromC(const FloxSignal* s)
 {
-  static constexpr const char* kOrderTypes[] = {
-      "market", "limit", "stop_market", "stop_limit",
-      "tp_market", "tp_limit", "trailing_stop",
-      "cancel", "cancel_all", "modify"};
   PySignal ps{};
   ps.order_id = s->order_id;
   ps.symbol = s->symbol;
   ps.side = s->side == 0 ? "buy" : "sell";
-  ps.order_type = s->order_type < 10 ? kOrderTypes[s->order_type] : "unknown";
+  ps.order_type = flox::capi::signalTypeName(s->order_type);
   ps.price = s->price;
   ps.quantity = s->quantity;
   ps.trigger_price = s->trigger_price;

@@ -29,6 +29,7 @@
 #include <napi.h>
 
 #include "flox/capi/flox_capi.h"
+#include "flox/capi/order_type_names.hpp"
 
 #include <cmath>
 #include <cstring>
@@ -54,16 +55,11 @@ inline Napi::FunctionReference takeFn(Napi::Object obj, const char* name)
 // Build a JS object mirroring FloxSignal for the user callback.
 inline Napi::Object signalToJs(Napi::Env env, const FloxSignal* s)
 {
-  static constexpr const char* kOrderTypes[] = {
-      "market", "limit", "stop_market", "stop_limit", "tp_market",
-      "tp_limit", "trailing_stop", "cancel", "cancel_all", "modify"};
   auto obj = Napi::Object::New(env);
   obj.Set("orderId", Napi::Number::New(env, static_cast<double>(s->order_id)));
   obj.Set("symbol", Napi::Number::New(env, s->symbol));
   obj.Set("side", Napi::String::New(env, s->side == 0 ? "buy" : "sell"));
-  obj.Set("orderType", Napi::String::New(env,
-                                         s->order_type < 10 ? kOrderTypes[s->order_type]
-                                                            : "unknown"));
+  obj.Set("orderType", Napi::String::New(env, flox::capi::signalTypeName(s->order_type)));
   obj.Set("price", Napi::Number::New(env, s->price));
   obj.Set("quantity", Napi::Number::New(env, s->quantity));
   obj.Set("triggerPrice", Napi::Number::New(env, s->trigger_price));
@@ -76,9 +72,6 @@ inline Napi::Object signalToJs(Napi::Env env, const FloxSignal* s)
 
 inline Napi::Object orderToJs(Napi::Env env, const FloxOrder* o)
 {
-  static constexpr const char* kOrderTypes[] = {
-      "limit", "market", "stop_market", "stop_limit",
-      "tp_market", "tp_limit", "trailing_stop", "iceberg"};
   static constexpr const char* kTif[] = {"gtc", "ioc", "fok", "gtd", "post_only"};
   auto obj = Napi::Object::New(env);
   obj.Set("id", Napi::Number::New(env, static_cast<double>(o->id)));
@@ -87,8 +80,7 @@ inline Napi::Object orderToJs(Napi::Env env, const FloxOrder* o)
   obj.Set("strategyId", Napi::Number::New(env, o->strategy_id));
   obj.Set("orderTag", Napi::Number::New(env, o->order_tag));
   obj.Set("side", Napi::String::New(env, o->side == 0 ? "buy" : "sell"));
-  obj.Set("orderType", Napi::String::New(
-                           env, o->type < 8 ? kOrderTypes[o->type] : "unknown"));
+  obj.Set("orderType", Napi::String::New(env, flox::capi::orderTypeNameLower(o->type)));
   obj.Set("timeInForce",
           Napi::String::New(env, o->time_in_force < 5 ? kTif[o->time_in_force] : "unknown"));
   obj.Set("reduceOnly", Napi::Boolean::New(env, (o->flags & 0x01) != 0));

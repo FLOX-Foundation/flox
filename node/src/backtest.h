@@ -3,6 +3,7 @@
 #pragma once
 #include <napi.h>
 #include "flox/capi/flox_capi.h"
+#include "flox/capi/order_type_names.hpp"
 #include "rate_limit.h"
 #include "venue_availability.h"
 
@@ -165,10 +166,15 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     std::string type = info.Length() > 4 && info[4].IsString() ? info[4].As<Napi::String>().Utf8Value() : "market";
     uint32_t sym = info.Length() > 5 ? info[5].As<Napi::Number>().Uint32Value() : 1;
     uint8_t s = side == "buy" ? 0 : 1;
+    // flox_simulated_executor_submit_order takes an order_type in the
+    // flox::OrderType space (LIMIT=0, MARKET=1, ...), NOT the
+    // FLOX_SIGNAL_TYPE_* space. See include/flox/capi/order_type_names.hpp.
     uint8_t t = 0;
-    if (type == "limit")
+    if (!flox::capi::orderTypeCodeFromName(type, &t))
     {
-      t = 1;
+      Napi::TypeError::New(info.Env(), "submitOrder: unknown order type '" + type + "'")
+          .ThrowAsJavaScriptException();
+      return;
     }
     // Optional opts object as the 7th argument: { tif, reduceOnly, expiresAtNs }.
     if (info.Length() > 6 && info[6].IsObject())

@@ -27,6 +27,7 @@
 #include <pybind11/stl.h>
 
 #include "flox/capi/flox_capi.h"
+#include "flox/capi/order_type_names.hpp"
 #include "flox/common.h"
 #include "flox/execution/abstract_execution_listener.h"
 #include "flox/execution/abstract_executor.h"
@@ -74,9 +75,6 @@ struct PyOrder
 
 inline PyOrder pyOrderFromC(const FloxOrder* o)
 {
-  static constexpr const char* kOrderTypes[] = {
-      "limit", "market", "stop_market", "stop_limit",
-      "tp_market", "tp_limit", "trailing_stop", "iceberg"};
   static constexpr const char* kTif[] = {"gtc", "ioc", "fok", "gtd", "post_only"};
   PyOrder po{};
   po.id = o->id;
@@ -85,7 +83,7 @@ inline PyOrder pyOrderFromC(const FloxOrder* o)
   po.strategy_id = o->strategy_id;
   po.order_tag = o->order_tag;
   po.side = o->side == 0 ? "buy" : "sell";
-  po.order_type = o->type < 8 ? kOrderTypes[o->type] : "unknown";
+  po.order_type = flox::capi::orderTypeNameLower(o->type);
   po.time_in_force = o->time_in_force < 5 ? kTif[o->time_in_force] : "unknown";
   po.reduce_only = (o->flags & 0x01) != 0;
   po.close_position = (o->flags & 0x02) != 0;
@@ -109,38 +107,7 @@ inline FloxOrder cOrderFromPy(const PyOrder& po)
   o.strategy_id = po.strategy_id;
   o.order_tag = po.order_tag;
   o.side = po.side == "buy" ? 0u : 1u;
-  if (po.order_type == "limit")
-  {
-    o.type = 0;
-  }
-  else if (po.order_type == "market")
-  {
-    o.type = 1;
-  }
-  else if (po.order_type == "stop_market")
-  {
-    o.type = 2;
-  }
-  else if (po.order_type == "stop_limit")
-  {
-    o.type = 3;
-  }
-  else if (po.order_type == "tp_market")
-  {
-    o.type = 4;
-  }
-  else if (po.order_type == "tp_limit")
-  {
-    o.type = 5;
-  }
-  else if (po.order_type == "trailing_stop")
-  {
-    o.type = 6;
-  }
-  else if (po.order_type == "iceberg")
-  {
-    o.type = 7;
-  }
+  flox::capi::orderTypeCodeFromName(po.order_type, &o.type);
   if (po.time_in_force == "gtc")
   {
     o.time_in_force = 0;

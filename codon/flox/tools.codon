@@ -1,6 +1,8 @@
 # flox/tools.codon -- Order book, executor, position tracking, profiles.
 # Wrappers over the C API for non-strategy infrastructure.
 
+from flox.order_type_codes import order_type_code_from_str
+
 from C import flox_book_create(f64) -> cobj
 from C import flox_book_destroy(cobj)
 from C import flox_book_apply_snapshot(cobj, Ptr[f64], Ptr[f64], int,
@@ -268,10 +270,10 @@ class SimulatedExecutor:
         self._h = flox_simulated_executor_create()
 
     def submit_order(self, order_id: int, side: str, price: float,
-                     qty: float, order_type: int = 0, symbol: int = 1):
+                     qty: float, order_type: str = "market", symbol: int = 1):
         s = u8(0) if side == "buy" else u8(1)
         flox_simulated_executor_submit_order(self._h, u64(order_id), s, price, qty,
-                                   u8(order_type), u32(symbol))
+                                   order_type_code_from_str(order_type), u32(symbol))
 
     def cancel_order(self, order_id: int):
         flox_simulated_executor_cancel_order(self._h, u64(order_id))

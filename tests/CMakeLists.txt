@@ -244,6 +244,7 @@ if(FLOX_BUILD_CAPI)
     add_flox_test(test_capi_backtest)
     target_link_libraries(test_capi_backtest PRIVATE flox_capi)
   endif()
+  add_flox_test(test_order_type_names)
 endif()
 
 if(FLOX_BUILD_QUICKJS)

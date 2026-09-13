@@ -151,6 +151,7 @@ export interface OrderEventData {
     | "STOP_LIMIT"
     | "TP_MARKET"
     | "TP_LIMIT"
+    | "TRAILING_STOP"
     | "ICEBERG"
     | "UNKNOWN";
   status: OrderEventStatus;
