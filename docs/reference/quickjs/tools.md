@@ -21,6 +21,13 @@ l3.removeOrder(1);
 l3.bestBid();
 ```
 
+The tick size defaults to 0.01 when the argument is omitted. An explicit value
+must be positive; `new OrderBook(0)` throws a `RangeError`. The smallest
+representable tick is `1e-8`, since prices are fixed-point with a scale of 1e8.
+The book covers 8192 consecutive ticks centred on the market and re-anchors
+that window as a delta feed walks the price away from the last snapshot. See
+[The order book's tick window](../../explanation/order-book-tick-window.md).
+
 ---
 
 ## Position tracking

@@ -1017,7 +1017,17 @@ struct FloxBookImpl
 
 FloxBookHandle flox_book_create(double tick_size)
 {
-  return new FloxBookImpl(tick_size);
+  try
+  {
+    return new FloxBookImpl(tick_size);
+  }
+  catch (...)
+  {
+    // A non-positive tick size is rejected by the book itself. Report it the
+    // way the rest of this ABI reports a refused construction, and never let
+    // the exception cross back into C.
+    return nullptr;
+  }
 }
 
 void flox_book_destroy(FloxBookHandle book)

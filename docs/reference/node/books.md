@@ -24,6 +24,13 @@ book.applySnapshot(bidPrices, bidQtys, askPrices, askQtys);
 | `isCrossed()` | `boolean` | True if book is crossed |
 | `clear()` | `void` | Clear all levels |
 
+`tickSize` must be positive; the constructor throws a `RangeError` otherwise.
+The smallest representable tick is `1e-8`, since prices are fixed-point with a
+scale of 1e8. The book covers 8192 consecutive ticks centred on the market and
+re-anchors that window as a delta feed walks the price away from the last
+snapshot. See
+[The order book's tick window](../../explanation/order-book-tick-window.md).
+
 ---
 
 ## L3Book

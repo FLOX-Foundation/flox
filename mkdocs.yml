@@ -235,6 +235,7 @@ nav:
       - Connectors: explanation/connectors.md
       - Venue types: explanation/venue-types.md
       - Per-symbol scale: explanation/per-symbol-scale.md
+      - Order book tick window: explanation/order-book-tick-window.md
       - On-chain order lifecycle: explanation/onchain-order-lifecycle.md
       - Liquidity-provision signals: explanation/liquidity-provision.md
       - Position valuation: explanation/position-valuation.md

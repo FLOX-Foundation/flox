@@ -25,7 +25,14 @@ class OrderBookWrap : public Napi::ObjectWrap<OrderBookWrap>
                         InstanceMethod("clear", &OrderBookWrap::Clear)});
   }
   OrderBookWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<OrderBookWrap>(info),
-                                                  _h(flox_book_create(info[0].As<Napi::Number>().DoubleValue())) {}
+                                                  _h(flox_book_create(info[0].As<Napi::Number>().DoubleValue()))
+  {
+    if (!_h)
+    {
+      Napi::RangeError::New(info.Env(), "OrderBook: tick size must be positive")
+          .ThrowAsJavaScriptException();
+    }
+  }
   ~OrderBookWrap()
   {
     if (_h)

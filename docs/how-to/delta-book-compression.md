@@ -88,6 +88,12 @@ The replayer reconstructs the same level sets the encoder saw. The Python test v
 
 If you persist the encoder output to disk via the existing `BinaryLogWriter`, set `BookRecordHeader.type = 0` for snapshots and `1` for deltas. The reader picks up either type transparently.
 
+## Seeking into the middle of a tape
+
+A delta carries only the levels that changed, so a replayer that has not seen a snapshot for a symbol has nothing to merge into. Feed it one anyway, which is what happens when you seek past the nearest anchor, and it refuses: the level lists come back empty and `anchored` is false. `DeltaBookReplayer.anchored(symbol_id)` answers the same question without applying anything. Deltas keep being refused until a snapshot for that symbol arrives, and `reset()` / `reset_all()` drop the anchor again.
+
+This is why anchor cadence bounds your seek cost: to read the state at an arbitrary offset, start from the nearest preceding anchor, not from the offset itself.
+
 ## When to skip it
 
 - Trade-only tapes. Trades have no shared state to delta against.

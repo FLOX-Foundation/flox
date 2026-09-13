@@ -138,6 +138,15 @@ This operation is intended for:
 - simulation boundaries
 - hash-table tombstone reclamation
 
+## Best-price cache
+
+`bestBid()` and `bestAsk()` answer from a cached level index when one is warm.
+Removing the last order at the cached level drops the cache, and it is rebuilt
+lazily on the next read rather than claimed by whatever price is added next.
+A batch of L3 events that removes the touch and then adds a worse level, with
+no read in between, still reports the best price actually resting in the book.
+Both methods are non-`const` for this reason.
+
 ## Final Word on Performance 
 - Hot-path operation (add, remove, modify) are allocation free 
 - Hash-table performance assumes bounded ID domains per session

@@ -371,6 +371,8 @@ jobs:
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_delta_book_smoke
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_order_book_window_smoke
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_bar_close_ordering_parity_smoke
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_order_type_codes_smoke
@@ -385,6 +387,7 @@ jobs:
         ./build/src/quickjs/flox_js_runner quickjs/examples/portfolio_risk_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/execution_algos_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/delta_book_smoke.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/order_book_window_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/order_group_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/bar_close_ordering_parity_smoke.js
 

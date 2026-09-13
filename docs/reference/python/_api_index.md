@@ -537,6 +537,7 @@ Reverse of DeltaBookEncoder. Maintains current book state per symbol; given a st
 
 **Members**
 
+- `anchored(self, symbol_id: typing.SupportsInt | typing.SupportsIndex) -> bool`
 - `apply(self, type: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, bids: list, asks: list) -> dict`
 - `reset(self, symbol_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `reset_all(self) -> None`
