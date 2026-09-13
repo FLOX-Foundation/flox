@@ -51,6 +51,30 @@ inline std::span<const double> arr2span(Napi::Float64Array& a)
   return {a.Data(), a.ElementLength()};
 }
 
+// Every multi-array batch indicator below used to take its element count
+// from the FIRST array only and blindly index the rest at that length.
+// A caller passing mismatched arrays (e.g. `close` shorter than `high`)
+// read past the short array's end -- silently on small inputs (denormals
+// out of whatever memory followed the allocation), or with a SIGSEGV once
+// the read crossed a page boundary. Every call site below must check
+// lengths before touching `.Data()` on anything but the first array.
+inline bool requireSameLength(Napi::Env env, const char* fnName,
+                              std::initializer_list<size_t> lens)
+{
+  auto it = lens.begin();
+  size_t n = *it;
+  for (++it; it != lens.end(); ++it)
+  {
+    if (*it != n)
+    {
+      Napi::RangeError::New(env, std::string(fnName) + ": input arrays must have the same length")
+          .ThrowAsJavaScriptException();
+      return false;
+    }
+  }
+  return true;
+}
+
 // ── Batch: single-input indicators ──────────────────────────────────
 
 template <typename Indicator>
@@ -103,6 +127,10 @@ inline Napi::Value batch_atr(const Napi::CallbackInfo& info)
   auto l = info[1].As<Napi::Float64Array>();
   auto c = info[2].As<Napi::Float64Array>();
   size_t n = h.ElementLength(), p = info[3].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "atr", {n, l.ElementLength(), c.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   std::vector<double> out(n);
   flox::indicator::ATR(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
@@ -114,6 +142,10 @@ inline Napi::Value batch_adx(const Napi::CallbackInfo& info)
   auto l = info[1].As<Napi::Float64Array>();
   auto c = info[2].As<Napi::Float64Array>();
   size_t n = h.ElementLength(), p = info[3].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "adx", {n, l.ElementLength(), c.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   auto r = flox::indicator::ADX(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
   auto o = Napi::Object::New(info.Env());
   o.Set("adx", vec2arr(info.Env(), r.adx));
@@ -130,6 +162,10 @@ inline Napi::Value batch_stochastic(const Napi::CallbackInfo& info)
   size_t n = h.ElementLength();
   size_t kp = info[3].As<Napi::Number>().Uint32Value();
   size_t dp = info[4].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "stochastic", {n, l.ElementLength(), c.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   auto r = flox::indicator::Stochastic(kp, dp).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
   auto o = Napi::Object::New(info.Env());
   o.Set("k", vec2arr(info.Env(), r.k));
@@ -143,6 +179,10 @@ inline Napi::Value batch_cci(const Napi::CallbackInfo& info)
   auto l = info[1].As<Napi::Float64Array>();
   auto c = info[2].As<Napi::Float64Array>();
   size_t n = h.ElementLength(), p = info[3].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "cci", {n, l.ElementLength(), c.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   auto r = flox::indicator::CCI(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
   return vec2arr(info.Env(), r);
 }
@@ -153,6 +193,10 @@ inline Napi::Value batch_chop(const Napi::CallbackInfo& info)
   auto l = info[1].As<Napi::Float64Array>();
   auto c = info[2].As<Napi::Float64Array>();
   size_t n = h.ElementLength(), p = info[3].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "chop", {n, l.ElementLength(), c.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   auto r = flox::indicator::CHOP(p).compute({h.Data(), n}, {l.Data(), n}, {c.Data(), n});
   return vec2arr(info.Env(), r);
 }
@@ -194,6 +238,10 @@ inline Napi::Value batch_obv(const Napi::CallbackInfo& info)
   auto c = info[0].As<Napi::Float64Array>();
   auto v = info[1].As<Napi::Float64Array>();
   size_t n = c.ElementLength();
+  if (!requireSameLength(info.Env(), "obv", {n, v.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   std::vector<double> out(n);
   flox::indicator::OBV().compute({c.Data(), n}, {v.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
@@ -204,6 +252,10 @@ inline Napi::Value batch_vwap(const Napi::CallbackInfo& info)
   auto c = info[0].As<Napi::Float64Array>();
   auto v = info[1].As<Napi::Float64Array>();
   size_t n = c.ElementLength(), w = info[2].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "vwap", {n, v.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   auto r = flox::indicator::VWAP(w).compute({c.Data(), n}, {v.Data(), n});
   return vec2arr(info.Env(), r);
 }
@@ -216,6 +268,11 @@ inline Napi::Value batch_cvd(const Napi::CallbackInfo& info)
   auto c = info[3].As<Napi::Float64Array>();
   auto v = info[4].As<Napi::Float64Array>();
   size_t n = c.ElementLength();
+  if (!requireSameLength(info.Env(), "cvd",
+                         {n, o.ElementLength(), h.ElementLength(), l.ElementLength(), v.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   auto r = flox::indicator::CVD().compute({o.Data(), n}, {h.Data(), n}, {l.Data(), n},
                                           {c.Data(), n}, {v.Data(), n});
   return vec2arr(info.Env(), r);
@@ -261,6 +318,10 @@ inline Napi::Value batch_parkinson_vol(const Napi::CallbackInfo& info)
   auto h = info[0].As<Napi::Float64Array>();
   auto l = info[1].As<Napi::Float64Array>();
   size_t n = h.ElementLength(), p = info[2].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "parkinson_vol", {n, l.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   std::vector<double> out(n);
   flox::indicator::ParkinsonVol(p).compute({h.Data(), n}, {l.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
@@ -273,6 +334,11 @@ inline Napi::Value batch_rogers_satchell_vol(const Napi::CallbackInfo& info)
   auto l = info[2].As<Napi::Float64Array>();
   auto c = info[3].As<Napi::Float64Array>();
   size_t n = o.ElementLength(), p = info[4].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "rogers_satchell_vol",
+                         {n, h.ElementLength(), l.ElementLength(), c.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   std::vector<double> out(n);
   flox::indicator::RogersSatchellVol(p).compute({o.Data(), n}, {h.Data(), n}, {l.Data(), n},
                                                 {c.Data(), n}, {out.data(), n});
@@ -284,6 +350,10 @@ inline Napi::Value batch_correlation(const Napi::CallbackInfo& info)
   auto x = info[0].As<Napi::Float64Array>();
   auto y = info[1].As<Napi::Float64Array>();
   size_t n = x.ElementLength(), p = info[2].As<Napi::Number>().Uint32Value();
+  if (!requireSameLength(info.Env(), "correlation", {n, y.ElementLength()}))
+  {
+    return info.Env().Undefined();
+  }
   std::vector<double> out(n);
   flox::indicator::Correlation(p).compute({x.Data(), n}, {y.Data(), n}, {out.data(), n});
   return vec2arr(info.Env(), out);
@@ -291,16 +361,20 @@ inline Napi::Value batch_correlation(const Napi::CallbackInfo& info)
 
 inline Napi::Value batch_adf(const Napi::CallbackInfo& info)
 {
+  // index.d.ts declared this `(input, lag) => number`; the real signature
+  // takes an optional regression term (default "c", matching Python and
+  // Codon) and returns { testStat, pValue, usedLag }.
   auto in = info[0].As<Napi::Float64Array>();
   size_t n = in.ElementLength();
-  size_t maxLag = info[1].As<Napi::Number>().Uint32Value();
-  std::string regression = info[2].As<Napi::String>().Utf8Value();
+  size_t maxLag = info.Length() > 1 ? info[1].As<Napi::Number>().Uint32Value() : 4u;
+  std::string regression =
+      info.Length() > 2 && info[2].IsString() ? info[2].As<Napi::String>().Utf8Value() : "c";
   flox::indicator::AdfResult r =
       flox::indicator::adf(std::span<const double>(in.Data(), n), maxLag, regression);
   auto o = Napi::Object::New(info.Env());
-  o.Set("test_stat", Napi::Number::New(info.Env(), r.test_stat));
-  o.Set("p_value", Napi::Number::New(info.Env(), r.p_value));
-  o.Set("used_lag", Napi::Number::New(info.Env(), static_cast<double>(r.used_lag)));
+  o.Set("testStat", Napi::Number::New(info.Env(), r.test_stat));
+  o.Set("pValue", Napi::Number::New(info.Env(), r.p_value));
+  o.Set("usedLag", Napi::Number::New(info.Env(), static_cast<double>(r.used_lag)));
   return o;
 }
 
@@ -745,8 +819,16 @@ class MACDWrap : public Napi::ObjectWrap<MACDWrap>
   }
   Napi::Value Update(const Napi::CallbackInfo& info)
   {
+    // Declared to return { line, signal, histogram }, not a bare number:
+    // returning optNum() here made `macd.update(x).line` throw on
+    // "Cannot read properties of null" whenever update() itself came
+    // back null-ish, since the declared object never existed.
     _ind.update(info[0].As<Napi::Number>().DoubleValue());
-    return optNum(info.Env(), _ind.value());
+    auto out = Napi::Object::New(info.Env());
+    out.Set("line", optNum(info.Env(), _ind.value()));
+    out.Set("signal", optNum(info.Env(), _ind.signalValue()));
+    out.Set("histogram", optNum(info.Env(), _ind.histogramValue()));
+    return out;
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return optNum(info.Env(), _ind.value()); }
   Napi::Value Line(const Napi::CallbackInfo& info) { return optNum(info.Env(), _ind.value()); }
@@ -798,8 +880,13 @@ class BollingerWrap : public Napi::ObjectWrap<BollingerWrap>
   }
   Napi::Value Update(const Napi::CallbackInfo& info)
   {
+    // See MACDWrap::Update -- same fix, same declared-object contract.
     _ind.update(info[0].As<Napi::Number>().DoubleValue());
-    return optNum(info.Env(), _ind.value());
+    auto out = Napi::Object::New(info.Env());
+    out.Set("upper", optNum(info.Env(), _ind.upperValue()));
+    out.Set("middle", optNum(info.Env(), _ind.middleValue()));
+    out.Set("lower", optNum(info.Env(), _ind.lowerValue()));
+    return out;
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return optNum(info.Env(), _ind.value()); }
   Napi::Value Upper(const Napi::CallbackInfo& info) { return optNum(info.Env(), _ind.upperValue()); }
@@ -851,10 +938,14 @@ class StochasticWrap : public Napi::ObjectWrap<StochasticWrap>
   }
   Napi::Value Update(const Napi::CallbackInfo& info)
   {
+    // See MACDWrap::Update -- same fix, same declared-object contract.
     _ind.update(info[0].As<Napi::Number>().DoubleValue(),
                 info[1].As<Napi::Number>().DoubleValue(),
                 info[2].As<Napi::Number>().DoubleValue());
-    return optNum(info.Env(), _ind.value());
+    auto out = Napi::Object::New(info.Env());
+    out.Set("k", optNum(info.Env(), _ind.kValue()));
+    out.Set("d", optNum(info.Env(), _ind.dValue()));
+    return out;
   }
   Napi::Value Value(const Napi::CallbackInfo& info) { return optNum(info.Env(), _ind.value()); }
   Napi::Value K(const Napi::CallbackInfo& info) { return optNum(info.Env(), _ind.kValue()); }

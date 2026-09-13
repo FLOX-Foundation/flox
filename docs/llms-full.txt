@@ -14212,6 +14212,17 @@ In threaded mode, events are published to a lock-free ring buffer and callbacks 
 | `onBar(symbol, { open, high, low, close, volume?, ... })` | Inject a closed OHLC bar |
 
 `symbol` accepts a `Symbol` object or a raw number. `tsNs` accepts a number or a `bigint`.
+`bidPrices` / `bidQtys` / `askPrices` / `askQtys` are `Float64Array`, one entry per book
+level; each price array must be the same length as its matching quantity array.
+
+Exceptions behave differently in the two modes. In sync mode, a throw from
+`onTrade` / `onBookSnapshot` / `onBar` propagates straight out of the call,
+so a `try`/`catch` around it works normally. In threaded mode there's no
+caller waiting on the call (it runs on a libuv-scheduled turn), so Node
+just logs a one-time `DEP0168` deprecation warning and drops the
+exception; the strategy quietly misses that event. Put the `try`/`catch`
+inside the callback itself if a threaded strategy needs to see its own
+exceptions.
 
 ### Hook setters
 
@@ -15427,7 +15438,7 @@ Batch indicators are **free functions**, not class methods. Import them by name.
 ```codon
 from flox.indicators import ema, sma, rsi, atr, macd, bollinger
 from flox.indicators import skewness, kurtosis, rolling_zscore, shannon_entropy
-from flox.indicators import parkinson_vol, rogers_satchell_vol, correlation, autocorrelation
+from flox.indicators import parkinson_vol, rogers_satchell_vol, rolling_correlation, autocorrelation
 from flox.indicators import obv, vwap, cvd, chop, adx, adf, stochastic
 ```
 
@@ -15437,7 +15448,7 @@ from flox.indicators import obv, vwap, cvd, chop, adx, adf, stochastic
 
 **OHLC / multi-input** — returns `List[float]`:
 
-`atr(high, low, close, period)`, `cci(high, low, close, period)`, `chop(high, low, close, period)`, `parkinson_vol(high, low, period)`, `rogers_satchell_vol(open_, high, low, close, period)`, `correlation(x, y, period)`
+`atr(high, low, close, period)`, `cci(high, low, close, period)`, `chop(high, low, close, period)`, `parkinson_vol(high, low, period)`, `rogers_satchell_vol(open_, high, low, close, period)`, `rolling_correlation(x, y, period)`
 
 **Statistical** — returns `List[float]`:
 
@@ -15739,7 +15750,7 @@ series = cci(highs, lows, closes, 20)      # batch via the free function
 | `Stochastic` | `Stochastic(k_period=14, d_period=3)` | BarInput | none — free function `stochastic(high, low, close, k_period=14, d_period=3)` |
 | `ParkinsonVol` | `ParkinsonVol(period)` | HighLowInput | none — free function `parkinson_vol(high, low, period)` |
 | `RogersSatchellVol` | `RogersSatchellVol(period)` | OhlcInput | none — free function `rogers_satchell_vol(open_, high, low, close, period)` |
-| `Correlation` | `Correlation(period)` | PairInput | none — free function `correlation(x, y, period)` |
+| `Correlation` | `Correlation(period)` | PairInput | none |
 | `MACD` | `MACD(fast=12, slow=26, signal=9)` | MultiOutput | instance `compute(data)` |
 | `Bollinger` | `Bollinger(period=20, multiplier=2.0)` | MultiOutput | instance `compute(data)` |
 

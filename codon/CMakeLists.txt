@@ -111,3 +111,6 @@ add_codon_executable(codon_backtest_run_tapes_smoke
 
 add_codon_executable(codon_order_type_codes_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/order_type_codes_smoke.codon)
+
+add_codon_executable(codon_indicator_bounds_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/indicator_bounds_smoke.codon)

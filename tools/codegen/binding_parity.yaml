@@ -303,7 +303,9 @@ groups:
 
   replay:
     pybind11: { status: required, classes: [ReplaySource] }
-    napi: { status: required, classes: [ReplaySource] }
+    napi:
+      status: allowlist
+      reason: "the napi ReplaySourceHost adapter was written but never wired to a constructible class or a BacktestRunner method that would accept one, so it was unreachable dead code; removed along with the ReplaySource/ReplayEvent interfaces in index.d.ts that referenced the same nonexistent method. Python is the only binding that implements this group today."
     codon: { status: required }
 
   execution:

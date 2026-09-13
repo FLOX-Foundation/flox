@@ -11,6 +11,8 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # No observed duration on a PR (main-push only); mkdocs builds are fast.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
