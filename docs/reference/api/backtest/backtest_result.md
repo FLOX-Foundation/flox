@@ -122,7 +122,7 @@ Sharpe, Sortino and Calmar are computed from the equity curve. A per-period retu
 r_i = (equity[i] - equity[i-1]) / equity[i-1] - riskFreeRate
 ```
 
-Sharpe and Sortino annualize the series with `sqrt(metricsAnnualizationFactor)`. Calmar is `annualizedReturn / maxDrawdownPct`, where `annualizedReturn = (1 + TWR)^(metricsAnnualizationFactor / n) - 1` and `n` is the number of observed periods (closed trades).
+Sharpe and Sortino annualize the series with `sqrt(metricsAnnualizationFactor)`. Calmar is `annualizedReturn / maxDrawdownPct`, where `annualizedReturn = (1 + TWR)^(metricsAnnualizationFactor / n) - 1` and `n` is the number of observed periods (closed trades). Raising a short curve's return to a large power blows up fast: two periods against the default 252-per-year factor is already a 126th power. Calmar is `0.0` below a minimum of 5 observed periods, rather than annualizing a pathologically short curve into an astronomical number.
 
 `TradeRecord.fee` now includes both the entry-fill fee and the exit-fill fee pro-rated by the quantity closed in the trade. Partial closes keep the residual entry fee accrued to the remaining open portion of the position.
 

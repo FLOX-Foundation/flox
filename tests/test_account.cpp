@@ -523,13 +523,40 @@ TEST(Account, HasStaleMarksFlagsBeyondBudget)
 {
   Account a(1, 10'000.0);
   a.openPosition(BTC, 1.0, 50'000.0);
-  a.setMark(BTC, 50'000.0, /*tsNs=*/0);
-  // Budget is 1 second; now is 2 seconds in future → stale.
-  EXPECT_TRUE(
-      a.hasStaleMarks(/*nowNs=*/2'000'000'000, /*budgetNs=*/1'000'000'000));
+  // A real (non-zero, non-sentinel) mark timestamp -- realistic wall-clock
+  // nanoseconds, not the toy ~1e9 this test used before. tsNs=0 is a
+  // reserved sentinel (see HasStaleMarksTreatsUnspecifiedTsAsFresh below);
+  // using it here as an ordinary timestamp masked BT-10 because
+  // `nowNs - 0` at toy scale never exceeded the budget in the "fresh"
+  // branch either.
+  constexpr int64_t kMarkTsNs = 1'700'000'000'000'000'000;
+  a.setMark(BTC, 50'000.0, kMarkTsNs);
+  // Budget is 1 second; now is 2 seconds after the mark → stale.
+  EXPECT_TRUE(a.hasStaleMarks(/*nowNs=*/kMarkTsNs + 2'000'000'000,
+                              /*budgetNs=*/1'000'000'000));
   // Fresh enough.
-  EXPECT_FALSE(
-      a.hasStaleMarks(/*nowNs=*/500'000'000, /*budgetNs=*/1'000'000'000));
+  EXPECT_FALSE(a.hasStaleMarks(/*nowNs=*/kMarkTsNs + 500'000'000,
+                               /*budgetNs=*/1'000'000'000));
+}
+
+// BT-10: the header contract for `setMark` promises that a caller who
+// doesn't pass a timestamp (ts stays at its default, 0) is treated as
+// "fresh" by the stale-mark guard. Before the fix, `hasStaleMarks` computed
+// `nowNs - 0` unconditionally, which at any real wall-clock nowNs is on the
+// order of decades -- so a mark set without a ts was reported permanently
+// stale (`nowNs - 0 ~= 1.75e18 ns ~= 55.5 years`), and code gating on
+// `if (hasStaleMarks(...)) skip` never ran the liquidation engine at all.
+TEST(Account, HasStaleMarksTreatsUnspecifiedTsAsFresh)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 1.0, 50'000.0);
+  a.setMark(BTC, 50'000.0);  // no ts argument -> defaults to 0
+  EXPECT_EQ(a.markTsFor(BTC), 0);
+
+  // Realistic wall-clock "now", tiny budget: a buggy implementation treating
+  // ts=0 as an ordinary timestamp reports this as ~55.5 years stale.
+  constexpr int64_t kRealisticNowNs = 1'750'000'000'000'000'000;
+  EXPECT_FALSE(a.hasStaleMarks(kRealisticNowNs, /*budgetNs=*/60'000'000'000));
 }
 
 TEST(Account, MultiSymbolOnMarksUpdatesAllAccountsAtomically)

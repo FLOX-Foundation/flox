@@ -293,6 +293,106 @@ TEST_F(OptimizationStatsTest, BootstrapCIMultipleValues)
   EXPECT_LT(ci.lower, ci.upper);
 }
 
+// === BT-07 / TD-06: determinism, add-one p-value correction, OOB safety ===
+
+// Before the fix, both permutationTest and bootstrapCI seeded their RNG from
+// `std::random_device` inside the function body -- the same call on the same
+// data could read differently on every invocation. The reproducer (`det2.cpp`
+// in the audit) called permutationTest 200 times on identical, well-mixed
+// data at the p<0.001 decision threshold and got "significant" 129 times and
+// "not significant" 71 times. With a fixed default seed, repeated calls on
+// identical input must now be bit-for-bit identical.
+TEST_F(OptimizationStatsTest, PermutationTestIsDeterministicAcrossCalls)
+{
+  std::vector<double> group1 = {1.0, 5.0, 2.0, 9.0, 3.0, 7.0, 4.0, 6.0};
+  std::vector<double> group2 = {2.0, 6.0, 3.0, 8.0, 1.0, 9.0, 5.0, 4.0};
+
+  const double first = MockStats::permutationTest(group1, group2, 2000);
+  for (int i = 0; i < 20; ++i)
+  {
+    EXPECT_DOUBLE_EQ(MockStats::permutationTest(group1, group2, 2000), first);
+  }
+}
+
+TEST_F(OptimizationStatsTest, BootstrapCIIsDeterministicAcrossCalls)
+{
+  std::vector<double> values = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+
+  const auto first = MockStats::bootstrapCI(values, 0.95, 500);
+  for (int i = 0; i < 20; ++i)
+  {
+    const auto ci = MockStats::bootstrapCI(values, 0.95, 500);
+    EXPECT_DOUBLE_EQ(ci.lower, first.lower);
+    EXPECT_DOUBLE_EQ(ci.median, first.median);
+    EXPECT_DOUBLE_EQ(ci.upper, first.upper);
+  }
+}
+
+// A caller who explicitly wants independent resamples across calls can still
+// get them by varying the seed.
+TEST_F(OptimizationStatsTest, PermutationTestSeedParameterVariesResampling)
+{
+  std::vector<double> group1 = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  std::vector<double> group2 = {3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+
+  bool sawDifference = false;
+  double first = MockStats::permutationTest(group1, group2, 300, /*seed=*/0);
+  for (std::uint64_t seed = 1; seed <= 8; ++seed)
+  {
+    if (MockStats::permutationTest(group1, group2, 300, seed) != first)
+    {
+      sawDifference = true;
+      break;
+    }
+  }
+  // Guards against the seed parameter being silently ignored: at least one
+  // of a handful of different seeds must resample differently.
+  EXPECT_TRUE(sawDifference);
+}
+
+// A permutation test can never honestly report p == 0.0: the observed
+// arrangement is itself one of the numPermutations + 1 possible outcomes
+// under the null. The old code returned extremeCount / numPermutations,
+// which hits exactly 0.0 whenever no shuffled arrangement sampled is as
+// extreme as the observed one -- routine for well-separated groups, where
+// very few of the possible arrangements tie or exceed the observed split.
+TEST_F(OptimizationStatsTest, PermutationTestNeverReturnsExactZero)
+{
+  std::vector<double> group1 = {1.0, 2.0, 3.0};
+  std::vector<double> group2 = {100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0};
+
+  const double pValue = MockStats::permutationTest(group1, group2, 500);
+  // The add-one correction guarantees p >= 1/(numPermutations + 1) > 0 no
+  // matter how few (including zero) sampled arrangements are as extreme as
+  // the observed one -- the old formula (extremeCount / numPermutations)
+  // returns exactly 0.0 whenever the sample happens to contain zero such
+  // arrangements, which is the common case here.
+  EXPECT_GT(pValue, 0.0);
+  EXPECT_GE(pValue, 1.0 / 501.0 - 1e-12);
+}
+
+// BT-07: confidenceLevel == 1.0 must not read past the end of the sorted
+// bootstrap-means buffer (a confirmed ASan heap-buffer-overflow before the
+// fix: upperIdx == numSamples).
+TEST_F(OptimizationStatsTest, BootstrapCIConfidenceLevelOneDoesNotReadOutOfBounds)
+{
+  std::vector<double> values = {1.0, 2.0, 3.0, 4.0, 5.0};
+  auto ci = MockStats::bootstrapCI(values, /*confidenceLevel=*/1.0, 100);
+  EXPECT_LE(ci.lower, ci.median);
+  EXPECT_LE(ci.median, ci.upper);
+}
+
+// BT-07: numSamples == 0 must not crash (a confirmed SEGV before the fix:
+// indexing into an empty bootstrapMeans vector).
+TEST_F(OptimizationStatsTest, BootstrapCIZeroSamplesReturnsZeroInsteadOfCrashing)
+{
+  std::vector<double> values = {1.0, 2.0, 3.0};
+  auto ci = MockStats::bootstrapCI(values, 0.95, /*numSamples=*/0);
+  EXPECT_DOUBLE_EQ(ci.lower, 0.0);
+  EXPECT_DOUBLE_EQ(ci.median, 0.0);
+  EXPECT_DOUBLE_EQ(ci.upper, 0.0);
+}
+
 // printSummary test (just ensure it doesn't crash)
 TEST_F(OptimizationStatsTest, PrintSummaryEmpty)
 {
@@ -329,8 +429,19 @@ TEST_F(OptimizationStatsTest, GenerateReportEmpty)
   std::vector<OptimizationResult<MockParams>> empty;
   auto reportPath = _test_dir / "empty_report.md";
 
-  EXPECT_NO_THROW(MockStats::generateReport(empty, reportPath));
-  // File might not be created for empty results, or might contain just headers
+  // TD-07: generateReport now reports success/failure via its return value
+  // instead of leaving the caller to infer it from the log stream. With a
+  // valid (writable) path, opening the file succeeds even for zero results
+  // -- the report is headers-only, not absent.
+  bool wrote = false;
+  EXPECT_NO_THROW(wrote = MockStats::generateReport(empty, reportPath));
+  EXPECT_TRUE(wrote);
+  ASSERT_TRUE(std::filesystem::exists(reportPath));
+
+  std::ifstream file(reportPath);
+  std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  EXPECT_TRUE(content.find("# Optimization Report") != std::string::npos);
+  EXPECT_TRUE(content.find("Total combinations: 0") != std::string::npos);
 }
 
 TEST_F(OptimizationStatsTest, GenerateReportWithResults)
@@ -376,6 +487,12 @@ TEST_F(OptimizationStatsTest, GenerateReportInvalidPath)
   results.push_back(r);
 
   auto invalidPath = "/nonexistent/directory/report.md";
-  // Should not crash, just log error
-  EXPECT_NO_THROW(MockStats::generateReport(results, invalidPath));
+  // TD-07: before this fix, the only way to tell a lost report from a
+  // written one was to notice the ERROR line in the log stream -- the
+  // function returned void either way. It must now report failure via its
+  // return value, and the file must genuinely not have been created.
+  bool wrote = true;
+  EXPECT_NO_THROW(wrote = MockStats::generateReport(results, invalidPath));
+  EXPECT_FALSE(wrote);
+  EXPECT_FALSE(std::filesystem::exists(invalidPath));
 }
