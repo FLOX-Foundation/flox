@@ -93,6 +93,39 @@ constexpr To saturate_cast(From v) noexcept
 }
 #endif
 
+// Narrowing a double into a fixed-point raw. static_cast is undefined for a
+// value the target cannot represent, and the two architectures this engine
+// ships on disagree about what comes out: arm64 saturates toward the bound,
+// x86-64 yields the sentinel. Every JSON number, every binding argument and
+// every configuration file reaches fromDouble, so the conversion has to be
+// defined rather than merely observed. Out of range clamps to the bound; a NaN
+// has no nearest representable value at all, and zero is the only answer that
+// cannot be mistaken for a real quantity.
+//
+// Deliberately not a FLOX_SCALE_CHECK: this runs on operator and client input,
+// where the right answer is a rejection at the perimeter (see the venue's
+// control API), not an abort deep inside arithmetic.
+constexpr int64_t narrowDoubleToI64(double v) noexcept
+{
+  if (!(v == v))
+  {
+    return 0;
+  }
+  // 2^63 is exactly representable as a double; int64 max is not, so compare
+  // against the power of two and clamp.
+  constexpr double kUpper = 9223372036854775808.0;
+  constexpr double kLower = -9223372036854775808.0;
+  if (v >= kUpper)
+  {
+    return (std::numeric_limits<int64_t>::max)();
+  }
+  if (v < kLower)
+  {
+    return (std::numeric_limits<int64_t>::min)();
+  }
+  return static_cast<int64_t>(v);
+}
+
 #if defined(__SIZEOF_INT128__)
 // Checked narrowing of a 128-bit intermediate down to int64. In checked
 // builds an out-of-range value trips FLOX_SCALE_CHECK; in all builds it

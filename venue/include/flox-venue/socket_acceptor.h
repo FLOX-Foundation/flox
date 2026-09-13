@@ -165,7 +165,20 @@ class SocketAcceptor
       // sweep away from a recycled descriptor number.
       conns_.emplace_back([this, fd]
                           {
-                            onConn_(fd);
+                            // This lambda is a thread body, so an exception
+                            // leaving the handler is std::terminate for the
+                            // whole process -- one connection's parse error
+                            // taking down every matching engine with it.
+                            // Contain it here, where the descriptor is still
+                            // deregistered and closed on the way out, so a
+                            // handler cannot leak one by throwing either.
+                            try
+                            {
+                              onConn_(fd);
+                            }
+                            catch (...)
+                            {
+                            }
                             {
                               std::lock_guard<std::mutex> lg(connsMutex_);
                               connFds_.erase(fd);

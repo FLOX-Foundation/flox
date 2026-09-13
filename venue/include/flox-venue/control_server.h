@@ -61,6 +61,13 @@ class TcpControlServer
   void stop() { acceptor_.stop(); }
   int port() const noexcept { return acceptor_.port(); }
 
+  // Upper bound on one request line. The framed transport caps a length prefix
+  // at 16 MiB for the same reason (flox::net::kMaxFrame); this surface is
+  // line-delimited, so the newline that never comes is the unbounded one. An
+  // admin request is a short JSON object -- 1 MiB is already generous -- and a
+  // client that sends more is not writing a request.
+  static constexpr size_t kMaxRequestLine = 1u << 20;
+
  private:
   void connLoop(int fd)
   {
@@ -86,8 +93,17 @@ class TcpControlServer
         const std::string resp = api_.handle(line) + "\n";
         net::writeAll(fd, reinterpret_cast<const uint8_t*>(resp.data()), resp.size());
       }
+      if (buf.size() > kMaxRequestLine)
+      {
+        static constexpr char kTooLong[] = "{\"ok\":false,\"error\":\"request_too_long\"}\n";
+        net::writeAll(fd, reinterpret_cast<const uint8_t*>(kTooLong), sizeof kTooLong - 1);
+        break;
+      }
     }
-    ::close(fd);
+    // The acceptor owns the descriptor and closes it once the handler returns.
+    // Closing it here too hands the number back to the process while the
+    // acceptor still holds it, and the second close then lands on whatever
+    // another thread has since been given.
   }
 
   ControlApi& api_;

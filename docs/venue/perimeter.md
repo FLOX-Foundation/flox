@@ -33,6 +33,13 @@ connection and the process keeps running.
   every command, overwriting whatever the payload carried. Otherwise a client
   could act as any account by writing a different id into the message. Account
   `0` is the explicit "unbound / trusted transport" sentinel.
+
+    Every command carrying an account is stamped, not a listed subset. The
+    stamp walks the command variant and rewrites any account field it finds, so
+    a command added later is covered from the day it exists. The list it
+    replaced had to be extended by hand, and was not: it covered the six
+    order-flow commands and missed the ones that move money, close positions
+    and set another account's entitlements.
 - **Rate limiting**, per session, via `flox::RateLimitPolicy`.
 - **Cancel-on-disconnect** optionally pulls the session's resting orders when
   the connection drops.
@@ -235,7 +242,18 @@ The perimeter is fuzzed, and the rules are explicit:
   `n < off + len` wraps for a 64-bit length; the comparison is done as
   `len > n - off`, and an absurd length is a protocol error that closes the
   connection before any `resize`.
-- **A parse error closes one connection**, and only that connection.
+- **A parse error closes one connection**, and only that connection. That holds
+  for an exception too: a connection handler runs as a thread body, so the
+  acceptor contains anything escaping it rather than letting one malformed
+  request reach `std::terminate` and take every engine in the process with it.
+- **A frame split across packets is still one frame.** Every gateway sets a
+  receive timeout so session timers and shutdown can run, and that timeout
+  fires mid-message whenever a peer's write lands in two packets. Read state
+  survives it: the bytes already taken are kept and the frame resumes on the
+  next call (`flox::net::FrameReader` for the plain framed transport, the
+  equivalent state in the TLS and WebSocket gateways). Dropping them would
+  offset the stream by exactly that many bytes, and every length prefix after
+  it would be read from the middle of a message.
 
 `test_venue_parser_fuzz` drives all decoders with random and adversarial
 input; the sanitizer gate runs it under ASAN/UBSAN.
@@ -261,8 +279,25 @@ to its command sink, which the deployment wires into the journaled stream --
 on restart, `InstrumentRegistry::apply` replays those records. There is no
 separate configuration store. See [Runtime and recovery](runtime.md).
 
+Requests are read literally. A field nobody named is not a zero, so `setBand`
+needs both of its bounds and a paired risk limit needs both of its halves; a
+flag has to be spelled out rather than inferred. Half a band used to answer
+`ok` and write a zero over the other half, which removes the collar an operator
+believed was in place, and two handlers next to each other guessed opposite
+defaults for a missing flag. A value that does not parse, is not finite, or
+does not fit the fixed-point range answers `bad_field`; an inverted band
+answers `bad_band`. Neither reaches the registry. The REST codec states the
+same rule for order entry.
+
+One connection is bounded too. A request line caps at 1 MiB
+(`TcpControlServer::kMaxRequestLine`), and a client past that gets
+`request_too_long` and a closed socket. The framed transport bounds a length
+prefix for the same reason; on a line-delimited surface the unbounded thing is
+the newline that never arrives.
+
+`TcpControlServer` binds to loopback and has no port option to change that.
 Deploy the control plane on an internal interface: it has no authentication of
-its own.
+its own, so anything able to reach it can move every risk limit on the venue.
 
 ## Observability
 

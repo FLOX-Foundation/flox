@@ -13,11 +13,14 @@
 
 #include "flox/execution/rate_limit_policy.h"
 
+#include <concepts>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <variant>
 
 namespace flox::venue
 {
@@ -84,6 +87,19 @@ inline const char* toString(SessionReject r) noexcept
   }
   return "?";
 }
+
+// An account field as the commands spell it: `accountId` on the order-flow and
+// balance commands, `account` on the per-account configuration ones.
+template <class T>
+concept HasAccountId = requires(T t) {
+  { t.accountId } -> std::same_as<uint64_t&>;
+};
+template <class T>
+concept HasAccount = requires(T t) {
+  { t.account } -> std::same_as<uint64_t&>;
+};
+template <class T>
+concept NamesAnAccount = requires(T t) { t.accountId; } || requires(T t) { t.account; };
 
 class GatewaySession
 {
@@ -186,34 +202,35 @@ class GatewaySession
 
  private:
   // Force `a` onto every account-bearing command so the session can only ever
-  // act as its own authenticated account. Admin/market commands (SetMark,
-  // ApplyFunding) carry no account and are left untouched here.
+  // act as its own authenticated account. Admin and market commands (SetMark,
+  // ApplyFunding) carry no account and are left untouched.
+  //
+  // Written as a visit over the whole variant rather than a list of branches.
+  // The list version covered the six order-flow commands and missed the five
+  // that move money, close positions and set per-account entitlements, which is
+  // the failure mode a list has: it is correct on the day it is written and
+  // silently incomplete from the next command onwards. Here a new alternative
+  // with an account field is stamped the moment it is added.
   static void stampAccount(InboundCommand& c, uint64_t a) noexcept
   {
-    if (auto* n = std::get_if<NewOrder>(&c))
-    {
-      n->accountId = a;
-    }
-    else if (auto* x = std::get_if<CancelOrder>(&c))
-    {
-      x->accountId = a;
-    }
-    else if (auto* m = std::get_if<ModifyOrder>(&c))
-    {
-      m->accountId = a;
-    }
-    else if (auto* mc = std::get_if<MassCancel>(&c))
-    {
-      mc->accountId = a;
-    }
-    else if (auto* q = std::get_if<Quote>(&c))
-    {
-      q->accountId = a;
-    }
-    else if (auto* ll = std::get_if<LastLookDecision>(&c))
-    {
-      ll->accountId = a;
-    }
+    std::visit(
+        [a](auto& m)
+        {
+          using Cmd = std::remove_reference_t<decltype(m)>;
+          if constexpr (HasAccountId<Cmd>)
+          {
+            m.accountId = a;
+          }
+          else if constexpr (HasAccount<Cmd>)
+          {
+            m.account = a;
+          }
+          else
+          {
+            static_assert(!NamesAnAccount<Cmd>, "account field of an unexpected type");
+          }
+        },
+        c);
   }
 
   uint64_t account_;

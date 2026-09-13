@@ -58,6 +58,32 @@ Every fixed-point division checks its divisor first:
 This covers `Decimal / Decimal`, `Decimal / int64_t`, and the
 `Volume / Quantity` and `Volume / Price` overloads in `flox/common.h`.
 
+## Doubles outside the range
+
+`fromDouble` scales its argument before narrowing it to `int64_t`. A cast whose
+value the target cannot represent is undefined behaviour, and the two
+architectures FLOX builds for answer it differently: AArch64 clamps toward the
+bound, x86-64 hands back the sentinel. The caller gets a number unrelated to
+what it asked for either way, and nothing reports it.
+
+Every `double` reaching a `Decimal` goes through one narrowing helper:
+
+* Past the `int64_t` range, either direction, the result clamps to `INT64_MAX`
+  or `INT64_MIN` -- the same boundary an overflowing multiply produces, and one
+  no real price or quantity reaches.
+* Infinity clamps the same way.
+* `NaN` becomes zero. There is no nearest representable value to pick, and zero
+  is the one answer that cannot pass for a plausible price.
+
+Both overloads follow the rule: the default-scale `fromDouble(double)` and the
+per-symbol `fromDouble(double, scale)`.
+
+Clamping is what the arithmetic does when it has no better option. It is not a
+substitute for checking input. Anything accepting numbers from outside the
+process should reject the ones it cannot hold rather than let them clamp: the
+venue's control plane answers `bad_field` for such a price, which tells the
+operator something a silently clamped limit never would.
+
 ## Notes
 
 * Scale is enforced at compile time — `Decimal<PriceTag, 1000>` is a distinct type from `Decimal<QuantityTag, 1000>`.

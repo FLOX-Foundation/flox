@@ -123,6 +123,27 @@ Note the deliberate split: `flox::LiquidationEngine`
 `CrossMarginManager` is the venue-side one backed by the ledger in
 `__int128`. Do not mix them for the same account.
 
+Two things it will not guess. `configureSymbol` comes before any
+fill: `canOpen` refuses to grow exposure on a symbol with no margin
+profile, and a leg that exists without one is charged full notional
+(`setUnconfiguredSymbolMargin` moves that rate). A symbol with no
+`setMark` is valued at each leg's entry price, so an unmarked
+position is worth neither a gain nor a loss -- no zero marks reach
+PnL, margin, ADL or the tape.
+
+## Control plane requests
+
+`ControlApi::handle` takes JSON and never fills a field in for you.
+`setBand` needs `minPrice` and `maxPrice` together, paired risk
+limits (`luldBps`+`luldHaltNs`, `maxOrderQty`+`maxOrderNotional`,
+`initialMarginBps`+`maintenanceMarginBps`) need both halves, and
+flags (`halted`, `open`, `delisted`) must be written as `true` or
+`false`. Anything unparseable, non-finite or past the fixed-point
+range answers `{"ok":false,"error":"bad_field"}`; `minPrice` above
+`maxPrice` answers `bad_band`. `TcpControlServer` listens on
+loopback only, caps a request line at 1 MiB, and has no
+authentication of its own.
+
 ## Multi-agent demo
 
 `demo/src/multi_agent_venue_demo.cpp` — market maker, momentum,

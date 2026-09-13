@@ -80,6 +80,34 @@ cm.openInterestRaw();       // venue-wide risk gauge
 `setLiquidationsPaused(true)` is the operator switch for an untrustworthy
 price feed; see the circuit breaker below.
 
+### A symbol with no profile is not tradable
+
+`canOpen` refuses to increase exposure on a symbol that never went through
+`configureSymbol`. There is no initial-margin rate for it, and an absent rate
+is not a rate of zero -- read that way, one listing that reached a matching
+engine ahead of the risk configuration would have backed any notional at all
+with any collateral at all.
+
+A leg that exists anyway, because a fill was reported before the symbol was
+configured, is charged its full notional as margin, so the account is closed
+out while the position is still covered instead of after the collateral is
+gone. `setUnconfiguredSymbolMargin(imBps, mmBps)` moves that rate for an
+integrator whose house rule differs; it stays a rate someone chose.
+
+### A symbol with no mark is priced at entry
+
+Nothing here invents a price. Where a position has to be valued and the symbol
+has no published mark -- unrealised PnL, the margin requirement, the
+liquidation close, ADL ranking and the price on the emitted `Liquidation` --
+the leg's own entry price stands in, which values it at no gain and no loss.
+A zero would not be a missing price but a price, and it turns a short into the
+winner of its whole notional: the fund pays out the invention, and the public
+tape prints a trade at zero on an instrument trading near its mark.
+
+An instrument nobody has marked yet is a normal state, not a broken one.
+[Market data](market-data.md) publishes nothing rather than publish a zero for
+it; clearing follows the same rule.
+
 ## Handing risk to an owner outside the engine
 
 Isolated margin is the engine's own business: it sees one instrument and the
@@ -115,6 +143,12 @@ asset is valued at zero, so a forgotten entry under-counts collateral instead
 of extending credit against it. During liquidation the venue buys the
 non-quote collateral and the insurance fund only covers the remainder; every
 conversion is balanced per asset.
+
+The haircut applies to a positive balance only. A wallet can go negative --
+funding alone drives one there -- and that balance is a debt. Discounting a
+debt writes the liability down: a coin owed under a 20% haircut would count as
+four fifths of itself, and the missing fifth reads as equity, which the account
+can then withdraw or trade against. A debt is worth its full size.
 
 ## Mark and index price
 
