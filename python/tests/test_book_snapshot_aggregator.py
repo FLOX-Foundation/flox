@@ -178,15 +178,26 @@ class AggregatorSemanticsTests(unittest.TestCase):
         self.assertEqual(int(rows[1]["ask_price_raw"]), 0)
         self.assertEqual(int(rows[1]["ask_qty_raw"]), 0)
 
-    def test_small_tape_n_threads_falls_back_single(self) -> None:
-        # The reader parallelizes intra-segment only when a segment has
-        # enough compressed blocks; small/uncompressed tapes run on the
-        # master panel regardless of n_threads, so this must succeed.
-        # On real multi-block tapes a parallel run calls cloneEmpty,
-        # which raises by design (covered by the C++ unit test).
+    def test_explicit_n_threads_is_refused_up_front(self) -> None:
+        # Book reconstruction is order-dependent across the whole tape, so an
+        # explicit parallel request is refused before the walk starts. It used
+        # to depend on the tape: a small or uncompressed tape ran on the master
+        # panel and succeeded, while a tape with enough compressed blocks threw
+        # from inside a worker partway through.
         agg = flox_py.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=5)
         reader = flox_py.DataReader(str(self.tape))
-        self.assertTrue(reader.run([agg], n_threads=2))
+        with self.assertRaises(Exception) as ctx:
+            reader.run([agg], n_threads=2)
+        self.assertIn("n_threads", str(ctx.exception))
+        # Nothing was consumed.
+        self.assertEqual(len(agg.result()), 0)
+
+    def test_auto_thread_count_resolves_to_single(self) -> None:
+        # n_threads=0 is "auto"; with an order-dependent aggregator in the
+        # panel it resolves to one thread instead of failing.
+        agg = flox_py.BookSnapshotBinAggregator(bucket_ns=_BUCKET, levels=5)
+        reader = flox_py.DataReader(str(self.tape))
+        self.assertTrue(reader.run([agg], n_threads=0))
         self.assertEqual(len(agg.result()), 3)
 
     def test_combines_with_trade_aggregators_in_one_pass(self) -> None:

@@ -9,9 +9,12 @@
 
 #include "flox/replay/ops/segment_ops.h"
 
+#include "flox/log/log.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <iomanip>
+#include <limits>
 #include <map>
 #include <sstream>
 
@@ -37,6 +40,50 @@ static std::vector<std::filesystem::path> collectSegmentPaths(const std::filesys
 
   std::sort(paths.begin(), paths.end());
   return paths;
+}
+
+// Payload bytes a record occupies on the tape, frame header excluded. Used by
+// the size-based split to decide when a segment is full.
+static size_t replayEventPayloadBytes(const ReplayEvent& event)
+{
+  switch (event.type)
+  {
+    case EventType::Trade:
+      return sizeof(TradeRecord);
+    case EventType::OptionQuote:
+      return sizeof(OptionQuoteRecord);
+    case EventType::PoolState:
+      return sizeof(PoolStateRecordHeader) + event.pool_state_payload.size();
+    case EventType::BookSnapshot:
+    case EventType::BookDelta:
+      return sizeof(BookRecordHeader) +
+             (event.bids.size() + event.asks.size()) * sizeof(BookLevel);
+  }
+  return 0;
+}
+
+// One dispatcher for every record type the format carries. The ops layer used
+// to know only "trade or book", so an option quote or a pool-state record went
+// out through writeBook with whatever level counts the previous book left in
+// the reused ReplayEvent. The result was a frame announcing levels it did not
+// contain, which the reader rejects and treats as end of file -- the rest of
+// the tape became unreachable while the op reported success.
+static bool writeReplayEvent(BinaryLogWriter& writer, const ReplayEvent& event)
+{
+  switch (event.type)
+  {
+    case EventType::Trade:
+      return writer.writeTrade(event.trade);
+    case EventType::OptionQuote:
+      return writer.writeOptionQuote(event.option_quote);
+    case EventType::PoolState:
+      return writer.writePoolState(event.pool_state_header, event.pool_state_payload.data(),
+                                   event.pool_state_payload.size());
+    case EventType::BookSnapshot:
+    case EventType::BookDelta:
+      return writer.writeBook(event.book_header, event.bids, event.asks);
+  }
+  return false;
 }
 
 static uint64_t estimateTotalEvents(const std::vector<std::filesystem::path>& paths)
@@ -102,6 +149,8 @@ MergeResult SegmentOps::merge(const std::vector<std::filesystem::path>& input_pa
 
   // Setup writer
   WriterConfig writer_config{.output_dir = config.output_dir,
+                             .output_filename = output_name,
+                             .max_segment_bytes = std::numeric_limits<uint64_t>::max(),
                              .create_index = config.create_index,
                              .index_interval = config.index_interval,
                              .compression = config.compression};
@@ -150,14 +199,7 @@ MergeResult SegmentOps::merge(const std::vector<std::filesystem::path>& input_pa
     // Write sorted events
     for (const auto& event : all_events)
     {
-      if (event.type == EventType::Trade)
-      {
-        writer.writeTrade(event.trade);
-      }
-      else
-      {
-        writer.writeBook(event.book_header, event.bids, event.asks);
-      }
+      writeReplayEvent(writer, event);
       ++result.events_written;
     }
   }
@@ -176,14 +218,7 @@ MergeResult SegmentOps::merge(const std::vector<std::filesystem::path>& input_pa
       ReplayEvent event;
       while (iter.next(event))
       {
-        if (event.type == EventType::Trade)
-        {
-          writer.writeTrade(event.trade);
-        }
-        else
-        {
-          writer.writeBook(event.book_header, event.bids, event.asks);
-        }
+        writeReplayEvent(writer, event);
 
         ++result.events_written;
         ++events_processed;
@@ -276,6 +311,7 @@ SplitResult SegmentOps::split(const std::filesystem::path& input_path, const Spl
 
       WriterConfig wconfig{.output_dir = path.parent_path(),
                            .output_filename = path.filename().string(),
+                           .max_segment_bytes = std::numeric_limits<uint64_t>::max(),
                            .create_index = config.create_index,
                            .index_interval = config.index_interval,
                            .compression = config.compression};
@@ -292,14 +328,7 @@ SplitResult SegmentOps::split(const std::filesystem::path& input_path, const Spl
           event.symbolId();
       auto* writer = getOrCreateWriter(symbol_id);
 
-      if (event.type == EventType::Trade)
-      {
-        writer->writeTrade(event.trade);
-      }
-      else
-      {
-        writer->writeBook(event.book_header, event.bids, event.asks);
-      }
+      writeReplayEvent(*writer, event);
 
       ++result.events_written;
       ++events_processed;
@@ -340,6 +369,8 @@ SplitResult SegmentOps::split(const std::filesystem::path& input_path, const Spl
     result.output_paths.push_back(path);
 
     WriterConfig wconfig{.output_dir = path.parent_path(),
+                         .output_filename = path.filename().string(),
+                         .max_segment_bytes = std::numeric_limits<uint64_t>::max(),
                          .create_index = config.create_index,
                          .index_interval = config.index_interval,
                          .compression = config.compression};
@@ -383,17 +414,8 @@ SplitResult SegmentOps::split(const std::filesystem::path& input_path, const Spl
     }
 
     // Write event
-    if (event.type == EventType::Trade)
-    {
-      writer->writeTrade(event.trade);
-      current_bytes += sizeof(FrameHeader) + sizeof(TradeRecord);
-    }
-    else
-    {
-      writer->writeBook(event.book_header, event.bids, event.asks);
-      current_bytes += sizeof(FrameHeader) + sizeof(BookRecordHeader) +
-                       event.bids.size() * sizeof(BookLevel) + event.asks.size() * sizeof(BookLevel);
-    }
+    writeReplayEvent(*writer, event);
+    current_bytes += sizeof(FrameHeader) + replayEventPayloadBytes(event);
 
     ++current_events;
     ++result.events_written;
@@ -598,6 +620,8 @@ ExportResult SegmentOps::exportData(const std::filesystem::path& input_path,
   if (config.format == ExportFormat::Binary)
   {
     WriterConfig wconfig{.output_dir = config.output_path.parent_path(),
+                         .output_filename = config.output_path.filename().string(),
+                         .max_segment_bytes = std::numeric_limits<uint64_t>::max(),
                          .create_index = config.create_index,
                          .index_interval = config.index_interval,
                          .compression = config.compression};
@@ -764,6 +788,20 @@ std::string SegmentOps::formatCSVEvent(const ReplayEvent& event, char delimiter)
         << event.trade.qty_raw << delimiter << static_cast<int>(event.trade.side) << delimiter
         << event.trade.trade_id << delimiter << 0 << delimiter << 0;
   }
+  else if (event.type == EventType::OptionQuote)
+  {
+    const auto& q = event.option_quote;
+    oss << "option_quote" << delimiter << q.exchange_ts_ns << delimiter << q.symbol_id << delimiter
+        << q.mark_price_raw << delimiter << 0 << delimiter << 0 << delimiter << 0 << delimiter
+        << 0 << delimiter << 0;
+  }
+  else if (event.type == EventType::PoolState)
+  {
+    const auto& h = event.pool_state_header;
+    oss << "pool_state" << delimiter << h.exchange_ts_ns << delimiter << h.symbol_id << delimiter
+        << 0 << delimiter << 0 << delimiter << static_cast<int>(h.sub_type) << delimiter
+        << h.payload_len << delimiter << 0 << delimiter << 0;
+  }
   else
   {
     const char* type_str =
@@ -793,6 +831,23 @@ std::string SegmentOps::formatJSONEvent(const ReplayEvent& event, bool pretty, i
         << "," << nl << ind << "\"side\":" << sp << static_cast<int>(event.trade.side) << "," << nl
         << ind << "\"trade_id\":" << sp << event.trade.trade_id << nl << "}";
   }
+  else if (event.type == EventType::OptionQuote)
+  {
+    const auto& q = event.option_quote;
+    oss << "{" << nl << ind << "\"type\":" << sp << "\"option_quote\"," << nl << ind
+        << "\"timestamp_ns\":" << sp << q.exchange_ts_ns << "," << nl << ind
+        << "\"symbol_id\":" << sp << q.symbol_id << "," << nl << ind << "\"mark_price_raw\":" << sp
+        << q.mark_price_raw << "," << nl << ind << "\"iv_raw\":" << sp << q.iv_raw << nl << "}";
+  }
+  else if (event.type == EventType::PoolState)
+  {
+    const auto& h = event.pool_state_header;
+    oss << "{" << nl << ind << "\"type\":" << sp << "\"pool_state\"," << nl << ind
+        << "\"timestamp_ns\":" << sp << h.exchange_ts_ns << "," << nl << ind
+        << "\"symbol_id\":" << sp << h.symbol_id << "," << nl << ind << "\"sub_type\":" << sp
+        << static_cast<int>(h.sub_type) << "," << nl << ind << "\"payload_len\":" << sp
+        << h.payload_len << nl << "}";
+  }
   else
   {
     const char* type_str =
@@ -813,6 +868,7 @@ bool SegmentOps::recompress(const std::filesystem::path& input_path,
 {
   WriterConfig config{.output_dir = output_path.parent_path(),
                       .output_filename = output_path.filename().string(),
+                      .max_segment_bytes = std::numeric_limits<uint64_t>::max(),
                       .create_index = true,
                       .compression = new_compression};
 
@@ -827,14 +883,7 @@ bool SegmentOps::recompress(const std::filesystem::path& input_path,
   ReplayEvent event;
   while (iter.next(event))
   {
-    if (event.type == EventType::Trade)
-    {
-      writer.writeTrade(event.trade);
-    }
-    else
-    {
-      writer.writeBook(event.book_header, event.bids, event.asks);
-    }
+    writeReplayEvent(writer, event);
   }
 
   writer.close();
@@ -852,7 +901,15 @@ uint64_t SegmentOps::filter(const std::filesystem::path& input_path,
     return 0;
   }
 
-  BinaryLogWriter writer(output_config);
+  WriterConfig single_file = output_config;
+  if (!single_file.output_filename.empty())
+  {
+    // The caller asked for one file at one path and gets back one count; a
+    // rotation would silently put part of the result somewhere else.
+    single_file.max_segment_bytes = std::numeric_limits<uint64_t>::max();
+  }
+
+  BinaryLogWriter writer(single_file);
   uint64_t count = 0;
 
   ReplayEvent event;
@@ -860,14 +917,7 @@ uint64_t SegmentOps::filter(const std::filesystem::path& input_path,
   {
     if (predicate(event))
     {
-      if (event.type == EventType::Trade)
-      {
-        writer.writeTrade(event.trade);
-      }
-      else
-      {
-        writer.writeBook(event.book_header, event.bids, event.asks);
-      }
+      writeReplayEvent(writer, event);
       ++count;
     }
   }
@@ -892,14 +942,88 @@ uint64_t SegmentOps::extractSymbols(const std::filesystem::path& input_path,
 
 uint64_t SegmentOps::extractTimeRange(const std::filesystem::path& input_path,
                                       const std::filesystem::path& output_path, int64_t from_ns,
-                                      int64_t to_ns, const WriterConfig& config)
+                                      int64_t to_ns, const WriterConfig& config,
+                                      RangeExtractStats* stats)
 {
-  auto predicate = [from_ns, to_ns](const ReplayEvent& event)
-  {
-    return event.timestamp_ns >= from_ns && event.timestamp_ns <= to_ns;
-  };
+  RangeExtractStats local;
+  RangeExtractStats& out = stats ? *stats : local;
+  out = RangeExtractStats{};
 
-  return filter(input_path, output_path, predicate, config);
+  // What the input actually spans. Segment filenames are stamped by whatever
+  // wrote them and routinely disagree with the contents, so a caller asking
+  // for a window this file cannot cover deserves to hear about it instead of
+  // getting a quietly short result.
+  {
+    BinaryLogIterator probe(input_path);
+    if (probe.isValid())
+    {
+      out.input_first_ns = probe.header().first_event_ns;
+      out.input_last_ns = probe.header().last_event_ns;
+    }
+  }
+
+  if (out.input_first_ns > 0 && from_ns < out.input_first_ns)
+  {
+    out.requested_from_before_data = true;
+  }
+  if (out.input_last_ns > 0 && to_ns > out.input_last_ns)
+  {
+    out.requested_to_after_data = true;
+  }
+  if (out.requested_from_before_data || out.requested_to_after_data)
+  {
+    FLOX_LOG_WARN("extractTimeRange: requested ["
+                  << from_ns << ", " << to_ns << "] reaches outside " << input_path.string()
+                  << ", which holds [" << out.input_first_ns << ", " << out.input_last_ns
+                  << "]. The result covers the overlap only.");
+  }
+
+  WriterConfig single_file = config;
+  if (!single_file.output_filename.empty())
+  {
+    single_file.max_segment_bytes = std::numeric_limits<uint64_t>::max();
+  }
+
+  BinaryLogIterator iter(input_path);
+  if (!iter.isValid())
+  {
+    return 0;
+  }
+
+  // Skip straight to the first block that can hold `from_ns` when the segment
+  // carries an index. The old linear walk read the whole file to find the
+  // window, whatever the index said.
+  if (iter.hasIndex() && iter.seekToTimestamp(from_ns))
+  {
+    out.used_index = true;
+  }
+
+  BinaryLogWriter writer(single_file);
+  uint64_t count = 0;
+
+  ReplayEvent event;
+  while (iter.next(event))
+  {
+    if (event.timestamp_ns < from_ns)
+    {
+      continue;
+    }
+    if (event.timestamp_ns > to_ns)
+    {
+      // An unsorted segment can still hold earlier events further on.
+      if (iter.header().isSorted())
+      {
+        break;
+      }
+      continue;
+    }
+    writeReplayEvent(writer, event);
+    ++count;
+  }
+
+  writer.close();
+  out.events_written = count;
+  return count;
 }
 
 }  // namespace flox::replay

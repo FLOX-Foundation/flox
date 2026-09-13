@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -114,6 +115,16 @@ struct ReaderConfig
   // sizeof(ReplayEvent). At 10s × 10k ev/s burst that's ~36 MB —
   // 100× smaller than the legacy buffer-the-whole-segment path.
   int64_t reorder_window_ns{10'000'000'000};  // 10s default
+
+  // How the reader reacts to an event that arrives past the reorder
+  // window. Default (false): drop the event, count it in
+  // ReaderStats::late_dropped, and log one warning per segment. A run
+  // that drops a handful of frames out of millions and says so beats a
+  // run that dies halfway with half-fed aggregators and no rollback.
+  // Set to true for byte-exact reproducibility work: the reader then
+  // throws FloxError E_DATA_002 on the first late event, with the
+  // symbol, event type, file and offset in the message.
+  bool strict_ordering{false};
 };
 
 struct DatasetSummary
@@ -158,6 +169,14 @@ struct ReaderStats
   uint64_t book_updates_read{0};
   uint64_t bytes_read{0};
   uint64_t crc_errors{0};
+  // Events discarded because they arrived past reorder_window_ns.
+  // Always 0 when ReaderConfig::strict_ordering is set (the reader
+  // throws instead).
+  uint64_t late_dropped{0};
+  // Frames whose type this build does not know. The format is
+  // additive, so they are skipped by FrameHeader.size rather than
+  // ending the read.
+  uint64_t unknown_frames_skipped{0};
 };
 
 struct ReplayEvent
@@ -329,6 +348,10 @@ class BinaryLogReader
   mutable std::once_flag _scan_once;
   ProgressCallback _progress_cb;
   std::chrono::milliseconds _progress_interval{1000};
+  // Ordering watermark for one streaming walk, carried from segment to
+  // segment. Restarting it per segment hid every inversion that straddled a
+  // segment boundary. Each public streaming entry point resets it.
+  int64_t _stream_watermark{std::numeric_limits<int64_t>::min()};
 };
 
 class BinaryLogIterator
@@ -348,7 +371,11 @@ class BinaryLogIterator
 
   bool seekToTimestamp(int64_t target_ts_ns);
   bool loadIndex();
-  bool hasIndex() const { return !_index_entries.empty(); }
+  // Answers from the segment header, the way MmapSegmentReader::hasIndex
+  // does. Reporting "no index" until loadIndex() had run left every
+  // `if (hasIndex()) seek(...)` branch in the readers unreachable.
+  bool hasIndex() const { return _header.hasIndex(); }
+  bool indexLoaded() const { return !_index_entries.empty(); }
 
   // Block-level positioning for intra-segment parallel workers. The
   // caller is responsible for picking valid block boundaries (use
@@ -361,11 +388,24 @@ class BinaryLogIterator
   bool seekToBlockOffset(uint64_t file_offset);
   void setStopAtBlockEnd(bool stop) { _stop_at_block_end = stop; }
 
+  // Frames rejected because the payload CRC did not match the frame
+  // header, and frames skipped because their type is unknown to this
+  // build. Both are counted across the iterator's lifetime.
+  uint64_t crcErrors() const { return _crc_errors; }
+  uint64_t unknownFramesSkipped() const { return _unknown_frames_skipped; }
+
+  // File offset the event returned by the last successful next() came from:
+  // the frame offset on an uncompressed segment, the enclosing block's offset
+  // on a compressed one. Diagnostics only -- it gives a late or malformed
+  // event a place in the file the reader can name.
+  uint64_t lastEventOffset() const { return _last_event_offset; }
+
  private:
   bool nextUncompressed(ReplayEvent& out);
   bool nextCompressed(ReplayEvent& out);
   bool loadNextBlock();
   bool parseFrame(EventType type, const std::byte* data, size_t size, ReplayEvent& out);
+  void discardBlockState();
 
   std::FILE* _file{nullptr};
   SegmentHeader _header{};
@@ -384,6 +424,11 @@ class BinaryLogIterator
   // Lets intra-segment parallel workers confine themselves to an
   // assigned block range.
   bool _stop_at_block_end{false};
+
+  uint64_t _crc_errors{0};
+  uint64_t _unknown_frames_skipped{0};
+  uint64_t _last_event_offset{0};
+  uint64_t _block_file_offset{0};
 };
 
 }  // namespace flox::replay

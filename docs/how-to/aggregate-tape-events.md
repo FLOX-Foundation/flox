@@ -213,7 +213,32 @@ reader = flox_py.DataReader(
 )
 ```
 
-The 10s default covers ~99% of cross-block inversions observed on real `md_collector` captures (1–25s tail, p99 around 5s). If an event arrives with `exchange_ts_ns < watermark - reorder_window_ns`, the buffer cannot slot it in sorted order and the reader raises `FloxError(code="E_DATA_002")` carrying the observed delta. The caller can raise `reorder_window_ns` and retry, or pre-sort the tape through `BinaryLogWriter`, which sets the `Sorted` flag and bypasses the reorder buffer.
+The 10s default covers ~99% of cross-block inversions observed on real `md_collector` captures (1–25s tail, p99 around 5s).
+
+### Events that arrive too late
+
+An event with `exchange_ts_ns < watermark - reorder_window_ns` has no slot left in sorted order: the reader has already emitted past it. It is dropped, counted in `ReaderStats::late_dropped` (`stats()["late_dropped"]` in Python), and reported once per segment in a warning that names the symbol, the event type, the file and the offset.
+
+```python
+reader.run([agg], n_threads=1)
+dropped = reader.stats()["late_dropped"]
+if dropped:
+    print(f"{dropped} events arrived past the reorder window and were discarded")
+```
+
+The symbol filter runs before that check, so an event belonging to a symbol you did not ask to replay neither moves the watermark nor counts as late. The watermark also carries across segment boundaries within one walk, so an inversion straddling two segments is caught instead of disappearing when the watermark restarts.
+
+Set `strict_ordering=True` to raise `FloxError(code="E_DATA_002")` on the first late event instead. Byte-for-byte reproducibility gates want that, because there a dropped frame is a silent difference between two runs. Everywhere else dropping is the better trade. On a five-day bybit capture of 12.9 million frames, fifteen events sit deeper than ten seconds; raising on them ended the walk at the halfway mark with aggregators already fed half a dataset.
+
+```python
+reader = flox_py.DataReader("./tape", strict_ordering=True)
+```
+
+The other two options are unchanged: raise `reorder_window_ns`, or pre-sort the tape through `BinaryLogWriter`, which sets the `Sorted` flag and bypasses the reorder buffer.
+
+### Aggregators that cannot be partitioned
+
+`BookSnapshotBinAggregator` rebuilds the book by applying deltas in order from the start of the tape, so it cannot run on partitioned workers. It reports that through `IAggregator::supportsParallel()`, and `run()` checks the panel before it partitions anything: `n_threads=0` resolves to a single thread, and an explicit `n_threads > 1` is refused up front with `E_DATA_003` rather than throwing from inside a worker halfway through the walk.
 
 ## Performance notes
 

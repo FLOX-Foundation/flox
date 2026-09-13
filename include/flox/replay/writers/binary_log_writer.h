@@ -104,7 +104,12 @@ class BinaryLogWriter
   bool writeFrame(EventType type, const void* payload, size_t size);
   bool writeFrameToBlock(EventType type, const void* payload, size_t size, int64_t timestamp);
   bool flushBlock();
-  int64_t sortBlockBuffer();  // returns max timestamp in block after sort
+  struct BlockSpan
+  {
+    int64_t min_ts{0};
+    int64_t max_ts{0};
+  };
+  BlockSpan sortBlockBuffer();  // first and last timestamp in the block after sorting
   void updateSegmentHeader();
   void writeIndex();
   void closeInternal();

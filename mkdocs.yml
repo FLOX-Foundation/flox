@@ -328,6 +328,7 @@ nav:
           - "E_BACKTEST_001 — Bar type unsupported by writer": errors/E_BACKTEST_001.md
           - "E_DATA_001 — Bar data not found": errors/E_DATA_001.md
           - "E_DATA_002 — Tape event arrived past reorder window": errors/E_DATA_002.md
+          - "E_DATA_003 — Aggregator cannot run on partitioned workers": errors/E_DATA_003.md
           - "E_INPUT_002 — Cannot load tape metadata.json": errors/E_INPUT_002.md
           - "E_INPUT_003 — Precision mismatch across tapes": errors/E_INPUT_003.md
           - "E_VAL_002 — Invalid argument to a binding constructor or function": errors/E_VAL_002.md

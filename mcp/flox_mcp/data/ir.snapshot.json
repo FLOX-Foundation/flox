@@ -2984,6 +2984,41 @@
       "return_type": "FloxDataReaderHandle"
     },
     {
+      "group": "datareader",
+      "name": "flox_data_reader_create_ordered",
+      "params": [
+        {
+          "name": "data_dir",
+          "type": "const char *"
+        },
+        {
+          "name": "from_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "to_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "symbols",
+          "type": "const uint32_t *"
+        },
+        {
+          "name": "num_symbols",
+          "type": "uint32_t"
+        },
+        {
+          "name": "reorder_window_ns",
+          "type": "int64_t"
+        },
+        {
+          "name": "strict_ordering",
+          "type": "int32_t"
+        }
+      ],
+      "return_type": "FloxDataReaderHandle"
+    },
+    {
       "group": "data_reader",
       "name": "flox_data_reader_destroy",
       "params": [
@@ -15759,6 +15794,14 @@
         },
         {
           "name": "crc_errors",
+          "type": "uint64_t"
+        },
+        {
+          "name": "late_dropped",
+          "type": "uint64_t"
+        },
+        {
+          "name": "unknown_frames_skipped",
           "type": "uint64_t"
         }
       ],

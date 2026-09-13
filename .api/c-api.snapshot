@@ -117,6 +117,7 @@ flox_data_reader_count_book_updates|uint64_t|FloxDataReaderHandle|uint64_t *
 flox_data_reader_count_book_updates_from|uint64_t|FloxDataReaderHandle|int64_t|uint64_t *
 flox_data_reader_create|FloxDataReaderHandle|const char *
 flox_data_reader_create_filtered|FloxDataReaderHandle|const char *|int64_t|int64_t|const uint32_t *|uint32_t
+flox_data_reader_create_ordered|FloxDataReaderHandle|const char *|int64_t|int64_t|const uint32_t *|uint32_t|int64_t|int32_t
 flox_data_reader_destroy|void|FloxDataReaderHandle
 flox_data_reader_read_bbo|uint64_t|FloxDataReaderHandle|FloxBBO *|uint64_t
 flox_data_reader_read_bbo_from|uint64_t|FloxDataReaderHandle|int64_t|FloxBBO *|uint64_t

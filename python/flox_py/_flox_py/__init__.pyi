@@ -562,9 +562,9 @@ class DEMA:
     def value(self) -> float | None:
         ...
 class DataReader:
-    def __init__(self, data_dir: str, from_ns: typing.Any = None, to_ns: typing.Any = None, symbols: typing.Any = None, reorder_window_ns: typing.Any = None) -> None:
+    def __init__(self, data_dir: str, from_ns: typing.Any = None, to_ns: typing.Any = None, symbols: typing.Any = None, reorder_window_ns: typing.Any = None, strict_ordering: bool = False) -> None:
         """
-        Create a DataReader for a binary log data directory. `reorder_window_ns` controls the bounded reorder buffer applied to segments without the Sorted flag (default 10s).
+        Create a DataReader for a binary log data directory. `reorder_window_ns` controls the bounded reorder buffer applied to segments without the Sorted flag (default 10s). An event that arrives past that window is dropped and counted in stats()['late_dropped'], with one warning logged per segment; set `strict_ordering=True` to raise FloxError E_DATA_002 on the first such event instead. `to_ns` is inclusive for trade reads and exclusive for option-quote reads -- see read_option_quotes.
         """
     def count(self) -> int:
         """
@@ -588,15 +588,15 @@ class DataReader:
         """
     def read_option_quotes_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
-        Read option quotes (mark/iv/index/open-interest) from a given timestamp (nanoseconds) as a numpy structured array (PyOptionQuote dtype). Raw fixed-point: mark/index use PRICE_SCALE, iv uses 1e8, oi uses QUANTITY_SCALE.
+        Read option quotes (mark/iv/index/open-interest) from a given timestamp (nanoseconds) as a numpy structured array (PyOptionQuote dtype). Raw fixed-point: mark/index use PRICE_SCALE, iv uses 1e8, oi uses QUANTITY_SCALE. The reader's to_ns bound is EXCLUSIVE here, unlike read_trades: a quote stamped exactly to_ns belongs to the next window, so day-by-day slicing of a month returns each quote once.
         """
     def read_trades(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
-        Read all trades as a numpy structured array (PyTrade dtype)
+        Read all trades as a numpy structured array (PyTrade dtype). The reader's to_ns bound is INCLUSIVE here: a trade stamped exactly to_ns is returned.
         """
     def read_trades_from(self, start_ts_ns: typing.SupportsInt | typing.SupportsIndex) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
-        Read trades starting from a given timestamp (nanoseconds)
+        Read trades starting from a given timestamp (nanoseconds). The reader's to_ns bound is inclusive.
         """
     def run(self, aggregators: list, n_threads: typing.SupportsInt | typing.SupportsIndex = 0, progress_callback: typing.Any = None, progress_interval_ms: typing.SupportsInt | typing.SupportsIndex = 1000) -> bool:
         """
