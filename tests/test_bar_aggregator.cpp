@@ -425,6 +425,7 @@ TEST(VolumeBarPolicyTest, ClosesOnVolumeThreshold)
 TEST(VolumeBarPolicyTest, EmittedBarsAreFoundInBarMatrix)
 {
   BarBus bus;
+  bus.enableDrainOnStop();
   BarAggregator<VolumeBarPolicy> aggregator(VolumeBarPolicy::fromDouble(300.0), &bus);
 
   BarMatrix<16, 4, 32> matrix;
