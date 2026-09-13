@@ -94,26 +94,38 @@ class L3OrderBook
 
     linkToLevel(slotIdx, side, levelIdx);
 
+    // A cold cache means the previous best level emptied, not that the book is
+    // empty. Claiming it for whatever price just arrived hid every better level
+    // still resting behind it -- best bid 98.00 with 99.00 sitting in the book,
+    // the quoted spread 67% too wide -- and the cache stayed wrong until that
+    // level emptied in turn. Claim it only when this is the sole level on the
+    // side; otherwise leave it cold and let the next read rebuild it.
     if (side == Side::BUY)
     {
       if (cachedBestBidLevel_ == kInvalid)
       {
-        cachedBestBidLevel_ = levelIdx;
+        if (usedBidLevels_ == 1)
+        {
+          cachedBestBidLevel_ = levelIdx;
+        }
       }
-      else
+      else if (price > bids_[cachedBestBidLevel_].price)
       {
-        cachedBestBidLevel_ = (price > bids_[cachedBestBidLevel_].price) ? levelIdx : cachedBestBidLevel_;
+        cachedBestBidLevel_ = levelIdx;
       }
     }
     else
     {
       if (cachedBestAskLevel_ == kInvalid)
       {
-        cachedBestAskLevel_ = levelIdx;
+        if (usedAskLevels_ == 1)
+        {
+          cachedBestAskLevel_ = levelIdx;
+        }
       }
-      else
+      else if (price < asks_[cachedBestAskLevel_].price)
       {
-        cachedBestAskLevel_ = (price < asks_[cachedBestAskLevel_].price) ? levelIdx : cachedBestAskLevel_;
+        cachedBestAskLevel_ = levelIdx;
       }
     }
     return OrderStatus::Ok;
@@ -179,11 +191,20 @@ class L3OrderBook
     {
       return bids_[cachedBestBidLevel_].price;
     }
+    if (usedBidLevels_ == 0)
+    {
+      return std::nullopt;
+    }
+
     Price maxPrice{};
-    for (Index i = 0; i < MaxOrders; ++i)
+    // Levels are allocated into the lowest free slot, so the live ones sit near
+    // the front; stopping once all of them have been seen keeps the rebuild
+    // proportional to the book rather than to its capacity.
+    for (Index i = 0, seen = 0; i < MaxOrders && seen < usedBidLevels_; ++i)
     {
       if (bids_[i].used)
       {
+        ++seen;
         if (cachedBestBidLevel_ == kInvalid || maxPrice < bids_[i].price)
         {
           maxPrice = bids_[i].price;
@@ -200,12 +221,17 @@ class L3OrderBook
     {
       return asks_[cachedBestAskLevel_].price;
     }
+    if (usedAskLevels_ == 0)
+    {
+      return std::nullopt;
+    }
 
     Price minPrice{};
-    for (Index i = 0; i < MaxOrders; ++i)
+    for (Index i = 0, seen = 0; i < MaxOrders && seen < usedAskLevels_; ++i)
     {
       if (asks_[i].used)
       {
+        ++seen;
         if (cachedBestAskLevel_ == kInvalid || asks_[i].price < minPrice)
         {
           minPrice = asks_[i].price;
@@ -436,6 +462,11 @@ class L3OrderBook
   Index cachedBestBidLevel_{kInvalid};
   Index cachedBestAskLevel_{kInvalid};
 
+  // Live price levels per side. Tells addOrder whether a cold cache can be
+  // claimed outright and bounds the rebuild scan in bestBid / bestAsk.
+  Index usedBidLevels_{0};
+  Index usedAskLevels_{0};
+
   std::size_t hashPrice(Price p) const noexcept
   {
     auto r = p.raw();
@@ -545,6 +576,7 @@ class L3OrderBook
           levels[i].used = false;
           return kInvalid;
         }
+        ++((side == Side::BUY) ? usedBidLevels_ : usedAskLevels_);
         return i;
       }
     }
@@ -612,6 +644,7 @@ class L3OrderBook
     {
       level.used = false;
       erasePriceMapping(slot.side, slot.price);
+      --((slot.side == Side::BUY) ? usedBidLevels_ : usedAskLevels_);
     }
 
     slot.prev = kInvalid;
@@ -642,6 +675,8 @@ class L3OrderBook
 
     cachedBestBidLevel_ = kInvalid;
     cachedBestAskLevel_ = kInvalid;
+    usedBidLevels_ = 0;
+    usedAskLevels_ = 0;
   }
 
 #ifdef FLOX_UNIT_TEST

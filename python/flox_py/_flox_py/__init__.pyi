@@ -686,9 +686,13 @@ class DeltaBookReplayer:
     """
     def __init__(self) -> None:
         ...
+    def anchored(self, symbol_id: typing.SupportsInt | typing.SupportsIndex) -> bool:
+        """
+        Whether this symbol has seen a snapshot and is tracking a complete book.
+        """
     def apply(self, type: typing.SupportsInt | typing.SupportsIndex, symbol_id: typing.SupportsInt | typing.SupportsIndex, bids: list, asks: list) -> dict:
         """
-        Apply one event. type=0 snapshot, type=1 delta. Returns the reconstructed full snapshot for the symbol.
+        Apply one event. type=0 snapshot, type=1 delta. Returns the reconstructed full snapshot for the symbol, with 'anchored' False when no snapshot has been seen yet -- in which case the delta is refused and the level lists come back empty, because merging it into nothing would produce a book missing everything before the entry point.
         """
     def reset(self, symbol_id: typing.SupportsInt | typing.SupportsIndex) -> None:
         ...

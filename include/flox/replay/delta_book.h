@@ -92,14 +92,25 @@ class DeltaBookReplayer
   {
     std::vector<BookLevel> bids;
     std::vector<BookLevel> asks;
+
+    // False when the symbol has not seen a snapshot yet, in which case the
+    // level vectors are empty. A delta carries only the levels that changed,
+    // so merging one into nothing produces a book that is missing everything
+    // before the entry point -- which is what a seek into the middle of a tape
+    // hands you. Such a delta is refused rather than reported as a book.
+    bool anchored{false};
   };
 
   // Apply one event. type=0 (snapshot) replaces the level set;
   // type=1 (delta) merges in the level changes. Returns the
-  // current full snapshot for the symbol.
+  // current full snapshot for the symbol, with `anchored` telling
+  // you whether it is one.
   Snapshot apply(uint8_t type, uint32_t symbol_id,
                  const std::vector<BookLevel>& bids,
                  const std::vector<BookLevel>& asks);
+
+  // Whether this symbol has seen a snapshot and is tracking a complete book.
+  bool anchored(uint32_t symbol_id) const;
 
   void reset(uint32_t symbol_id);
   void resetAll();
@@ -109,6 +120,7 @@ class DeltaBookReplayer
   {
     std::map<int64_t, int64_t> bid_levels;
     std::map<int64_t, int64_t> ask_levels;
+    bool anchored{false};
   };
 
   static std::vector<BookLevel> dumpSide(const std::map<int64_t, int64_t>& state, bool descending);

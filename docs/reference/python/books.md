@@ -12,7 +12,16 @@ book = flox.OrderBook(tick_size=0.01)
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `tick_size` | `float` | Minimum price increment |
+| `tick_size` | `float` | Minimum price increment; must be positive, `ValueError` otherwise |
+
+Prices are fixed-point with a scale of 1e8, so the smallest tick is `1e-8`.
+That is what the sub-cent pairs quote in, and it is handled like any other tick.
+
+The book covers 8192 consecutive ticks at a time, centred on the market, and
+re-anchors that window as a delta feed walks the price away from where the last
+snapshot put it. See
+[The order book's tick window](../../explanation/order-book-tick-window.md) for
+how far it reaches and when a level falls outside it.
 
 ### Methods
 

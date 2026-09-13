@@ -219,6 +219,8 @@ class OrderBook:
 
     def __init__(self, tick_size: float = 0.01):
         self._h = flox_book_create(tick_size)
+        if self._h == cobj():
+            raise ValueError("OrderBook: tick size must be positive")
 
     def apply_snapshot(self, bid_prices: List[float], bid_qtys: List[float],
                        ask_prices: List[float], ask_qtys: List[float]):

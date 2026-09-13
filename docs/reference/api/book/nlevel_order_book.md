@@ -61,6 +61,15 @@ public:
 2. **Snapshot Handling**
    A `SNAPSHOT` clears all state and resets index bounds before applying levels.
 
+2b. **Window Tracking on Deltas**
+   The array covers `MaxLevels` consecutive ticks, centred on the market, so the
+   headroom in either direction is half the level count. A `DELTA` that adds a
+   level past the edge re-anchors the window and carries the existing levels
+   across, as long as they all still fit alongside the new one; when they do not,
+   the out-of-window level is dropped and the book is left alone, so one stray
+   quote cannot evict live depth. Removals never re-anchor. See
+   [The order book's tick window](../../../explanation/order-book-tick-window.md).
+
 3. **Bounds Tracking**
    Maintains `_minBid`, `_maxBid`, `_minAsk`, `_maxAsk` for efficient best-level scans.
 
@@ -86,6 +95,11 @@ std::optional<Price> mid() const;
 | `isCrossed` | Returns `true` if best bid >= best ask (crossed/locked market).  |
 | `spread`    | Returns ask - bid spread, or `nullopt` if either side is empty.  |
 | `mid`       | Returns midpoint price, or `nullopt` if either side is empty.    |
+
+`mid()` is `tickSize * (bidTick + askTick) / 2` with one division at the end, so
+it agrees exactly with `SymbolContext::mid()` and with the Python and C surfaces
+that read it. An odd sum of tick indices truncates by at most half a raw unit,
+since `Price` is an integer underneath.
 
 ## Depth Consumption
 
@@ -125,6 +139,18 @@ book.dump(std::cout, 20, /*pricePrec=*/2, /*qtyPrec=*/4, /*ansi=*/true);
 ```
 
 Output includes tick size, base index, spread, and mid price in header.
+
+## Tick size
+
+The constructor throws `std::invalid_argument` when the tick size is zero or
+negative. A tick size reaches the book from instrument configuration and from
+user code, so a bad one is bad input and is reported rather than asserted;
+`flox_book_create` returns `NULL` for the same reason, and the Python, Node,
+QuickJS and Codon wrappers raise in whatever way their language expects.
+
+`Price` has a fixed scale of 1e8, so the smallest representable tick is 1e-8.
+Ticks of 1e-8 and 2e-8, which is what the sub-cent pairs quote in, behave like
+any other.
 
 ## Notes
 
