@@ -1832,6 +1832,26 @@ export interface DataReaderStats {
   bookUpdatesRead: number;
   bytesRead: number;
   crcErrors: number;
+  /** Events discarded for arriving past the reorder window. Always 0 when
+   *  the reader was constructed with `strictOrdering: true`, which raises
+   *  on the first such event instead. */
+  lateDropped: number;
+  /** Frames whose record type this build does not know. The tape format is
+   *  additive, so they are stepped over rather than ending the read. */
+  unknownFramesSkipped: number;
+}
+
+export interface DataReaderOptions {
+  /** Cross-block reorder window in nanoseconds for segments without the
+   *  Sorted flag. 0 or omitted keeps the 10s default. */
+  reorderWindowNs?: number | bigint;
+  /** Stop on the first event that arrives past the reorder window instead
+   *  of dropping it and counting it in `stats().lateDropped`. Defaults to
+   *  `false`; reproducibility gates set it to `true`. The C ABI carries no
+   *  error channel, so here the stop surfaces as `run()` returning `false`
+   *  rather than a thrown error; the message (symbol, event type, file,
+   *  offset) is written to the engine log. */
+  strictOrdering?: boolean;
 }
 
 export class DataWriter {
@@ -1863,7 +1883,7 @@ export class DataWriter {
 
 export class DataReader {
   /** `fromNs` / `toNs` accept either number or bigint; pass bigint for true ns precision. */
-  constructor(dataDir: string, fromNs?: number | bigint, toNs?: number | bigint);
+  constructor(dataDir: string, fromNs?: number | bigint, toNs?: number | bigint, options?: DataReaderOptions);
   readonly count: number;
   summary(): DataReaderSummary;
   stats(): DataReaderStats;

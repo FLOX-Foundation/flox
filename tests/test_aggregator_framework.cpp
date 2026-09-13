@@ -1557,14 +1557,43 @@ TEST_F(AggregatorFrameworkTest, ReorderBufferDeliversCrossBlockInOrder)
   EXPECT_EQ(timestamps[2], 2'500'000);
 }
 
-TEST_F(AggregatorFrameworkTest, ReorderBufferThrowsOnWindowOverflow)
+TEST_F(AggregatorFrameworkTest, ReorderBufferDropsAndCountsLateEventByDefault)
 {
-  // Same tape (2.5ms inversion) but reorder_window=1ms. The first
-  // event from block 1 (t=2.5ms) arrives when watermark=5ms; delta
-  // = 2.5ms > 1ms → FloxError with E_DATA_002.
+  // Same tape (2.5ms inversion) but reorder_window=1ms. The first event from
+  // block 1 (t=2.5ms) arrives when watermark=5ms; delta = 2.5ms > 1ms. The
+  // default is to drop that event and count it: a walk that loses a few
+  // frames and reports them beats one that dies mid-run with aggregators
+  // already half fed.
   writeCrossBlockInvertedTape(_test_dir);
 
   ReaderConfig rconfig{.data_dir = _test_dir, .reorder_window_ns = 1'000'000};  // 1ms
+  BinaryLogReader reader(rconfig);
+
+  std::vector<int64_t> timestamps;
+  ASSERT_NO_THROW({
+    reader.streamForEach(
+        [&timestamps](const ReplayEvent& ev)
+        {
+          timestamps.push_back(ev.timestamp_ns);
+          return true;
+        });
+  });
+
+  EXPECT_GT(reader.stats().late_dropped, 0u);
+  EXPECT_EQ(timestamps.size() + reader.stats().late_dropped, 10u);
+  for (size_t i = 1; i < timestamps.size(); ++i)
+  {
+    EXPECT_LE(timestamps[i - 1], timestamps[i]) << "monotonic violation at index " << i;
+  }
+}
+
+TEST_F(AggregatorFrameworkTest, ReorderBufferThrowsOnWindowOverflowInStrictMode)
+{
+  // strict_ordering brings back the throw for reproducibility work.
+  writeCrossBlockInvertedTape(_test_dir);
+
+  ReaderConfig rconfig{
+      .data_dir = _test_dir, .reorder_window_ns = 1'000'000, .strict_ordering = true};
   BinaryLogReader reader(rconfig);
 
   bool threw = false;
@@ -1582,6 +1611,7 @@ TEST_F(AggregatorFrameworkTest, ReorderBufferThrowsOnWindowOverflow)
   }
   EXPECT_TRUE(threw);
   EXPECT_EQ(err_code, "E_DATA_002");
+  EXPECT_EQ(reader.stats().late_dropped, 0u);
 }
 
 TEST_F(AggregatorFrameworkTest, ReorderBufferBypassedForSortedSegment)

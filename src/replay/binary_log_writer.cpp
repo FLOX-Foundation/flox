@@ -98,6 +98,25 @@ std::filesystem::path BinaryLogWriter::generateSegmentPath()
                                      _segment_number);
   }
 
+  // Rotating away from a requested name: keep the name and add a suffix.
+  // Wall-clock names would sort before the requested one ('0' < most letters)
+  // while holding later events, and readers that order a directory by
+  // filename would then binary-search a vector that is not in time order.
+  // '_' sorts after '.', so "<stem>_0002.floxlog" lands right behind
+  // "<stem>.floxlog" and ahead of the next day's segment.
+  if (!_config.output_filename.empty())
+  {
+    const std::filesystem::path first(_config.output_filename);
+    std::string ext = first.extension().string();
+    if (ext.empty())
+    {
+      ext = ".floxlog";
+    }
+    char suffix[16];
+    std::snprintf(suffix, sizeof(suffix), "_%04u", _segment_number);
+    return _config.output_dir / (first.stem().string() + suffix + ext);
+  }
+
   // Default: timestamp-based naming
   using namespace std::chrono;
   auto now = system_clock::now();
@@ -264,14 +283,12 @@ bool BinaryLogWriter::writeFrameToBlock(EventType type, const void* payload, siz
   std::memcpy(_block_buffer.data() + old_size, &header, sizeof(header));
   std::memcpy(_block_buffer.data() + old_size + sizeof(header), payload, size);
 
-  // Track first timestamp in block (for index) and detect cross-block inversions.
+  // Track the first timestamp in the block; the index entry and the
+  // cross-block inversion check both use the block's post-sort minimum, which
+  // is only known in flushBlock.
   if (_block_event_count == 0)
   {
     _block_first_timestamp = timestamp;
-    if (_last_block_max_ts > 0 && timestamp < _last_block_max_ts)
-    {
-      _segment_has_cross_block_inversion = true;
-    }
   }
   ++_block_event_count;
 
@@ -307,7 +324,23 @@ bool BinaryLogWriter::flushBlock()
   // Record position before writing block (for index)
   uint64_t block_offset = _segment_bytes;
 
-  _last_block_max_ts = (_block_event_count > 1) ? sortBlockBuffer() : _block_first_timestamp;
+  // Sorting rewrites the block, so the block's real first timestamp is its
+  // post-sort minimum -- not the first event that happened to arrive. Comparing
+  // the arrival order against the previous block's maximum missed every
+  // inversion that was not the first event of the block, and the segment then
+  // shipped with the Sorted flag on. Readers trust that flag enough to switch
+  // off the sort, the reorder buffer and the window check all at once.
+  BlockSpan span{_block_first_timestamp, _block_first_timestamp};
+  if (_block_event_count > 1)
+  {
+    span = sortBlockBuffer();
+  }
+  if (_last_block_max_ts > 0 && span.min_ts < _last_block_max_ts)
+  {
+    _segment_has_cross_block_inversion = true;
+  }
+  _last_block_max_ts = span.max_ts;
+  const int64_t block_index_ts = span.min_ts;
 
   // Compress the block
   size_t max_compressed = Compressor::maxCompressedSize(_config.compression, _block_buffer.size());
@@ -356,7 +389,7 @@ bool BinaryLogWriter::flushBlock()
   if (_config.create_index)
   {
     _index_entries.push_back(
-        IndexEntry{.timestamp_ns = _block_first_timestamp, .file_offset = block_offset});
+        IndexEntry{.timestamp_ns = block_index_ts, .file_offset = block_offset});
   }
 
   // Keep segment header current so readers see valid metadata even if the
@@ -868,7 +901,7 @@ void BinaryLogWriter::setHasBookDeltas(bool v)
   _metadata->has_book_deltas = v;
 }
 
-int64_t BinaryLogWriter::sortBlockBuffer()
+BinaryLogWriter::BlockSpan BinaryLogWriter::sortBlockBuffer()
 {
   struct FrameRef
   {
@@ -921,7 +954,11 @@ int64_t BinaryLogWriter::sortBlockBuffer()
   }
   if (sorted)
   {
-    return refs.empty() ? 0 : refs.back().timestamp;
+    if (refs.empty())
+    {
+      return BlockSpan{0, 0};
+    }
+    return BlockSpan{refs.front().timestamp, refs.back().timestamp};
   }
 
   std::stable_sort(refs.begin(), refs.end(),
@@ -938,7 +975,7 @@ int64_t BinaryLogWriter::sortBlockBuffer()
 
   std::swap(_block_buffer, _sort_buffer);
 
-  return refs.back().timestamp;
+  return BlockSpan{refs.front().timestamp, refs.back().timestamp};
 }
 
 }  // namespace flox::replay

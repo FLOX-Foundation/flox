@@ -61,6 +61,7 @@ class BookSnapshotBinAggregator final : public IAggregator
   void finalize() override;
   std::unique_ptr<IAggregator> cloneEmpty() const override;
   void merge(const IAggregator& other) override;
+  bool supportsParallel() const override { return false; }
 
   // Rows sorted by (bucket_ts_ns, symbol_id, level) ascending. Empty
   // before run() completes.

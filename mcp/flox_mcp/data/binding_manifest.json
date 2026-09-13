@@ -583,6 +583,11 @@
           "name": "flox_data_reader_create_filtered"
         },
         {
+          "group": "datareader",
+          "kind": "function",
+          "name": "flox_data_reader_create_ordered"
+        },
+        {
           "group": "data_reader",
           "kind": "function",
           "name": "flox_data_reader_destroy"
@@ -8544,6 +8549,10 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_data_reader_create_ordered"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_data_reader_destroy"
         },
         {
@@ -11229,6 +11238,11 @@
           "name": "BinaryLogWriter"
         },
         {
+          "header": "include/flox/replay/writers/binary_log_writer.h",
+          "kind": "type",
+          "name": "BlockSpan"
+        },
+        {
           "header": "include/flox/indicator/bollinger.h",
           "kind": "type",
           "name": "Bollinger"
@@ -12902,6 +12916,11 @@
           "header": "include/flox/aggregator/policies/range_bar_policy.h",
           "kind": "type",
           "name": "RangeBarPolicy"
+        },
+        {
+          "header": "include/flox/replay/ops/segment_ops.h",
+          "kind": "type",
+          "name": "RangeExtractStats"
         },
         {
           "header": "include/flox/execution/rate_limit_policy.h",
@@ -14950,6 +14969,16 @@
         },
         {
           "kind": "method",
+          "name": "crcErrors",
+          "parent": "BinaryLogIterator"
+        },
+        {
+          "kind": "method",
+          "name": "discardBlockState",
+          "parent": "BinaryLogIterator"
+        },
+        {
+          "kind": "method",
           "name": "hasIndex",
           "parent": "BinaryLogIterator"
         },
@@ -14960,12 +14989,22 @@
         },
         {
           "kind": "method",
+          "name": "indexLoaded",
+          "parent": "BinaryLogIterator"
+        },
+        {
+          "kind": "method",
           "name": "isCompressed",
           "parent": "BinaryLogIterator"
         },
         {
           "kind": "method",
           "name": "isValid",
+          "parent": "BinaryLogIterator"
+        },
+        {
+          "kind": "method",
+          "name": "lastEventOffset",
           "parent": "BinaryLogIterator"
         },
         {
@@ -15011,6 +15050,11 @@
         {
           "kind": "method",
           "name": "setStopAtBlockEnd",
+          "parent": "BinaryLogIterator"
+        },
+        {
+          "kind": "method",
+          "name": "unknownFramesSkipped",
           "parent": "BinaryLogIterator"
         },
         {
@@ -15190,11 +15234,6 @@
         },
         {
           "kind": "method",
-          "name": "closeInternal",
-          "parent": "BinaryLogWriter"
-        },
-        {
-          "kind": "method",
           "name": "currentSegmentPath",
           "parent": "BinaryLogWriter"
         },
@@ -15211,16 +15250,6 @@
         {
           "kind": "method",
           "name": "flushBlock",
-          "parent": "BinaryLogWriter"
-        },
-        {
-          "kind": "method",
-          "name": "generateSegmentPath",
-          "parent": "BinaryLogWriter"
-        },
-        {
-          "kind": "method",
-          "name": "isCompressed",
           "parent": "BinaryLogWriter"
         },
         {
@@ -15255,17 +15284,7 @@
         },
         {
           "kind": "method",
-          "name": "sortBlockBuffer",
-          "parent": "BinaryLogWriter"
-        },
-        {
-          "kind": "method",
           "name": "stats",
-          "parent": "BinaryLogWriter"
-        },
-        {
-          "kind": "method",
-          "name": "updateSegmentHeader",
           "parent": "BinaryLogWriter"
         },
         {
@@ -15285,11 +15304,6 @@
         },
         {
           "kind": "method",
-          "name": "writeIndex",
-          "parent": "BinaryLogWriter"
-        },
-        {
-          "kind": "method",
           "name": "writeOptionQuote",
           "parent": "BinaryLogWriter"
         },
@@ -15302,6 +15316,36 @@
           "kind": "method",
           "name": "writeTrade",
           "parent": "BinaryLogWriter"
+        },
+        {
+          "kind": "method",
+          "name": "closeInternal",
+          "parent": "BlockSpan"
+        },
+        {
+          "kind": "method",
+          "name": "generateSegmentPath",
+          "parent": "BlockSpan"
+        },
+        {
+          "kind": "method",
+          "name": "isCompressed",
+          "parent": "BlockSpan"
+        },
+        {
+          "kind": "method",
+          "name": "sortBlockBuffer",
+          "parent": "BlockSpan"
+        },
+        {
+          "kind": "method",
+          "name": "updateSegmentHeader",
+          "parent": "BlockSpan"
+        },
+        {
+          "kind": "method",
+          "name": "writeIndex",
+          "parent": "BlockSpan"
         },
         {
           "kind": "method",
@@ -17626,6 +17670,11 @@
         {
           "kind": "method",
           "name": "onEvent",
+          "parent": "IAggregator"
+        },
+        {
+          "kind": "method",
+          "name": "supportsParallel",
           "parent": "IAggregator"
         },
         {
@@ -22560,6 +22609,11 @@
         },
         {
           "kind": "method",
+          "name": "supportsParallel",
+          "parent": "Row"
+        },
+        {
+          "kind": "method",
           "name": "symbolAllowed",
           "parent": "Row"
         },
@@ -25211,6 +25265,10 @@
         },
         {
           "kind": "class",
+          "name": "DataReaderOptions"
+        },
+        {
+          "kind": "class",
           "name": "DataReaderRunOptions"
         },
         {
@@ -27059,6 +27117,16 @@
         },
         {
           "kind": "method",
+          "name": "reorderWindowNs",
+          "parent": "DataReaderOptions"
+        },
+        {
+          "kind": "method",
+          "name": "strictOrdering",
+          "parent": "DataReaderOptions"
+        },
+        {
+          "kind": "method",
           "name": "nThreads",
           "parent": "DataReaderRunOptions"
         },
@@ -27099,7 +27167,17 @@
         },
         {
           "kind": "method",
+          "name": "lateDropped",
+          "parent": "DataReaderStats"
+        },
+        {
+          "kind": "method",
           "name": "tradesRead",
+          "parent": "DataReaderStats"
+        },
+        {
+          "kind": "method",
+          "name": "unknownFramesSkipped",
           "parent": "DataReaderStats"
         },
         {
@@ -39838,6 +39916,7 @@
         "flox_data_reader_count_book_updates",
         "flox_data_reader_count_book_updates_from",
         "flox_data_reader_create_filtered",
+        "flox_data_reader_create_ordered",
         "flox_data_reader_read_bbo",
         "flox_data_reader_read_bbo_from",
         "flox_data_reader_read_book_updates",

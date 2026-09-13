@@ -113,6 +113,19 @@ struct ExportConfig
   uint16_t index_interval{kDefaultIndexInterval};
 };
 
+// What a range extraction actually covered. `extractTimeRange` fills it when
+// the caller passes one: a requested window that reaches outside the input is
+// not an error, but it is something the caller almost always wants to know.
+struct RangeExtractStats
+{
+  uint64_t events_written{0};
+  int64_t input_first_ns{0};
+  int64_t input_last_ns{0};
+  bool requested_from_before_data{false};
+  bool requested_to_after_data{false};
+  bool used_index{false};
+};
+
 class SegmentOps
 {
  public:
@@ -152,7 +165,8 @@ class SegmentOps
 
   static uint64_t extractTimeRange(const std::filesystem::path& input_path,
                                    const std::filesystem::path& output_path, int64_t from_ns,
-                                   int64_t to_ns, const WriterConfig& config);
+                                   int64_t to_ns, const WriterConfig& config,
+                                   RangeExtractStats* stats = nullptr);
 
  private:
   static std::string formatCSVEvent(const ReplayEvent& event, char delimiter);

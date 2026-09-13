@@ -215,7 +215,7 @@ inline PyTrade tradeRecordToPyTrade(const flox::replay::TradeRecord& tr)
 
 inline ReaderConfig makeReaderConfig(const std::string& dataDir, py::object fromNs,
                                      py::object toNs, py::object symbols,
-                                     py::object reorderWindowNs)
+                                     py::object reorderWindowNs, bool strictOrdering)
 {
   ReaderConfig cfg;
   cfg.data_dir = dataDir;
@@ -237,6 +237,7 @@ inline ReaderConfig makeReaderConfig(const std::string& dataDir, py::object from
   {
     cfg.reorder_window_ns = reorderWindowNs.cast<int64_t>();
   }
+  cfg.strict_ordering = strictOrdering;
 
   return cfg;
 }
@@ -280,8 +281,9 @@ class PyDataReader
 
  public:
   PyDataReader(const std::string& dataDir, py::object fromNs, py::object toNs,
-               py::object symbols, py::object reorderWindowNs)
-      : _reader(makeReaderConfig(dataDir, fromNs, toNs, symbols, reorderWindowNs))
+               py::object symbols, py::object reorderWindowNs, bool strictOrdering)
+      : _reader(makeReaderConfig(dataDir, fromNs, toNs, symbols, reorderWindowNs,
+                                 strictOrdering))
   {
     if (!toNs.is_none())
     {
@@ -404,6 +406,13 @@ class PyDataReader
   // Honors the reader's to_ns: quotes at/after the bound are not collected and
   // the walk aborts once events run past the bound (with a reorder-slack margin),
   // so a bounded window costs O(prefix), not O(tape), in both time and memory.
+  //
+  // The bound here is HALF-OPEN: a quote exactly at to_ns belongs to the next
+  // window, not this one. That is deliberate -- slicing a month by day through
+  // this reader must not return the boundary quote twice -- and it differs from
+  // the trade path, where ReaderConfig::to_ns is inclusive. Both are pinned by
+  // tests; the difference is documented on the DataReader constructor and in
+  // docs/reference/python/replay.md.
   py::array_t<PyOptionQuote> readOptionQuotesFrom(int64_t startTsNs)
   {
     const int64_t stop_ns = _to_ns.value_or(std::numeric_limits<int64_t>::max());
@@ -610,6 +619,8 @@ class PyDataReader
     d["book_updates_read"] = s.book_updates_read;
     d["bytes_read"] = s.bytes_read;
     d["crc_errors"] = s.crc_errors;
+    d["late_dropped"] = s.late_dropped;
+    d["unknown_frames_skipped"] = s.unknown_frames_skipped;
     return d;
   }
 
@@ -1306,15 +1317,21 @@ inline void bindReplay(py::module_& m)
   // DataReader
   py::class_<PyDataReader>(m, "DataReader")
       .def(py::init<const std::string&, py::object, py::object, py::object,
-                    py::object>(),
+                    py::object, bool>(),
            "Create a DataReader for a binary log data directory. "
            "`reorder_window_ns` controls the bounded reorder buffer applied "
-           "to segments without the Sorted flag (default 10s).",
+           "to segments without the Sorted flag (default 10s). An event that "
+           "arrives past that window is dropped and counted in "
+           "stats()['late_dropped'], with one warning logged per segment; set "
+           "`strict_ordering=True` to raise FloxError E_DATA_002 on the first "
+           "such event instead. `to_ns` is inclusive for trade reads and "
+           "exclusive for option-quote reads -- see read_option_quotes.",
            py::arg("data_dir"),
            py::arg("from_ns") = py::none(),
            py::arg("to_ns") = py::none(),
            py::arg("symbols") = py::none(),
-           py::arg("reorder_window_ns") = py::none())
+           py::arg("reorder_window_ns") = py::none(),
+           py::arg("strict_ordering") = false)
       .def("summary", &PyDataReader::summary,
            "Return a dict summarizing the dataset")
       .def("count", &PyDataReader::count,
@@ -1324,14 +1341,20 @@ inline void bindReplay(py::module_& m)
       .def("time_range", &PyDataReader::timeRange,
            "Return (start_ns, end_ns) tuple or None")
       .def("read_trades", &PyDataReader::readTrades,
-           "Read all trades as a numpy structured array (PyTrade dtype)")
+           "Read all trades as a numpy structured array (PyTrade dtype). The "
+           "reader's to_ns bound is INCLUSIVE here: a trade stamped exactly "
+           "to_ns is returned.")
       .def("read_trades_from", &PyDataReader::readTradesFrom,
-           "Read trades starting from a given timestamp (nanoseconds)",
+           "Read trades starting from a given timestamp (nanoseconds). The "
+           "reader's to_ns bound is inclusive.",
            py::arg("start_ts_ns"))
       .def("read_option_quotes_from", &PyDataReader::readOptionQuotesFrom,
            "Read option quotes (mark/iv/index/open-interest) from a given timestamp "
            "(nanoseconds) as a numpy structured array (PyOptionQuote dtype). Raw "
-           "fixed-point: mark/index use PRICE_SCALE, iv uses 1e8, oi uses QUANTITY_SCALE.",
+           "fixed-point: mark/index use PRICE_SCALE, iv uses 1e8, oi uses QUANTITY_SCALE. "
+           "The reader's to_ns bound is EXCLUSIVE here, unlike read_trades: a quote "
+           "stamped exactly to_ns belongs to the next window, so day-by-day slicing "
+           "of a month returns each quote once.",
            py::arg("start_ts_ns"))
       .def("read_bbo", &PyDataReader::readBBO,
            "Read best bid/ask from every book update as a numpy structured array (PyBBO dtype)")

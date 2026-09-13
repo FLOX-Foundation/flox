@@ -1428,7 +1428,7 @@ extern "C"
   // names are a no-op.
   FLOX_EXPORT(group = "backtest_slippage")
   int flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle executor,
-                                                     const char* profile_name);
+                                                    const char* profile_name);
 
   // Self-trade prevention mode. 0=None, 1=CancelNewest, 2=CancelOldest,
   // 3=CancelBoth, 4=Decrement. Default None.
@@ -1535,7 +1535,7 @@ extern "C"
   // "okx_swap", "deribit". Unknown names are a no-op.
   FLOX_EXPORT(group = "rate_limit")
   int flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
-                                           const char* profile_name);
+                                          const char* profile_name);
 
   FLOX_EXPORT(group = "rate_limit")
   int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h);
@@ -1861,6 +1861,17 @@ extern "C"
                                                         int64_t to_ns, const uint32_t* symbols,
                                                         uint32_t num_symbols);
 
+  // Same reader, with the ordering knobs the filtered form cannot reach.
+  // reorder_window_ns <= 0 keeps the 10s default. strict_ordering != 0 makes
+  // the reader raise on the first event that arrives past the window instead
+  // of dropping it and counting it in FloxReaderStats.late_dropped.
+  FLOX_EXPORT(group = "datareader")
+  FloxDataReaderHandle flox_data_reader_create_ordered(const char* data_dir, int64_t from_ns,
+                                                       int64_t to_ns, const uint32_t* symbols,
+                                                       uint32_t num_symbols,
+                                                       int64_t reorder_window_ns,
+                                                       int32_t strict_ordering);
+
   FLOX_EXPORT(group = "datareader")
   FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle reader);
 
@@ -1872,6 +1883,12 @@ extern "C"
     uint64_t book_updates_read;
     uint64_t bytes_read;
     uint64_t crc_errors;
+    // Events discarded because they arrived past the reorder window. Always 0
+    // when the reader was created with strict ordering (it raises instead).
+    uint64_t late_dropped;
+    // Frames whose record type this build does not know. The tape format is
+    // additive, so they are stepped over rather than ending the read.
+    uint64_t unknown_frames_skipped;
   } FloxReaderStats;
 
   FLOX_EXPORT(group = "datareader")
@@ -4172,7 +4189,7 @@ extern "C"
   // backtest that looks healthy.
   FLOX_EXPORT(group = "fee_schedule")
   int flox_fee_schedule_load_profile(FloxFeeScheduleHandle h,
-                                      const char* profile_name);
+                                     const char* profile_name);
 
   FLOX_EXPORT(group = "fee_schedule")
   void flox_fee_schedule_record_fill(FloxFeeScheduleHandle h, int64_t ts_ns,
@@ -4244,7 +4261,7 @@ extern "C"
   // with set_constant_rate or use a tape.
   FLOX_EXPORT(group = "funding_schedule")
   int flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
-                                          const char* profile_name);
+                                         const char* profile_name);
 
   FLOX_EXPORT(group = "funding_schedule")
   void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h, double rate);

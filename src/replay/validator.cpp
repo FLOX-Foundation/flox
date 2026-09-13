@@ -17,6 +17,13 @@
 namespace flox::replay
 {
 
+namespace
+{
+// Largest frame payload a sane segment carries; the readers use the same
+// ceiling. Anything above it is a corrupt length field.
+constexpr uint32_t kMaxValidatorFrameBytes = 10u * 1024u * 1024u;
+}  // namespace
+
 SegmentValidator::SegmentValidator(ValidatorConfig config) : _config(std::move(config)) {}
 
 SegmentValidationResult SegmentValidator::validate(const std::filesystem::path& segment_path)
@@ -94,13 +101,36 @@ SegmentValidationResult SegmentValidator::validate(const std::filesystem::path& 
   // Check header vs actual data
   if (result.reported_event_count != result.actual_event_count)
   {
-    addIssue(result, IssueType::EventCountMismatch, IssueSeverity::Warning,
-             "Header reports " + std::to_string(result.reported_event_count) + " events, found " +
-                 std::to_string(result.actual_event_count));
+    if (result.reported_event_count == 0 && result.actual_event_count > 0)
+    {
+      // The shape a killed collector leaves: payload on disk, counters never
+      // written back. Range reads skip the segment entirely, so reporting this
+      // as a warning and then passing the segment is the worst of both.
+      addIssue(result, IssueType::FileTruncated, IssueSeverity::Error,
+               "Segment header was never finalised: it reports 0 events while " +
+                   std::to_string(result.actual_event_count) +
+                   " are present. Repair the header before reading by time range.");
+    }
+    else
+    {
+      addIssue(result, IssueType::EventCountMismatch, IssueSeverity::Error,
+               "Header reports " + std::to_string(result.reported_event_count) +
+                   " events, found " + std::to_string(result.actual_event_count));
+    }
   }
 
-  // Determine overall validity
-  result.valid = !result.hasCritical();
+  // A segment that claims an index it does not carry sends every seek to the
+  // wrong place; it is not a valid segment either.
+  if (result.has_index && !result.index_valid)
+  {
+    addIssue(result, IssueType::IndexOutOfBounds, IssueSeverity::Error,
+             "Header carries the index flag but no readable index was found");
+  }
+
+  // Determine overall validity. hasErrors() has to count here: with only
+  // hasCritical() the verdict was true for every corruption short of an
+  // unreadable header, which made the function useless as a gate.
+  result.valid = !result.hasCritical() && !result.hasErrors();
 
   return result;
 }
@@ -196,7 +226,7 @@ bool SegmentValidator::validateEventsUncompressed(std::FILE* file, SegmentValida
     }
 
     // Sanity check frame size
-    if (frame.size > 10 * 1024 * 1024)
+    if (frame.size > kMaxValidatorFrameBytes)
     {
       addIssue(result, IssueType::FrameSizeTooLarge, IssueSeverity::Error,
                "Frame size too large: " + std::to_string(frame.size) + " bytes", current_pos);
@@ -251,6 +281,24 @@ bool SegmentValidator::validateEventsUncompressed(std::FILE* file, SegmentValida
         std::memcpy(&book, payload.data(), sizeof(book));
         event_ts = book.exchange_ts_ns;
         ++result.book_updates_found;
+      }
+    }
+    else if (type == EventType::OptionQuote)
+    {
+      if (frame.size >= sizeof(OptionQuoteRecord))
+      {
+        OptionQuoteRecord quote;
+        std::memcpy(&quote, payload.data(), sizeof(quote));
+        event_ts = quote.exchange_ts_ns;
+      }
+    }
+    else if (type == EventType::PoolState)
+    {
+      if (frame.size >= sizeof(PoolStateRecordHeader))
+      {
+        PoolStateRecordHeader pool;
+        std::memcpy(&pool, payload.data(), sizeof(pool));
+        event_ts = pool.exchange_ts_ns;
       }
     }
     else
@@ -444,6 +492,18 @@ bool SegmentValidator::validateEventsCompressed(std::FILE* file, SegmentValidati
         std::memcpy(&book, decompressed_buffer.data() + offset, sizeof(book));
         event_ts = book.exchange_ts_ns;
         ++result.book_updates_found;
+      }
+      else if (type == EventType::OptionQuote && frame.size >= sizeof(OptionQuoteRecord))
+      {
+        OptionQuoteRecord quote;
+        std::memcpy(&quote, decompressed_buffer.data() + offset, sizeof(quote));
+        event_ts = quote.exchange_ts_ns;
+      }
+      else if (type == EventType::PoolState && frame.size >= sizeof(PoolStateRecordHeader))
+      {
+        PoolStateRecordHeader pool;
+        std::memcpy(&pool, decompressed_buffer.data() + offset, sizeof(pool));
+        event_ts = pool.exchange_ts_ns;
       }
 
       // Check timestamps

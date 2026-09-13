@@ -9,6 +9,7 @@
 
 #include "flox/replay/readers/binary_log_reader.h"
 #include "flox/error/flox_error.h"
+#include "flox/log/log.h"
 #include "flox/replay/aggregator.h"
 #include "flox/replay/ops/compression.h"
 
@@ -365,6 +366,111 @@ std::vector<std::byte> decompressBlock(std::FILE* f, long data_pos,
 // The last block of an active segment is often truncated (the writer flushes the
 // block header before completing the compressed data write). We therefore iterate
 // backwards from the end to find the last block that decompresses successfully.
+// Record types this build can parse. A frame carrying anything else is a
+// record from a newer writer: the format is additive, so it is skipped by
+// FrameHeader.size rather than ending the read.
+inline bool isKnownEventType(uint8_t type) noexcept
+{
+  switch (static_cast<EventType>(type))
+  {
+    case EventType::Trade:
+    case EventType::BookSnapshot:
+    case EventType::BookDelta:
+    case EventType::OptionQuote:
+    case EventType::PoolState:
+      return true;
+  }
+  return false;
+}
+
+// Largest frame payload the readers accept. Anything larger is a corrupt
+// length field, not a record.
+inline constexpr uint32_t kMaxFrameBytes = 10u * 1024u * 1024u;
+
+// Recovers the counters of an uncompressed segment whose header still reads
+// zero -- the state a collector leaves behind when it is killed before close.
+// The frames themselves are intact and self-describing, so a straight walk of
+// the frame chain gives back the count and the time span. Without this the
+// segment is invisible to every range read: the header says it ends at 0, so
+// the binary search over segments skips it and the caller gets a silent
+// "ok, no events".
+void recoverUncompressedSegmentMeta(std::FILE* f, const SegmentHeader& hdr,
+                                    uint32_t& out_event_count,
+                                    int64_t& out_first_ns, int64_t& out_last_ns)
+{
+  out_event_count = 0;
+  out_first_ns = 0;
+  out_last_ns = 0;
+
+  if (std::fseek(f, 0, SEEK_END) != 0)
+  {
+    return;
+  }
+  const long file_end = std::ftell(f);
+  if (file_end < 0)
+  {
+    return;
+  }
+
+  const long stop_at = (hdr.hasIndex() && hdr.index_offset > 0)
+                           ? std::min<long>(file_end, static_cast<long>(hdr.index_offset))
+                           : file_end;
+
+  if (std::fseek(f, sizeof(SegmentHeader), SEEK_SET) != 0)
+  {
+    return;
+  }
+
+  std::vector<std::byte> payload;
+  for (;;)
+  {
+    const long pos = std::ftell(f);
+    if (pos < 0 || pos + static_cast<long>(sizeof(FrameHeader)) > stop_at)
+    {
+      break;
+    }
+
+    FrameHeader frame{};
+    if (std::fread(&frame, sizeof(frame), 1, f) != 1)
+    {
+      break;
+    }
+    if (frame.size > kMaxFrameBytes)
+    {
+      break;
+    }
+    const long data_pos = std::ftell(f);
+    if (data_pos < 0 || static_cast<long>(frame.size) > stop_at - data_pos)
+    {
+      // Half-written frame at the tail of a live segment.
+      break;
+    }
+
+    // Every record type starts with exchange_ts_ns, so the first int64 of the
+    // payload is the timestamp whatever the type is.
+    int64_t ts = 0;
+    if (frame.size >= sizeof(int64_t))
+    {
+      if (std::fread(&ts, sizeof(ts), 1, f) != 1)
+      {
+        break;
+      }
+    }
+
+    if (out_event_count == 0)
+    {
+      out_first_ns = ts;
+    }
+    out_last_ns = ts;
+    ++out_event_count;
+
+    if (std::fseek(f, data_pos + static_cast<long>(frame.size), SEEK_SET) != 0)
+    {
+      break;
+    }
+  }
+}
+
 void recoverCompressedSegmentMeta(std::FILE* f, const SegmentHeader& hdr,
                                   uint32_t& out_event_count,
                                   int64_t& out_first_ns, int64_t& out_last_ns)
@@ -493,6 +599,115 @@ struct ReplayEventLater
   }
 };
 
+// Bounded reorder buffer shared by every streaming path.
+//
+// Three things it fixes over the loop it replaces. The filter runs before the
+// window check, so an event belonging to a symbol nobody asked to replay can
+// no longer move the watermark and kill the run. A late event is dropped and
+// counted instead of thrown: a run that discards fifteen frames out of twelve
+// million and says so is worth more than a run that dies halfway with
+// half-fed aggregators and nothing to roll back to. And the watermark can be
+// owned by the caller, so an inversion that straddles a segment boundary is
+// visible instead of silently resetting.
+//
+// ReaderConfig::strict_ordering brings the throw back for reproducibility
+// work, now with the symbol, event type, file and offset in the message.
+template <typename Filter>
+class ReorderBuffer
+{
+ public:
+  ReorderBuffer(BinaryLogReader::EventCallback& callback, ReaderStats& stats,
+                int64_t window_ns, bool strict, Filter passes_filter,
+                int64_t& watermark, const std::filesystem::path& source)
+      : _callback(callback),
+        _stats(stats),
+        _window_ns(window_ns),
+        _strict(strict),
+        _passes(std::move(passes_filter)),
+        _watermark(watermark),
+        _source(source)
+  {
+  }
+
+  // Returns false when the callback asked to stop.
+  bool offer(ReplayEvent&& event, uint64_t file_offset)
+  {
+    if (!_passes(event))
+    {
+      return true;
+    }
+
+    if (_watermark != std::numeric_limits<int64_t>::min() &&
+        event.timestamp_ns < _watermark - _window_ns)
+    {
+      const int64_t delta = _watermark - event.timestamp_ns;
+      if (_strict)
+      {
+        throw flox::FloxError("E_DATA_002", lateMessage(event, delta, file_offset));
+      }
+      ++_stats.late_dropped;
+      if (!_warned)
+      {
+        _warned = true;
+        FLOX_LOG_WARN(lateMessage(event, delta, file_offset)
+                      << " Dropping it and any further late events in this segment; "
+                         "see ReaderStats::late_dropped for the total.");
+      }
+      return true;
+    }
+
+    if (event.timestamp_ns > _watermark)
+    {
+      _watermark = event.timestamp_ns;
+    }
+    _heap.push_back(std::move(event));
+    std::push_heap(_heap.begin(), _heap.end(), _cmp);
+
+    return drainBelow(_watermark - _window_ns);
+  }
+
+  bool drainAll() { return drainBelow(std::numeric_limits<int64_t>::max()); }
+
+ private:
+  bool drainBelow(int64_t threshold_ts_ns)
+  {
+    while (!_heap.empty() && _heap.front().timestamp_ns < threshold_ts_ns)
+    {
+      std::pop_heap(_heap.begin(), _heap.end(), _cmp);
+      ReplayEvent ev = std::move(_heap.back());
+      _heap.pop_back();
+      ++_stats.events_read;
+      ev.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
+      if (!_callback(ev))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  std::string lateMessage(const ReplayEvent& event, int64_t delta, uint64_t file_offset) const
+  {
+    return "Event arrived past reorder window: delta=" + std::to_string(delta) +
+           "ns exceeds reorder_window_ns=" + std::to_string(_window_ns) +
+           " (symbol_id=" + std::to_string(event.symbolId()) +
+           ", event_type=" + std::to_string(static_cast<int>(event.type)) +
+           ", file=" + _source.string() + ", offset=" + std::to_string(file_offset) + ").";
+  }
+
+  BinaryLogReader::EventCallback& _callback;
+  ReaderStats& _stats;
+  int64_t _window_ns;
+  bool _strict;
+  Filter _passes;
+  int64_t& _watermark;
+  std::filesystem::path _source;
+
+  std::vector<ReplayEvent> _heap;
+  ReplayEventLater _cmp;
+  bool _warned{false};
+};
+
 // Worker-mode segment processor for intra-segment parallel run().
 // Opens a private BinaryLogIterator at `path`, switches it to
 // stop-at-block-end mode, and walks the assigned `blocks` range:
@@ -507,7 +722,7 @@ bool streamBlockRangeImpl(const std::filesystem::path& path,
                           std::span<const BlockMeta> blocks,
                           BinaryLogReader::EventCallback& callback,
                           ReaderStats& stats, int64_t reorder_window_ns,
-                          Filter passes_filter)
+                          bool strict_ordering, Filter passes_filter)
 {
   if (blocks.empty())
   {
@@ -552,31 +767,9 @@ bool streamBlockRangeImpl(const std::filesystem::path& path,
 
   // Unsorted: cross-block bounded reorder buffer over the worker's
   // assigned block range.
-  std::vector<ReplayEvent> heap;
-  ReplayEventLater cmp;
   int64_t watermark = std::numeric_limits<int64_t>::min();
-  const int64_t W = reorder_window_ns;
-
-  auto drain_below = [&](int64_t threshold_ts_ns) -> bool
-  {
-    while (!heap.empty() && heap.front().timestamp_ns < threshold_ts_ns)
-    {
-      std::pop_heap(heap.begin(), heap.end(), cmp);
-      ReplayEvent ev = std::move(heap.back());
-      heap.pop_back();
-      if (!passes_filter(ev))
-      {
-        continue;
-      }
-      ++stats.events_read;
-      ev.type == EventType::Trade ? ++stats.trades_read : ++stats.book_updates_read;
-      if (!callback(ev))
-      {
-        return false;
-      }
-    }
-    return true;
-  };
+  ReorderBuffer<Filter> reorder(callback, stats, reorder_window_ns, strict_ordering,
+                                passes_filter, watermark, path);
 
   for (const auto& bm : blocks)
   {
@@ -587,30 +780,14 @@ bool streamBlockRangeImpl(const std::filesystem::path& path,
     ReplayEvent event;
     while (iter.next(event))
     {
-      if (watermark != std::numeric_limits<int64_t>::min() &&
-          event.timestamp_ns < watermark - W)
-      {
-        throw flox::FloxError(
-            "E_DATA_002",
-            "Event arrived past reorder window in worker block range: delta=" +
-                std::to_string(watermark - event.timestamp_ns) +
-                "ns exceeds reorder_window_ns=" + std::to_string(W) +
-                ". Bump ReaderConfig::reorder_window_ns or pre-sort the tape.");
-      }
-      if (event.timestamp_ns > watermark)
-      {
-        watermark = event.timestamp_ns;
-      }
-      heap.push_back(std::move(event));
-      std::push_heap(heap.begin(), heap.end(), cmp);
-      if (!drain_below(watermark - W))
+      if (!reorder.offer(std::move(event), iter.lastEventOffset()))
       {
         return false;
       }
     }
   }
 
-  return drain_below(std::numeric_limits<int64_t>::max());
+  return reorder.drainAll();
 }
 
 }  // namespace
@@ -709,12 +886,22 @@ bool BinaryLogReader::scanSegments()
       info.has_index = header.hasIndex();
       info.index_offset = header.index_offset;
 
-      if (header.event_count == 0 && header.isCompressed())
+      if (header.event_count == 0)
       {
-        recoverCompressedSegmentMeta(f, header,
-                                     info.event_count,
-                                     info.first_event_ns,
-                                     info.last_event_ns);
+        if (header.isCompressed())
+        {
+          recoverCompressedSegmentMeta(f, header,
+                                       info.event_count,
+                                       info.first_event_ns,
+                                       info.last_event_ns);
+        }
+        else
+        {
+          recoverUncompressedSegmentMeta(f, header,
+                                         info.event_count,
+                                         info.first_event_ns,
+                                         info.last_event_ns);
+        }
       }
 
       _segments.push_back(std::move(info));
@@ -1035,6 +1222,20 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
 
   // Resolve effective worker count.
   std::size_t max_threads;
+  // Ask the panel before deciding anything. An aggregator that needs the whole
+  // tape in order cannot be cloned into workers; auto silently becomes a
+  // single thread, an explicit request is refused here rather than from
+  // inside a worker halfway through the walk.
+  bool panel_supports_parallel = true;
+  for (auto* agg : aggregators)
+  {
+    if (agg != nullptr && !agg->supportsParallel())
+    {
+      panel_supports_parallel = false;
+      break;
+    }
+  }
+
   if (n_threads == 0)
   {
     const unsigned hc = std::thread::hardware_concurrency();
@@ -1043,6 +1244,20 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
   else
   {
     max_threads = n_threads;
+  }
+
+  if (!panel_supports_parallel)
+  {
+    if (n_threads > 1)
+    {
+      throw flox::FloxError(
+          "E_DATA_003",
+          "run(aggregators, n_threads=" + std::to_string(n_threads) +
+              "): the panel contains an aggregator that cannot run on partitioned "
+              "workers (book reconstruction is order-dependent across the whole "
+              "tape). Call run(aggregators, 1).");
+    }
+    max_threads = 1;
   }
   if (max_threads <= 1)
   {
@@ -1140,6 +1355,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
 
     const std::size_t n_blocks = blocks.size();
     const int64_t reorder_W = _config.reorder_window_ns;
+    const bool strict_ordering = _config.strict_ordering;
     const std::filesystem::path& seg_path = segment.path;
 
     std::vector<std::thread> threads;
@@ -1150,7 +1366,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
       const std::size_t hi = ((ti + 1) * n_blocks) / workers_for_segment;
       threads.emplace_back(
           [this, ti, lo, hi, &blocks, &worker_panels, &local_stats, &ok,
-           &error_mutex, &first_error, &seg_path, reorder_W]()
+           &error_mutex, &first_error, &seg_path, reorder_W, strict_ordering]()
           {
             try
             {
@@ -1172,7 +1388,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
               };
               std::span<const BlockMeta> slice(blocks.data() + lo, hi - lo);
               if (!streamBlockRangeImpl(seg_path, slice, cb, local_stats[ti],
-                                        reorder_W, filter))
+                                        reorder_W, strict_ordering, filter))
               {
                 ok.store(false, std::memory_order_relaxed);
               }
@@ -1241,6 +1457,8 @@ bool BinaryLogReader::streamForEach(EventCallback callback)
     return false;
   }
 
+  _stream_watermark = std::numeric_limits<int64_t>::min();
+
   for (const auto& segment : _segments)
   {
     if (!readSegmentStreaming(segment.path, callback))
@@ -1258,6 +1476,8 @@ bool BinaryLogReader::streamForEachFrom(int64_t start_ts_ns, EventCallback callb
   {
     return false;
   }
+
+  _stream_watermark = std::numeric_limits<int64_t>::min();
 
   auto it = std::lower_bound(_segments.begin(), _segments.end(), start_ts_ns,
                              [](const SegmentInfo& seg, int64_t ts)
@@ -1322,62 +1542,25 @@ bool BinaryLogReader::streamSegmentWithStats(const std::filesystem::path& path,
   // traces); the heap here handles cross-block inversions up to
   // reorder_window_ns (typically exchange-reconnect-induced batches of
   // older events appearing in a fresh block).
-  std::vector<ReplayEvent> heap;
-  ReplayEventLater cmp;
-  int64_t watermark = std::numeric_limits<int64_t>::min();
-  const int64_t W = _config.reorder_window_ns;
-
-  auto drain_below = [&](int64_t threshold_ts_ns) -> bool
+  auto passes = [this](const ReplayEvent& ev)
   {
-    while (!heap.empty() && heap.front().timestamp_ns < threshold_ts_ns)
-    {
-      std::pop_heap(heap.begin(), heap.end(), cmp);
-      ReplayEvent ev = std::move(heap.back());
-      heap.pop_back();
-      if (!passesFilter(ev))
-      {
-        continue;
-      }
-      ++stats.events_read;
-      ev.type == EventType::Trade ? ++stats.trades_read : ++stats.book_updates_read;
-      if (!callback(ev))
-      {
-        return false;
-      }
-    }
-    return true;
+    return passesFilter(ev);
   };
+  ReorderBuffer<decltype(passes)> reorder(callback, stats, _config.reorder_window_ns,
+                                          _config.strict_ordering, passes,
+                                          _stream_watermark, path);
 
   ReplayEvent event;
   while (iter.next(event))
   {
-    if (watermark != std::numeric_limits<int64_t>::min() &&
-        event.timestamp_ns < watermark - W)
-    {
-      throw flox::FloxError(
-          "E_DATA_002",
-          "Event arrived past reorder window: delta=" +
-              std::to_string(watermark - event.timestamp_ns) +
-              "ns exceeds reorder_window_ns=" + std::to_string(W) +
-              ". Bump ReaderConfig::reorder_window_ns or pre-sort the tape.");
-    }
-    if (event.timestamp_ns > watermark)
-    {
-      watermark = event.timestamp_ns;
-    }
-    heap.push_back(std::move(event));
-    std::push_heap(heap.begin(), heap.end(), cmp);
-
-    // Emit anything that fell out of the reorder window; no future
-    // event can have an older timestamp (we'd have thrown above).
-    if (!drain_below(watermark - W))
+    if (!reorder.offer(std::move(event), iter.lastEventOffset()))
     {
       return false;
     }
   }
 
   // Final drain — emit tail in sorted order.
-  return drain_below(std::numeric_limits<int64_t>::max());
+  return reorder.drainAll();
 }
 
 bool BinaryLogReader::readSegmentStreamingFrom(const SegmentInfo& segment,
@@ -1427,63 +1610,24 @@ bool BinaryLogReader::readSegmentStreamingFrom(const SegmentInfo& segment,
 
   // Unsorted: same bounded-reorder pattern as readSegmentStreaming,
   // with start_ts_ns applied after the heap re-orders.
-  std::vector<ReplayEvent> heap;
-  ReplayEventLater cmp;
-  int64_t watermark = std::numeric_limits<int64_t>::min();
-  const int64_t W = _config.reorder_window_ns;
-
-  auto drain_below = [&](int64_t threshold_ts_ns) -> bool
+  auto passes = [this, start_ts_ns](const ReplayEvent& ev)
   {
-    while (!heap.empty() && heap.front().timestamp_ns < threshold_ts_ns)
-    {
-      std::pop_heap(heap.begin(), heap.end(), cmp);
-      ReplayEvent ev = std::move(heap.back());
-      heap.pop_back();
-      if (ev.timestamp_ns < start_ts_ns)
-      {
-        continue;
-      }
-      if (!passesFilter(ev))
-      {
-        continue;
-      }
-      ++_stats.events_read;
-      ev.type == EventType::Trade ? ++_stats.trades_read : ++_stats.book_updates_read;
-      if (!callback(ev))
-      {
-        return false;
-      }
-    }
-    return true;
+    return ev.timestamp_ns >= start_ts_ns && passesFilter(ev);
   };
+  ReorderBuffer<decltype(passes)> reorder(callback, _stats, _config.reorder_window_ns,
+                                          _config.strict_ordering, passes,
+                                          _stream_watermark, segment.path);
 
   ReplayEvent event;
   while (iter.next(event))
   {
-    if (watermark != std::numeric_limits<int64_t>::min() &&
-        event.timestamp_ns < watermark - W)
-    {
-      throw flox::FloxError(
-          "E_DATA_002",
-          "Event arrived past reorder window: delta=" +
-              std::to_string(watermark - event.timestamp_ns) +
-              "ns exceeds reorder_window_ns=" + std::to_string(W) +
-              ". Bump ReaderConfig::reorder_window_ns or pre-sort the tape.");
-    }
-    if (event.timestamp_ns > watermark)
-    {
-      watermark = event.timestamp_ns;
-    }
-    heap.push_back(std::move(event));
-    std::push_heap(heap.begin(), heap.end(), cmp);
-
-    if (!drain_below(watermark - W))
+    if (!reorder.offer(std::move(event), iter.lastEventOffset()))
     {
       return false;
     }
   }
 
-  return drain_below(std::numeric_limits<int64_t>::max());
+  return reorder.drainAll();
 }
 
 bool BinaryLogReader::forEachFrom(int64_t start_ts_ns, EventCallback callback)
@@ -1556,7 +1700,13 @@ std::vector<std::filesystem::path> BinaryLogReader::segmentFiles() const
   return paths;
 }
 
-const std::vector<SegmentInfo>& BinaryLogReader::segments() const { return _segments; }
+const std::vector<SegmentInfo>& BinaryLogReader::segments() const
+{
+  // Without this the accessor answers "no segments" until some other call
+  // happens to scan, which is indistinguishable from an empty directory.
+  ensureScanned();
+  return _segments;
+}
 
 DatasetSummary BinaryLogReader::inspect(const std::filesystem::path& data_dir)
 {
@@ -1598,9 +1748,16 @@ DatasetSummary BinaryLogReader::inspect(const std::filesystem::path& data_dir)
       int64_t last_ns = header.last_event_ns;
       uint32_t ev_count = header.event_count;
 
-      if (ev_count == 0 && header.isCompressed())
+      if (ev_count == 0)
       {
-        recoverCompressedSegmentMeta(f, header, ev_count, first_ns, last_ns);
+        if (header.isCompressed())
+        {
+          recoverCompressedSegmentMeta(f, header, ev_count, first_ns, last_ns);
+        }
+        else
+        {
+          recoverUncompressedSegmentMeta(f, header, ev_count, first_ns, last_ns);
+        }
       }
 
       summary.total_events += ev_count;
@@ -1665,8 +1822,11 @@ DatasetSummary BinaryLogReader::summary()
     ++result.segment_count;
     result.total_events += segment.event_count;
 
-    // Update time range
-    if (result.first_event_ns == 0 || segment.first_event_ns < result.first_event_ns)
+    // Update time range. A segment whose first timestamp is still unknown
+    // (zero) would otherwise pull the dataset's start back to 1970 and make
+    // every duration computed off the summary meaningless.
+    if (segment.first_event_ns > 0 &&
+        (result.first_event_ns == 0 || segment.first_event_ns < result.first_event_ns))
     {
       result.first_event_ns = segment.first_event_ns;
     }
@@ -1768,44 +1928,72 @@ bool BinaryLogIterator::next(ReplayEvent& out)
 
 bool BinaryLogIterator::nextUncompressed(ReplayEvent& out)
 {
-  // Check if we've hit the index (stop reading events)
-  if (_header.hasIndex())
+  // A frame the reader cannot parse used to end the read, which is
+  // indistinguishable from the end of the file. The format promises that
+  // record types are additive and that an older reader walks past an unknown
+  // one via FrameHeader.size, so that is what happens here; a CRC mismatch is
+  // counted and skipped the same way rather than silently truncating the tape.
+  for (;;)
   {
-    long current_pos = std::ftell(_file);
-    if (current_pos >= static_cast<long>(_header.index_offset))
+    // Check if we've hit the index (stop reading events)
+    if (_header.hasIndex())
     {
-      return false;  // Reached index, no more events
+      long current_pos = std::ftell(_file);
+      if (current_pos >= static_cast<long>(_header.index_offset))
+      {
+        return false;  // Reached index, no more events
+      }
     }
-  }
 
-  // Read frame header
-  FrameHeader frame;
-  if (std::fread(&frame, sizeof(frame), 1, _file) != 1)
-  {
-    return false;  // EOF or error
-  }
+    const long frame_pos = std::ftell(_file);
 
-  // Sanity check
-  if (frame.size > 10 * 1024 * 1024)
-  {  // Max 10MB per frame
-    return false;
-  }
+    // Read frame header
+    FrameHeader frame;
+    if (std::fread(&frame, sizeof(frame), 1, _file) != 1)
+    {
+      return false;  // EOF or error
+    }
 
-  // Read payload
-  _payload_buffer.resize(frame.size);
-  if (std::fread(_payload_buffer.data(), 1, frame.size, _file) != frame.size)
-  {
-    return false;
-  }
+    // A length this large is a corrupt header, not a record: there is no safe
+    // way to find the next frame, so stop.
+    if (frame.size > kMaxFrameBytes)
+    {
+      ++_crc_errors;
+      return false;
+    }
 
-  // Verify CRC
-  uint32_t computed_crc = Crc32::compute(_payload_buffer);
-  if (computed_crc != frame.crc32)
-  {
-    return false;  // CRC mismatch
-  }
+    // Read payload
+    _payload_buffer.resize(frame.size);
+    if (std::fread(_payload_buffer.data(), 1, frame.size, _file) != frame.size)
+    {
+      return false;  // Torn frame at the tail of a live segment
+    }
 
-  return parseFrame(static_cast<EventType>(frame.type), _payload_buffer.data(), frame.size, out);
+    _last_event_offset = frame_pos >= 0 ? static_cast<uint64_t>(frame_pos) : 0;
+
+    // Verify CRC
+    uint32_t computed_crc = Crc32::compute(_payload_buffer);
+    if (computed_crc != frame.crc32)
+    {
+      ++_crc_errors;
+      continue;
+    }
+
+    if (!isKnownEventType(frame.type))
+    {
+      ++_unknown_frames_skipped;
+      continue;
+    }
+
+    if (parseFrame(static_cast<EventType>(frame.type), _payload_buffer.data(), frame.size, out))
+    {
+      return true;
+    }
+
+    // Known type, unparseable payload: the frame length still tells us where
+    // the next one starts, so keep going instead of calling it EOF.
+    ++_crc_errors;
+  }
 }
 
 bool BinaryLogIterator::nextCompressed(ReplayEvent& out)
@@ -1827,41 +2015,61 @@ bool BinaryLogIterator::nextCompressed(ReplayEvent& out)
     }
   }
 
-  // Parse next frame from decompressed block data
-  if (_block_offset >= _block_data.size())
+  for (;;)
   {
-    return false;  // Block exhausted (shouldn't happen)
+    // Parse next frame from decompressed block data
+    if (_block_offset + sizeof(FrameHeader) > _block_data.size())
+    {
+      return false;
+    }
+
+    FrameHeader frame;
+    std::memcpy(&frame, _block_data.data() + _block_offset, sizeof(frame));
+    _block_offset += sizeof(FrameHeader);
+
+    // Sanity check
+    if (frame.size > kMaxFrameBytes || _block_offset + frame.size > _block_data.size())
+    {
+      return false;
+    }
+
+    const std::byte* payload = _block_data.data() + _block_offset;
+    _block_offset += frame.size;
+    --_block_events_remaining;
+    _last_event_offset = _block_file_offset;
+
+    // Verify CRC
+    if (Crc32::compute(payload, frame.size) != frame.crc32)
+    {
+      ++_crc_errors;
+    }
+    else if (!isKnownEventType(frame.type))
+    {
+      ++_unknown_frames_skipped;
+    }
+    else if (parseFrame(static_cast<EventType>(frame.type), payload, frame.size, out))
+    {
+      return true;
+    }
+    else
+    {
+      ++_crc_errors;
+    }
+
+    // Skipped a frame: fall through to the next one in this block, or to the
+    // next block if this was the last.
+    while (_block_events_remaining == 0)
+    {
+      if (_stop_at_block_end)
+      {
+        return false;
+      }
+      if (!loadNextBlock())
+      {
+        return false;
+      }
+    }
   }
-
-  // Read frame header from block
-  if (_block_offset + sizeof(FrameHeader) > _block_data.size())
-  {
-    return false;
-  }
-
-  FrameHeader frame;
-  std::memcpy(&frame, _block_data.data() + _block_offset, sizeof(frame));
-  _block_offset += sizeof(FrameHeader);
-
-  // Sanity check
-  if (frame.size > 10 * 1024 * 1024 || _block_offset + frame.size > _block_data.size())
-  {
-    return false;
-  }
-
-  // Verify CRC
-  uint32_t computed_crc = Crc32::compute(_block_data.data() + _block_offset, frame.size);
-  if (computed_crc != frame.crc32)
-  {
-    return false;  // CRC mismatch
-  }
-
-  bool ok = parseFrame(static_cast<EventType>(frame.type), _block_data.data() + _block_offset,
-                       frame.size, out);
-  _block_offset += frame.size;
-  --_block_events_remaining;
-
-  return ok;
 }
 
 bool BinaryLogIterator::loadNextBlock()
@@ -1876,12 +2084,15 @@ bool BinaryLogIterator::loadNextBlock()
     }
   }
 
+  const long block_pos = std::ftell(_file);
+
   // Read compressed block header
   CompressedBlockHeader block_header;
   if (std::fread(&block_header, sizeof(block_header), 1, _file) != 1)
   {
     return false;  // EOF or error
   }
+  _block_file_offset = block_pos >= 0 ? static_cast<uint64_t>(block_pos) : 0;
 
   if (!block_header.isValid())
   {
@@ -2056,9 +2267,7 @@ bool BinaryLogIterator::seekToBlockOffset(uint64_t file_offset)
   // the new file position so worker-mode `next()` calls can proceed
   // without falling into the stop-at-block-end short-circuit (which
   // fires whenever `_block_events_remaining == 0`).
-  _block_data.clear();
-  _block_offset = 0;
-  _block_events_remaining = 0;
+  discardBlockState();
   return loadNextBlock();
 }
 
@@ -2117,7 +2326,17 @@ bool BinaryLogIterator::loadIndex()
 
 bool BinaryLogIterator::seekToTimestamp(int64_t target_ts_ns)
 {
-  if (!_file || _index_entries.empty())
+  if (!_file)
+  {
+    return false;
+  }
+  // hasIndex() answers from the header, so callers reach here without having
+  // called loadIndex(); load it on demand rather than refusing the seek.
+  if (_index_entries.empty() && !loadIndex())
+  {
+    return false;
+  }
+  if (_index_entries.empty())
   {
     return false;
   }
@@ -2134,6 +2353,7 @@ bool BinaryLogIterator::seekToTimestamp(int64_t target_ts_ns)
   {
     // All entries are > target, start from beginning
     std::fseek(_file, sizeof(SegmentHeader), SEEK_SET);
+    discardBlockState();
     return true;
   }
 
@@ -2145,7 +2365,20 @@ bool BinaryLogIterator::seekToTimestamp(int64_t target_ts_ns)
     return false;
   }
 
+  // A compressed segment keeps a decompressed block in memory. Moving the
+  // file cursor without dropping it made the next reads replay the tail of
+  // the block the iterator happened to be holding -- events from before the
+  // requested timestamp, delivered after the seek.
+  discardBlockState();
+
   return true;
+}
+
+void BinaryLogIterator::discardBlockState()
+{
+  _block_data.clear();
+  _block_offset = 0;
+  _block_events_remaining = 0;
 }
 
 }  // namespace flox::replay
