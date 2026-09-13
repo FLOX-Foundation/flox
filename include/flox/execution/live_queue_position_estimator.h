@@ -309,7 +309,11 @@ class LiveQueuePositionEstimator
     if (visibleTradeRaw > 0)
     {
       std::vector<std::pair<OrderId, Quantity>> filled;
-      _tracker.onTrade(symbol, price, Quantity::fromRaw(visibleTradeRaw), filled);
+      // The live feed here reports no aggressor side, which is why the
+      // attribution above already takes the conservative branch.
+      _tracker.onTradeAggressorUnknown(symbol, price,
+                                       Quantity::fromRaw(visibleTradeRaw), filled);
+      _tracker.compact();
       for (const auto& f : filled)
       {
         auto it = _orders.find(f.first);

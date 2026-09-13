@@ -90,7 +90,11 @@ A worked example (Python):
   unless a refresh latency is configured, in which case the next
   slice is exposed at `fill_time + latency` instead.
 - The refreshed slice goes to the **back** of the queue at that
-  price level by default (override via `set_iceberg_priority_mode`).
+  price level by default (override via `set_iceberg_priority_mode`):
+  whatever is still resting at the level sits in front of it, and it
+  waits its turn like any newly posted order. Under `retain` the slice
+  inherits the queue position the consumed one held and trades on the
+  next print.
 - Cancel cancels both the visible portion and the hidden remainder
   in one call.
 

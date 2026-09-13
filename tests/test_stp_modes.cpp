@@ -348,3 +348,120 @@ TEST(STPModes, DefaultAccountIdZeroPreservesLegacySemantics)
 
   EXPECT_EQ(cap.count(OrderEventStatus::REJECTED), 1u);
 }
+
+// Decrement shrinks the resting order. The queue tracker holds the size that
+// order can still trade, so it has to shrink with it -- otherwise the order
+// keeps trading the size it no longer has.
+TEST(STPModes, DecrementShrinksWhatTheOrderCanStillTrade)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::Decrement);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 100.0, 0.0, 101.0, 5.0);
+
+  exec.submitOrder(makeLimit(1, Side::BUY, 100.0, 10.0));
+  // Opposite 4 lots decrements the resting order from 10 to 6.
+  exec.submitOrder(makeLimit(2, Side::SELL, 100.0, 4.0));
+  EXPECT_EQ(cap.lastReject(), "stp_decrement_newest");
+
+  // A 30-lot print at our price can take at most the 6 lots that are left.
+  exec.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(30.0), false);
+
+  double filled = 0.0;
+  for (const auto& f : exec.fills())
+  {
+    filled += f.quantity.toDouble();
+  }
+  EXPECT_DOUBLE_EQ(filled, 6.0);
+}
+
+// When the incoming order matches the resting remainder exactly, the resting
+// order is left with nothing to trade. A venue pulls such an order; it must
+// not keep standing in the queue for its original size.
+TEST(STPModes, DecrementToZeroCancelsTheRestingOrder)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::Decrement);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 100.0, 0.0, 101.0, 5.0);
+
+  exec.submitOrder(makeLimit(1, Side::BUY, 100.0, 10.0));
+  exec.submitOrder(makeLimit(2, Side::SELL, 100.0, 10.0));
+
+  EXPECT_EQ(cap.count(OrderEventStatus::CANCELED), 1u);
+
+  exec.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(30.0), false);
+
+  double filled = 0.0;
+  for (const auto& f : exec.fills())
+  {
+    filled += f.quantity.toDouble();
+  }
+  EXPECT_DOUBLE_EQ(filled, 0.0);
+}
+
+// Self-trade prevention runs after the reduce-only check, the way the guide
+// describes it. An order the engine is about to reject on its own terms must
+// not get to touch anything already resting.
+TEST(STPModes, ARejectedReduceOnlyOrderLeavesTheRestingOrderAlone)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::CancelOldest);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 100.0, 0.0, 101.0, 5.0);
+
+  exec.submitOrder(makeLimit(1, Side::BUY, 100.0, 5.0));
+
+  // Flat position, so this reduce-only order reduces nothing and is rejected.
+  Order ro = makeLimit(2, Side::SELL, 100.0, 5.0);
+  ro.flags.reduceOnly = true;
+  exec.submitOrder(ro);
+
+  EXPECT_EQ(cap.lastReject(), "reduce_only");
+  EXPECT_EQ(cap.count(OrderEventStatus::CANCELED), 0u);
+
+  // The resting order survived and still trades.
+  exec.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(5.0), false);
+  ASSERT_EQ(exec.fills().size(), 1u);
+  EXPECT_EQ(exec.fills()[0].orderId, 1u);
+}
+
+TEST(STPModes, ARejectedReduceOnlyOrderDoesNotShrinkTheRestingOrder)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::TOB, 1);
+  exec.setSTPMode(STPMode::Decrement);
+  Cap cap;
+  exec.setOrderEventCallback([&](const OrderEvent& e)
+                             { cap.on(e); });
+  pushBook(exec, BTC, 100.0, 0.0, 101.0, 5.0);
+
+  exec.submitOrder(makeLimit(1, Side::BUY, 100.0, 5.0));
+
+  Order ro = makeLimit(2, Side::SELL, 100.0, 3.0);
+  ro.flags.reduceOnly = true;
+  exec.submitOrder(ro);
+
+  EXPECT_EQ(cap.lastReject(), "reduce_only");
+
+  exec.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(10.0), false);
+  double filled = 0.0;
+  for (const auto& f : exec.fills())
+  {
+    filled += f.quantity.toDouble();
+  }
+  EXPECT_DOUBLE_EQ(filled, 5.0);
+}

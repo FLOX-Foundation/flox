@@ -26,6 +26,11 @@ Non-fill statuses always report `is_maker = false` / `fillRole = null`.
   the crossed fill as taker and any subsequent queue-consumption
   fills as maker.
 
+This holds in every queue model, `none` included. Under `none` the
+resting order fills as soon as the opposite touch crosses its price,
+without a modelled queue in front of it, and that fill is still a
+maker fill at the price the order posted.
+
 ## Use in a fee model
 
 === "Python"

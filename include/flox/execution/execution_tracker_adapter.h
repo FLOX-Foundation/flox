@@ -59,6 +59,18 @@ class ExecutionTrackerAdapter : public ISubsystem, public IOrderExecutionListene
     }
   }
 
+  // The latency tracker behind this adapter measures timing, not price, so
+  // both fill forms land in the same place.
+  void onOrderPartiallyFilled(const Order& order, Quantity qty, Price) override
+  {
+    onOrderPartiallyFilled(order, qty);
+  }
+
+  void onOrderFilled(const Order& order, Quantity, Price) override
+  {
+    onOrderFilled(order);
+  }
+
   void onOrderCanceled(const Order& order) override
   {
     if (_tracker)

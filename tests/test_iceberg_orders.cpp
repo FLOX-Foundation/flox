@@ -41,6 +41,27 @@ void wire(SimulatedExecutor& ex, Capture& cap)
   ex.setOrderEventCallback([&](const OrderEvent& ev)
                            { cap.events.push_back(ev); });
 }
+
+void pushBook(SimulatedExecutor& ex, double bid, double bidQty, double ask,
+              double askQty)
+{
+  std::pmr::monotonic_buffer_resource pool(512);
+  std::pmr::vector<BookLevel> bids(&pool);
+  std::pmr::vector<BookLevel> asks(&pool);
+  bids.emplace_back(Price::fromDouble(bid), Quantity::fromDouble(bidQty));
+  asks.emplace_back(Price::fromDouble(ask), Quantity::fromDouble(askQty));
+  ex.onBookUpdate(BTC, bids, asks);
+}
+
+double filledTotal(const SimulatedExecutor& ex)
+{
+  double total = 0.0;
+  for (const auto& f : ex.fills())
+  {
+    total += f.quantity.toDouble();
+  }
+  return total;
+}
 }  // namespace
 
 TEST(IcebergOrders, VisibleSliceFillsThenRefreshesAtomically)
@@ -223,4 +244,84 @@ TEST(IcebergOrders, PriorityModeByNameAcceptsBackAndRetain)
   ex.setIcebergPriorityModeByName("garbage");
   EXPECT_EQ(ex.icebergPriorityMode(),
             SimulatedExecutor::IcebergPriorityMode::Back);
+}
+
+// Back is the default and the crypto-venue behaviour: a refreshed tranche
+// queues behind everything already resting at the level, so it waits its turn.
+TEST(IcebergOrders, BackModeSendsTheRefreshedTrancheBehindTheLevel)
+{
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  ex.setQueueModel(QueueModel::TOB, 1);
+  ex.setIcebergPriorityMode(SimulatedExecutor::IcebergPriorityMode::Back);
+  Capture cap;
+  wire(ex, cap);
+
+  // We arrive first, with nothing ahead of us.
+  pushBook(ex, 100.0, 0.0, 101.0, 5.0);
+  ex.submitOrder(makeIceberg(1, Side::BUY, 100.0, 10.0, 2.0));
+
+  // 40 lots join the level behind us.
+  pushBook(ex, 100.0, 40.0, 101.0, 5.0);
+
+  // Our visible tranche fills; 38 lots are still resting at the level.
+  ex.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(2.0), false);
+  ASSERT_DOUBLE_EQ(filledTotal(ex), 2.0);
+
+  // The refreshed tranche is behind those 38 lots, so small prints do not
+  // reach it.
+  for (int i = 0; i < 10; ++i)
+  {
+    ex.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(1.0), false);
+  }
+  EXPECT_DOUBLE_EQ(filledTotal(ex), 2.0);
+
+  // Once the queue ahead is gone, it trades.
+  ex.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(30.0), false);
+  EXPECT_GT(filledTotal(ex), 2.0);
+}
+
+// Retain is the CME-style behaviour: the refreshed tranche keeps the queue
+// position the consumed one had, so it trades on the next print.
+TEST(IcebergOrders, RetainModeKeepsTheTranchesQueuePosition)
+{
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  ex.setQueueModel(QueueModel::TOB, 1);
+  ex.setIcebergPriorityMode(SimulatedExecutor::IcebergPriorityMode::Retain);
+  Capture cap;
+  wire(ex, cap);
+
+  pushBook(ex, 100.0, 0.0, 101.0, 5.0);
+  ex.submitOrder(makeIceberg(1, Side::BUY, 100.0, 10.0, 2.0));
+  pushBook(ex, 100.0, 40.0, 101.0, 5.0);
+
+  ex.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(2.0), false);
+  ASSERT_DOUBLE_EQ(filledTotal(ex), 2.0);
+
+  ex.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(1.0), false);
+  EXPECT_DOUBLE_EQ(filledTotal(ex), 3.0);
+}
+
+// Whatever the priority mode, the hidden remainder has to keep reaching the
+// book. An iceberg that stops refreshing silently stops trading.
+TEST(IcebergOrders, RetainModeFillsTheWholeOrderOverSuccessivePrints)
+{
+  SimulatedClock clock;
+  SimulatedExecutor ex(clock);
+  ex.setQueueModel(QueueModel::TOB, 1);
+  ex.setIcebergPriorityMode(SimulatedExecutor::IcebergPriorityMode::Retain);
+  Capture cap;
+  wire(ex, cap);
+
+  pushBook(ex, 100.0, 0.0, 101.0, 5.0);
+  ex.submitOrder(makeIceberg(1, Side::BUY, 100.0, 10.0, 2.0));
+
+  for (int i = 0; i < 250; ++i)
+  {
+    ex.onTrade(BTC, Price::fromDouble(100.0), Quantity::fromDouble(2.0), false);
+  }
+
+  EXPECT_DOUBLE_EQ(filledTotal(ex), 10.0);
+  EXPECT_EQ(ex.icebergHiddenRemainingRaw(1), 0);
 }

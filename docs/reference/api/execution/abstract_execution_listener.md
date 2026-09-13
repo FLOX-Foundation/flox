@@ -15,6 +15,13 @@ public:
   virtual void onOrderAccepted(const Order& order) {}
   virtual void onOrderPartiallyFilled(const Order& order, Quantity fillQty) {}
   virtual void onOrderFilled(const Order& order) {}
+
+  // Fill events that carry the price the fill happened at. The dispatcher
+  // calls these; the defaults forward to the plain forms above.
+  virtual void onOrderPartiallyFilled(const Order& order, Quantity fillQty,
+                                      Price fillPrice);
+  virtual void onOrderFilled(const Order& order, Quantity fillQty, Price fillPrice);
+
   virtual void onOrderPendingCancel(const Order& order) {}
   virtual void onOrderCanceled(const Order& order) {}
   virtual void onOrderExpired(const Order& order) {}
@@ -63,6 +70,8 @@ virtuals are listed here; missing one silently drops those events rather than fa
 | `onOrderAccepted`        | Order acknowledged/accepted by the exchange.       |
 | `onOrderPartiallyFilled` | Partial fill received; includes fill quantity.     |
 | `onOrderFilled`          | Fully filled.                                      |
+| `onOrderPartiallyFilled` (3-arg) | Same, plus the price the fill happened at. |
+| `onOrderFilled` (3-arg)  | Same, plus fill quantity and fill price.           |
 | `onOrderPendingCancel`   | Cancel request sent, waiting for confirmation.     |
 | `onOrderCanceled`        | Canceled by user or system.                        |
 | `onOrderExpired`         | Expired due to time-in-force or system conditions. |

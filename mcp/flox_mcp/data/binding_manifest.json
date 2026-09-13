@@ -18776,11 +18776,6 @@
         },
         {
           "kind": "method",
-          "name": "compact",
-          "parent": "Level"
-        },
-        {
-          "kind": "method",
           "name": "currentPeriod",
           "parent": "Level"
         },
@@ -18847,6 +18842,11 @@
         {
           "kind": "method",
           "name": "lowPrice",
+          "parent": "Level"
+        },
+        {
+          "kind": "method",
+          "name": "matchTrade",
           "parent": "Level"
         },
         {
@@ -19557,6 +19557,11 @@
         {
           "kind": "method",
           "name": "processPendingOrders",
+          "parent": "MarketState"
+        },
+        {
+          "kind": "method",
+          "name": "removePendingOrder",
           "parent": "MarketState"
         },
         {
@@ -20501,6 +20506,11 @@
         },
         {
           "kind": "method",
+          "name": "compact",
+          "parent": "OrderQueueTracker"
+        },
+        {
+          "kind": "method",
           "name": "enabled",
           "parent": "OrderQueueTracker"
         },
@@ -20531,12 +20541,27 @@
         },
         {
           "kind": "method",
+          "name": "onTradeAggressorUnknown",
+          "parent": "OrderQueueTracker"
+        },
+        {
+          "kind": "method",
           "name": "orderPriorityMultiplier",
           "parent": "OrderQueueTracker"
         },
         {
           "kind": "method",
+          "name": "refreshOrder",
+          "parent": "OrderQueueTracker"
+        },
+        {
+          "kind": "method",
           "name": "removeOrder",
+          "parent": "OrderQueueTracker"
+        },
+        {
+          "kind": "method",
+          "name": "resizeOrder",
           "parent": "OrderQueueTracker"
         },
         {

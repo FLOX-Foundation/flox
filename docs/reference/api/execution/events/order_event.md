@@ -171,8 +171,8 @@ Routes the event to the appropriate method:
 |--------------------|----------------------------------------------|
 | `SUBMITTED`        | `onOrderSubmitted(order)`                    |
 | `ACCEPTED`         | `onOrderAccepted(order)`                     |
-| `PARTIALLY_FILLED` | `onOrderPartiallyFilled(order, fillQty)`     |
-| `FILLED`           | `onOrderFilled(order)`                       |
+| `PARTIALLY_FILLED` | `onOrderPartiallyFilled(order, fillQty, fillPrice)` |
+| `FILLED`           | `onOrderFilled(order, fillQty, fillPrice)`   |
 | `PENDING_CANCEL`   | `onOrderPendingCancel(order)`                |
 | `CANCELED`         | `onOrderCanceled(order)`                     |
 | `EXPIRED`          | `onOrderExpired(order)`                      |
