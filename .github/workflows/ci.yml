@@ -554,7 +554,9 @@ jobs:
               -DFLOX_BUILD_BENCHMARKS=OFF \
               -DFLOX_BUILD_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON
+              -DFLOX_ENABLE_BACKTEST=ON \
+              -DFLOX_BUILD_CAPI=ON \
+              -DFLOX_BUILD_QUICKJS=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
