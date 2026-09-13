@@ -93,12 +93,19 @@ inline void bindDeltaBook(py::module_& m)
             py::dict result;
             result["bids"] = levelsToList(snap.bids);
             result["asks"] = levelsToList(snap.asks);
+            result["anchored"] = snap.anchored;
             return result;
           },
           py::arg("type"), py::arg("symbol_id"),
           py::arg("bids"), py::arg("asks"),
-          "Apply one event. type=0 snapshot, type=1 delta. Returns "
-          "the reconstructed full snapshot for the symbol.")
+          "Apply one event. type=0 snapshot, type=1 delta. Returns the "
+          "reconstructed full snapshot for the symbol, with 'anchored' False "
+          "when no snapshot has been seen yet -- in which case the delta is "
+          "refused and the level lists come back empty, because merging it "
+          "into nothing would produce a book missing everything before the "
+          "entry point.")
+      .def("anchored", &DeltaBookReplayer::anchored, py::arg("symbol_id"),
+           "Whether this symbol has seen a snapshot and is tracking a complete book.")
       .def("reset", &DeltaBookReplayer::reset, py::arg("symbol_id"))
       .def("reset_all", &DeltaBookReplayer::resetAll);
 }

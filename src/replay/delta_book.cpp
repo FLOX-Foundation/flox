@@ -132,6 +132,7 @@ DeltaBookReplayer::Snapshot DeltaBookReplayer::apply(uint8_t type, uint32_t symb
   auto& state = _state[symbol_id];
   if (type == 0)
   {
+    state.anchored = true;
     state.bid_levels.clear();
     state.ask_levels.clear();
     for (const auto& l : bids)
@@ -148,6 +149,13 @@ DeltaBookReplayer::Snapshot DeltaBookReplayer::apply(uint8_t type, uint32_t symb
         state.ask_levels[l.price_raw] = l.qty_raw;
       }
     }
+  }
+  else if (!state.anchored)
+  {
+    // Nothing to merge into. Reporting the delta's own levels as the book would
+    // hand the caller a fabricated snapshot: every level that existed before the
+    // entry point is missing, and nothing in the result says so.
+    return Snapshot{};
   }
   else
   {
@@ -170,9 +178,16 @@ DeltaBookReplayer::Snapshot DeltaBookReplayer::apply(uint8_t type, uint32_t symb
   }
 
   Snapshot s;
+  s.anchored = true;
   s.bids = dumpSide(state.bid_levels, /*descending=*/true);
   s.asks = dumpSide(state.ask_levels, /*descending=*/false);
   return s;
+}
+
+bool DeltaBookReplayer::anchored(uint32_t symbol_id) const
+{
+  auto it = _state.find(symbol_id);
+  return it != _state.end() && it->second.anchored;
 }
 
 void DeltaBookReplayer::reset(uint32_t symbol_id) { _state.erase(symbol_id); }

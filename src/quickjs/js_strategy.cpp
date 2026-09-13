@@ -106,7 +106,11 @@ void FloxJsStrategy::loadStdlib()
     var __flox_registered_strategy = null;
 
     class OrderBook {
-      constructor(tickSize) { this._h = __flox_book_create(tickSize || 0.01); }
+      // An omitted tick size defaults; an explicit 0 is an error and has to
+      // reach the book, which rejects it. `||` turned it into 0.01 instead.
+      constructor(tickSize) {
+        this._h = __flox_book_create(tickSize === undefined ? 0.01 : tickSize);
+      }
       destroy() { __flox_book_destroy(this._h); }
       applySnapshot(bidPrices, bidQtys, askPrices, askQtys) {
         __flox_book_apply_snapshot(this._h, bidPrices, bidQtys, askPrices, askQtys);

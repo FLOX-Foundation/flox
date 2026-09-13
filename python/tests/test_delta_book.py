@@ -124,5 +124,54 @@ class ReplayerTests(unittest.TestCase):
                         f"delta {delta_levels} vs snap {snap_levels}")
 
 
+class AnchorTests(unittest.TestCase):
+    """Seeking into the middle of a tape hands the replayer a delta with no
+    anchor behind it. Merging that into empty state produces a book missing
+    everything before the entry point, so the delta is refused instead."""
+
+    def test_delta_before_any_anchor_is_refused(self) -> None:
+        rep = flox_py.DeltaBookReplayer()
+
+        out = rep.apply(1, 7, [_level(10000, 5)], [_level(10001, 3)])
+
+        self.assertFalse(out["anchored"])
+        self.assertEqual(out["bids"], [])
+        self.assertEqual(out["asks"], [])
+        self.assertFalse(rep.anchored(7))
+
+    def test_anchor_recovers_after_refused_deltas(self) -> None:
+        rep = flox_py.DeltaBookReplayer()
+        rep.apply(1, 7, [_level(10000, 5)], [_level(10001, 3)])
+
+        out = rep.apply(0, 7, [_level(20000, 4)], [_level(20001, 6)])
+        self.assertTrue(out["anchored"])
+        self.assertEqual(_normalize(out["bids"]), [(20000, 4)])
+        self.assertTrue(rep.anchored(7))
+
+        merged = rep.apply(1, 7, [_level(19999, 1)], [])
+        self.assertTrue(merged["anchored"])
+        self.assertEqual(len(merged["bids"]), 2)
+
+    def test_reset_drops_the_anchor(self) -> None:
+        rep = flox_py.DeltaBookReplayer()
+        rep.apply(0, 3, [_level(10000, 5)], [_level(10001, 3)])
+        self.assertTrue(rep.anchored(3))
+
+        rep.reset(3)
+        self.assertFalse(rep.anchored(3))
+        self.assertFalse(rep.apply(1, 3, [_level(9999, 1)], [])["anchored"])
+
+        rep.apply(0, 3, [_level(10000, 5)], [])
+        rep.reset_all()
+        self.assertFalse(rep.anchored(3))
+
+    def test_symbols_anchor_independently(self) -> None:
+        rep = flox_py.DeltaBookReplayer()
+        rep.apply(0, 1, [_level(10000, 5)], [_level(10001, 3)])
+
+        self.assertTrue(rep.apply(1, 1, [_level(9999, 2)], [])["anchored"])
+        self.assertFalse(rep.apply(1, 2, [_level(9999, 2)], [])["anchored"])
+
+
 if __name__ == "__main__":
     unittest.main()

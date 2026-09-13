@@ -1221,7 +1221,12 @@ STREAMING_FIELD(volume)
 
 static JSValue js_book_create(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
-  return createHandleObject(ctx, flox_book_create(toDouble(ctx, argv[0])));
+  auto h = flox_book_create(toDouble(ctx, argv[0]));
+  if (!h)
+  {
+    return JS_ThrowRangeError(ctx, "book_create: tick size must be positive");
+  }
+  return createHandleObject(ctx, h);
 }
 static JSValue js_book_destroy(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {

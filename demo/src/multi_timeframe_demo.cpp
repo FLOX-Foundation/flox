@@ -28,6 +28,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <random>
 
 using namespace flox;
@@ -139,16 +140,17 @@ int main()
   aggregator.addTimeInterval(std::chrono::seconds(300));   // M5
   aggregator.addTimeInterval(std::chrono::seconds(3600));  // H1
 
-  // Create bar matrix to store history
-  BarMatrix<256, 4, 64> matrix;
+  // Create bar matrix to store history. It holds 256 x 4 x 64 bars, which is
+  // megabytes, so it goes on the heap rather than this frame.
+  auto matrix = std::make_unique<BarMatrix<256, 4, 64>>();
   std::array<TimeframeId, 3> timeframes = {timeframe::M1, timeframe::M5, timeframe::H1};
-  matrix.configure(timeframes);
+  matrix->configure(timeframes);
 
   // Create strategy
-  MTFMomentumStrategy<256, 4, 64> strategy(SYMBOL, &matrix);
+  MTFMomentumStrategy<256, 4, 64> strategy(SYMBOL, matrix.get());
 
   // Subscribe to bar events
-  bus.subscribe(&matrix);
+  bus.subscribe(matrix.get());
   bus.subscribe(&strategy);
 
   // Start components
@@ -190,11 +192,11 @@ int main()
   strategy.printStats();
 
   std::cout << "\nBar matrix status:" << std::endl;
-  std::cout << "  M1 bars: " << (matrix.bar(SYMBOL, timeframe::M1, 0) ? "available" : "none")
+  std::cout << "  M1 bars: " << (matrix->bar(SYMBOL, timeframe::M1, 0) ? "available" : "none")
             << std::endl;
-  std::cout << "  M5 bars: " << (matrix.bar(SYMBOL, timeframe::M5, 0) ? "available" : "none")
+  std::cout << "  M5 bars: " << (matrix->bar(SYMBOL, timeframe::M5, 0) ? "available" : "none")
             << std::endl;
-  std::cout << "  H1 bars: " << (matrix.bar(SYMBOL, timeframe::H1, 0) ? "available" : "none")
+  std::cout << "  H1 bars: " << (matrix->bar(SYMBOL, timeframe::H1, 0) ? "available" : "none")
             << std::endl;
 
   return 0;

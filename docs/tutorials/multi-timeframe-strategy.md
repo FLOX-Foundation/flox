@@ -40,6 +40,7 @@ Create a new file `my_mtf_strategy.cpp`:
 #include "flox/engine/abstract_market_data_subscriber.h"
 
 #include <iostream>
+#include <memory>
 
 using namespace flox;
 ```
@@ -150,20 +151,21 @@ int main()
   aggregator.addTimeInterval(std::chrono::seconds(300));   // M5
   aggregator.addTimeInterval(std::chrono::seconds(3600));  // H1
 
-  // 3. Create bar matrix for history storage
-  BarMatrix<256, 4, 64> matrix;
+  // 3. Create bar matrix for history storage. 256 x 4 x 64 bars is several
+  //    megabytes, so it goes on the heap rather than this frame.
+  auto matrix = std::make_unique<BarMatrix<256, 4, 64>>();
   std::array<TimeframeId, 3> timeframes = {
     timeframe::M1,
     timeframe::M5,
     timeframe::H1
   };
-  matrix.configure(timeframes);
+  matrix->configure(timeframes);
 
   // 4. Create strategy
-  MTFMomentumStrategy strategy(SYMBOL, &matrix);
+  MTFMomentumStrategy strategy(SYMBOL, matrix.get());
 
   // 5. Subscribe to bar events
-  bus.subscribe(&matrix);    // Matrix stores bars
+  bus.subscribe(matrix.get());  // Matrix stores bars
   bus.subscribe(&strategy);  // Strategy receives bars
 
   // 6. Start components

@@ -188,28 +188,37 @@ for (const auto& bar : series) {
 
 `BarMatrix` provides O(1) access to bar history across symbols and timeframes:
 
+A matrix holds `MaxSymbols * MaxTimeframes * Depth` bars, which is megabytes for
+any realistic configuration and about 40 MB with the default template
+arguments. Put it on the heap; a local declaration overflows the stack before
+the first line of the function body runs, and no compiler diagnostic warns
+about it. `BarMatrix<...>::kStorageBytes` gives the figure if you need it for a
+budget of your own, and an instantiation past `FLOX_BAR_MATRIX_MAX_BYTES`
+(256 MB by default) is a compile error.
+
 ```cpp
-BarMatrix<256, 8, 64> matrix;  // 256 symbols, 8 timeframes, 64 bars depth
+// 256 symbols, 8 timeframes, 64 bars depth
+auto matrix = std::make_unique<BarMatrix<256, 8, 64>>();
 
 std::array<TimeframeId, 3> tfs = {timeframe::M1, timeframe::M5, timeframe::H1};
-matrix.configure(tfs);
+matrix->configure(tfs);
 
 // Subscribe to receive bars
-bus.subscribe(&matrix);
+bus.subscribe(matrix.get());
 
 // Access: matrix[symbol][timeframe][index]
-const Bar* bar = matrix.bar(symbolId, timeframe::H1, 0);  // Latest H1 bar
-const Bar* prev = matrix.bar(symbolId, timeframe::H1, 1); // Previous H1 bar
+const Bar* bar = matrix->bar(symbolId, timeframe::H1, 0);  // Latest H1 bar
+const Bar* prev = matrix->bar(symbolId, timeframe::H1, 1); // Previous H1 bar
 
 // Or by timeframe index
-const Bar* bar = matrix.bar(symbolId, 0, 0);  // First configured timeframe
+const Bar* bar = matrix->bar(symbolId, 0, 0);  // First configured timeframe
 ```
 
 ### Warmup with Historical Data
 
 ```cpp
 std::vector<Bar> historicalBars = loadFromDatabase();
-matrix.warmup(symbolId, timeframe::H1, historicalBars);
+matrix->warmup(symbolId, timeframe::H1, historicalBars);
 ```
 
 ## TimeframeId

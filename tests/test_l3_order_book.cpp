@@ -425,3 +425,89 @@ TEST(L3OrderBookTest, BuildFromSnapShot)
 
   ASSERT_TRUE(cmp(snap, bookSnap));
 }
+
+// The best-price cache was invalidated when the cached level emptied, but the
+// next add then claimed the cache for whatever price it carried -- including a
+// worse one -- while better levels were still resting in the book. A read
+// between the remove and the add hid it, so batched L3 event replay is where
+// this surfaces.
+TEST(L3OrderBookTest, BestBidSurvivesRemoveThenWorseAdd)
+{
+  L3OrderBook<16> book;
+
+  book.addOrder(OrderId{1}, Price::fromDouble(100.0), Quantity::fromDouble(1.0), Side::BUY);
+  book.addOrder(OrderId{2}, Price::fromDouble(99.0), Quantity::fromDouble(1.0), Side::BUY);
+  ASSERT_EQ(*book.bestBid(), Price::fromDouble(100.0));
+
+  book.removeOrder(OrderId{1});
+  book.addOrder(OrderId{3}, Price::fromDouble(98.0), Quantity::fromDouble(1.0), Side::BUY);
+
+  EXPECT_EQ(*book.bestBid(), Price::fromDouble(99.0));
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(99.0)), Quantity::fromDouble(1.0));
+}
+
+TEST(L3OrderBookTest, BestAskSurvivesRemoveThenWorseAdd)
+{
+  L3OrderBook<16> book;
+
+  book.addOrder(OrderId{1}, Price::fromDouble(101.0), Quantity::fromDouble(1.0), Side::SELL);
+  book.addOrder(OrderId{2}, Price::fromDouble(102.0), Quantity::fromDouble(1.0), Side::SELL);
+  ASSERT_EQ(*book.bestAsk(), Price::fromDouble(101.0));
+
+  book.removeOrder(OrderId{1});
+  book.addOrder(OrderId{3}, Price::fromDouble(103.0), Quantity::fromDouble(1.0), Side::SELL);
+
+  EXPECT_EQ(*book.bestAsk(), Price::fromDouble(102.0));
+}
+
+TEST(L3OrderBookTest, SpreadSurvivesBatchedRemoveThenWorseAdd)
+{
+  L3OrderBook<16> book;
+
+  book.addOrder(OrderId{1}, Price::fromDouble(100.0), Quantity::fromDouble(1.0), Side::BUY);
+  book.addOrder(OrderId{2}, Price::fromDouble(99.0), Quantity::fromDouble(1.0), Side::BUY);
+  book.addOrder(OrderId{3}, Price::fromDouble(101.0), Quantity::fromDouble(1.0), Side::SELL);
+  book.addOrder(OrderId{4}, Price::fromDouble(102.0), Quantity::fromDouble(1.0), Side::SELL);
+  ASSERT_EQ(*book.bestBid(), Price::fromDouble(100.0));
+  ASSERT_EQ(*book.bestAsk(), Price::fromDouble(101.0));
+
+  book.removeOrder(OrderId{1});
+  book.removeOrder(OrderId{3});
+  book.addOrder(OrderId{5}, Price::fromDouble(98.0), Quantity::fromDouble(1.0), Side::BUY);
+  book.addOrder(OrderId{6}, Price::fromDouble(103.0), Quantity::fromDouble(1.0), Side::SELL);
+
+  const auto spread = book.bestAsk()->toDouble() - book.bestBid()->toDouble();
+  EXPECT_NEAR(spread, 3.0, 1e-9);
+}
+
+// A chain of remove-then-worse-add left the cache stuck on the worst price for
+// as long as that level stayed populated.
+TEST(L3OrderBookTest, BestAskDoesNotStickAfterRepeatedWorseAdds)
+{
+  L3OrderBook<16> book;
+
+  book.addOrder(OrderId{1}, Price::fromDouble(101.0), Quantity::fromDouble(1.0), Side::SELL);
+  book.addOrder(OrderId{2}, Price::fromDouble(102.0), Quantity::fromDouble(1.0), Side::SELL);
+  ASSERT_EQ(*book.bestAsk(), Price::fromDouble(101.0));
+
+  book.removeOrder(OrderId{2});
+  book.addOrder(OrderId{3}, Price::fromDouble(104.0), Quantity::fromDouble(1.0), Side::SELL);
+  book.addOrder(OrderId{4}, Price::fromDouble(105.0), Quantity::fromDouble(1.0), Side::SELL);
+
+  EXPECT_EQ(*book.bestAsk(), Price::fromDouble(101.0));
+}
+
+TEST(L3OrderBookTest, EmptySideReportsNoBest)
+{
+  L3OrderBook<16> book;
+
+  book.addOrder(OrderId{1}, Price::fromDouble(100.0), Quantity::fromDouble(1.0), Side::BUY);
+  ASSERT_TRUE(book.bestBid().has_value());
+
+  book.removeOrder(OrderId{1});
+  EXPECT_FALSE(book.bestBid().has_value());
+  EXPECT_FALSE(book.bestAsk().has_value());
+
+  book.addOrder(OrderId{2}, Price::fromDouble(97.0), Quantity::fromDouble(1.0), Side::BUY);
+  EXPECT_EQ(*book.bestBid(), Price::fromDouble(97.0));
+}

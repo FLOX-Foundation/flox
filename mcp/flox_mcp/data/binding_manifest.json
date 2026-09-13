@@ -17066,6 +17066,11 @@
         },
         {
           "kind": "method",
+          "name": "countr_zero",
+          "parent": "FastDiv64"
+        },
+        {
+          "kind": "method",
           "name": "addTier",
           "parent": "FeeSchedule"
         },
@@ -21776,6 +21781,16 @@
         },
         {
           "kind": "method",
+          "name": "normalizeLowerBound",
+          "parent": "PriceLevel"
+        },
+        {
+          "kind": "method",
+          "name": "normalizeUpperBound",
+          "parent": "PriceLevel"
+        },
+        {
+          "kind": "method",
           "name": "prevNonZeroAsk",
           "parent": "PriceLevel"
         },
@@ -21791,7 +21806,17 @@
         },
         {
           "kind": "method",
+          "name": "reanchorForDelta",
+          "parent": "PriceLevel"
+        },
+        {
+          "kind": "method",
           "name": "reanchorWithData",
+          "parent": "PriceLevel"
+        },
+        {
+          "kind": "method",
+          "name": "shiftLadder",
           "parent": "PriceLevel"
         },
         {
@@ -23353,6 +23378,11 @@
           "kind": "method",
           "name": "wordsFor",
           "parent": "Slot"
+        },
+        {
+          "kind": "method",
+          "name": "anchored",
+          "parent": "Snapshot"
         },
         {
           "kind": "method",
@@ -33434,6 +33464,11 @@
           "kind": "method",
           "name": "reset_all",
           "parent": "DeltaBookEncoder"
+        },
+        {
+          "kind": "method",
+          "name": "anchored",
+          "parent": "DeltaBookReplayer"
         },
         {
           "kind": "method",

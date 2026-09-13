@@ -19,6 +19,7 @@
 #include "flox/common.h"
 #include "flox/util/base/math.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -26,6 +27,7 @@
 #include <iomanip>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <type_traits>
 
 namespace flox
@@ -37,9 +39,18 @@ class NLevelOrderBook : public IOrderBook
  public:
   static constexpr size_t MAX_LEVELS = MaxLevels;
 
+  // The tick size arrives from instrument configuration and from every binding,
+  // so a bad one is bad input rather than a programmer error and is rejected
+  // here. A zero tick used to divide by zero while building the reciprocal and
+  // leave a book that answered "one tick" for every price and a price of zero
+  // for every index, for the rest of its life and without a single diagnostic.
   explicit NLevelOrderBook(Price tickSize)
       : _tickSize(tickSize)
   {
+    if (_tickSize.raw() <= 0)
+    {
+      throw std::invalid_argument("NLevelOrderBook: tick size must be positive");
+    }
     _tickSizeDiv = math::make_fastdiv64((uint64_t)_tickSize.raw(), 1);
     clear();
   }
@@ -78,7 +89,7 @@ class NLevelOrderBook : public IOrderBook
       return std::nullopt;
     }
 
-    for (size_t i = _maxBid + 1; i-- > _minBid;)
+    for (size_t i = normalizeUpperBound(_maxBid) + 1; i-- > _minBid;)
     {
       if (!_bids[i].isZero())
       {
@@ -328,6 +339,10 @@ class NLevelOrderBook : public IOrderBook
       _bestBidIdx = _bestAskIdx = MAX_LEVELS;
       _bestBidTick = _bestAskTick = -1;
     }
+    else
+    {
+      reanchorForDelta(up);
+    }
 
     for (const auto& [p, q] : up.bids)
     {
@@ -376,7 +391,7 @@ class NLevelOrderBook : public IOrderBook
         }
         if (i == _maxBid)
         {
-          _maxBid = prevNonZeroBid(_maxBid);
+          _maxBid = normalizeUpperBound(prevNonZeroBid(_maxBid));
         }
       }
     }
@@ -428,7 +443,7 @@ class NLevelOrderBook : public IOrderBook
         }
         if (i == _maxAsk)
         {
-          _maxAsk = prevNonZeroAsk(_maxAsk);
+          _maxAsk = normalizeUpperBound(prevNonZeroAsk(_maxAsk));
         }
       }
     }
@@ -479,7 +494,7 @@ class NLevelOrderBook : public IOrderBook
     __int128_t notionalRaw2 = 0;
 
     size_t i = _bestAskIdx;
-    const size_t hi = _maxAsk;
+    const size_t hi = normalizeUpperBound(_maxAsk);
     const int64_t ts = _tickSize.raw();
     int64_t tickNum = _baseIndex + static_cast<int64_t>(i);
 
@@ -504,7 +519,7 @@ class NLevelOrderBook : public IOrderBook
     Volume notional{};
 
     size_t i = _bestAskIdx;
-    const size_t hi = _maxAsk;
+    const size_t hi = normalizeUpperBound(_maxAsk);
     int64_t tickNum = _baseIndex + static_cast<int64_t>(i);
 
     for (; i <= hi && remaining.raw() > 0; ++i, ++tickNum)
@@ -538,7 +553,7 @@ class NLevelOrderBook : public IOrderBook
     __int128_t notionalRaw2 = 0;
 
     size_t i = _bestBidIdx;
-    const size_t lo = _minBid;
+    const size_t lo = normalizeLowerBound(_minBid);
     const int64_t ts = _tickSize.raw();
     int64_t tickNum = _baseIndex + static_cast<int64_t>(i);
 
@@ -573,7 +588,7 @@ class NLevelOrderBook : public IOrderBook
     Volume notional{};
 
     size_t i = _bestBidIdx;
-    const size_t lo = _minBid;
+    const size_t lo = normalizeLowerBound(_minBid);
     int64_t tickNum = _baseIndex + static_cast<int64_t>(i);
 
     for (;;)
@@ -631,12 +646,16 @@ class NLevelOrderBook : public IOrderBook
     {
       return std::nullopt;
     }
-    // Multiply by half-tick to avoid precision loss from integer division
-    // midPrice = tickSize * (bidTick + askTick) / 2
-    //          = (tickSize / 2) * (bidTick + askTick)
-    const int64_t halfTick = _tickSize.raw() / 2;
-    const int64_t midTick2 = _bestBidTick + _bestAskTick;
-    return Price::fromRaw(halfTick * midTick2);
+    // midPrice = tickSize * (bidTick + askTick) / 2. Halving the tick first
+    // threw away half a tick on every odd raw tick size and then multiplied the
+    // loss by the tick index: 20% low at a raw tick of 5, 33% at 3, zero at 1.
+    // Halve the tick *sum* instead, so the division runs once and only an odd
+    // sum can cost anything, and at most half a raw unit.
+    const int64_t tick = _tickSize.raw();
+    const int64_t tickSum = _bestBidTick + _bestAskTick;
+    const int64_t wholeTicks = tickSum / 2;
+    const int64_t oddTick = tickSum - wholeTicks * 2;
+    return Price::fromRaw(tick * wholeTicks + (tick * oddTick) / 2);
   }
 
   struct PriceLevel
@@ -699,6 +718,20 @@ class NLevelOrderBook : public IOrderBook
   }
 
  private:
+  // prevNonZeroBid / prevNonZeroAsk report "nothing found" as MAX_LEVELS, which
+  // is the empty marker for the *lower* bounds but a one-past-the-end index for
+  // the upper ones. Storing it unchanged in _maxAsk let the next consume walk to
+  // _asks[MAX_LEVELS]; clear() uses 0 for an empty upper bound, so match that.
+  static constexpr size_t normalizeUpperBound(size_t idx)
+  {
+    return idx < MAX_LEVELS ? idx : 0;
+  }
+
+  static constexpr size_t normalizeLowerBound(size_t idx)
+  {
+    return idx < MAX_LEVELS ? idx : 0;
+  }
+
   int64_t ticks(Price p) const
   {
     const int64_t pr = p.raw();
@@ -743,6 +776,69 @@ class NLevelOrderBook : public IOrderBook
     }
   }
 
+  // A delta feed re-sends a snapshot only on connect and on a sequence gap, so
+  // between the two the tick window has to follow the market itself. Levels
+  // landing outside it used to be dropped with no signal at all: about $25 of
+  // BTC movement emptied one side of a 512-level book and $30 emptied both,
+  // with no recovery short of a reconnect. The usable range is half the level
+  // count, not all of it, because re-anchoring centres the window on the market.
+  //
+  // The window moves only when everything already in the book still fits
+  // alongside the new level. That keeps one far-off quote -- a stale price, a
+  // fat finger, a venue placeholder -- from evicting live depth, which is the
+  // one thing the old silent drop did get right.
+  void reanchorForDelta(const BookUpdate& up)
+  {
+    int64_t lo = std::numeric_limits<int64_t>::max();
+    int64_t hi = std::numeric_limits<int64_t>::min();
+
+    auto scan = [&](const auto& vec)
+    {
+      for (const auto& [p, q] : vec)
+      {
+        if (q.isZero())
+        {
+          // A removal names a price the book cannot be holding out here.
+          continue;
+        }
+        const int64_t t = ticks(p);
+        const int64_t local = t - _baseIndex;
+        if (local >= 0 && local < static_cast<int64_t>(MAX_LEVELS))
+        {
+          continue;
+        }
+        lo = std::min(lo, t);
+        hi = std::max(hi, t);
+      }
+    };
+
+    scan(up.bids);
+    scan(up.asks);
+
+    if (lo > hi)
+    {
+      return;
+    }
+
+    if (_minBid < MAX_LEVELS)
+    {
+      lo = std::min(lo, _baseIndex + static_cast<int64_t>(_minBid));
+      hi = std::max(hi, _baseIndex + static_cast<int64_t>(_maxBid));
+    }
+    if (_minAsk < MAX_LEVELS)
+    {
+      lo = std::min(lo, _baseIndex + static_cast<int64_t>(_minAsk));
+      hi = std::max(hi, _baseIndex + static_cast<int64_t>(_maxAsk));
+    }
+
+    if (hi - lo + 1 > static_cast<int64_t>(MAX_LEVELS))
+    {
+      return;
+    }
+
+    reanchorWithData(lo, hi);
+  }
+
   void reanchorWithData(int64_t minIdx, int64_t maxIdx)
   {
     const int64_t oldBase = _baseIndex;
@@ -765,48 +861,12 @@ class NLevelOrderBook : public IOrderBook
       return;
     }
 
+    // Shift both ladders in place. A pair of MAX_LEVELS scratch arrays would be
+    // a quarter of a megabyte of stack at the default level count, which is more
+    // than a worker thread has.
     const int64_t shift = oldBase - newBase;
-
-    // Create temporary copies and shift data
-    std::array<Quantity, MAX_LEVELS> newBids{};
-    std::array<Quantity, MAX_LEVELS> newAsks{};
-
-    // Copy bids with offset
-    if (_minBid < MAX_LEVELS)
-    {
-      for (size_t i = _minBid; i <= _maxBid && i < MAX_LEVELS; ++i)
-      {
-        if (_bids[i].isZero())
-        {
-          continue;
-        }
-        const int64_t newIdx = static_cast<int64_t>(i) + shift;
-        if (newIdx >= 0 && newIdx < static_cast<int64_t>(MAX_LEVELS))
-        {
-          newBids[static_cast<size_t>(newIdx)] = _bids[i];
-        }
-      }
-    }
-
-    // Copy asks with offset
-    if (_minAsk < MAX_LEVELS)
-    {
-      for (size_t i = _minAsk; i <= _maxAsk && i < MAX_LEVELS; ++i)
-      {
-        if (_asks[i].isZero())
-        {
-          continue;
-        }
-        const int64_t newIdx = static_cast<int64_t>(i) + shift;
-        if (newIdx >= 0 && newIdx < static_cast<int64_t>(MAX_LEVELS))
-        {
-          newAsks[static_cast<size_t>(newIdx)] = _asks[i];
-        }
-      }
-    }
-
-    _bids = std::move(newBids);
-    _asks = std::move(newAsks);
+    shiftLadder(_bids, shift);
+    shiftLadder(_asks, shift);
     _baseIndex = newBase;
 
     // Recalculate min/max/best indices
@@ -849,6 +909,34 @@ class NLevelOrderBook : public IOrderBook
           _bestAskTick = newBase + static_cast<int64_t>(i);
         }
       }
+    }
+  }
+
+  // Move every level by `shift` slots, dropping whatever falls off either end
+  // and zeroing the slots that open up.
+  static void shiftLadder(std::array<Quantity, MAX_LEVELS>& ladder, int64_t shift)
+  {
+    if (shift == 0)
+    {
+      return;
+    }
+
+    const size_t magnitude = static_cast<size_t>(shift < 0 ? -shift : shift);
+    if (magnitude >= MAX_LEVELS)
+    {
+      ladder.fill({});
+      return;
+    }
+
+    if (shift > 0)
+    {
+      std::copy_backward(ladder.begin(), ladder.end() - magnitude, ladder.end());
+      std::fill(ladder.begin(), ladder.begin() + magnitude, Quantity{});
+    }
+    else
+    {
+      std::copy(ladder.begin() + magnitude, ladder.end(), ladder.begin());
+      std::fill(ladder.end() - magnitude, ladder.end(), Quantity{});
     }
   }
 

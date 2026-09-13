@@ -1,0 +1,93 @@
+# Smoke test: OrderBook tick validation, sub-cent ticks, and the tick window
+# following a delta-only feed.
+
+from flox.tools import OrderBook
+
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL " + msg)
+
+
+# A zero tick divided by zero while building the reciprocal and left a book that
+# was dead for the rest of its life without a single diagnostic.
+rejected = False
+try:
+    OrderBook(0.0)
+except ValueError:
+    rejected = True
+check(rejected, "zero tick size is rejected")
+
+rejected = False
+try:
+    OrderBook(-0.01)
+except ValueError:
+    rejected = True
+check(rejected, "negative tick size is rejected")
+
+# A 1e-8 tick is a raw divisor of 1 at a price scale of 1e8. Every level used to
+# collapse onto one index, which left the book permanently crossed.
+tiny = OrderBook(1e-8)
+tiny.apply_snapshot([1e-5], [1.0], [1.002e-5], [1.0])
+bid = tiny.best_bid()
+ask = tiny.best_ask()
+check(bid is not None and abs(bid - 1e-5) < 1e-14, "best bid at a 1e-8 tick")
+check(ask is not None and abs(ask - 1.002e-5) < 1e-14, "best ask at a 1e-8 tick")
+check(not tiny.is_crossed(), "a normal book is not crossed at a 1e-8 tick")
+
+# A delta feed re-sends a snapshot only on connect and on a sequence gap, so the
+# tick window has to follow the market between the two.
+tick = 0.1
+depth = 10
+book = OrderBook(tick)
+bid_top = 59999.9
+ask_top = 60000.1
+
+
+def r8(v: float) -> float:
+    return float(int(v * 1e8 + 0.5)) / 1e8
+
+
+snap_bids = List[float]()
+snap_asks = List[float]()
+snap_qty = List[float]()
+for k in range(depth):
+    snap_bids.append(r8(bid_top - float(k) * tick))
+    snap_asks.append(r8(ask_top + float(k) * tick))
+    snap_qty.append(1.0)
+book.apply_snapshot(snap_bids, snap_qty, snap_asks, snap_qty)
+
+alive = True
+last_bid = 0.0
+last_ask = 0.0
+for step in range(1, 601):
+    new_bid = r8(bid_top + float(step) * tick)
+    new_ask = r8(ask_top + float(step) * tick)
+    book.apply_delta([new_bid, r8(new_bid - float(depth) * tick)], [1.0, 0.0],
+                     [r8(new_ask + float(depth - 1) * tick), r8(new_ask - tick)], [1.0, 0.0])
+    b = book.best_bid()
+    a = book.best_ask()
+    if b is None or a is None:
+        alive = False
+        print("  book went dark at step", step)
+        break
+    last_bid = b
+    last_ask = a
+    if abs(last_bid - new_bid) > 1e-6 or abs(last_ask - new_ask) > 1e-6:
+        alive = False
+        print("  book went wrong at step", step)
+        break
+
+check(alive, "book tracks 600 ticks of delta-only drift")
+check(abs(last_bid - r8(bid_top + 600.0 * tick)) < 1e-6, "best bid after $60 of drift")
+check(abs(last_ask - r8(ask_top + 600.0 * tick)) < 1e-6, "best ask after $60 of drift")
+
+if failed > 0:
+    raise ValueError("order book window smoke test failed")
+print("done")
