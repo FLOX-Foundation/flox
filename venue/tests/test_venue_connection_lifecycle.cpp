@@ -24,6 +24,7 @@
 #include "flox-venue/control_api.h"
 #include "flox-venue/control_plane.h"
 #include "flox-venue/control_server.h"
+#include "flox-venue/metrics_server.h"
 #include "flox-venue/socket_acceptor.h"
 
 #include <arpa/inet.h>
@@ -151,6 +152,48 @@ TEST(VenueConnectionLifecycle, ControlServerClosesEachDescriptorOnce)
   // Guard against a vacuous pass: if the interposition below is not in the call
   // path -- a sanitizer runtime interceptor ahead of it, a build that inlined
   // the syscall -- nothing is counted and every assertion holds trivially.
+  ASSERT_GE(totalCount(), 1) << "no close was observed at all; the interposition did not take, "
+                                "so this test proves nothing";
+  EXPECT_LE(worstCount(), 1) << "a descriptor closed twice is a descriptor another thread may "
+                                "already hold";
+}
+
+// The metrics endpoint runs on the same acceptor and had the same habit, on
+// both of its exits. Under load it is the one most likely to be hit: a scrape
+// every few seconds, one connection each, against a process opening journal
+// segments on other threads.
+TEST(VenueConnectionLifecycle, MetricsServerClosesEachDescriptorOnce)
+{
+  MetricsServer srv([]
+                    { return std::string("flox_up 1\n"); });
+  const int port = srv.start(0);
+  ASSERT_GT(port, 0);
+
+  const int client = connectLoopback(port);
+  ASSERT_GE(client, 0);
+
+  {
+    std::lock_guard<std::mutex> lk(g_closeMutex);
+    g_closeCounts.clear();
+  }
+  g_counting.store(true);
+
+  const std::string req = "GET /metrics HTTP/1.1\r\nHost: x\r\n\r\n";
+  ASSERT_EQ(::send(client, req.data(), req.size(), 0), static_cast<ssize_t>(req.size()));
+  char buf[512];
+  std::string answer;
+  ssize_t r = 0;
+  while ((r = ::recv(client, buf, sizeof buf, 0)) > 0)
+  {
+    answer.append(buf, static_cast<size_t>(r));
+  }
+  EXPECT_NE(answer.find("200 OK"), std::string::npos) << answer;
+
+  ::close(client);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  srv.stop();
+  g_counting.store(false);
+
   ASSERT_GE(totalCount(), 1) << "no close was observed at all; the interposition did not take, "
                                 "so this test proves nothing";
   EXPECT_LE(worstCount(), 1) << "a descriptor closed twice is a descriptor another thread may "
