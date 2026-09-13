@@ -17,8 +17,10 @@ A third prefix gates compiler/portability flags rather than features:
 |---|---|---|
 | `FLOX_ENABLE_BACKTEST` | OFF | Compile `src/backtest/` into the core library. Required for `BacktestRunner`, `WalkForwardRunner`, `GridSearch`. |
 | `FLOX_ENABLE_LZ4` | **ON** | Link LZ4 for replay-log compression. Tries `find_package(lz4 CONFIG)` first, then `find_library`, then pkg-config, then a vendored LZ4 source via FetchContent — so the dependency self-resolves on every supported platform. Set to OFF only if you specifically need an LZ4-free build. |
-| `FLOX_ENABLE_TRACY` | OFF | Link the Tracy profiler client. Adds runtime instrumentation; OFF in production builds. |
-| `FLOX_ENABLE_CPU_AFFINITY` | OFF | Compile pthread / NUMA-aware affinity helpers. Linux only; on macOS / Windows the calls become no-ops. **Warning:** can hurt perf on busy or shared systems — only use on isolated dedicated hardware. |
+| `FLOX_ENABLE_ONNX` | OFF | Compiles the ONNX Runtime inference nodes (`flox/ml/`) into the core library, plus `test_onnx_inference` once tests are on. Hard-fails at configure time when the onnxruntime library or headers are missing; there is no bundled fallback. No CI workflow turns this on: none of the runners carry the onnxruntime C++ SDK. Check it locally with `-DFLOX_ENABLE_ONNX=ON -DFLOX_BUILD_TESTS=ON` after installing onnxruntime. |
+| `FLOX_ENABLE_AF_XDP` | OFF | Compiles the AF_XDP receive-path backend (`flox/net/af_xdp_receive_path.h`). Linux only; hard-fails at configure time when libxdp/libbpf are missing. No test is gated on this flag, and no CI runner has the kernel or library support it needs. |
+| `FLOX_ENABLE_TRACY` | OFF | Links the Tracy profiler client for runtime instrumentation; off in production builds. No test is gated on this flag, so CI never builds with it on. |
+| `FLOX_ENABLE_CPU_AFFINITY` | OFF | Compiles pthread / NUMA-aware affinity helpers. Linux only; the calls are no-ops on macOS and Windows. **Warning:** can hurt performance on busy or shared systems — use it only on isolated, dedicated hardware. The gated `test_cpu_affinity` suite runs in the `affinity-tests` job, but only on the Sunday 3am schedule, not on pull requests. |
 | `FLOX_ENABLE_DEV_SETUP` | OFF | Install the project's pre-commit hook into `.git/hooks/` at configure time. Developer-only. |
 
 ## Artefacts

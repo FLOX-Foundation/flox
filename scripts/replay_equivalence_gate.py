@@ -2,13 +2,15 @@
 """Replay-equivalence CI gate (W2-T017).
 
 Builds a deterministic tape and runs every frozen scenario under
-``tests/replay-equivalence/scenarios/`` through it, comparing each
-captured output field-by-field against the scenario's frozen
-``expected_output.json``. Scenarios cover the plain market path plus
-the conditional-order mechanics (stop-loss, take-profit, trailing
-stop). This is the guarantee behind flox's "deterministic backtest ↔
-live replay" positioning: if anything in the engine drifts the fill
-output, this gate fails before merge.
+``tests/replay-equivalence/scenarios/`` through a single SimulatedExecutor
+pass, comparing each captured output field-by-field against the scenario's
+frozen ``expected_output.json``. Scenarios cover the plain market path plus
+the conditional-order mechanics (stop-loss, take-profit, trailing stop).
+This is a golden-regression gate on the backtest engine's own fill output:
+any drift from the frozen expectation fails before merge. It does not run
+a second engine or a captured live tape, so it does not by itself cover
+live-replay equivalence -- that is a separate, not-yet-automated phase
+(see docs/explanation/replay-equivalence-gate.md).
 
 Exits 0 when every scenario matches exactly, 1 on divergence (with a
 per-field diff per scenario).
