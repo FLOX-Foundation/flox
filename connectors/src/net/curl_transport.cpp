@@ -9,7 +9,10 @@
 
 #include "flox-connectors/net/curl_transport.h"
 
+#include <flox/log/log.h>
+
 #include <algorithm>
+#include <exception>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -25,6 +28,37 @@ size_t writeCallback(char* ptr, size_t size, size_t nmemb, void* userdata)
   auto* str = static_cast<std::string*>(userdata);
   str->append(ptr, size * nmemb);
   return size * nmemb;
+}
+
+// postImpl runs onSuccess/onError in the calling thread, synchronously,
+// inside curl_easy_perform's stack frame. Every caller in this codebase
+// parses the response with simdjson in "exceptions on" mode (the default),
+// and none of the five REST callbacks across the connectors guarded against
+// that -- a malformed or unexpected response (e.g. HTTP 200 with a body that
+// has no "retCode") threw out of postImpl into whoever called post(), most
+// often the event-bus consumer thread, which marks itself dead on an
+// uncaught exception and stalls the pipeline on a required subscriber.
+// One guard here protects every current and future caller instead of
+// wrapping each callback individually.
+void invokeSafely(MoveOnlyFunction<void(std::string_view)>& fn, std::string_view arg,
+                  const char* which)
+{
+  if (!fn)
+  {
+    return;
+  }
+  try
+  {
+    fn(arg);
+  }
+  catch (const std::exception& e)
+  {
+    FLOX_LOG_ERROR("[CurlTransport] " << which << " handler threw: " << e.what());
+  }
+  catch (...)
+  {
+    FLOX_LOG_ERROR("[CurlTransport] " << which << " handler threw a non-standard exception");
+  }
 }
 }  // namespace
 
@@ -81,10 +115,7 @@ void CurlTransport::postImpl(
   CURL* h = _pool.acquire();
   if (!h)
   {
-    if (onError)
-    {
-      onError("Connection pool exhausted or timeout");
-    }
+    invokeSafely(onError, "Connection pool exhausted or timeout", "onError");
     return;
   }
   curl_easy_reset(h);
@@ -140,37 +171,28 @@ void CurlTransport::postImpl(
   {
     if (httpCode >= 200 && httpCode < 300)
     {
-      if (onSuccess)
-      {
-        onSuccess(response);
-      }
+      invokeSafely(onSuccess, response, "onSuccess");
     }
     else
     {
-      if (onError)
+      std::string errMsg = "HTTP " + std::to_string(httpCode);
+      if (!response.empty())
       {
-        std::string errMsg = "HTTP " + std::to_string(httpCode);
-        if (!response.empty())
+        if (response.size() > 1024)
         {
-          if (response.size() > 1024)
-          {
-            errMsg += ": " + response.substr(0, 1024) + "...";
-          }
-          else
-          {
-            errMsg += ": " + response;
-          }
+          errMsg += ": " + response.substr(0, 1024) + "...";
         }
-        onError(errMsg);
+        else
+        {
+          errMsg += ": " + response;
+        }
       }
+      invokeSafely(onError, errMsg, "onError");
     }
   }
   else
   {
-    if (onError)
-    {
-      onError(curl_easy_strerror(res));
-    }
+    invokeSafely(onError, curl_easy_strerror(res), "onError");
   }
 }
 

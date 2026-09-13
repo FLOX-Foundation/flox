@@ -17,6 +17,7 @@
 #include <flox/util/rate_limiter.h>
 
 #include <chrono>
+#include <functional>
 #include <thread>
 
 namespace flox
@@ -33,6 +34,7 @@ struct NoRateLimitPolicy
 
   void init(const RateLimitConfig&) {}
   [[nodiscard]] bool tryAcquire(OrderId) { return true; }
+  [[nodiscard]] bool tryAcquire(OrderId, const std::function<void()>&) { return true; }
 };
 
 /// Active rate limiting with configurable behavior
@@ -50,7 +52,16 @@ class ActiveRateLimitPolicy
     }
   }
 
-  [[nodiscard]] bool tryAcquire(OrderId orderId)
+  [[nodiscard]] bool tryAcquire(OrderId orderId) { return tryAcquire(orderId, {}); }
+
+  // onRejected fires whenever this call returns false -- REJECT and CALLBACK
+  // both deny the request, and until this existed neither told the caller
+  // anything beyond a log line: a rate-limited cancelOrder() silently never
+  // reached the transport while OrderTracker kept reporting the order
+  // active. Callers wire onRejected to publish a REJECTED_RATE_LIMIT event
+  // on their OrderExecutionBus, matching what SimulatedExecutor already
+  // does for the backtest path.
+  [[nodiscard]] bool tryAcquire(OrderId orderId, const std::function<void()>& onRejected)
   {
     if (!_limiter)
     {
@@ -71,6 +82,10 @@ class ActiveRateLimitPolicy
                       << orderId << " wait="
                       << std::chrono::duration_cast<std::chrono::milliseconds>(waitTime).count()
                       << "ms");
+        if (onRejected)
+        {
+          onRejected();
+        }
         return false;
 
       case RateLimitPolicy::WAIT:
@@ -82,6 +97,10 @@ class ActiveRateLimitPolicy
         if (_config.onRateLimited)
         {
           _config.onRateLimited(orderId, waitTime);
+        }
+        if (onRejected)
+        {
+          onRejected();
         }
         return false;
     }

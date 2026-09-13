@@ -21,6 +21,7 @@
 #include <chrono>
 #include <iomanip>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -33,12 +34,39 @@ namespace flox
 
 static constexpr auto BYBIT_ORIGIN = "https://www.bybit.com";
 
+namespace
+{
+// fromUnixMs()/fromUnixNs() (time.h) convert a wall-clock epoch into
+// FloxClock (steady_clock) via unix_to_flox_offset_ns(), which defaults to
+// zero until init_timebase_mapping() runs once. Nothing in the live C++
+// engine startup path calls it (only a Python aggregator binding does), so
+// without this, the conversion below would be numerically identical to the
+// direct duration_cast bug it replaces -- same huge raw value, just
+// re-labelled, still decades off FloxClock::now(). Establishing the offset
+// here, once, lazily, on first use is self-contained: the offset is a
+// fixed constant for the life of the process (both clocks tick in lockstep
+// once anchored at any single instant), so it does not matter that this
+// runs on first option-symbol parse rather than at process start.
+void ensureTimebaseMapped()
+{
+  static std::once_flag flag;
+  std::call_once(flag,
+                 []
+                 {
+                   init_timebase_mapping();
+                 });
+}
+}  // namespace
+
 std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
                                             std::string_view exchange = "bybit")
 {
   if (fullSymbol.ends_with("-USDT"))
   {
-    fullSymbol.remove_suffix(6);
+    // "-USDT" is 5 characters; stripping 6 ate the option-type letter
+    // (BTC-30AUG24-50000-C-USDT -> BTC-30AUG24-50000-, typeStr empty ->
+    // nullopt, instrument registered as Spot with no strike/expiry/type).
+    fullSymbol.remove_suffix(5);
   }
 
   // Format: BTC-30AUG24-50000-C
@@ -98,8 +126,13 @@ std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
   info.symbol = std::string(fullSymbol);
   info.type = InstrumentType::Option;
   info.strike = Price::fromDouble(strike);
-  info.expiry = TimePoint(std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-      expiry_tp.time_since_epoch()));
+  // expiry_tp is a system_clock (wall/unix) time_point; TimePoint is
+  // FloxClock (steady_clock). A duration_cast between them silently
+  // reinterprets a unix epoch as a steady-clock reading -- fromUnixMs is the
+  // documented conversion (time.h) for exactly this crossing.
+  ensureTimebaseMapped();
+  info.expiry = fromUnixMs(
+      std::chrono::duration_cast<std::chrono::milliseconds>(expiry_tp.time_since_epoch()).count());
   info.optionType = optType;
 
   return info;
@@ -704,6 +737,27 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
           ev.status = OrderEventStatus::SUBMITTED;
         }
 
+        // The "order" topic reports cumulative filled quantity, not a
+        // per-message delta; OrderEvent::dispatchTo() needs the delta for
+        // onOrderPartiallyFilled(order, fillQty), which was always 0
+        // before (CONN-09) because nothing here ever set ev.fillQty.
+        {
+          auto prevIt = _lastCumFilled.find(ev.order.id);
+          Quantity previous = (prevIt != _lastCumFilled.end()) ? prevIt->second : Quantity{};
+          ev.fillQty = (ev.order.filledQuantity.raw() > previous.raw())
+                           ? Quantity::fromRaw(ev.order.filledQuantity.raw() - previous.raw())
+                           : Quantity{};
+          if (ev.status == OrderEventStatus::CANCELED || ev.status == OrderEventStatus::REJECTED ||
+              ev.status == OrderEventStatus::EXPIRED || ev.status == OrderEventStatus::FILLED)
+          {
+            _lastCumFilled.erase(ev.order.id);
+          }
+          else
+          {
+            _lastCumFilled[ev.order.id] = ev.order.filledQuantity;
+          }
+        }
+
         ev.publishNs = nowMonoNanos();
         _orderBus->publish(std::move(ev));
       }
@@ -733,8 +787,36 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
           continue;
         }
         ev.order.price = *priceOpt;
-        ev.order.quantity = *qtyOpt;
-        ev.order.filledQuantity = ev.order.quantity;
+        // execQty is this single fill's size, not the order's size -- it
+        // used to be written into ev.order.quantity/filledQuantity, which
+        // (a) fabricated an order size equal to whatever fraction happened
+        // to fill and (b) left ev.fillQty (the field dispatchTo() actually
+        // hands to onOrderPartiallyFilled) at its default of zero on every
+        // partial fill (CONN-09). orderQty/leavesQty are the documented
+        // Bybit V5 execution-topic fields for the order's real size and
+        // remaining size; when present they replace the guess, and when
+        // absent order.quantity/filledQuantity are left unset (0) rather
+        // than silently wrong, same as any other unparseable-but-optional
+        // field in this handler.
+        ev.fillQty = *qtyOpt;
+
+        if (auto oq = d["orderQty"]; !oq.error())
+        {
+          if (auto orderQtyOpt = util::parseQty(oq.get_string().value()))
+          {
+            ev.order.quantity = *orderQtyOpt;
+            if (auto lq = d["leavesQty"]; !lq.error())
+            {
+              if (auto leavesOpt = util::parseQty(lq.get_string().value()))
+              {
+                ev.order.filledQuantity =
+                    (orderQtyOpt->raw() > leavesOpt->raw())
+                        ? Quantity::fromRaw(orderQtyOpt->raw() - leavesOpt->raw())
+                        : Quantity{};
+              }
+            }
+          }
+        }
 
         if (auto et = d["execTime"]; !et.error())
         {
@@ -745,9 +827,12 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
           ev.exchangeTsNs = msToUnixNs(ts.get_int64().value());
         }
 
-        ev.status = (d["execType"].get_string().value() == "Trade")
-                        ? OrderEventStatus::PARTIALLY_FILLED
-                        : OrderEventStatus::SUBMITTED;
+        const bool isTrade = (d["execType"].get_string().value() == "Trade");
+        const bool fullyFilled = isTrade && ev.order.filledQuantity.raw() > 0 &&
+                                 ev.order.filledQuantity.raw() >= ev.order.quantity.raw();
+        ev.status = !isTrade      ? OrderEventStatus::SUBMITTED
+                    : fullyFilled ? OrderEventStatus::FILLED
+                                  : OrderEventStatus::PARTIALLY_FILLED;
 
         ev.publishNs = nowMonoNanos();
         _orderBus->publish(std::move(ev));

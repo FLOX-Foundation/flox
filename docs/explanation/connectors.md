@@ -17,6 +17,16 @@ The module is gated by `FLOX_BUILD_CONNECTORS` in CMake. It is **off** by defaul
 
 Each adapter sits under `connectors/src/<venue>/` with public headers under `connectors/include/flox-connectors/<venue>/`. The header layout uses the `flox-connectors/` prefix so consumers' include sites are stable across the repo move.
 
+### Order-type and flag coverage
+
+The "Orders" column above means "submit/cancel/replace exists," not "every `OrderType` and flag is supported." Coverage differs per venue and is enforced at submit time — an order the connector cannot serialize correctly is rejected rather than sent as an approximation:
+
+- `TimeInForce` and reduce-only are serialized on all four venues. Post-only maps to the venue's maker-only token (Bybit `PostOnly`, Bitget `post_only`, Hyperliquid `Alo`); `GTD` has no native equivalent on any of the four and is rejected rather than silently downgraded to `GTC`.
+- Stop-market, stop-limit, take-profit-market and take-profit-limit route through Bitget's plan-order endpoint and Bybit's conditional-order fields on the regular order endpoint. Hyperliquid has no trigger-order implementation in this connector and rejects them.
+- `TRAILING_STOP` and `ICEBERG` are not implemented on any of the three CEX connectors (Polymarket has no order-side concept of either) and are rejected at submit time. Bybit's trailing stop in particular lives on a different endpoint (`/v5/position/trading-stop`) than the rest of order submission, which this connector does not call.
+
+A rejected order publishes `OrderEventStatus::REJECTED` on the venue's `OrderExecutionBus` with a reason string identifying the unsupported type or flag — it never reaches the exchange as a same-looking order with the unsupported part silently dropped.
+
 ## Build
 
 ```bash
@@ -44,9 +54,12 @@ The trade-off: every push that touches connectors runs the full flox CI. The `co
 
 ## Tests
 
-Connector tests are *integration* tests — they connect to real exchange WebSocket endpoints. Building them is gated by both `FLOX_BUILD_TESTS=ON` and `FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON`; running them via `ctest` requires the further `FLOX_RUN_CONNECTOR_INTEGRATION_TESTS=ON`. The default flox CI build skips them entirely.
+`connectors/tests/` holds two kinds of test:
 
-To build them locally:
+- `unit_test_*.cpp` are offline — no sockets, no exchange credentials. Order-serialization tests fake the transport (`ITransport`) or the client-provided injection point and assert on the exact request body a connector builds; protocol tests feed raw WebSocket frames straight into a connector's message handler. They build and register with `ctest` whenever `FLOX_BUILD_CONNECTORS=ON` and `FLOX_BUILD_TESTS=ON` — no extra flag — and run in the default CI matrix.
+- `integration_test_*.cpp` connect to real exchange WebSocket endpoints. Building them is gated by both `FLOX_BUILD_TESTS=ON` and `FLOX_BUILD_CONNECTOR_INTEGRATION_TESTS=ON`; running them via `ctest` requires the further `FLOX_RUN_CONNECTOR_INTEGRATION_TESTS=ON`. The default flox CI build skips them entirely.
+
+To build the integration tests locally:
 
 ```bash
 cmake -B build -DFLOX_BUILD_CONNECTORS=ON \
