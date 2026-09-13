@@ -186,8 +186,24 @@ TEST(IxWebSocketClientShutdown, StopFromAnotherThreadWhileReconnecting)
     // unanswered close frame; the run() thread's 100ms poll always lands
     // inside that, and its loss is the fatal one.
     std::this_thread::sleep_for(std::chrono::microseconds(30'000 + jitterUs(rng)));
+
+    const auto begin = std::chrono::steady_clock::now();
     client->stop();
     client.reset();  // destructor joins the run() thread
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - begin)
+                               .count();
+
+    // The scenario here bounds shutdown at ix's own
+    // kClosingMaximumWaitingDelayInMs (300ms) for the unanswered close frame,
+    // plus scheduling slack -- not the reconnect backoff CONN-11 fixes (that
+    // path is covered by unit_test_ix_ws_client_stop_latency.cpp). This test
+    // used to carry zero assertions and end on a bare SUCCEED(); a duration
+    // regression here (e.g. a shutdown wait that stops being interruptible)
+    // would previously have gone unnoticed as long as the process didn't
+    // abort.
+    EXPECT_LT(elapsedMs, 1000) << "iteration " << i << ": stop()+reset() took " << elapsedMs
+                               << "ms";
   }
 
   // Reaching this line is the assertion: the old code terminated the process

@@ -321,7 +321,7 @@ void BybitExchangeConnector::resubscribeBook(std::string_view symbolName)
 {
   if (!_wsClient)
   {
-    return;  // not started (offline tests / early frames): next snapshot re-baselines
+    return;  // stop() already reset the socket: nothing left to resubscribe on
   }
   for (const auto& entry : _config.symbols)
   {
@@ -329,8 +329,19 @@ void BybitExchangeConnector::resubscribeBook(std::string_view symbolName)
     {
       const std::string topic =
           "orderbook." + std::to_string(static_cast<int>(entry.depth)) + "." + entry.name;
-      _wsClient->send(R"({"op":"unsubscribe","args":[")" + topic + R"("]})");
-      _wsClient->send(R"({"op":"subscribe","args":[")" + topic + R"("]})");
+      const bool unsubOk = _wsClient->send(R"({"op":"unsubscribe","args":[")" + topic + R"("]})");
+      const bool subOk = _wsClient->send(R"({"op":"subscribe","args":[")" + topic + R"("]})");
+      if (!unsubOk || !subOk)
+      {
+        // The resync latch (seqState.resyncInFlight) was already set by the
+        // caller; without a subscribe frame reaching the exchange no snapshot
+        // will ever come back to clear it, and every subsequent delta for
+        // this symbol is dropped silently until the next full reconnect
+        // (onOpen re-subscribes every topic). Log it so that window is
+        // observable instead of looking like a quiet market.
+        _logger->error("[Bybit] resubscribe send failed for " + std::string(symbolName) +
+                       " -- book stays frozen until the next reconnect");
+      }
       return;
     }
   }
