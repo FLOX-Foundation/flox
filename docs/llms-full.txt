@@ -19840,6 +19840,68 @@ contiguous run of published events (up to 1024) and stores its progress once
 at the end of the run, instead of updating two atomics per event. This works
 for both publish paths and needs nothing from the caller.
 
+## Bounded Publishing
+
+`publish()` waits as long as it takes. `tryPublish()` gives the producer a
+deadline instead, and returns what happened:
+
+```cpp
+auto [result, seq] = tradeBus->tryPublish(ev, std::chrono::microseconds{500});
+if (result == MyBus::PublishResult::TIMEOUT) {
+  // the ring was full for 500us; the event was not published
+}
+```
+
+A timeout means the event never entered the ring. Nothing was reserved, no
+slot was written, no sequence number was spent, and the next accepted publish
+takes the sequence this one would have had. Events already in the ring are
+untouched and keep flowing to consumers. `stats().dropped` counts the refusals,
+so backpressure stays visible.
+
+The two publish paths get there differently. Blocking `publish()` takes its
+sequence first, with one atomic increment, then waits for ring space; it never
+gives up, so the sequence it took is always honoured. A bounded publish cannot
+work that way. A sequence taken and then abandoned still has to be written into
+the ring for consumers to get past it, and that write lands on the slot of an
+event the slowest consumer has not read yet. So `tryPublish()` takes its
+sequence last, with a compare-exchange, once the ring already has room. Giving
+up before that point costs nothing.
+
+Backpressure on `tryPublish()` is a normal condition. Handle the `TIMEOUT`
+(drop, retry, shed load) and keep publishing.
+
+## Stopping and Restarting
+
+`EventBus` is an `ISubsystem`: it has `start()` and `stop()`, and a bus can go
+through that cycle more than once. A reconnect that rebuilds a feed stops its
+subsystems and starts them again.
+
+`stop()` joins every consumer thread, destroys whatever events the ring still
+holds, and puts the sequence line back where a fresh bus starts. A restarted
+bus numbers its events from zero again, so sequence numbers are unique within a
+run, not across runs. Anything that persists a `tickSequence` past a restart
+needs its own run identifier.
+
+Publishes racing `stop()` are not ordered against it, and never were. Publish
+from the producer thread, then stop.
+
+### Draining
+
+By default `stop()` drops whatever the consumers have not reached yet.
+`enableDrainOnStop()` makes each consumer finish the events already published
+before its thread exits:
+
+```cpp
+tradeBus->enableDrainOnStop();
+```
+
+The drain delivers them through the same path as the running loop, end-of-batch
+edge included. A listener that batches its work needs that edge: it commits what
+it was handed only when it is told the ingress is drained, which is where one
+durability barrier covers a whole batch instead of one per event. The drain
+gives it that edge at the end, and every 1024 events along the way, so a
+shutdown commits what it applied rather than leaving it staged.
+
 ## Static Subscription
 
 `subscribe()` takes a listener interface pointer and dispatches through a
