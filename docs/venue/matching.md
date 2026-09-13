@@ -67,6 +67,13 @@ account, or the firm group registered via `setStpGroup`):
 | `CancelBoth` | both go |
 | `Decrement` | the smaller leg is removed, the larger is reduced by that size; no trade |
 
+`Decrement` measures each leg by what it holds, not by what it shows. On an
+iceberg that is the displayed peak plus the hidden reserve, and the cut comes
+out of the reserve first, so a decrement leaves the peak intact while there is
+reserve behind it. Measuring the peak alone would call a large iceberg the
+smaller leg and cancel the whole thing against an aggressor a fraction of its
+size.
+
 STP interacts with `FOK`: an all-or-none order cannot count liquidity it would
 never be allowed to trade with, so the precheck excludes same-scope resting
 size.
@@ -182,7 +189,50 @@ profile does not allow.
 - **OCO.** `ocoGroup`; a fill on one leg cancels its siblings.
 - **Reduce-only.** Perp orders that may only reduce a position, re-capped on
   submit, trigger, modify -- and re-measured at fill time against the position
-  as it is then (see [Risk](risk.md)).
+  as it is then (see [Risk](risk.md)). The cap counts what the account already
+  has resting reduce-only on that side, so several of them cannot queue up
+  against a position only one of them can close.
+
+### What a modify preserves
+
+`ModifyOrder` at the same price, shrinking, reduces in place and keeps time
+priority. Any other amend re-enters the order at the tail of its level, and it
+re-enters carrying everything the original was admitted with: self-trade
+prevention, reduce-only, post-only, last look and the iceberg peak. Two of those cost
+real money when they go missing. A post-only order that re-enters as a plain
+aggressor lifts the book it was guaranteed never to touch. An iceberg that
+re-enters without its peak publishes the whole reserve it was hiding.
+
+`newQty` is the new leaves target. On an iceberg that means the TOTAL
+remaining, displayed peak plus hidden reserve -- the same number an execution
+report gives as that order's `leavesQty`. The peak itself is preserved; there
+is no way to change it without a fresh order.
+
+A re-entering order goes back through matching, so the amend can end any way a
+new order can: rest, fill, be refused (`OrderRejected` -- post-only crossing is
+the usual one), or be killed outright (`OrderCanceled`, from self-trade
+prevention or a fill-time risk block). The engine reports all four. The order
+left the book the moment the amend was accepted, so reporting only the resting
+case would ack a working order that is not on the book, hold its collateral
+reserved, and keep its slot in `maxOpenOrders` while cancel answers
+`UnknownOrder`.
+
+### Fill-or-kill and the depth that cannot fill it
+
+A `FOK` either fills in full or never exists. Some of the depth visible in the
+book cannot fill one, and the precheck subtracts it before answering:
+
+- same-STP-scope makers, which the sweep cancels or decrements instead of
+  trading;
+- last-look makers, which are non-firm (see the last-look section below);
+- depth a fill-time risk limit will not let trade. This one is measured maker
+  by maker in sweep order, because each prospective print moves the position
+  the next maker is measured against: two reduce-only sells of 10 against a
+  long of 10 look like depth 20 to the book and are worth 10 at the fill.
+
+Both matching policies run that precheck and both carry the same safety net
+behind it: whatever the precheck concluded, a `FOK` residual is killed with
+`FillOrKillResidual` rather than left resting as a GTC.
 
 ## The engine
 
@@ -219,6 +269,14 @@ limits during volatility without a restart:
 | Fat finger | `maxOrderQty`, `maxOrderNotional` | `setFatFinger` |
 | LULD volatility band | `luldBps`, `luldHaltNs` | `setLuldBps` |
 
+`maxOrderNotional` is measured at the symbol's own `priceScale`/`qtyScale`,
+the same arithmetic reservations, margin and fees use, so the gate means the
+same thing on every instrument. Reading the two raws under the compile-time
+scale instead would put the comparison out by a factor of
+`(1e8 / priceScale) * (1e8 / qtyScale)` -- a coarser scale switches the
+fat-finger check off, a finer one refuses everything. See
+[per-symbol scale](../explanation/per-symbol-scale.md).
+
 LULD (limit-up/limit-down) gates both sides of a trade. A limit order priced
 outside the band around the last price is rejected pre-trade (`LuldBreach`) and
 trips a timed pause. A market order has no limit to gate it, so it can sweep the
@@ -241,12 +299,14 @@ Before the first trade there is no reference price, so no band exists yet.
   `MmpTriggered` fires.
 - **Mass quote.** `Quote` replaces both sides of a two-sided quote atomically,
   by id: the engine cancels `bidId` and `askId` and re-posts them at the new
-  prices, so a maker keeps one pair of ids and reuses it. The quote carries its
-  own `stp` and `lastLook`, which both legs inherit. A maker quoting
-  continuously is the participant that most needs self-trade prevention, and
-  the one whose quotes are tight enough to want holding -- without those two
-  fields it had to choose between the primitive built for two-sided quoting and
-  the controls that make two-sided quoting safe.
+  prices, so a maker keeps one pair of ids and reuses it. Both legs inherit the
+  quote's `stp`, `lastLook`, `postOnly`, `reduceOnly`, `tif`,
+  `visibleQuantity` and `expiryNs`, so a quote has every control a single
+  order has. `postOnly` is the one a quote needs most: a maker repricing into a
+  market that has already moved crosses the book with its near leg and pays to
+  take the liquidity it meant to provide. Without these fields a maker had to
+  choose between the primitive built for two-sided quoting and the controls
+  that make two-sided quoting safe.
 
 ### Last-look lifecycle
 
@@ -327,6 +387,33 @@ requires them to be **globally unique across accounts** (duplicates reject only
 while the earlier order is alive). Generating unique ids is the
 gateway's/client's responsibility -- that is the honest boundary.
 
+### Who may act on an order
+
+`CancelOrder`, `ModifyOrder` and `Quote` address orders by id, and ids are one
+global namespace the client picks numbers in. An id therefore proves nothing
+about who sent the command carrying it. The claim that does carry authorization
+is `accountId`: `GatewaySession` overwrites it with the session's authenticated
+account on every account-bearing command, which is what stops a client writing
+someone else's number into the payload. The engine checks that claim against
+the order the command names.
+
+- A command whose `accountId` does not match the order's owner is refused:
+  `CancelRejected{NotOrderOwner}` for cancel and modify,
+  `OrderRejected{NotOrderOwner}` for a quote. A quote is refused whole rather
+  than per leg -- a maker that gets one side replaced and the other refused is
+  quoting a book it did not ask for.
+- The refusal happens before any side effect, including resolving the order's
+  open last-look holds. A stranger cannot reach the order at all.
+- An id nobody owns stays `UnknownOrder`. Answering "not yours" for an id that
+  does not exist would turn every rejection into an existence oracle.
+- `accountId == 0` is the "unbound / trusted transport" sentinel
+  `GatewaySession` already documents. An in-process embedder, a replay driver
+  and the single-tenant configuration all act as `0` and keep full control of
+  every order.
+
+`MassCancel` needs no such check: it selects by account rather than by id, so
+it can only ever reach the caller's own orders.
+
 ### Auctions and halts
 
 Sequenced through `AdminCmd`, so they survive replay:
@@ -336,6 +423,16 @@ Sequenced through `AdminCmd`, so they survive replay:
 - `ResumeAuction`: clear a halt into a re-opening auction.
 - `HaltAndCancelAll`: emergency halt that also pulls the resting book.
 - `Halt` / `Resume`.
+
+An order admitted into an auction keeps everything it would carry into
+continuous trading: the iceberg peak, the GTD expiry, the peg registration, the
+last-look flag and post-only. The uncross prices on displayed-plus-hidden
+depth, so an iceberg's peak was never load-bearing for price discovery.
+Limiting what the public feed sees is the only thing the peak does, and an
+auction is when a maker wants it most. A GTD order the auction never registers
+for expiry does not expire later either: it outlives the auction, the
+reopening and the rest of the session, and only an explicit cancel removes
+it.
 
 ## Order paths and the gates on them
 
@@ -410,6 +507,10 @@ computing the split, price-time resolves each one as the sweep reaches it, and
 both call `applySelfTradePrevention`. A modify carries the mode of the order it
 replaces. An auction has no aggressor, so the mode comes off each resting order
 (the book stores it for that) and applies from its owner's side.
+
+Cancel, modify and quote also check that the caller owns the order they name,
+before anything else happens on those paths -- see
+[Who may act on an order](#who-may-act-on-an-order).
 
 Two blanks in the table are intentional. A peg reprice does not re-check
 instrument state: it only runs on a submit, and that submit is rejected first

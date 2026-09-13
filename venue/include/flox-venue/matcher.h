@@ -54,6 +54,42 @@ struct FillLimit
   CancelReason reason{CancelReason::ReduceOnlyNotReducing};
 };
 
+// Signed position changes (raw contracts) an all-or-none precheck has already
+// simulated, keyed by account. A crossing range holds a handful of distinct
+// accounts, so a linear scan beats a hash map here and allocates nothing after
+// the first few entries.
+class PositionDeltas
+{
+ public:
+  int64_t of(uint64_t account) const noexcept
+  {
+    for (const auto& [a, d] : v_)
+    {
+      if (a == account)
+      {
+        return d;
+      }
+    }
+    return 0;
+  }
+  void add(uint64_t account, int64_t delta)
+  {
+    for (auto& [a, d] : v_)
+    {
+      if (a == account)
+      {
+        d += delta;
+        return;
+      }
+    }
+    v_.emplace_back(account, delta);
+  }
+  void clear() noexcept { v_.clear(); }
+
+ private:
+  std::vector<std::pair<uint64_t, int64_t>> v_;
+};
+
 namespace detail
 {
 inline Quantity qmin(Quantity a, Quantity b) noexcept { return (a < b) ? a : b; }
@@ -108,6 +144,19 @@ class Matcher
                                                 Quantity want)>;
   void setFillLimitHook(FillLimitHook hook) { onFillLimit_ = std::move(hook); }
 
+  // The same question as the fill-limit hook, asked about a state that has not
+  // happened yet: `deltas` carries the signed position change each account
+  // would already have taken on earlier in the same sweep. The all-or-none
+  // precheck needs it. Measuring every maker against the position as it stands
+  // right now answers a different question from the one the sweep will ask,
+  // because each print moves the position the next maker is measured against --
+  // which is how an order whose precheck said "fully fillable" ends up half
+  // printed and half killed.
+  using FillLimitDryHook = std::function<FillLimit(const RestingOrder& maker,
+                                                   const NewOrder& taker, Quantity want,
+                                                   const PositionDeltas& deltas)>;
+  void setFillLimitDryHook(FillLimitDryHook hook) { onFillLimitDry_ = std::move(hook); }
+
   // Firm-group STP: map an account to a firm/group id so self-trade prevention
   // fires across all accounts of the same firm, not just the same account.
   // group 0 removes the membership (back to account-level STP), keeping the
@@ -160,41 +209,10 @@ class Matcher
       }
     }
 
-    // FOK: all-or-none. Precheck crossable liquidity before touching the book.
-    // With STP on, exclude same-scope liquidity: it will be canceled/decremented
-    // rather than traded, so it cannot fill the FOK -- counting it would let the
-    // FOK pass the precheck and then rest with 0 fills after STP removes it.
-    // With last look active, last-look makers are NON-FIRM liquidity: they can
-    // only be held, never guaranteed, so (a) they do not count toward the FOK
-    // precheck and (b) a FOK whose crossing range contains ANY last-look maker
-    // is rejected outright -- the sweep is strict price-time, so a last-look
-    // maker inside the range could be hit before the FOK completes, and a
-    // partial execution followed by a hold would violate all-or-none.
-    if (order.tif == TimeInForce::FOK)
+    if (order.tif == TimeInForce::FOK && !fillOrKillCanFill(order, book, isMarket))
     {
-      const bool lastLookActive = static_cast<bool>(onLastLook_);
-      const bool stpActive = (order.stp != STPMode::None);
-      auto skipStp = [&](const RestingOrder& m)
-      { return stpActive && stpScope(m.accountId) == stpScope(order.accountId); };
-      auto skipStpOrLastLook = [&](const RestingOrder& m)
-      { return (lastLookActive && m.lastLook) || skipStp(m); };
-      const Quantity firm =
-          book.availableWithinExcl(order.side, order.price, isMarket, skipStpOrLastLook);
-      if (firm < order.quantity)
-      {
-        out.reject = RejectReason::FillOrKillUnfulfillable;
-        return out;
-      }
-      if (lastLookActive)
-      {
-        const Quantity withLastLook =
-            book.availableWithinExcl(order.side, order.price, isMarket, skipStp);
-        if (firm < withLastLook)  // a last-look maker sits inside the crossing range
-        {
-          out.reject = RejectReason::FillOrKillUnfulfillable;
-          return out;
-        }
-      }
+      out.reject = RejectReason::FillOrKillUnfulfillable;
+      return out;
     }
 
     Quantity leaves = order.quantity;
@@ -342,6 +360,77 @@ class Matcher
   }
 
  private:
+  // All-or-none precheck: can this FOK really be filled in full, right now, by
+  // liquidity that is allowed to trade with it?
+  //
+  // Three classes of depth are visible in the book and cannot fill the order:
+  //   - same-STP-scope makers, which the sweep cancels or decrements instead of
+  //     trading;
+  //   - last-look makers, which are non-firm -- they can only be held, never
+  //     guaranteed. One inside the crossing range is enough to refuse the order
+  //     outright: the sweep is strict price-time, so it could be hit before the
+  //     FOK completes, and a partial print followed by a hold is exactly the
+  //     outcome all-or-none exists to rule out;
+  //   - depth a fill-time risk limit will not let trade (a reduce-only maker on
+  //     a perp, the position cap). This one has to be measured maker by maker
+  //     in sweep order, because each prospective print moves the position the
+  //     next maker is measured against: two reduce-only sells of 10 against a
+  //     long of 10 look like depth 20 to the book and are worth 10 at the fill.
+  bool fillOrKillCanFill(const NewOrder& order, const Book& book, bool isMarket) const
+  {
+    using namespace detail;
+    const bool lastLookActive = static_cast<bool>(onLastLook_);
+    const bool stpActive = (order.stp != STPMode::None);
+    auto skipStp = [&](const RestingOrder& m)
+    { return stpActive && stpScope(m.accountId) == stpScope(order.accountId); };
+
+    // Reused across aggressors on the matching thread, like the pro-rata
+    // scratch: one matcher runs on one sequenced-shard thread.
+    static thread_local PositionDeltas deltas;
+    deltas.clear();
+    Quantity riskShortfall{};
+    auto measure = [&](const RestingOrder& m)
+    {
+      if ((lastLookActive && m.lastLook) || skipStp(m))
+      {
+        return true;  // excluded from the total entirely
+      }
+      if (onFillLimitDry_)
+      {
+        const Quantity total = m.leaves + m.hidden;
+        const FillLimit lim = onFillLimitDry_(m, order, total, deltas);
+        const Quantity allowed = qmin(lim.qty, total);
+        if (allowed < total)
+        {
+          riskShortfall += (total - allowed);
+        }
+        if (allowed.raw() > 0)
+        {
+          const int64_t signedQty = allowed.raw();
+          deltas.add(m.accountId, m.side == Side::BUY ? signedQty : -signedQty);
+          deltas.add(order.accountId, order.side == Side::BUY ? signedQty : -signedQty);
+        }
+      }
+      return false;
+    };
+
+    const Quantity firm = book.availableWithinExcl(order.side, order.price, isMarket, measure);
+    if (firm.raw() - riskShortfall.raw() < order.quantity.raw())
+    {
+      return false;
+    }
+    if (lastLookActive)
+    {
+      const Quantity withLastLook =
+          book.availableWithinExcl(order.side, order.price, isMarket, skipStp);
+      if (firm < withLastLook)  // a last-look maker sits inside the crossing range
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
   // Self-trade-prevention scope of an account: its firm group if registered,
   // else the account itself (identity -- account-level STP). Fast path when no
   // groups are configured.
@@ -404,8 +493,12 @@ class Matcher
       case STPMode::Decrement:
       {
         // Cancel the smaller leg fully; reduce the larger by the smaller qty.
-        // No trade occurs. (Iceberg reserve is ignored for STP.)
-        const Quantity restTotal = m.leaves;
+        // No trade occurs. "Smaller" is measured on what the resting order
+        // actually holds -- displayed peak plus hidden reserve -- not on what
+        // it shows. Comparing against the peak makes an iceberg look like the
+        // smaller leg whenever the aggressor is bigger than one peak, and the
+        // rule then cancels an order many times the aggressor's size.
+        const Quantity restTotal = m.leaves + m.hidden;
         const Quantity dec = qmin(leaves, restTotal);
         if (!(dec < restTotal))  // resting <= incoming: resting fully removed
         {
@@ -415,7 +508,7 @@ class Matcher
         else  // incoming smaller: reduce resting, incoming fully decremented
         {
           const int64_t trimmedTo = restTotal.raw() - dec.raw();
-          book.reduce(m.id, Quantity::fromRaw(trimmedTo));
+          book.reduceTotal(m.id, Quantity::fromRaw(trimmedTo));
           if (onRestingReduced_)
           {
             onRestingReduced_(m.id, restTotal.raw(), trimmedTo);
@@ -463,13 +556,14 @@ class Matcher
         return out;
       }
     }
-    if (order.tif == TimeInForce::FOK)
+    // Same all-or-none precheck price-time runs. Pro-rata used to count raw
+    // depth here, which counts liquidity the STP pass is about to remove: the
+    // allocation then had nothing to distribute and the residual fell through
+    // to the resting branch below as a GTC.
+    if (order.tif == TimeInForce::FOK && !fillOrKillCanFill(order, book, isMarket))
     {
-      if (book.availableWithin(order.side, order.price, isMarket) < order.quantity)
-      {
-        out.reject = RejectReason::FillOrKillUnfulfillable;
-        return out;
-      }
+      out.reject = RejectReason::FillOrKillUnfulfillable;
+      return out;
     }
 
     Quantity leaves = order.quantity;
@@ -650,6 +744,13 @@ class Matcher
       out.residualCanceled = true;
       out.residualCancelReason = CancelReason::ImmediateOrCancelResidual;
     }
+    else if (order.tif == TimeInForce::FOK)
+    {
+      // The same safety net cross() carries: whatever the precheck concluded, a
+      // FOK residual must never become a resting GTC.
+      out.residualCanceled = true;
+      out.residualCancelReason = CancelReason::FillOrKillResidual;
+    }
     else
     {
       out.residualRests = true;
@@ -662,6 +763,7 @@ class Matcher
   RestingHoldHook onRestingHolds_;
   RestingReducedHook onRestingReduced_;
   FillLimitHook onFillLimit_;
+  FillLimitDryHook onFillLimitDry_;
   std::unordered_map<uint64_t, uint64_t> stpGroup_;  // account -> firm group (empty = account-level STP)
   // mutable: cross() is const; these are diagnostic counters, not matching state.
   mutable uint64_t skippedLastLookProRata_{0};
