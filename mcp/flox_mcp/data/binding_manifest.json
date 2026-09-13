@@ -11385,6 +11385,11 @@
           "name": "Compressor"
         },
         {
+          "header": "include/flox/indicator/indicator_pipeline.h",
+          "kind": "type",
+          "name": "ComputingGuard"
+        },
+        {
           "header": "include/flox/backtest/concentrated_liquidity_curve.h",
           "kind": "type",
           "name": "ConcentratedLiquidityCurve"
@@ -15786,6 +15791,11 @@
         },
         {
           "kind": "method",
+          "name": "fieldCache",
+          "parent": "ComputingGuard"
+        },
+        {
+          "kind": "method",
           "name": "amountInForOutput",
           "parent": "ConcentratedLiquidityCurve"
         },
@@ -17138,11 +17148,6 @@
           "kind": "method",
           "name": "tiers",
           "parent": "FeeSchedule"
-        },
-        {
-          "kind": "method",
-          "name": "fieldCache",
-          "parent": "FieldKeyHash"
         },
         {
           "kind": "method",

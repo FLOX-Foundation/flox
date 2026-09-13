@@ -101,7 +101,11 @@ class RaydiumCpCurve : public INTokenCurve
     }
     const u256 netIn = amountIn - inputFee;
 
-    const u256 poolOut = netIn * _b[j] / (_b[i] + netIn);  // floor, the constant product
+    // mulDiv carries the full 512-bit intermediate: netIn * _b[j] alone can
+    // exceed 256 bits well before the vaults hit realistic sizes (u64
+    // lamports), and a plain operator* would wrap mod 2^256 silently in a
+    // release build (see u256.h) instead of producing the actual quotient.
+    const u256 poolOut = mulDiv(netIn, _b[j], _b[i] + netIn);  // floor, the constant product
 
     u256 userOut = poolOut;
     if (!_creatorFeeOnInput)

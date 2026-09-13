@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstring>
 #include <optional>
+#include <string>
 
 #include "flox/indicator/adf.h"
 #include "flox/indicator/adx.h"
@@ -49,6 +50,22 @@ inline void checkSameSize(size_t a, size_t b, const char* msg)
   if (a != b)
   {
     throw flox::FloxError("E_LEN_001", msg);
+  }
+}
+
+// The rolling-sum indicator family (SMA/RMA/Bollinger/VWAP/CCI) computes
+// `output[period - 1]` internally; with period == 0 that underflows to a huge
+// index and writes out of bounds (confirmed under AddressSanitizer). The C++
+// engine now guards this defensively -- period=0 behaves like "not enough
+// data" rather than corrupting memory -- but a caller who passes 0 almost
+// always did so by mistake (a config value or an optimizer search bound that
+// slipped to zero), so Python raises loudly here rather than silently
+// returning an all-NaN array.
+inline void checkPeriodPositive(size_t period, const char* name)
+{
+  if (period == 0)
+  {
+    throw flox::FloxError("E_IND_001", std::string(name) + ": period must be > 0, got 0.");
   }
 }
 
@@ -265,7 +282,9 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "sma", [](contiguous_double input, size_t period)
-      { return computeSingle(flox::indicator::SMA(period), input); },
+      {
+        checkPeriodPositive(period, "sma");
+        return computeSingle(flox::indicator::SMA(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
@@ -407,6 +426,7 @@ inline void bindIndicators(py::module_& m)
       "bollinger",
       [](contiguous_double input, size_t period, double stddev) -> py::dict
       {
+        checkPeriodPositive(period, "bollinger");
         size_t n = input.request().shape[0];
         auto* inp = input.data();
         flox::indicator::BollingerResult result;
@@ -535,7 +555,9 @@ inline void bindIndicators(py::module_& m)
 
   m.def(
       "rma", [](contiguous_double input, size_t period)
-      { return computeSingle(flox::indicator::RMA(period), input); },
+      {
+        checkPeriodPositive(period, "rma");
+        return computeSingle(flox::indicator::RMA(period), input); },
       py::arg("input"), py::arg("period"));
 
   m.def(
@@ -595,6 +617,7 @@ inline void bindIndicators(py::module_& m)
       "cci",
       [](contiguous_double high, contiguous_double low, contiguous_double close, size_t period)
       {
+        checkPeriodPositive(period, "cci");
         size_t n = high.request().shape[0];
         checkSameSize(n, low.request().shape[0], "arrays must have same size");
         checkSameSize(n, close.request().shape[0], "arrays must have same size");
@@ -617,6 +640,7 @@ inline void bindIndicators(py::module_& m)
       "vwap",
       [](contiguous_double close, contiguous_double volume, size_t window)
       {
+        checkPeriodPositive(window, "vwap");
         size_t n = close.request().shape[0];
         checkSameSize(n, volume.request().shape[0], "arrays must have same size");
         auto* c = close.data();
@@ -846,13 +870,25 @@ inline void bindIndicators(py::module_& m)
       py::arg("x"), py::arg("y"), py::arg("period"));
 
   bindSingleIndicator<flox::indicator::SMA>(m, "SMA")
-      .def(py::init<size_t>(), py::arg("period"));
+      .def(py::init(
+               [](size_t period)
+               {
+                 checkPeriodPositive(period, "SMA");
+                 return new flox::indicator::SMA(period);
+               }),
+           py::arg("period"));
 
   bindSingleIndicator<flox::indicator::EMA>(m, "EMA")
       .def(py::init<size_t>(), py::arg("period"));
 
   bindSingleIndicator<flox::indicator::RMA>(m, "RMA")
-      .def(py::init<size_t>(), py::arg("period"));
+      .def(py::init(
+               [](size_t period)
+               {
+                 checkPeriodPositive(period, "RMA");
+                 return new flox::indicator::RMA(period);
+               }),
+           py::arg("period"));
 
   bindSingleIndicator<flox::indicator::RSI>(m, "RSI")
       .def(py::init<size_t>(), py::arg("period"));
@@ -912,7 +948,13 @@ inline void bindIndicators(py::module_& m)
       .def_property_readonly("count", &flox::indicator::MACD::count);
 
   py::class_<flox::indicator::Bollinger>(m, "Bollinger")
-      .def(py::init<size_t, double>(), py::arg("period") = 20, py::arg("multiplier") = 2.0)
+      .def(py::init(
+               [](size_t period, double multiplier)
+               {
+                 checkPeriodPositive(period, "Bollinger");
+                 return new flox::indicator::Bollinger(period, multiplier);
+               }),
+           py::arg("period") = 20, py::arg("multiplier") = 2.0)
       .def("compute",
            [](const flox::indicator::Bollinger& self, contiguous_double input)
            {
@@ -985,7 +1027,13 @@ inline void bindIndicators(py::module_& m)
       .def_property_readonly("count", &flox::indicator::Stochastic::count);
 
   bindBarIndicator<flox::indicator::CCI>(m, "CCI")
-      .def(py::init<size_t>(), py::arg("period") = 20);
+      .def(py::init(
+               [](size_t period)
+               {
+                 checkPeriodPositive(period, "CCI");
+                 return new flox::indicator::CCI(period);
+               }),
+           py::arg("period") = 20);
 
   // OBV/VWAP/CVD: batch-only (top-level functions registered above);
   // streaming wrappers can be added in a follow-up if needed.

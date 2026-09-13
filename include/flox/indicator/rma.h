@@ -37,22 +37,53 @@ class RMA : public StreamingSingle<RMA>
       output[i] = std::nan("");
     }
 
-    if (n < _period)
+    // A zero period has no well-defined window; treat it like "not enough
+    // data yet" instead of underflowing _period - 1 into a huge index below.
+    if (_period == 0 || n < _period)
     {
       return;
     }
 
     double alpha = 1.0 / static_cast<double>(_period);
 
+    // Same NaN contract as EMA (RMA is Wilder's exponential average, so it
+    // has the same recursive-state problem): seed on the first _period
+    // consecutive non-NaN inputs, resetting the running sum whenever a NaN
+    // interrupts the seed window, then hold the last output through any
+    // later NaN instead of poisoning the recursion permanently.
+    size_t validCount = 0;
     double sum = 0.0;
-    for (size_t i = 0; i < _period; ++i)
+    size_t seedIdx = n;  // sentinel
+    for (size_t i = 0; i < n; ++i)
     {
+      if (std::isnan(input[i]))
+      {
+        validCount = 0;
+        sum = 0.0;
+        continue;
+      }
       sum += input[i];
+      ++validCount;
+      if (validCount == _period)
+      {
+        seedIdx = i;
+        break;
+      }
     }
-    output[_period - 1] = sum / static_cast<double>(_period);
-
-    for (size_t i = _period; i < n; ++i)
+    if (seedIdx >= n)
     {
+      return;
+    }
+
+    output[seedIdx] = sum / static_cast<double>(_period);
+
+    for (size_t i = seedIdx + 1; i < n; ++i)
+    {
+      if (std::isnan(input[i]))
+      {
+        output[i] = output[i - 1];
+        continue;
+      }
       output[i] = alpha * input[i] + (1.0 - alpha) * output[i - 1];
     }
   }

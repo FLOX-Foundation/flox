@@ -201,19 +201,30 @@ inline OlsFit olsFit(const std::vector<double>& X, size_t n, size_t k,
   return OlsFit{std::move(beta), std::move(covDiag), rss, n, k};
 }
 
-// Build the ADF regression for a given lag.
+// Build the ADF regression for a given lag, comparing it against candidates
+// up to maxLag on a FIXED sample.
+//
+// `lag` picks how many Δy lag terms this candidate regression carries;
+// `maxLag` picks the sample window: every candidate starts at the same row
+// x[maxLag+1], not at its own x[lag+1]. This matches the statsmodels
+// adfuller(autolag="AIC") convention and is what makes AIC comparisons
+// meaningful across lags -- comparing regressions fit on different numbers
+// of observations lets AIC's n*ln(rss/n) term (not just the fit itself)
+// swing the winner, which makes the chosen lag (and therefore the test
+// statistic and the stationarity verdict) depend on how many observations
+// happen to be available, and on nothing more principled than that.
 // Returns true if regression succeeded; fit is populated.
-inline bool buildAdfRegression(std::span<const double> x, size_t lag, AdfRegression reg,
-                               OlsFit& outFit, size_t& outBetaIdx)
+inline bool buildAdfRegression(std::span<const double> x, size_t lag, size_t maxLag,
+                               AdfRegression reg, OlsFit& outFit, size_t& outBetaIdx)
 {
   const size_t T = x.size();
-  // We need x[t-1] and x[t-1-lag], so the first usable t is lag+1.
-  // Effective sample size n = T - lag - 1.
-  if (T <= lag + 1)
+  // We need x[t-1] and x[t-1-lag] for every candidate up to maxLag, so the
+  // first usable t -- for every candidate alike -- is maxLag+1.
+  if (T <= maxLag + 1)
   {
     return false;
   }
-  const size_t start = lag + 1;
+  const size_t start = maxLag + 1;
   const size_t n = T - start;
 
   // Number of regressors:
@@ -357,7 +368,7 @@ inline AdfResult adf(std::span<const double> x, size_t max_lag,
   {
     detail::OlsFit fit;
     size_t betaIdx = 0;
-    if (!detail::buildAdfRegression(x, lag, reg, fit, betaIdx))
+    if (!detail::buildAdfRegression(x, lag, max_lag, reg, fit, betaIdx))
     {
       break;
     }

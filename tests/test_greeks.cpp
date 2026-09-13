@@ -134,6 +134,32 @@ TEST(SecondOrderGreeks, CharmMatchesFiniteDifference)
   }
 }
 
+// CharmMatchesFiniteDifference above uses R == B (both 0.05), which zeroes the
+// (carry - rate) term the charm formula's second half is built from -- exactly
+// the term whose sign was flipped, for both option types. That test cannot
+// fail no matter which sign is used. Force rate != carry so the flipped term is
+// nonzero and its sign actually matters, across both signs of (carry - rate).
+TEST(SecondOrderGreeks, CharmMatchesFiniteDifferenceUnequalRateAndCarry)
+{
+  const double h = 1e-6;
+  struct Case
+  {
+    double r, b;
+  };
+  const Case cases[] = {{0.05, 0.0}, {0.0, 0.05}, {0.05, -0.02}, {0.05, 0.10}};
+  for (const auto& c : cases)
+  {
+    for (auto type : {OptionType::CALL, OptionType::PUT})
+    {
+      const double fd = -(greeks(type, S, K, T + h, c.r, c.b, V).delta -
+                          greeks(type, S, K, T - h, c.r, c.b, V).delta) /
+                        (2.0 * h);
+      EXPECT_NEAR(secondOrderGreeks(type, S, K, T, c.r, c.b, V).charm, fd, 1e-2)
+          << "r=" << c.r << " b=" << c.b << " type=" << static_cast<int>(type);
+    }
+  }
+}
+
 TEST(Greeks, CryptoCaseGridFiniteDifference)
 {
   // Deribit-style r=b=0, validate delta/gamma/vega FD across a small grid.

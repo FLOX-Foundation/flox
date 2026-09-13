@@ -64,10 +64,12 @@ pandas `DataFrame` when pandas is installed, a list of dicts otherwise.
 ```python
 pool.depth(["1 WETH", "10 WETH", "50 WETH", "200 WETH"])
 #   in        out            avg_price   impact_pct
-#   1 WETH    1992.01 USDC   1992.01     0.100
-#   10 WETH   19743.16 USDC  1974.32     0.987
+#   1 WETH    1992.01 USDC   1992.01     0.399
+#   10 WETH   19743.16 USDC  1974.32     1.284
 #   ...
 ```
+
+`impact_pct` is the same `price_impact` from `quote()` above (`depth` calls `quote` per size), so it includes the pool fee. The 10 WETH row matches the `0.01284...` from the `quote("10 WETH")` example.
 
 ## Guard-rails
 

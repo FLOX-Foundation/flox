@@ -200,3 +200,33 @@ TEST(OptionExerciseTest, EarlyExerciseBoundary)
   EXPECT_FALSE(engine.isEarlyExerciseOptimal(amerPut, /*spot=*/110.0, t, r, b, vol));  // OTM
   EXPECT_FALSE(engine.isEarlyExerciseOptimal(euroPut, /*spot=*/40.0, t, r, b, vol));   // European
 }
+
+// At the crypto-default rate=0, carry=0, the BAW critical price used to collapse
+// to exactly the strike (a NaN fallback), so this engine marked EVERY ATM/ITM
+// American option -- call or put -- for immediate exercise, discarding the
+// entire remaining time value on the position. A call must never be exercised
+// early when carry >= rate (holding costs nothing extra), and a put's exercise
+// boundary must be a genuine, deep-ITM threshold rather than "anything at or
+// below the strike".
+TEST(OptionExerciseTest, CryptoDefaultRateDoesNotForceExerciseAtTheMoney)
+{
+  SymbolRegistry reg;
+  const SymbolId call = registerOption(reg, OptionType::CALL, 100.0, ExerciseStyle::American);
+  const SymbolId put = registerOption(reg, OptionType::PUT, 100.0, ExerciseStyle::American);
+
+  OptionExerciseEngine engine(reg);
+  const double t = 0.5, r = 0.0, b = 0.0, vol = 0.3;
+
+  // A call never gains from early exercise when carry >= rate, at any moneyness.
+  for (double spot : {95.0, 100.0, 120.0})
+  {
+    EXPECT_FALSE(engine.isEarlyExerciseOptimal(call, spot, t, r, b, vol))
+        << "spot=" << spot;
+  }
+
+  // A put is only worth exercising deep in the money (well below the strike),
+  // not merely at or slightly below it.
+  EXPECT_FALSE(engine.isEarlyExerciseOptimal(put, /*spot=*/95.0, t, r, b, vol));
+  EXPECT_FALSE(engine.isEarlyExerciseOptimal(put, /*spot=*/100.0, t, r, b, vol));
+  EXPECT_TRUE(engine.isEarlyExerciseOptimal(put, /*spot=*/15.0, t, r, b, vol));
+}

@@ -319,6 +319,7 @@ nav:
           - "E_INPUT_001 — Unknown compression type": errors/E_INPUT_001.md
           - "E_GRAPH_001 — Unknown indicator graph node": errors/E_GRAPH_001.md
           - "E_GRAPH_002 — Circular dependency in indicator graph": errors/E_GRAPH_002.md
+          - "E_IND_001 — Indicator period must be positive": errors/E_IND_001.md
           - "E_ADF_001 — ADF: invalid regression mode": errors/E_ADF_001.md
           - "E_ADF_002 — ADF: input too short": errors/E_ADF_002.md
           - "E_ADF_003 — ADF: NaN in input": errors/E_ADF_003.md

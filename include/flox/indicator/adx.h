@@ -22,7 +22,9 @@ class ADX
  public:
   explicit ADX(size_t period) noexcept : _period(period) {}
 
-  // Matches TA-Lib ADX/PLUS_DI/MINUS_DI exactly.
+  // Matches TA-Lib ADX/PLUS_DI/MINUS_DI exactly: DI is valid from index
+  // `period` and ADX from index `2*period - 1` (TA-Lib's lookback), and a
+  // flat true range (sTr == 0) writes 0, not NaN.
   AdxResult compute(std::span<const double> high, std::span<const double> low,
                     std::span<const double> close) const
   {
@@ -34,7 +36,7 @@ class ADX
     result.plus_di.resize(n, std::nan(""));
     result.minus_di.resize(n, std::nan(""));
 
-    if (n < 2 * p + 1)
+    if (n < 2 * p)
     {
       return result;
     }
@@ -81,6 +83,13 @@ class ADX
         result.minus_di[i] = ndi;
         double s = pdi + ndi;
         dx[i] = s > 0 ? 100.0 * std::abs(pdi - ndi) / s : 0.0;
+      }
+      else
+      {
+        // Flat true range (no movement at all): TA-Lib writes 0, not NaN.
+        result.plus_di[i] = 0.0;
+        result.minus_di[i] = 0.0;
+        dx[i] = 0.0;
       }
     }
 
