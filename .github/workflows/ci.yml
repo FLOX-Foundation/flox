@@ -81,6 +81,12 @@ jobs:
     # shipped that way and every call was a ReferenceError.
     - name: Verify every QuickJS global the JS layer calls is registered
       run: python3 scripts/check_quickjs_registration.py
+
+    # JS_ToCString returns null for a Symbol or a throwing toString, and a
+    # binding that skips the test hands that null to strlen. The test was
+    # missing at most call sites until the owning holder replaced them.
+    - name: Verify QuickJS string conversions go through the guarded holder
+      run: python3 scripts/check_quickjs_tocstring.py
     - name: Verify Python API index is in sync with .pyi
       run: python3 scripts/gen_api_index.py --check
     - name: Verify doc snippets follow the --8<-- include pattern

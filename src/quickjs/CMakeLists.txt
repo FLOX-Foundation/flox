@@ -48,6 +48,22 @@ if(FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_C)
   target_compile_options(quickjs_lib PRIVATE -fno-sanitize=float-cast-overflow)
 endif()
 
+# The bytecode optimiser packs four opcode constants into one int with the
+# M4 macro, whose top byte shifts a value above 127 left by 24 -- a signed
+# overflow under -fsanitize=undefined's shift-base check. It fires while
+# compiling the embedded JS stdlib, so every UBSan run of the QuickJS
+# tests carried one report from the vendored interpreter. Clang reports
+# it where GCC folds the constant, which is why CI never showed it. The
+# packed value is only ever compared against another packed value, so the
+# wrapped result is correct on every target here, and the fix belongs
+# upstream in an interpreter this repo treats as read-only. Suppressing
+# it on quickjs_lib alone keeps the check active everywhere else and
+# leaves an UBSan run over src/quickjs/ reporting only real findings.
+check_c_compiler_flag("-fno-sanitize=shift-base" FLOX_QUICKJS_HAS_NO_SANITIZE_SHIFT_BASE_C)
+if(FLOX_QUICKJS_HAS_NO_SANITIZE_SHIFT_BASE_C)
+  target_compile_options(quickjs_lib PRIVATE -fno-sanitize=shift-base)
+endif()
+
 # Generate embedded JS stdlib as C string literals via a script
 # Rebuilds when JS source files change
 set(JS_STDLIB_DIR ${CMAKE_SOURCE_DIR}/quickjs/flox)

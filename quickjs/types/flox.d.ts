@@ -11,7 +11,7 @@ interface SymbolContext {
     readonly position: number;
     readonly avgEntryPrice: number;
     readonly lastTradePrice: number;
-    readonly lastUpdateNs: number;
+    readonly lastUpdateNs: bigint;
     readonly book: BookSnapshot;
 }
 
@@ -22,13 +22,13 @@ interface TradeData {
     readonly qty: number;
     readonly side: "buy" | "sell";
     readonly isBuy: boolean;
-    readonly timestampNs: number;
+    readonly timestampNs: bigint;
 }
 
 interface BookData {
     readonly symbolId: number;
     readonly symbol: string;
-    readonly timestampNs: number;
+    readonly timestampNs: bigint;
     readonly snapshot: BookSnapshot;
 }
 
@@ -360,7 +360,7 @@ declare class SimulatedExecutor {
     onTrade(symbol: number, price: number, isBuy: boolean): void;
     onTradeQty(symbol: number, price: number, quantity: number, isBuy: boolean): void;
     onBestLevels(symbol: number, bidPrice: number, bidQty: number, askPrice: number, askQty: number): void;
-    advanceClock(timestampNs: number): void;
+    advanceClock(timestampNs: bigint | number): void;
     setDefaultSlippage(model: SlippageModelName, ticks?: number, tickSize?: number, bps?: number, impactCoeff?: number): void;
     setSymbolSlippage(symbol: number, model: SlippageModelName, ticks?: number, tickSize?: number, bps?: number, impactCoeff?: number): void;
     setQueueModel(model: QueueModelName, depth?: number): void;
@@ -395,12 +395,12 @@ declare interface BacktestStats {
     calmarRatio: number;
     timeWeightedReturn: number;
     returnPct: number;
-    startTimeNs: number;
-    endTimeNs: number;
+    startTimeNs: bigint;
+    endTimeNs: bigint;
 }
 
 declare interface EquityPoint {
-    timestampNs: number;
+    timestampNs: bigint;
     equity: number;
     drawdownPct: number;
 }
@@ -410,7 +410,7 @@ declare class BacktestResult {
                 fixedFeePerTrade?: number, riskFreeRate?: number, annualizationFactor?: number);
     destroy(): void;
     recordFill(orderId: number, symbol: number, side: "buy" | "sell", price: number,
-               quantity: number, timestampNs: number): void;
+               quantity: number, timestampNs: bigint | number): void;
     ingestExecutor(executor: SimulatedExecutor): void;
     stats(): BacktestStats;
     equityCurve(): EquityPoint[];
@@ -455,19 +455,19 @@ declare interface OrderTraceRow {
     seq: number;
     status: number;
     isMaker: boolean;
-    tsNs: number;
+    tsNs: bigint;
     fillQty: number;
     fillPrice: number;
     queueAhead: number;
     queueTotal: number;
-    submittedAtNs: number;
-    acceptedAtNs: number;
-    firstFillAtNs: number;
-    lastFillAtNs: number;
-    canceledAtNs: number;
-    rejectedAtNs: number;
-    triggeredAtNs: number;
-    expiredAtNs: number;
+    submittedAtNs: bigint;
+    acceptedAtNs: bigint;
+    firstFillAtNs: bigint;
+    lastFillAtNs: bigint;
+    canceledAtNs: bigint;
+    rejectedAtNs: bigint;
+    triggeredAtNs: bigint;
+    expiredAtNs: bigint;
 }
 
 declare class OrderJourneyTracer {
@@ -510,9 +510,11 @@ declare class FootprintBar {
 }
 
 declare class MarketProfile {
-    constructor(tickSize?: number, periodMinutes?: number, sessionStartNs?: number);
+    constructor(tickSize?: number, periodMinutes?: number,
+                sessionStartNs?: bigint | number);
     destroy(): void;
-    addTrade(timestampNs: number, price: number, qty: number, isBuy: boolean): void;
+    addTrade(timestampNs: bigint | number, price: number, qty: number,
+             isBuy: boolean): void;
     poc(): number;
     valueAreaHigh(): number;
     valueAreaLow(): number;
@@ -548,10 +550,12 @@ interface BinaryLogRecorderStats {
 declare class DataWriter {
     constructor(dir: string, maxSegmentSize?: number, exchangeId?: number);
     destroy(): void;
-    writeTrade(timestampNs: number, exchangeNs: number, price: number, qty: number,
+    writeTrade(timestampNs: bigint | number, exchangeNs: bigint | number,
+               price: number, qty: number,
                tradeId: number, symbolId: number, isBuy: boolean): boolean;
     // bidsBuf / asksBuf carry raw int64 levels laid out [price_raw, qty_raw, ...].
-    writeBook(timestampNs: number, exchangeNs: number, seqNs: number, symbolId: number,
+    writeBook(timestampNs: bigint | number, exchangeNs: bigint | number,
+              seqNs: bigint | number, symbolId: number,
               isSnapshot: boolean, bidsBuf: BigInt64Array | null,
               asksBuf: BigInt64Array | null): boolean;
     flush(): void;
@@ -560,8 +564,8 @@ declare class DataWriter {
 }
 
 interface TapeTradeRecord {
-    readonly exchangeTsNs: number;
-    readonly recvTsNs: number;
+    readonly exchangeTsNs: bigint;
+    readonly recvTsNs: bigint;
     readonly price: number;
     readonly qty: number;
     readonly tradeId: number;
@@ -575,8 +579,8 @@ interface TapeBookLevel {
 }
 
 interface TapeBookUpdate {
-    readonly exchangeTsNs: number;
-    readonly recvTsNs: number;
+    readonly exchangeTsNs: bigint;
+    readonly recvTsNs: bigint;
     readonly seq: number;
     readonly symbolId: number;
     readonly eventType: number;

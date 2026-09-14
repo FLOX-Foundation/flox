@@ -1,5 +1,6 @@
 #include "js_strategy.h"
 #include "js_bindings.h"
+#include "js_cstring.h"
 
 #include "flox/capi/order_type_names.hpp"
 
@@ -916,11 +917,10 @@ void FloxJsStrategy::resolveSymbols()
   std::string defaultExchange;
   if (JS_IsString(exchangeVal))
   {
-    const char* s = JS_ToCString(ctx, exchangeVal);
+    flox::JsCString s(ctx, exchangeVal);
     if (s)
     {
       defaultExchange = s;
-      JS_FreeCString(ctx, s);
     }
   }
   JS_FreeValue(ctx, exchangeVal);
@@ -938,9 +938,8 @@ void FloxJsStrategy::resolveSymbols()
   for (uint32_t i = 0; i < len; i++)
   {
     JSValue elem = JS_GetPropertyUint32(ctx, namesVal, i);
-    const char* nameStr = JS_ToCString(ctx, elem);
+    flox::JsCString nameStr(ctx, elem);
     std::string symName = nameStr ? nameStr : "";
-    JS_FreeCString(ctx, nameStr);
     JS_FreeValue(ctx, elem);
 
     // Parse "Exchange:SYMBOL" or use default exchange
@@ -1117,7 +1116,7 @@ JSValue FloxJsStrategy::makeCtxObject(const FloxSymbolContext* ctx)
   JS_SetPropertyStr(c, obj, "lastTradePrice",
                     JS_NewFloat64(c, flox_price_to_double(ctx->last_trade_price_raw)));
   JS_SetPropertyStr(c, obj, "lastUpdateNs",
-                    JS_NewFloat64(c, static_cast<double>(ctx->last_update_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ctx->last_update_ns)));
 
   JSValue bookObj = JS_NewObject(c);
   JS_SetPropertyStr(c, bookObj, "bidPrice",
@@ -1142,7 +1141,7 @@ JSValue FloxJsStrategy::makeTradeObject(const FloxTradeData* trade)
                     JS_NewFloat64(c, flox_quantity_to_double(trade->quantity_raw)));
   JS_SetPropertyStr(c, obj, "isBuy", JS_NewBool(c, trade->is_buy != 0));
   JS_SetPropertyStr(c, obj, "timestampNs",
-                    JS_NewFloat64(c, static_cast<double>(trade->exchange_ts_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(trade->exchange_ts_ns)));
   return obj;
 }
 
@@ -1152,7 +1151,7 @@ JSValue FloxJsStrategy::makeBookObject(const FloxBookData* book)
   JSValue obj = JS_NewObject(c);
   JS_SetPropertyStr(c, obj, "symbolId", JS_NewUint32(c, book->symbol));
   JS_SetPropertyStr(c, obj, "timestampNs",
-                    JS_NewFloat64(c, static_cast<double>(book->exchange_ts_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(book->exchange_ts_ns)));
 
   JSValue snap = JS_NewObject(c);
   JS_SetPropertyStr(c, snap, "bidPrice",
@@ -1184,9 +1183,9 @@ JSValue FloxJsStrategy::makeBarObject(const FloxBarData* bar)
   JS_SetPropertyStr(c, obj, "buyVolume",
                     JS_NewFloat64(c, flox_quantity_to_double(bar->buy_volume_raw)));
   JS_SetPropertyStr(c, obj, "startTimeNs",
-                    JS_NewFloat64(c, static_cast<double>(bar->start_time_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(bar->start_time_ns)));
   JS_SetPropertyStr(c, obj, "endTimeNs",
-                    JS_NewFloat64(c, static_cast<double>(bar->end_time_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(bar->end_time_ns)));
   JS_SetPropertyStr(c, obj, "closeReason", JS_NewUint32(c, bar->close_reason));
   return obj;
 }
@@ -1271,6 +1270,10 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
 {
   auto* c = _engine.context();
   JSValue obj = JS_NewObject(c);
+  // Order ids stay a Number while the nanosecond fields below are BigInt.
+  // The id comes from a counter that starts at 1 and steps once per order,
+  // so it is exact in a double for the first 2^53 orders; a nanosecond
+  // clock reading is already past that range on the very first event.
   JS_SetPropertyStr(c, obj, "orderId",
                     JS_NewFloat64(c, static_cast<double>(ev->order_id)));
   JS_SetPropertyStr(c, obj, "symbolId", JS_NewUint32(c, ev->symbol_id));
@@ -1285,7 +1288,7 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
   JS_SetPropertyStr(c, obj, "fillPrice",
                     JS_NewFloat64(c, flox_price_to_double(ev->fill_price_raw)));
   JS_SetPropertyStr(c, obj, "exchangeTsNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->exchange_ts_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->exchange_ts_ns)));
   if (ev->reject_reason)
   {
     JS_SetPropertyStr(c, obj, "rejectReason", JS_NewString(c, ev->reject_reason));
@@ -1310,21 +1313,21 @@ JSValue FloxJsStrategy::makeOrderEventObject(const FloxOrderEventData* ev)
   JS_SetPropertyStr(c, obj, "distanceToBestTicks",
                     JS_NewInt32(c, ev->distance_to_best_ticks));
   JS_SetPropertyStr(c, obj, "submittedAtNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->submitted_at_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->submitted_at_ns)));
   JS_SetPropertyStr(c, obj, "acceptedAtNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->accepted_at_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->accepted_at_ns)));
   JS_SetPropertyStr(c, obj, "firstFillAtNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->first_fill_at_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->first_fill_at_ns)));
   JS_SetPropertyStr(c, obj, "lastFillAtNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->last_fill_at_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->last_fill_at_ns)));
   JS_SetPropertyStr(c, obj, "canceledAtNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->canceled_at_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->canceled_at_ns)));
   JS_SetPropertyStr(c, obj, "rejectedAtNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->rejected_at_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->rejected_at_ns)));
   JS_SetPropertyStr(c, obj, "triggeredAtNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->triggered_at_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->triggered_at_ns)));
   JS_SetPropertyStr(c, obj, "expiredAtNs",
-                    JS_NewFloat64(c, static_cast<double>(ev->expired_at_ns)));
+                    JS_NewBigInt64(c, static_cast<int64_t>(ev->expired_at_ns)));
   const bool isMaker = ev->is_maker != 0;
   JS_SetPropertyStr(c, obj, "isMaker", JS_NewBool(c, isMaker));
   const bool isFill = (ev->status == 3 /* PARTIALLY_FILLED */ ||

@@ -2008,3 +2008,211 @@ TEST(JsIntegrationTest, InfiniteLoopInCallbackIsInterruptedNotHung)
   // one stuck call, it does not tear down the engine.
   callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
 }
+
+// ============================================================
+// String conversion at the JS boundary
+//
+// JS_ToCString returns nullptr for anything it cannot turn into a string
+// (a Symbol, an object whose toString throws, a runtime out of memory).
+// Every binding that takes a string now goes through the owning holder in
+// js_cstring.h, so the nullptr becomes a thrown TypeError at the boundary
+// instead of a strlen(nullptr) inside a C function. The tests below cover
+// the three behaviours the holder offers rather than all of the call
+// sites: a required argument, an optional one, and a site that
+// substitutes a fallback.
+// ============================================================
+
+namespace
+{
+bool jsThrowsOn(FloxJsEngine& engine, const std::string& expr)
+{
+  std::string script = "threw = false; try { " + expr + "; } catch (e) { threw = true; }";
+  if (!engine.eval(script))
+  {
+    return false;
+  }
+  JSValue threw = engine.getGlobalProperty("threw");
+  const bool did = JS_ToBool(engine.context(), threw) == 1;
+  JS_FreeValue(engine.context(), threw);
+  return did;
+}
+}  // namespace
+
+TEST(JsIntegrationTest, RequiredStringArgumentsRejectUnconvertibleValues)
+{
+  FloxJsEngine engine;
+  registerFloxBindings(engine.context());
+  ASSERT_TRUE(engine.eval("var threw = false;"));
+
+  // A Symbol: JS_ToCString refuses it outright.
+  EXPECT_TRUE(jsThrowsOn(engine, "__flox_segment_validate(Symbol('x'))"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__flox_dw_create(Symbol('x'))"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__flox_dr_create(Symbol('x'))"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__flox_part_create(Symbol('x'))"));
+
+  // An object whose toString throws: the conversion propagates that
+  // exception rather than handing back a pointer.
+  const std::string throwing = "{ toString: function() { throw new Error('nope'); } }";
+  EXPECT_TRUE(jsThrowsOn(engine, "__flox_dw_create(" + throwing + ")"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__flox_dr_create(" + throwing + ")"));
+  EXPECT_TRUE(jsThrowsOn(engine, "__flox_tape_diff('/tmp/a', " + throwing + ")"));
+
+  // The runtime survives all of it.
+  EXPECT_TRUE(engine.eval("var alive = 1 + 1;"));
+}
+
+TEST(JsIntegrationTest, OptionalStringArgumentIsEitherAbsentOrConvertible)
+{
+  FloxJsEngine engine;
+  registerFloxBindings(engine.context());
+  ASSERT_TRUE(engine.eval("var threw = false;"));
+
+  // Absent: the binding falls back to its documented default.
+  EXPECT_TRUE(engine.eval(R"(
+    var series = [];
+    for (var i = 0; i < 40; i++) { series.push(Math.sin(i / 3) * 10 + i * 0.01); }
+    var withDefault = __flox_indicator_adf(series, 4);
+    var withExplicit = __flox_indicator_adf(series, 4, 'c');
+  )"));
+  JSValue a = engine.getGlobalProperty("withDefault");
+  JSValue b = engine.getGlobalProperty("withExplicit");
+  EXPECT_TRUE(JS_IsObject(a));
+  EXPECT_TRUE(JS_IsObject(b));
+  JS_FreeValue(engine.context(), a);
+  JS_FreeValue(engine.context(), b);
+
+  // Present but unconvertible: rejected, not silently defaulted.
+  EXPECT_TRUE(jsThrowsOn(engine, "__flox_indicator_adf(series, 4, Symbol('c'))"));
+}
+
+TEST(JsIntegrationTest, FallbackStringSitesSurviveUnconvertibleValues)
+{
+  FloxJsEngine engine;
+  registerFloxBindings(engine.context());
+  // console.log formats whatever it is handed; a Symbol argument must not
+  // reach a C string function as a null pointer.
+  EXPECT_TRUE(engine.eval("console.log(Symbol('x'), 'and text');"));
+  EXPECT_TRUE(engine.eval("var alive = 1 + 1;"));
+}
+
+// ============================================================
+// Nanosecond timestamps across the JS boundary
+//
+// An exchange timestamp is around 1.76e18 nanoseconds, far past 2^53,
+// where a double stops holding every integer. At that magnitude
+// neighbouring doubles sit 256 ns apart, so two trades 100 ns apart used
+// to arrive in JS carrying the same number. Nothing about that shows up
+// until something orders events by timestamp: a merge that resolves ties
+// toward the later feed then emits the two in the wrong order. The fields
+// cross as BigInt now, so the two values stay distinct and the merge keeps
+// the order the engine dispatched.
+// ============================================================
+
+TEST(JsIntegrationTest, NanosecondTimestampsKeepEventOrderAcrossFeeds)
+{
+  TempJsFile script(R"(
+    var feedA = [];
+    var feedB = [];
+    var tsType = "";
+
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["AAAUSDT", "BBBUSDT"] }); }
+      onTrade(ctx, trade) {
+        tsType = typeof trade.timestampNs;
+        var row = { id: trade.symbol, ts: trade.timestampNs };
+        if (trade.symbol === "AAAUSDT") { feedA.push(row); } else { feedB.push(row); }
+      }
+    }
+    flox.register(new TestStrat());
+
+    // The merge a tape reader performs: take whichever head is not later
+    // than the other. Ties go to feed B.
+    function mergeOrder() {
+      var out = [];
+      var i = 0;
+      var j = 0;
+      while (i < feedA.length || j < feedB.length) {
+        if (i >= feedA.length) { out.push(feedB[j++].id); continue; }
+        if (j >= feedB.length) { out.push(feedA[i++].id); continue; }
+        if (feedB[j].ts <= feedA[i].ts) { out.push(feedB[j++].id); }
+        else { out.push(feedA[i++].id); }
+      }
+      return out.join(",");
+    }
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+  ASSERT_EQ(symIds.size(), 2u);
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  // 100 ns apart, both inside one 256 ns double step.
+  const int64_t tsA = 1757000000123456789LL;
+  const int64_t tsB = tsA + 100;
+
+  FloxSymbolContext fctx{};
+  FloxTradeData ftrade{};
+  ftrade.price_raw = flox_price_from_double(100.0);
+  ftrade.quantity_raw = flox_quantity_from_double(1.0);
+  ftrade.is_buy = 1;
+
+  fctx.symbol_id = symIds[0];
+  ftrade.symbol = symIds[0];
+  ftrade.exchange_ts_ns = tsA;
+  callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
+
+  fctx.symbol_id = symIds[1];
+  ftrade.symbol = symIds[1];
+  ftrade.exchange_ts_ns = tsB;
+  callbacks.on_trade(callbacks.user_data, &fctx, &ftrade);
+
+  auto* ctx = jsStrat.engine().context();
+  ASSERT_TRUE(jsStrat.engine().eval(
+      "var order = mergeOrder();"
+      "var tsAStr = String(feedA[0].ts);"
+      "var tsBStr = String(feedB[0].ts);"));
+
+  auto readString = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    const char* s = JS_ToCString(ctx, v);
+    std::string out = s != nullptr ? s : "";
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+
+  // The field is a BigInt, so neither value is rounded on the way in.
+  EXPECT_EQ(readString("tsType"), "bigint");
+  EXPECT_EQ(readString("tsAStr"), "1757000000123456789");
+  EXPECT_EQ(readString("tsBStr"), "1757000000123456889");
+
+  // AAAUSDT was dispatched first and carries the earlier timestamp, so the
+  // merge has to emit it first. With both timestamps collapsed onto the
+  // same double the tie rule put BBBUSDT in front.
+  EXPECT_EQ(readString("order"), "AAAUSDT,BBBUSDT");
+}
+
+// An event object carries BigInt nanosecond fields, and JSON.stringify
+// refuses a BigInt. The console shim falls back to the plain string
+// conversion instead of printing an empty line, and never leaves the
+// refusal pending as an exception for the next statement to trip on.
+TEST(JsIntegrationTest, ConsoleLogHandlesBigIntFieldsAndUnprintableValues)
+{
+  FloxJsEngine engine;
+  registerFloxBindings(engine.context());
+  EXPECT_TRUE(engine.eval("console.log({ timestampNs: 1757000000123456789n, price: 1.5 });"));
+  EXPECT_TRUE(engine.eval("console.log(Symbol('x'), 'and text');"));
+  // A pending exception left behind by either line would surface here.
+  EXPECT_TRUE(engine.eval("var afterLogging = 1 + 1;"));
+  JSValue v = engine.getGlobalProperty("afterLogging");
+  int32_t n = 0;
+  JS_ToInt32(engine.context(), &n, v);
+  EXPECT_EQ(n, 2);
+  JS_FreeValue(engine.context(), v);
+}
