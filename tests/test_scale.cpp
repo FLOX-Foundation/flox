@@ -259,4 +259,90 @@ TEST(ScaleTest, VolumeDividedByZeroQuantityIsCountedAndSaturates)
 }
 #endif
 
+// mulDivI64 carries the product at full width before dividing. Written out
+// as `(a * b) / d` in int64 the product overflows at operand sizes ordinary
+// fixed-point values reach: a 200 USD fee raw against a 7-unit quantity raw
+// is 2e10 * 7e8 = 1.4e19, past the ceiling, and the wrapped answer had the
+// wrong sign.
+TEST(ScaleTest, MulDivCarriesTheProductAtFullWidth)
+{
+  // Exactly the shape that produced a negative fee: fee 200.0 spread over a
+  // 7-unit fill, all of it attributed to the close. The intermediate is
+  // 1.4e19; the answer is the fee itself.
+  const int64_t fee = 20'000'000'000LL;
+  const int64_t qty = 700'000'000LL;
+  EXPECT_EQ(mulDivI64(fee, qty, qty), fee);
+
+  // Half the fill gets half the fee.
+  EXPECT_EQ(mulDivI64(fee, qty / 2, qty), fee / 2);
+
+  // A 5 BTC round trip at five basis points: 2.5e19 in the intermediate.
+  const int64_t bigFee = 50'000'000'000LL;
+  const int64_t bigQty = 500'000'000LL;
+  EXPECT_EQ(mulDivI64(bigFee, bigQty, bigQty), bigFee);
+}
+
+TEST(ScaleTest, MulDivHandlesSigns)
+{
+  EXPECT_EQ(mulDivI64(-100, 50, 25), -200);
+  EXPECT_EQ(mulDivI64(100, -50, 25), -200);
+  EXPECT_EQ(mulDivI64(-100, -50, 25), 200);
+  EXPECT_EQ(mulDivI64(100, 50, -25), -200);
+  EXPECT_EQ(mulDivI64(0, 50, 25), 0);
+}
+
+#if FLOX_SCALE_CHECKS
+// With checks on, a quotient past the int64 range and a zero divisor both
+// trip rather than being papered over.
+TEST(ScaleDeathTest, MulDivOverflowTraps)
+{
+  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+  EXPECT_DEATH(
+      {
+        volatile int64_t r = mulDivI64(kMax, kMax, 1);
+        (void)r;
+      },
+      // The int128 path narrows through checkedNarrowI64 and the portable
+      // path checks in mulDivI64 itself; both say "overflow".
+      "overflow");
+}
+
+TEST(ScaleDeathTest, MulDivByZeroTraps)
+{
+  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  EXPECT_DEATH(
+      {
+        volatile int64_t r = mulDivI64(10, 10, 0);
+        (void)r;
+      },
+      "division by zero");
+}
+#else
+// With checks off the answer stays defined: it saturates at the boundary
+// rather than wrapping, the same contract checkedNarrowI64 has.
+TEST(ScaleTest, MulDivSaturatesInsteadOfWrapping)
+{
+  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+  constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
+
+  EXPECT_EQ(mulDivI64(kMax, kMax, 1), kMax);
+  EXPECT_EQ(mulDivI64(kMax, -kMax, 1), kMin);
+}
+
+TEST(ScaleTest, MulDivByZeroIsCountedAndSaturates)
+{
+  resetFixedPointDivisionsByZero();
+  EXPECT_EQ(mulDivI64(10, 10, 0), std::numeric_limits<int64_t>::max());
+  EXPECT_EQ(fixedPointDivisionsByZero(), 1u);
+
+  EXPECT_EQ(mulDivI64(-10, 10, 0), std::numeric_limits<int64_t>::min());
+  EXPECT_EQ(fixedPointDivisionsByZero(), 2u);
+
+  EXPECT_EQ(mulDivI64(0, 10, 0), 0);
+  EXPECT_EQ(fixedPointDivisionsByZero(), 3u);
+  resetFixedPointDivisionsByZero();
+}
+#endif
+
 }  // namespace

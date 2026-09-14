@@ -18,6 +18,27 @@ public:
 
 The strategy requires a `SymbolRegistry` reference to look up per-symbol metadata (tick size, instrument type, etc.).
 
+## The subscriber id has to be unique
+
+Every strategy in a process needs its own. Nothing checks it, and the id does
+double duty: the event buses route on it, and it is also the namespace for the
+strategy's order ids, which number from 1 within each strategy. Two strategies
+built with the same id hand out the same order ids, and the executor, the order
+tracker and the `.floxrun` trace cannot tell their orders apart.
+
+Numbering within the strategy rather than across the process is what makes a
+second run of the same tape in the same process reproducible. A grid search or
+a batch runner gets the same ids every time, so two traces of an identical run
+compare equal byte for byte.
+
+## Allocate it on the heap
+
+A `Strategy` holds 256 `SymbolContext` slots by value and each one carries a
+full 512-level book, so the object is about 2 MB in a release build and about
+4 MB in a checked one. Two of them in a single stack frame overrun a default
+8 MB stack wherever scale checks are on, and the overflow lands in the
+constructor prologue before a line of the strategy has run.
+
 ## Purpose
 
 - Provide a base class for all trading strategies
@@ -34,15 +55,15 @@ struct SymbolContext
 {
   NLevelOrderBook<512> book;     // Order book
   Quantity position{};           // Net position
-  Price avgEntryPrice{};         // VWAP entry price
+  std::optional<Price> avgEntryPrice{};  // VWAP entry price, empty if unknown
   Price lastTradePrice{};        // Last trade price
   int64_t lastUpdateNs{0};       // Last update timestamp
   SymbolId symbolId{0};          // Symbol identifier
 
   std::optional<Price> mid() const noexcept;      // Mid price
   std::optional<Price> bookSpread() const noexcept; // Bid-ask spread
-  double unrealizedPnl(Price markPrice) const noexcept;
-  double unrealizedPnl() const noexcept;          // Uses mid()
+  std::optional<double> unrealizedPnl(Price markPrice) const noexcept;
+  std::optional<double> unrealizedPnl() const noexcept;  // Uses mid()
 
   bool isLong() const noexcept;
   bool isShort() const noexcept;

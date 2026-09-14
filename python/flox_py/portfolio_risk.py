@@ -142,7 +142,14 @@ def _build_native_rules(rules: RiskRules) -> Any:
 class PortfolioRiskAggregator:
     """Single-process portfolio risk aggregator. Delegates to the
     C++-backed implementation in ``flox_py._flox_py`` and preserves
-    the dataclass-friendly Python surface."""
+    the dataclass-friendly Python surface.
+
+    ``initial_equity`` is the capital base the drawdown rule measures
+    against. A ``max_drawdown_pct`` rule without a positive
+    ``initial_equity`` raises ``ValueError``: left at the default of
+    zero the rule did nothing at all, reporting a drawdown of 0.0000
+    against a 500,000 loss while every order went through.
+    """
 
     def __init__(
         self,

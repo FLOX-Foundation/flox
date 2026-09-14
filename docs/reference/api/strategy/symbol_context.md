@@ -9,7 +9,7 @@ struct SymbolContext
 
   NLevelOrderBook<kDefaultBookLevels> book;
   Quantity position{};
-  Price avgEntryPrice{};
+  std::optional<Price> avgEntryPrice{};
   Price lastTradePrice{};
   int64_t lastUpdateNs{0};
   SymbolId symbolId{0};
@@ -28,7 +28,7 @@ struct SymbolContext
 |-------|------|-------------|
 | `book` | `NLevelOrderBook<512>` | Order book with 512 price levels |
 | `position` | `Quantity` | Net position (positive=long, negative=short) |
-| `avgEntryPrice` | `Price` | Volume-weighted average entry price |
+| `avgEntryPrice` | `std::optional<Price>` | Volume-weighted average entry price, empty when the attached position manager reports none |
 | `lastTradePrice` | `Price` | Most recent trade price |
 | `lastUpdateNs` | `int64_t` | Last update timestamp (nanoseconds) |
 | `symbolId` | `SymbolId` | Symbol identifier |
@@ -54,11 +54,21 @@ Returns bid-ask spread. Returns `nullopt` if book is one-sided.
 ### Unrealized PnL
 
 ```cpp
-double unrealizedPnl(Price markPrice) const noexcept;
-double unrealizedPnl() const noexcept;  // Uses mid() as mark
+std::optional<double> unrealizedPnl(Price markPrice) const noexcept;
+std::optional<double> unrealizedPnl() const noexcept;  // Uses mid() as mark
 ```
 
-Calculates unrealized PnL based on current position and mark price.
+Unrealized PnL against the average entry price, which the engine reads from the
+attached `IPositionManager` before every handler call. Empty when there is no
+entry price to measure against, either because the manager keeps no cost basis
+or because the no-argument form has no mid to mark at. A flat position returns
+`0.0`, not an empty optional.
+
+Substituting zero for a missing entry price would report `position * mark`, the
+whole notional of the position dressed up as profit. That is what this returned
+before `IPositionManager` could be asked for one, and it meant a rule like
+"close when the loss passes X" never fired on a long and fired on the first
+tick of a short.
 
 ### Position State
 
@@ -106,8 +116,12 @@ protected:
 
     double spreadValue = spreadOpt->toDouble();
 
-    // Check unrealized PnL
-    double pnl = ctx(_front).unrealizedPnl() + ctx(_back).unrealizedPnl();
+    // Check unrealized PnL. Either leg can report "unknown".
+    auto frontPnl = ctx(_front).unrealizedPnl();
+    auto backPnl = ctx(_back).unrealizedPnl();
+    if (!frontPnl || !backPnl) return;
+
+    double pnl = *frontPnl + *backPnl;
 
     // Check position state
     if (ctx(_front).isLong() && pnl > _target)
@@ -127,7 +141,14 @@ private:
 
 `SymbolContext` is designed for cache efficiency:
 
-- ~8 KB per symbol (the 512-level book dominates: two `std::array<Quantity, 512>` at 8 bytes each = 8192 bytes)
+- 8,384 bytes per symbol in a release build; the 512-level book dominates at
+  8,320 of them. A build with `FLOX_SCALE_CHECKS` on (any build without
+  `NDEBUG`) carries a scale field on every `Decimal` and doubles this to 16,640
+- `Strategy` holds 256 of these by value through `SymbolStateMap`, so the
+  strategy object is about 2 MB in release and about 4 MB in a checked build.
+  Allocate a strategy on the heap: two on one stack frame overrun a default
+  8 MB stack in a checked build, and the overflow lands in the constructor
+  prologue
 - All fields in single contiguous struct
 - Access via `SymbolStateMap` provides O(1) lookup
 

@@ -9,6 +9,10 @@ public:
   virtual ~IPositionManager() = default;
 
   virtual Quantity getPosition(SymbolId symbol) const = 0;
+
+  // Average entry price of the open position, or nothing when this manager
+  // keeps no cost basis. Defaulted so an existing custom manager compiles.
+  virtual std::optional<Price> getAverageEntryPrice(SymbolId symbol) const;
 };
 ```
 
@@ -21,7 +25,18 @@ public:
 | Method           | Description                                                                               |
 | ---------------- | ----------------------------------------------------------------------------------------- |
 | `getPosition()`  | Returns net position (long/short/flat) for a given `SymbolId`.                            |
+| `getAverageEntryPrice()` | Returns the average entry price of the open position, or `std::nullopt` when the manager keeps no cost basis or the position is flat. |
 | Execution events | Inherited from `IOrderExecutionListener` — updates position on `FILLED`, `REPLACED`, etc. |
+
+`Strategy` reads `getAverageEntryPrice()` into `SymbolContext::avgEntryPrice`
+before each handler call, and `SymbolContext::unrealizedPnl()` is built on it.
+A manager that reports nothing leaves the context's unrealized PnL empty, which
+surfaces as `NaN` through every binding. Substituting zero for the entry price
+instead reports the position's whole notional as profit, which is what the
+field did before there was a method to ask.
+
+Both shipped managers implement it. A custom manager inherits the default and
+opts in by overriding.
 
 ## Notes
 

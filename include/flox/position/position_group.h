@@ -105,6 +105,14 @@ class PositionGroupTracker
   }
 
   // Close (or partially close) a position
+  //
+  // Closing an already-closed position is a no-op. It used to book the PnL a
+  // second time and push the net position further negative on every call:
+  // three closes of a 10-unit long at +200 each read back as -20 units and
+  // 600 realized. The quantity is zeroed on the way out for the same reason --
+  // it stayed at its opening size, so partialClose kept double-counting
+  // against a position that was already gone. Both in-tree engines check
+  // `closed` before calling; the caller reaching this through C or JS did not.
   void closePosition(PositionId pid, Price exitPrice)
   {
     auto it = _positions.find(pid);
@@ -113,6 +121,10 @@ class PositionGroupTracker
       return;
     }
     auto& pos = it->second;
+    if (pos.closed)
+    {
+      return;
+    }
     Price priceDiff = exitPrice - pos.entryPrice;
     Volume pnl = pos.quantity * priceDiff;
     int64_t pnlRaw = static_cast<int64_t>(static_cast<double>(pnl.raw()) * pos.contractMultiplier);
@@ -124,6 +136,7 @@ class PositionGroupTracker
     _symbolRealizedPnl[pos.symbol] += pnlRaw;
     int64_t signedQty = (pos.side == Side::SELL) ? -pos.quantity.raw() : pos.quantity.raw();
     _symbolNetQty[pos.symbol] -= signedQty;
+    pos.quantity = Quantity{};
     pos.closed = true;
   }
 

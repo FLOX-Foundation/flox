@@ -65,6 +65,45 @@ function check(cond, msg) {
     agg.destroy();
 }
 
+// The gate and the snapshot have to describe the same book.
+{
+    var agg = new flox.PortfolioRiskAggregator({
+        rules: { maxConcentrationPct: 0.40 },
+        initialEquity: 100000,
+    });
+    check(agg.checkOrder('solo', 10000, 'buy') === null,
+          'solo strategy can open a position');
+    agg.update('solo', { grossExposure: 5000 });
+    check(agg.snapshot().killSwitchActive === false,
+          'solo strategy does not arm the kill switch');
+    agg.destroy();
+}
+
+// Risk-reducing orders pass the exposure cap.
+{
+    var agg = new flox.PortfolioRiskAggregator({
+        rules: { maxGrossExposure: 50000 },
+        initialEquity: 100000,
+    });
+    agg.update('a', { grossExposure: 49000 });
+    check(agg.checkOrder('a', 10000, 'buy') !== null,
+          'buy over the gross cap is rejected');
+    check(agg.checkOrder('a', 10000, 'reduce') === null,
+          'reduce passes the gross cap');
+    agg.destroy();
+}
+
+// A drawdown cap needs something to measure against.
+{
+    var threw = false;
+    try {
+        new flox.PortfolioRiskAggregator({ rules: { maxDrawdownPct: 0.20 } });
+    } catch (e) {
+        threw = true;
+    }
+    check(threw, 'maxDrawdownPct without initialEquity is refused');
+}
+
 if (failed > 0) {
     console.log('\n' + failed + ' check(s) failed');
     throw new Error('portfolio risk smoke test failed');

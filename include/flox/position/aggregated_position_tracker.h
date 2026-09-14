@@ -120,19 +120,48 @@ class AggregatedPositionTracker : public ISubsystem
     Quantity qty = Quantity::fromRaw(pos.quantityRaw.load(std::memory_order_relaxed));
     Volume cost = Volume::fromRaw(pos.costBasisRaw.load(std::memory_order_relaxed));
 
-    if (filledQty.raw() > 0)
+    // Cost basis is signed and follows the quantity: a long carries a positive
+    // cost, a short a negative one, so `cost / qty` reads back as the entry
+    // price on either side. Opening or adding books at the fill price,
+    // reducing unwinds at the average already booked, and a fill that crosses
+    // through flat does both in that order.
+    //
+    // The earlier form keyed only off the sign of the fill and treated every
+    // sell as a reduction. Opening a short from flat then divided by a zero
+    // quantity, booked entry at price 0 and left unrealized PnL equal to the
+    // whole notional: a 10 BTC short at 50,000 reported -500,000 against a
+    // true 0, and the documented cross-venue hedge carried a fixed error of
+    // about a third of its own notional at every price.
+    const int64_t fillRaw = filledQty.raw();
+    if (fillRaw != 0)
     {
-      // Buy: cost += qty * price
-      cost = cost + (filledQty * fillPrice);
-      qty = qty + filledQty;
-    }
-    else if (filledQty.raw() < 0)
-    {
-      // Sell: reduce at avg entry
-      Quantity sellQty = Quantity::fromRaw(-filledQty.raw());
-      Price avgEntry = qty.raw() != 0 ? (cost / qty) : Price{};
-      cost = cost - (sellQty * avgEntry);
-      qty = qty - sellQty;
+      const bool sameDirection = (qty.raw() == 0) || ((qty.raw() > 0) == (fillRaw > 0));
+      if (sameDirection)
+      {
+        cost = cost + (filledQty * fillPrice);
+        qty = qty + filledQty;
+      }
+      else
+      {
+        const int64_t absFill = fillRaw > 0 ? fillRaw : -fillRaw;
+        const int64_t absPos = qty.raw() > 0 ? qty.raw() : -qty.raw();
+        const int64_t reduceRaw = absFill < absPos ? absFill : absPos;
+
+        const Price avgEntry = cost / qty;
+        const Quantity reduceSigned =
+            Quantity::fromRaw(qty.raw() > 0 ? reduceRaw : -reduceRaw);
+        cost = cost - (reduceSigned * avgEntry);
+        qty = qty - reduceSigned;
+
+        const int64_t flipRaw = absFill - reduceRaw;
+        if (flipRaw > 0)
+        {
+          const Quantity flipSigned =
+              Quantity::fromRaw(fillRaw > 0 ? flipRaw : -flipRaw);
+          cost = cost + (flipSigned * fillPrice);
+          qty = qty + flipSigned;
+        }
+      }
     }
 
     if (qty.raw() == 0)

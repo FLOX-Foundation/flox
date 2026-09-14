@@ -7,6 +7,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <limits>
 #include <stdexcept>
 
 #include "flox/backtest/backtest_config.h"
@@ -395,7 +396,10 @@ class PyStrategyBase
     result.best_ask = ask ? ask->toDouble() : 0.0;
     auto mid = c.mid();
     result.mid_price = mid ? mid->toDouble() : 0.0;
-    result.unrealized_pnl = c.unrealizedPnl();
+    // NaN when the position manager reports no entry price. This used to be
+    // position times mark, i.e. the whole notional reported as profit.
+    result.unrealized_pnl =
+        c.unrealizedPnl().value_or(std::numeric_limits<double>::quiet_NaN());
     return result;
   }
 

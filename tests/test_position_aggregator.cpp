@@ -1191,3 +1191,111 @@ TEST(AtomicReconcileTest, ReconcileMethodOnTracker)
   EXPECT_DOUBLE_EQ(mismatches[0].localQuantity.toDouble(), 3.0);
   EXPECT_DOUBLE_EQ(mismatches[0].exchangeQuantity.toDouble(), 5.0);
 }
+
+// An untagged close in GROUPED mode used to return having done nothing at
+// all. A position opened and closed through the documented API stayed open,
+// its realized PnL was lost, and the subscriber was still told the position
+// had changed.
+TEST(GroupedCloseTest, UntaggedCloseClosesThePosition)
+{
+  MultiModePositionTracker tracker{1, PositionAggregationMode::GROUPED};
+
+  tracker.openLong(100, Price::fromDouble(100.0), Quantity::fromDouble(10.0));
+  EXPECT_DOUBLE_EQ(tracker.getPosition(100).toDouble(), 10.0);
+
+  tracker.closeLong(100, Price::fromDouble(120.0), Quantity::fromDouble(10.0));
+
+  EXPECT_DOUBLE_EQ(tracker.getPosition(100).toDouble(), 0.0);
+  EXPECT_NEAR(tracker.getRealizedPnl(100).toDouble(), 200.0, 0.01);
+}
+
+// Same for a reduce-only order arriving on the execution bus with no tag,
+// which is what Strategy::emitClosePosition sends.
+TEST(GroupedCloseTest, UntaggedReduceOnlyFillClosesThePosition)
+{
+  MultiModePositionTracker tracker{1, PositionAggregationMode::GROUPED};
+
+  tracker.onOrderFilled(makeOrder(1, 100, Side::BUY, 100.0, 10.0));
+  ASSERT_DOUBLE_EQ(tracker.getPosition(100).toDouble(), 10.0);
+
+  tracker.onOrderFilled(makeOrder(2, 100, Side::SELL, 120.0, 10.0, true));
+
+  EXPECT_DOUBLE_EQ(tracker.getPosition(100).toDouble(), 0.0);
+  EXPECT_NEAR(tracker.getRealizedPnl(100).toDouble(), 200.0, 0.01);
+}
+
+// A tagged close still stays inside its own group.
+TEST(GroupedCloseTest, TaggedCloseStaysWithinItsGroup)
+{
+  MultiModePositionTracker tracker{1, PositionAggregationMode::GROUPED};
+
+  tracker.openLong(100, Price::fromDouble(100.0), Quantity::fromDouble(4.0), 7);
+  tracker.openLong(100, Price::fromDouble(100.0), Quantity::fromDouble(6.0), 9);
+
+  tracker.closeLong(100, Price::fromDouble(120.0), Quantity::fromDouble(10.0), 7);
+
+  EXPECT_DOUBLE_EQ(tracker.getPosition(100).toDouble(), 6.0);
+  EXPECT_NEAR(tracker.getRealizedPnl(100).toDouble(), 80.0, 0.01);
+}
+
+// A later part of the same order tops the position up, and the entry price
+// has to blend. Keeping the first part's price reported 5@100 plus 5@200 as
+// ten units held at 100.
+TEST(GroupedCloseTest, PartialFillsOnOneOrderBlendTheEntryPrice)
+{
+  MultiModePositionTracker tracker{1, PositionAggregationMode::GROUPED};
+
+  Order order = makeOrder(1, 100, Side::BUY, 100.0, 10.0);
+  tracker.onOrderPartiallyFilled(order, Quantity::fromDouble(5.0), Price::fromDouble(100.0));
+  tracker.onOrderPartiallyFilled(order, Quantity::fromDouble(5.0), Price::fromDouble(200.0));
+
+  auto snap = tracker.snapshot(100);
+  EXPECT_DOUBLE_EQ(snap.longQty.toDouble(), 10.0);
+  EXPECT_NEAR(snap.longAvgEntry.toDouble(), 150.0, 0.01);
+}
+
+// A fill that changes nothing must not tell subscribers the position changed.
+TEST(GroupedCloseTest, NoCallbackWhenTheFillChangesNothing)
+{
+  MultiModePositionTracker tracker{1, PositionAggregationMode::GROUPED};
+
+  int calls = 0;
+  tracker.onPositionChange([&](SymbolId, const MultiModePositionTracker::PositionSnapshot&)
+                           { ++calls; });
+
+  // Reduce-only against no position at all.
+  tracker.onOrderFilled(makeOrder(1, 100, Side::SELL, 120.0, 10.0, true));
+  EXPECT_EQ(calls, 0);
+
+  tracker.onOrderFilled(makeOrder(2, 100, Side::BUY, 100.0, 10.0));
+  EXPECT_EQ(calls, 1);
+}
+
+// Closing an already-closed position used to book the PnL again and push the
+// net further negative every time: three closes of a 10-unit long read back
+// as -20 units and 600 realized.
+TEST(PositionGroupCloseTest, ClosingTwiceIsANoOp)
+{
+  PositionGroupTracker gt;
+  PositionId pid = gt.openPosition(1, 100, Side::BUY, Price::fromDouble(100.0),
+                                   Quantity::fromDouble(10.0));
+
+  gt.closePosition(pid, Price::fromDouble(120.0));
+  EXPECT_DOUBLE_EQ(gt.netPosition(100).toDouble(), 0.0);
+  EXPECT_NEAR(gt.realizedPnl(100).toDouble(), 200.0, 0.01);
+
+  gt.closePosition(pid, Price::fromDouble(120.0));
+  gt.closePosition(pid, Price::fromDouble(120.0));
+  EXPECT_DOUBLE_EQ(gt.netPosition(100).toDouble(), 0.0);
+  EXPECT_NEAR(gt.realizedPnl(100).toDouble(), 200.0, 0.01);
+
+  // The quantity is zeroed on close, so partialClose cannot double-count
+  // against a position that is already gone either.
+  const auto* pos = gt.getPosition(pid);
+  ASSERT_NE(pos, nullptr);
+  EXPECT_EQ(pos->quantity.raw(), 0);
+
+  gt.partialClose(pid, Quantity::fromDouble(10.0), Price::fromDouble(120.0));
+  EXPECT_DOUBLE_EQ(gt.netPosition(100).toDouble(), 0.0);
+  EXPECT_NEAR(gt.realizedPnl(100).toDouble(), 200.0, 0.01);
+}

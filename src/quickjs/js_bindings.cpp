@@ -4972,7 +4972,10 @@ static JSValue js_portfolio_risk_create(JSContext* ctx, JSValueConst, int argc,
   FloxPortfolioRiskHandle h = flox_portfolio_risk_create(&rules, initial_equity);
   if (!h)
   {
-    return JS_ThrowTypeError(ctx, "PortfolioRiskAggregator: construction failed");
+    return JS_ThrowTypeError(ctx,
+                             "PortfolioRiskAggregator: construction failed. A "
+                             "maxDrawdownPct rule needs a positive "
+                             "initialEquity to measure against.");
   }
   return createHandleObject(ctx, h, flox_portfolio_risk_destroy);
 }

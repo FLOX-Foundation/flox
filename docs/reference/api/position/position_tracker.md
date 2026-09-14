@@ -83,10 +83,17 @@ PositionTracker(SubscriberId id, CostBasisMethod method = CostBasisMethod::FIFO)
 ```cpp
 Quantity getPosition(SymbolId symbol) const override;
 Price getAvgEntryPrice(SymbolId symbol) const;
+std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override;
 Price getRealizedPnl(SymbolId symbol) const;
 Price getTotalRealizedPnl() const;
 CostBasisMethod method() const;
 ```
+
+`getAvgEntryPrice` returns a default-constructed `Price` on a flat position.
+`getAverageEntryPrice` is the `IPositionManager` override and returns nothing
+there instead, so a caller cannot mistake "flat" for "entered at zero". The
+strategy context reads the override; see
+[IPositionManager](abstract_position_manager.md).
 
 ### Order Event Handlers
 

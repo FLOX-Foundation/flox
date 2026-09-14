@@ -96,8 +96,10 @@ class PortfolioRiskWrap : public Napi::ObjectWrap<PortfolioRiskWrap>
     _h = flox_portfolio_risk_create(&rules, initial_equity);
     if (!_h)
     {
-      auto err = Napi::Error::New(info.Env(),
-                                  "PortfolioRiskAggregator: failed to construct");
+      auto err = Napi::Error::New(
+          info.Env(),
+          "PortfolioRiskAggregator: failed to construct. A maxDrawdownPct rule "
+          "needs a positive initialEquity to measure against.");
       err.Value().Set("code", Napi::String::New(info.Env(), "E_VAL_002"));
       err.Value().Set("name", Napi::String::New(info.Env(), "FloxError"));
       throw err;
