@@ -14036,6 +14036,11 @@
         },
         {
           "kind": "method",
+          "name": "publishBar",
+          "parent": "BarAggregator"
+        },
+        {
+          "kind": "method",
           "name": "start",
           "parent": "BarAggregator"
         },
@@ -21787,6 +21792,11 @@
         {
           "kind": "method",
           "name": "fromDouble",
+          "parent": "RenkoBarPolicy"
+        },
+        {
+          "kind": "method",
+          "name": "gapBricks",
           "parent": "RenkoBarPolicy"
         },
         {

@@ -1890,6 +1890,31 @@ static uint32_t doAggregateC(Policy& policy, const int64_t* ts, const double* px
                            static_cast<uint32_t>(currentBar.tradeCount.raw())};
       }
       count++;
+      // See flox::BarAggregator::onTrade for why this is gated on the
+      // policy actually offering gapBricks() -- only Renko does, so the
+      // other five policies bound through this same template are
+      // unaffected.
+      if constexpr (requires(Policy& p, const TradeEvent& t, const Bar& b) {
+                      { p.gapBricks(t, b) } -> std::same_as<std::vector<Bar>>;
+                    })
+      {
+        for (const Bar& synthetic : policy.gapBricks(trade, currentBar))
+        {
+          if (count < max_bars)
+          {
+            bars_out[count] = {synthetic.startTime.time_since_epoch().count(),
+                               synthetic.endTime.time_since_epoch().count(),
+                               synthetic.open.raw(),
+                               synthetic.high.raw(),
+                               synthetic.low.raw(),
+                               synthetic.close.raw(),
+                               synthetic.volume.raw(),
+                               synthetic.buyVolume.raw(),
+                               static_cast<uint32_t>(synthetic.tradeCount.raw())};
+          }
+          count++;
+        }
+      }
       policy.initBar(trade, currentBar);
       continue;
     }

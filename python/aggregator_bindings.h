@@ -100,6 +100,18 @@ std::vector<PyExtBar> doAggregate(Policy& policy, const int64_t* ts, const doubl
     if (policy.shouldClose(trade, currentBar))
     {
       bars.push_back(barToExtBar(currentBar));
+      // See flox::BarAggregator::onTrade for why this is gated on the
+      // policy actually offering gapBricks() -- only Renko does, so the
+      // other six policies bound through this same template are unaffected.
+      if constexpr (requires(Policy& p, const TradeEvent& t, const Bar& b) {
+                      { p.gapBricks(t, b) } -> std::same_as<std::vector<Bar>>;
+                    })
+      {
+        for (const Bar& synthetic : policy.gapBricks(trade, currentBar))
+        {
+          bars.push_back(barToExtBar(synthetic));
+        }
+      }
       policy.initBar(trade, currentBar);
       continue;
     }

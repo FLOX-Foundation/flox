@@ -115,7 +115,10 @@ Extended operations:
 
 ## Bar aggregation
 
-Each helper takes `(timestamps, prices, quantities, sides, param)`:
+Each helper takes `(timestamps, prices, quantities, sides, param)`. `flox.renkoBars` can return
+more bars than there were input trades: a trade that gaps past more than one brick width closes
+the brick that was forming and synthesizes the bricks in between (see [bar types](../../explanation/bar-types.md#renko-bars)).
+Every other helper here closes at most one bar per input trade.
 
 | Call | `param` |
 |------|---------|

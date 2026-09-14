@@ -6624,6 +6624,21 @@ static JSValue doAgg(JSContext* c, JSValueConst* a, AggTimeFn fn, double param)
   std::vector<uint8_t> side = aggSides(c, a[3], n);
   std::vector<FloxBar> bars(n);
   uint32_t got = fn(ts.data(), px.data(), qty.data(), side.data(), n, param, bars.data(), n);
+  // Every aggregator routed through doAgg() except Renko closes at most one
+  // bar per input trade, so `n` is always a safe upper bound and `got` is
+  // never more than that. Renko can synthesize several bricks from a
+  // single trade that gaps past more than one brick width (see
+  // gapBricks() in renko_bar_policy.h), so `got` can come back larger than
+  // `n` there. The call above is bounds-checked and never overruns `bars`,
+  // but it also only wrote the first `n` bars in that case -- naively
+  // resizing to `got` would pad the result with zero-filled bars instead
+  // of the real ones that did not fit. Redo the call with a buffer sized
+  // to the real count instead.
+  if (got > n)
+  {
+    bars.assign(got, FloxBar{});
+    got = fn(ts.data(), px.data(), qty.data(), side.data(), n, param, bars.data(), got);
+  }
   bars.resize(got);
   return barsToJsArray(c, bars);
 }

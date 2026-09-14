@@ -14,10 +14,9 @@ enum class BarType : uint8_t {
 };
 
 enum class BarCloseReason : uint8_t {
-  Threshold,  // Normal close: interval/count/volume reached
-  Gap,        // Gap in data: new bar started due to time gap
-  Forced,     // Forced close: stop() called or manual flush
-  Warmup      // Historical warmup bar
+  Threshold = 0,  // Normal close: interval/count/volume reached
+  Forced = 2,     // Forced close: stop() called or manual flush
+  Warmup = 3      // Set by the caller, not the engine -- see BarMatrix::warmup()
 };
 
 struct Bar {
@@ -47,7 +46,7 @@ struct Bar {
 | `tradeCount` | `Quantity` | Number of trades aggregated into this bar. |
 | `startTime` | `TimePoint` | Bar open timestamp. |
 | `endTime` | `TimePoint` | Bar close timestamp. |
-| `reason` | `BarCloseReason` | Why this bar was closed. `BarAggregator` and `MultiTimeframeAggregator` currently set `Threshold` for a normal close and `Forced` for a `stop()` flush; they never set `Gap`. `Warmup` is not assigned by the engine at all -- it is for callers who build their own `Bar` history before calling `BarMatrix::warmup()`. |
+| `reason` | `BarCloseReason` | Why this bar was closed. `BarAggregator` and `MultiTimeframeAggregator` set `Threshold` for a normal close and `Forced` for a `stop()` flush. `Warmup` is never assigned by the engine itself -- set it on the `Bar` objects you build from historical data before calling `BarMatrix::warmup()`, and it carries through unchanged. There is no `Gap` value: closing a bar early because of a time gap would need a gap detector, and none of the seven bar policies has one. |
 
 ## Delta Calculation
 
