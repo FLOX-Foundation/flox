@@ -125,7 +125,7 @@ inline Napi::Object signalToJs(Napi::Env env, const FloxSignal* s)
 // callbacks, owns a BridgeStrategy.
 // ──────────────────────────────────────────────────────────────
 
-struct NodeStrategyHost
+struct NodeStrategyHost : TsfnHost
 {
   Napi::Env env;
   Napi::FunctionReference on_trade_fn;
@@ -142,27 +142,66 @@ struct NodeStrategyHost
   std::unique_ptr<BridgeStrategy> bridge;
 
   // Set by enableThreaded() when host is used with LiveEngine.
-  // onTrade / onBook / onStart / onStop queue via TSFN instead of
+  // onTrade / onBook / onStart / onStop queue via the channel instead of
   // calling V8 directly (which is illegal from a C++ consumer thread).
-  bool _threaded{false};
-  Napi::ThreadSafeFunction _tsfn;
+  //
+  // Read from the bus thread, written from the JS thread before the host can
+  // be reached by one, so it is atomic for the same reason the handler mask
+  // below is.
+  std::atomic<bool> _threaded{false};
+
+  // Which callbacks the current strategy object provides.
+  //
+  // The bus thread used to answer that question by calling IsEmpty() on the
+  // FunctionReference itself, while replaceStrategy move-assigned the same
+  // nine references from the JS thread. Move-assignment deletes the old
+  // reference, so the bus thread was reading a handle being freed underneath
+  // it. A bitmask keeps the question answerable from the bus thread and
+  // leaves every FunctionReference to the JS thread, which is the only thread
+  // allowed to touch a V8 handle anyway.
+  //
+  // A replacement is not instantaneous: an event can be queued against the
+  // outgoing mask and run against the incoming callbacks. That is what
+  // swapping a strategy on a live engine means, and it is harmless -- the
+  // consumer re-reads the reference on the JS thread and re-checks IsEmpty.
+  enum HandlerBit : uint16_t
+  {
+    kHandlerTrade = 1u << 0,
+    kHandlerBook = 1u << 1,
+    kHandlerBar = 1u << 2,
+    kHandlerStart = 1u << 3,
+    kHandlerStop = 1u << 4,
+    kHandlerFill = 1u << 5,
+    kHandlerOrderUpdate = 1u << 6,
+    kHandlerQueuePosition = 1u << 7,
+    kHandlerMarketPosition = 1u << 8,
+  };
+  std::atomic<uint16_t> _handlers{0};
+
+  bool hasHandler(uint16_t bit) const
+  {
+    return (_handlers.load(std::memory_order_acquire) & bit) != 0;
+  }
 
   struct TradeCallData
   {
     FloxSymbolContext ctx;
     FloxTradeData trade;
     NodeStrategyHost* host;
+    TsfnOwnerPtr owner;
   };
   struct BookCallData
   {
     FloxSymbolContext ctx;
     NodeStrategyHost* host;
+    TsfnOwnerPtr owner;
   };
   struct BarCallData
   {
     FloxSymbolContext ctx;
     FloxBarData bar;
     NodeStrategyHost* host;
+    TsfnOwnerPtr owner;
   };
   enum OrderEventKind : uint8_t
   {
@@ -181,28 +220,51 @@ struct NodeStrategyHost
     std::string reject_reason_owned;
     NodeStrategyHost* host;
     OrderEventKind kind;
+    TsfnOwnerPtr owner;
   };
 
-  void enableThreaded()
+  void enableThreaded() { _threaded.store(true, std::memory_order_release); }
+
+  // JS thread, before this host can be reached from a bus thread.
+  void openChannel()
   {
-    _threaded = true;
-    auto noop = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
-    _tsfn = Napi::ThreadSafeFunction::New(env, noop, "flox_strategy_cb", kTsfnMaxQueueSize, 1);
+    if (_threaded.load(std::memory_order_acquire))
+    {
+      TsfnHost::openChannel("flox_strategy_cb");
+    }
   }
 
-  ~NodeStrategyHost()
+  // Recompute the handler bitmask from the references currently held.
+  // JS thread only; the store publishes the whole set to the bus thread.
+  void publishHandlerMask()
   {
-    if (_threaded)
+    uint16_t mask = 0;
+    auto bit = [&](const Napi::FunctionReference& fn, uint16_t b)
     {
-      _tsfn.Release();
-    }
+      if (!fn.IsEmpty())
+      {
+        mask |= b;
+      }
+    };
+    bit(on_trade_fn, kHandlerTrade);
+    bit(on_book_fn, kHandlerBook);
+    bit(on_bar_fn, kHandlerBar);
+    bit(on_start_fn, kHandlerStart);
+    bit(on_stop_fn, kHandlerStop);
+    bit(on_fill_fn, kHandlerFill);
+    bit(on_order_update_fn, kHandlerOrderUpdate);
+    bit(on_queue_position_change_fn, kHandlerQueuePosition);
+    bit(on_market_position_change_fn, kHandlerMarketPosition);
+    _handlers.store(mask, std::memory_order_release);
   }
 
   // Replace the strategy's callbacks with those from a new strategy
   // object. Bridge subscriptions, in-flight orders, and connector
-  // sessions stay intact. The caller must invoke this on the V8
-  // thread; concurrent dispatch from a TSFN consumer would race on
-  // the FunctionReference fields.
+  // sessions stay intact.
+  //
+  // Must run on the V8 thread, which is where every read of these nine
+  // references also happens: the bus thread decides whether a callback exists
+  // from the handler bitmask instead of touching the references themselves.
   void replaceStrategy(Napi::Object new_strategy_obj)
   {
     auto get = [&](const char* name) -> Napi::FunctionReference
@@ -228,6 +290,7 @@ struct NodeStrategyHost
     on_order_update_fn = get("onOrderUpdate");
     on_queue_position_change_fn = get("onQueuePositionChange");
     on_market_position_change_fn = get("onMarketPositionChange");
+    publishHandlerMask();
     if (on_start_fn)
     {
       on_start_fn.Call({});
@@ -237,7 +300,7 @@ struct NodeStrategyHost
   NodeStrategyHost(Napi::Env env_, Napi::Object strategy_obj,
                    SymbolRegistry* reg, uint32_t id,
                    const std::vector<uint32_t>& syms_)
-      : env(env_), syms(syms_)
+      : TsfnHost(env_), env(env_), syms(syms_)
   {
     auto get = [&](const char* name) -> Napi::FunctionReference
     {
@@ -257,6 +320,7 @@ struct NodeStrategyHost
     on_order_update_fn = get("onOrderUpdate");
     on_queue_position_change_fn = get("onQueuePositionChange");
     on_market_position_change_fn = get("onMarketPositionChange");
+    publishHandlerMask();
 
     FloxStrategyCallbacks cbs{};
     cbs.user_data = this;
@@ -420,6 +484,12 @@ struct NodeStrategyHost
     // (NODE_ADDON_API_CPP_EXCEPTIONS_ALL turns a JS throw into a C++
     // exception here), so every strategy exception leaked its CallData.
     std::unique_ptr<TradeCallData> guard(d);
+    // The host is gone and the queue was not emptied by its release: free
+    // the payload and stop, rather than reading through a dead pointer.
+    if (d->owner->retired())
+    {
+      return;
+    }
     auto* self = d->host;
     if (!self->on_trade_fn.IsEmpty())
     {
@@ -441,6 +511,10 @@ struct NodeStrategyHost
   static void callOnBook(Napi::Env env, Napi::Function, BookCallData* d)
   {
     std::unique_ptr<BookCallData> guard(d);
+    if (d->owner->retired())
+    {
+      return;
+    }
     auto* self = d->host;
     if (!self->on_book_fn.IsEmpty())
     {
@@ -469,6 +543,10 @@ struct NodeStrategyHost
   static void callOnBar(Napi::Env env, Napi::Function, BarCallData* d)
   {
     std::unique_ptr<BarCallData> guard(d);
+    if (d->owner->retired())
+    {
+      return;
+    }
     auto* self = d->host;
     if (!self->on_bar_fn.IsEmpty())
     {
@@ -484,15 +562,15 @@ struct NodeStrategyHost
                       const FloxTradeData* trade)
   {
     auto* self = static_cast<NodeStrategyHost*>(ud);
-    if (self->on_trade_fn.IsEmpty())
+    if (!self->hasHandler(kHandlerTrade))
     {
       return;
     }
 
-    if (self->_threaded)
+    if (self->_threaded.load(std::memory_order_acquire))
     {
-      auto* d = new TradeCallData{*ctx, *trade, self};
-      tsfnCall(self->_tsfn, d, &NodeStrategyHost::callOnTrade);
+      auto* d = new TradeCallData{*ctx, *trade, self, self->owner()};
+      self->post(d, &NodeStrategyHost::callOnTrade);
     }
     else
     {
@@ -515,15 +593,15 @@ struct NodeStrategyHost
                      const FloxBookData* /*book*/)
   {
     auto* self = static_cast<NodeStrategyHost*>(ud);
-    if (self->on_book_fn.IsEmpty())
+    if (!self->hasHandler(kHandlerBook))
     {
       return;
     }
 
-    if (self->_threaded)
+    if (self->_threaded.load(std::memory_order_acquire))
     {
-      auto* d = new BookCallData{*ctx, self};
-      tsfnCall(self->_tsfn, d, &NodeStrategyHost::callOnBook);
+      auto* d = new BookCallData{*ctx, self, self->owner()};
+      self->post(d, &NodeStrategyHost::callOnBook);
     }
     else
     {
@@ -538,15 +616,15 @@ struct NodeStrategyHost
                     const FloxBarData* bar)
   {
     auto* self = static_cast<NodeStrategyHost*>(ud);
-    if (self->on_bar_fn.IsEmpty())
+    if (!self->hasHandler(kHandlerBar))
     {
       return;
     }
 
-    if (self->_threaded)
+    if (self->_threaded.load(std::memory_order_acquire))
     {
-      auto* d = new BarCallData{*ctx, *bar, self};
-      tsfnCall(self->_tsfn, d, &NodeStrategyHost::callOnBar);
+      auto* d = new BarCallData{*ctx, *bar, self, self->owner()};
+      self->post(d, &NodeStrategyHost::callOnBar);
     }
     else
     {
@@ -698,6 +776,25 @@ struct NodeStrategyHost
     }
   }
 
+  // Bus-thread-safe counterpart of pickFnRef: answers "does this kind have a
+  // handler" without touching a FunctionReference.
+  static uint16_t handlerBit(OrderEventKind kind)
+  {
+    switch (kind)
+    {
+      case kOrderEventKindFill:
+        return kHandlerFill;
+      case kOrderEventKindQueuePosition:
+        return kHandlerQueuePosition;
+      case kOrderEventKindMarketPosition:
+        return kHandlerMarketPosition;
+      case kOrderEventKindUpdate:
+      default:
+        return kHandlerOrderUpdate;
+    }
+  }
+
+  // JS thread only.
   static Napi::FunctionReference& pickFnRef(NodeStrategyHost* self, OrderEventKind kind)
   {
     switch (kind)
@@ -717,6 +814,10 @@ struct NodeStrategyHost
   static void callOnOrderEvent(Napi::Env env, Napi::Function, OrderEventCallData* d)
   {
     std::unique_ptr<OrderEventCallData> guard(d);
+    if (d->owner->retired())
+    {
+      return;
+    }
     auto* self = d->host;
     auto& fn = pickFnRef(self, d->kind);
     if (!fn.IsEmpty())
@@ -734,21 +835,21 @@ struct NodeStrategyHost
                                  const FloxOrderEventData* ev,
                                  OrderEventKind kind)
   {
-    auto& fn = pickFnRef(self, kind);
-    if (fn.IsEmpty())
+    if (!self->hasHandler(handlerBit(kind)))
     {
       return;
     }
-    if (self->_threaded)
+    if (self->_threaded.load(std::memory_order_acquire))
     {
       auto* d = new OrderEventCallData{
           *ctx, *ev,
           ev->reject_reason ? std::string(ev->reject_reason) : std::string{},
-          self, kind};
-      tsfnCall(self->_tsfn, d, &NodeStrategyHost::callOnOrderEvent);
+          self, kind, self->owner()};
+      self->post(d, &NodeStrategyHost::callOnOrderEvent);
     }
     else
     {
+      auto& fn = pickFnRef(self, kind);
       auto env = self->env;
       auto ctxObj = Napi::Object::New(env);
       buildCtxObj(env, ctxObj, ctx);
@@ -788,22 +889,34 @@ struct NodeStrategyHost
   {
     NodeStrategyHost* host;
     bool is_start;
+    TsfnOwnerPtr owner;
   };
+
+  static void callLifecycle(Napi::Env, Napi::Function, LifecycleCallData* d)
+  {
+    std::unique_ptr<LifecycleCallData> guard(d);
+    if (d->owner->retired())
+    {
+      return;
+    }
+    auto& fn = d->is_start ? d->host->on_start_fn : d->host->on_stop_fn;
+    if (!fn.IsEmpty())
+    {
+      fn.Call({});
+    }
+  }
 
   static void onStart(void* ud)
   {
     auto* self = static_cast<NodeStrategyHost*>(ud);
-    if (self->on_start_fn.IsEmpty())
+    if (!self->hasHandler(kHandlerStart))
     {
       return;
     }
-    if (self->_threaded)
+    if (self->_threaded.load(std::memory_order_acquire))
     {
-      auto* d = new LifecycleCallData{self, true};
-      tsfnCall(self->_tsfn, d, [](Napi::Env, Napi::Function, LifecycleCallData* d)
-               {
-        std::unique_ptr<LifecycleCallData> guard(d);
-        d->host->on_start_fn.Call({}); });
+      auto* d = new LifecycleCallData{self, true, self->owner()};
+      self->post(d, &NodeStrategyHost::callLifecycle);
     }
     else
     {
@@ -814,17 +927,14 @@ struct NodeStrategyHost
   static void onStop(void* ud)
   {
     auto* self = static_cast<NodeStrategyHost*>(ud);
-    if (self->on_stop_fn.IsEmpty())
+    if (!self->hasHandler(kHandlerStop))
     {
       return;
     }
-    if (self->_threaded)
+    if (self->_threaded.load(std::memory_order_acquire))
     {
-      auto* d = new LifecycleCallData{self, false};
-      tsfnCall(self->_tsfn, d, [](Napi::Env, Napi::Function, LifecycleCallData* d)
-               {
-        std::unique_ptr<LifecycleCallData> guard(d);
-        d->host->on_stop_fn.Call({}); });
+      auto* d = new LifecycleCallData{self, false, self->owner()};
+      self->post(d, &NodeStrategyHost::callLifecycle);
     }
     else
     {
@@ -1190,7 +1300,7 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
 //   new Runner(registry, onSignal, true)          — Disruptor (threaded)
 // ──────────────────────────────────────────────────────────────
 
-class RunnerNode : public Napi::ObjectWrap<RunnerNode>
+class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
 {
  public:
   static Napi::Object Init(Napi::Env env)
@@ -1220,7 +1330,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
   }
 
   RunnerNode(const Napi::CallbackInfo& info)
-      : Napi::ObjectWrap<RunnerNode>(info)
+      : Napi::ObjectWrap<RunnerNode>(info), TsfnHost(info.Env())
   {
     auto env = info.Env();
     auto* reg = Napi::ObjectWrap<SymbolRegistryNode>::Unwrap(info[0].As<Napi::Object>())->get();
@@ -1231,7 +1341,11 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     {
       _reg = reg;
       _engine = flox_live_engine_create(static_cast<FloxRegistryHandle>(reg));
-      _tsfn = Napi::ThreadSafeFunction::New(env, onSig, "flox_runner_signal", kTsfnMaxQueueSize, 1);
+      // The signal channel opens in start(), not here. A channel holds Node's
+      // event loop open, and nothing should hold it open while no engine
+      // thread is running -- constructing a threaded runner and doing nothing
+      // else used to be enough to keep the process alive for good.
+      _on_signal = Napi::Persistent(onSig);
       _mode = Mode::Threaded;
     }
     else
@@ -1252,11 +1366,11 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     }
     if (_mode == Mode::Threaded && _engine)
     {
+      // Destroying the engine joins its consumer threads, so no producer can
+      // reach a channel past this point. Each host retires and closes its own
+      // channel in its destructor; the signal channel is closed by ~TsfnHost,
+      // which runs after this body.
       flox_live_engine_destroy(_engine);
-    }
-    if (_mode == Mode::Threaded)
-    {
-      _tsfn.Release();
     }
   }
 
@@ -1273,7 +1387,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
   Napi::FunctionReference _on_signal;
   // Threaded
   FloxLiveEngineHandle _engine{nullptr};
-  Napi::ThreadSafeFunction _tsfn;
+  bool _running{false};
 
   std::vector<std::unique_ptr<NodeStrategyHost>> _hosts;
 
@@ -1301,6 +1415,13 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     if (_mode == Mode::Threaded)
     {
       host->enableThreaded();
+      if (_running)
+      {
+        // Added to an engine that is already running: the channel has to exist
+        // before the bridge is subscribed, or the first event finds none.
+        // Nothing reads this host yet, so the write is unshared.
+        host->openChannel();
+      }
       flox_live_engine_add_strategy(_engine,
                                     static_cast<FloxStrategyHandle>(host->bridge.get()),
                                     &RunnerNode::signalCbThreaded, this);
@@ -1341,11 +1462,17 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     if (_mode == Mode::Sync)
     {
       flox_runner_start(_runner);
+      return info.Env().Undefined();
     }
-    else
+    // Channels open before the engine does, so every write to them happens
+    // before the consumer threads that read them exist.
+    TsfnHost::openChannel(_on_signal.Value(), "flox_runner_signal");
+    for (auto& h : _hosts)
     {
-      flox_live_engine_start(_engine);
+      h->openChannel();
     }
+    _running = true;
+    flox_live_engine_start(_engine);
     return info.Env().Undefined();
   }
 
@@ -1354,11 +1481,19 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     if (_mode == Mode::Sync)
     {
       flox_runner_stop(_runner);
+      return info.Env().Undefined();
     }
-    else
+    // Stopping the engine dispatches each strategy's onStop and then joins
+    // the bus threads, so by the time it returns nothing can queue more work.
+    // Closing after that hands back the event loop reference while leaving
+    // the queued onStop to run on a later tick.
+    flox_live_engine_stop(_engine);
+    _running = false;
+    for (auto& h : _hosts)
     {
-      flox_live_engine_stop(_engine);
+      h->closeChannel();
     }
+    TsfnHost::closeChannel();
     return info.Env().Undefined();
   }
 
@@ -1467,8 +1602,11 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
   {
     auto* self = static_cast<RunnerNode*>(ud);
     auto* copy = new FloxSignal(*sig);
-    tsfnCall(self->_tsfn, copy, [](Napi::Env env, Napi::Function fn, FloxSignal* s)
-             {
+    // No liveness guard here, unlike the strategy payloads: this callback
+    // reads nothing but the channel's own bound function, which the channel
+    // keeps alive for as long as it has anything to dispatch.
+    self->post(copy, [](Napi::Env env, Napi::Function fn, FloxSignal* s)
+               {
       std::unique_ptr<FloxSignal> guard(s);
       fn.Call({signalToJs(env, s)}); });
   }
@@ -1678,8 +1816,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>
     }
 
     _recorder_binlog_ref.Reset();
-    _recorder_host = std::make_unique<flox_node::MarketDataRecorderHookHost>(
-        env, obj);
+    _recorder_host = std::make_unique<flox_node::MarketDataRecorderHookHost>(env, obj);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_market_data_recorder(_runner, _recorder_host->handle);
