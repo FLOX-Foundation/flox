@@ -16,8 +16,13 @@
 #include "flox/strategy/symbol_state_map.h"
 
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
+#include <cmath>
 #include <memory>
 #include <memory_resource>
+#include <thread>
+#include <vector>
 
 using namespace flox;
 
@@ -792,4 +797,308 @@ TEST_F(StrategyIntegrationTest, OrderIdsRestartForEachStrategyInstance)
   }
 
   EXPECT_EQ(firstRun, secondRun);
+}
+
+// ============================================================
+// Ownership of the per-symbol state
+//
+// A strategy sits on three buses and each runs its own consumer thread, so
+// a trade and a book update for the same symbol reach the strategy at the
+// same instant on two different threads. Everything below drives that
+// shape directly, without a bus, so the tests run everywhere the suite
+// does -- ThreadSanitizer included, where this shape used to report races
+// in SymbolStateMap::operator[], NLevelOrderBook::applyBookUpdate,
+// Strategy::onBookUpdate and Decimal::raw().
+// ============================================================
+
+namespace
+{
+
+class OwnershipStrategy : public Strategy
+{
+ public:
+  OwnershipStrategy(std::vector<SymbolId> syms, const SymbolRegistry& registry)
+      : Strategy(1, std::move(syms), registry)
+  {
+  }
+
+  void start() override {}
+  void stop() override {}
+
+  std::atomic<int> trades{0};
+  std::atomic<int> books{0};
+  std::atomic<int> tornReads{0};
+
+  using Strategy::ctx;
+
+ protected:
+  // Both hooks read the whole context while they hold it. Every book
+  // update this test publishes carries the same two levels, so any
+  // best bid / best ask other than 100 / 101 means the hook was handed a
+  // context another thread was rewriting underneath it.
+  void onSymbolTrade(SymbolContext& c, const TradeEvent&) override
+  {
+    checkBook(c);
+    trades.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  void onSymbolBook(SymbolContext& c, const BookUpdateEvent&) override
+  {
+    checkBook(c);
+    books.fetch_add(1, std::memory_order_relaxed);
+  }
+
+ private:
+  void checkBook(const SymbolContext& c)
+  {
+    auto bid = c.book.bestBid();
+    auto ask = c.book.bestAsk();
+    if (!bid || !ask)
+    {
+      return;  // before the first snapshot lands
+    }
+    if (std::abs(bid->toDouble() - 100.0) > 1e-6 ||
+        std::abs(ask->toDouble() - 101.0) > 1e-6)
+    {
+      tornReads.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+};
+
+}  // namespace
+
+TEST(StrategyStateOwnership, ConcurrentTradeAndBookForOneSymbolStayCoherent)
+{
+  constexpr int kEvents = 20000;
+  constexpr SymbolId kSym = 1;
+
+  SymbolRegistry registry;
+  populateRegistry(registry, {kSym});
+  auto strategy = std::make_unique<OwnershipStrategy>(std::vector<SymbolId>{kSym}, registry);
+
+  std::atomic<bool> go{false};
+
+  std::thread tradeThread(
+      [&]
+      {
+        while (!go.load(std::memory_order_acquire))
+        {
+        }
+        for (int i = 0; i < kEvents; ++i)
+        {
+          TradeEvent ev;
+          ev.trade.symbol = kSym;
+          ev.trade.price = Price::fromDouble(100.5);
+          ev.trade.quantity = Quantity::fromDouble(1.0);
+          ev.trade.exchangeTsNs = UnixNanos(1000000000LL + i);
+          strategy->onTrade(ev);
+        }
+      });
+
+  std::thread bookThread(
+      [&]
+      {
+        std::pmr::monotonic_buffer_resource arena;
+        while (!go.load(std::memory_order_acquire))
+        {
+        }
+        for (int i = 0; i < kEvents; ++i)
+        {
+          BookUpdateEvent ev(&arena);
+          ev.update.symbol = kSym;
+          ev.update.type = BookUpdateType::SNAPSHOT;
+          ev.update.exchangeTsNs = UnixNanos(1000000000LL + i);
+          ev.update.bids.emplace_back(Price::fromDouble(100.0), Quantity::fromDouble(1.0));
+          ev.update.asks.emplace_back(Price::fromDouble(101.0), Quantity::fromDouble(1.0));
+          strategy->onBookUpdate(ev);
+        }
+      });
+
+  go.store(true, std::memory_order_release);
+  tradeThread.join();
+  bookThread.join();
+
+  EXPECT_EQ(strategy->trades.load(), kEvents);
+  EXPECT_EQ(strategy->books.load(), kEvents);
+  EXPECT_EQ(strategy->tornReads.load(), 0)
+      << "a hook was handed a context another thread was rewriting";
+  EXPECT_NEAR(strategy->ctx(kSym).mid()->toDouble(), 100.5, 1e-6);
+}
+
+// Two symbols in parallel is the reason the lock is per symbol rather than
+// per strategy. Nothing here can deadlock, but a coarser lock would turn
+// this into a serial run, and a broken per-symbol mapping would cross the
+// two symbols' state.
+TEST(StrategyStateOwnership, DifferentSymbolsDispatchInParallel)
+{
+  constexpr int kEvents = 20000;
+
+  SymbolRegistry registry;
+  populateRegistry(registry, {1, 2});
+  auto strategy = std::make_unique<OwnershipStrategy>(std::vector<SymbolId>{1, 2}, registry);
+
+  auto pump = [&](SymbolId sym, double price)
+  {
+    for (int i = 0; i < kEvents; ++i)
+    {
+      TradeEvent ev;
+      ev.trade.symbol = sym;
+      ev.trade.price = Price::fromDouble(price);
+      ev.trade.quantity = Quantity::fromDouble(1.0);
+      ev.trade.exchangeTsNs = UnixNanos(1000000000LL + i);
+      strategy->onTrade(ev);
+    }
+  };
+
+  std::thread a([&]
+                { pump(1, 100.0); });
+  std::thread b([&]
+                { pump(2, 200.0); });
+  a.join();
+  b.join();
+
+  EXPECT_EQ(strategy->trades.load(), 2 * kEvents);
+  EXPECT_EQ(strategy->ctx(1).lastTradePrice.toDouble(), 100.0);
+  EXPECT_EQ(strategy->ctx(2).lastTradePrice.toDouble(), 200.0);
+}
+
+namespace
+{
+
+// A hook that emits an order the executor fills straight away, which
+// re-enters the strategy for the same symbol on the same thread. The
+// simulated executor does exactly this in a backtest. A plain per-symbol
+// mutex would deadlock here; the test is a liveness test, and a regression
+// hangs it rather than failing an assertion.
+class ReentrantStrategy : public Strategy
+{
+ public:
+  ReentrantStrategy(std::vector<SymbolId> syms, const SymbolRegistry& registry)
+      : Strategy(1, std::move(syms), registry)
+  {
+  }
+
+  void start() override {}
+  void stop() override {}
+
+  int fills{0};
+  int trades{0};
+
+ protected:
+  void onSymbolTrade(SymbolContext&, const TradeEvent& ev) override
+  {
+    ++trades;
+    OrderEvent fill;
+    fill.status = OrderEventStatus::FILLED;
+    fill.order.id = 1;
+    fill.order.symbol = ev.trade.symbol;
+    fill.fillQty = Quantity::fromDouble(1.0);
+    fill.fillPrice = ev.trade.price;
+    onOrderEvent(fill);
+  }
+
+  void onSymbolFill(SymbolContext&, const OrderEvent&) override { ++fills; }
+};
+
+}  // namespace
+
+TEST(StrategyStateOwnership, SynchronousReentryForTheSameSymbolDoesNotDeadlock)
+{
+  SymbolRegistry registry;
+  populateRegistry(registry, {1});
+  auto strategy = std::make_unique<ReentrantStrategy>(std::vector<SymbolId>{1}, registry);
+
+  TradeEvent ev;
+  ev.trade.symbol = 1;
+  ev.trade.price = Price::fromDouble(100.0);
+  ev.trade.quantity = Quantity::fromDouble(1.0);
+  strategy->onTrade(ev);
+
+  EXPECT_EQ(strategy->trades, 1);
+  EXPECT_EQ(strategy->fills, 1);
+}
+
+// The per-symbol context table used to sit inside the strategy object by
+// value: 256 slots, each carrying a 512-level book, put the object at
+// roughly 2 MB in a release build and 4 MB with FLOX_SCALE_CHECKS on. Two
+// of them in one frame overran a default 8 MB stack, and the overrun
+// landed in the constructor prologue.
+TEST(StrategyStateOwnership, StrategyObjectFitsOnTheStack)
+{
+  EXPECT_LT(sizeof(Strategy), size_t{64} * 1024)
+      << "sizeof(Strategy) = " << sizeof(Strategy);
+}
+
+TEST(StrategyStateOwnership, TwoStrategiesInOneStackFrame)
+{
+  SymbolRegistry registry;
+  populateRegistry(registry, {1, 2});
+
+  TestStrategy first(SubscriberId{1}, std::vector<SymbolId>{1}, registry);
+  TestStrategy second(SubscriberId{2}, std::vector<SymbolId>{2}, registry);
+
+  TradeEvent ev;
+  ev.trade.symbol = 1;
+  ev.trade.price = Price::fromDouble(100.0);
+  first.onTrade(ev);
+
+  ev.trade.symbol = 2;
+  ev.trade.price = Price::fromDouble(200.0);
+  second.onTrade(ev);
+
+  EXPECT_EQ(first.tradeCount, 1);
+  EXPECT_EQ(second.tradeCount, 1);
+  EXPECT_EQ(first.ctx(1).lastTradePrice.toDouble(), 100.0);
+  EXPECT_EQ(second.ctx(2).lastTradePrice.toDouble(), 200.0);
+}
+
+// The bar ring is per-symbol strategy state too, and it is an
+// unordered_map: inserting a new (symbol, timeframe) key rehashes it and
+// moves every other symbol's buckets, so a reader on another thread walks
+// buckets that are being relocated underneath it.
+TEST(StrategyStateOwnership, BarRingSurvivesConcurrentReadsAndWrites)
+{
+  constexpr int kBars = 5000;
+
+  SymbolRegistry registry;
+  populateRegistry(registry, {1, 2, 3, 4});
+  auto strategy = std::make_unique<OwnershipStrategy>(
+      std::vector<SymbolId>{1, 2, 3, 4}, registry);
+
+  std::atomic<bool> done{false};
+
+  std::thread writer(
+      [&]
+      {
+        for (int i = 0; i < kBars; ++i)
+        {
+          BarEvent ev;
+          ev.symbol = static_cast<SymbolId>(1 + (i % 4));
+          ev.barType = BarType::Time;
+          ev.barTypeParam = static_cast<uint64_t>(60 + (i % 8));
+          ev.bar.close = Price::fromDouble(100.0 + i);
+          ev.bar.endTime = TimePoint{std::chrono::nanoseconds{1000000000LL + i}};
+          strategy->onBar(ev);
+        }
+        done.store(true, std::memory_order_release);
+      });
+
+  std::thread reader(
+      [&]
+      {
+        while (!done.load(std::memory_order_acquire))
+        {
+          for (SymbolId sym = 1; sym <= 4; ++sym)
+          {
+            (void)strategy->lastClosedBar(sym, BarType::Time, 60);
+            (void)strategy->lastNClosedBars(sym, BarType::Time, 60, 8);
+          }
+        }
+      });
+
+  writer.join();
+  reader.join();
+
+  auto last = strategy->lastClosedBar(1, BarType::Time, 60);
+  ASSERT_TRUE(last.has_value());
 }

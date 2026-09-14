@@ -15,6 +15,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <memory>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -22,6 +23,12 @@
 namespace flox
 {
 
+// Flat per-symbol state table.
+//
+// THREAD SAFETY: none. This is a container, not a synchronisation
+// primitive: concurrent access to the same symbol's slot has to be ordered
+// by whoever owns the state. `flox::Strategy` does that with a per-symbol
+// lock; see the ownership note in flox/strategy/strategy.h.
 template <typename State, size_t MaxSymbols = 256>
 class SymbolStateMap
 {
@@ -30,17 +37,51 @@ class SymbolStateMap
 
   SymbolStateMap() = default;
 
+  // Movable, never copyable. A move hands the table over and gives the
+  // source a fresh empty one rather than leaving it null: every accessor
+  // dereferences `_table`, and a moved-from map that answered `operator[]`
+  // through a null pointer would turn a use-after-move into a crash at an
+  // unrelated address. Policies are moved into aggregators at wiring time,
+  // never on a hot path, so the allocation is not in anyone's way; being
+  // noexcept it can only fail by terminating, which is the same outcome as
+  // failing to construct the map in the first place.
+  SymbolStateMap(const SymbolStateMap&) = delete;
+  SymbolStateMap& operator=(const SymbolStateMap&) = delete;
+
+  SymbolStateMap(SymbolStateMap&& other) noexcept
+      : _table(std::exchange(other._table, std::make_unique<Table>())),
+        _overflowStorage(std::move(other._overflowStorage))
+  {
+  }
+
+  SymbolStateMap& operator=(SymbolStateMap&& other) noexcept
+  {
+    if (this != &other)
+    {
+      _table.swap(other._table);
+      _overflowStorage = std::move(other._overflowStorage);
+    }
+    return *this;
+  }
+
   [[nodiscard]] State& operator[](SymbolId symbol) noexcept
   {
     if (symbol < kMaxSymbols) [[likely]]
     {
-      _initialized[symbol] = true;
-      return _flat[symbol];
+      // Read before write. A blind store dirtied a cache line on every
+      // single event, and the line is shared by 64 neighbouring symbols,
+      // so bus threads working on unrelated symbols bounced it between
+      // cores for a flag that is only ever set once.
+      if (!_table->initialized[symbol])
+      {
+        _table->initialized[symbol] = true;
+      }
+      return _table->flat[symbol];
     }
     // For non-movable types there is no growable overflow storage (a
     // std::vector reallocation would need to move State, and State holds
     // atomics). Route the write to a dedicated scratch slot instead of
-    // `_flat[0]`: aliasing symbol 0 silently corrupted a live, unrelated
+    // `flat[0]`: aliasing symbol 0 silently corrupted a live, unrelated
     // symbol's data (and the assert that was meant to catch this in
     // debug compiles out entirely under NDEBUG, i.e. in every release
     // build). The write is still lost — this map genuinely has no room
@@ -64,7 +105,7 @@ class SymbolStateMap
   {
     if (symbol < kMaxSymbols) [[likely]]
     {
-      return _flat[symbol];
+      return _table->flat[symbol];
     }
     if constexpr (!std::is_move_constructible_v<State>)
     {
@@ -85,7 +126,7 @@ class SymbolStateMap
   {
     if (symbol < kMaxSymbols)
     {
-      return _initialized[symbol];
+      return _table->initialized[symbol];
     }
     if constexpr (std::is_move_constructible_v<State>)
     {
@@ -104,7 +145,7 @@ class SymbolStateMap
   {
     if (symbol < kMaxSymbols)
     {
-      return _initialized[symbol] ? &_flat[symbol] : nullptr;
+      return _table->initialized[symbol] ? &_table->flat[symbol] : nullptr;
     }
     if constexpr (std::is_move_constructible_v<State>)
     {
@@ -123,7 +164,7 @@ class SymbolStateMap
   {
     if (symbol < kMaxSymbols)
     {
-      return _initialized[symbol] ? &_flat[symbol] : nullptr;
+      return _table->initialized[symbol] ? &_table->flat[symbol] : nullptr;
     }
     if constexpr (std::is_move_constructible_v<State>)
     {
@@ -143,9 +184,9 @@ class SymbolStateMap
     // For non-movable types, just reset the initialized flags
     if constexpr (std::is_move_constructible_v<State>)
     {
-      _flat = {};
+      _table->flat = {};
     }
-    _initialized = {};
+    _table->initialized = {};
     _overflowStorage.clear();
   }
 
@@ -154,9 +195,9 @@ class SymbolStateMap
   {
     for (size_t i = 0; i < kMaxSymbols; ++i)
     {
-      if (_initialized[i])
+      if (_table->initialized[i])
       {
-        fn(static_cast<SymbolId>(i), _flat[i]);
+        fn(static_cast<SymbolId>(i), _table->flat[i]);
       }
     }
     if constexpr (std::is_move_constructible_v<State>)
@@ -173,9 +214,9 @@ class SymbolStateMap
   {
     for (size_t i = 0; i < kMaxSymbols; ++i)
     {
-      if (_initialized[i])
+      if (_table->initialized[i])
       {
-        fn(static_cast<SymbolId>(i), _flat[i]);
+        fn(static_cast<SymbolId>(i), _table->flat[i]);
       }
     }
     if constexpr (std::is_move_constructible_v<State>)
@@ -192,7 +233,7 @@ class SymbolStateMap
     size_t count = 0;
     for (size_t i = 0; i < kMaxSymbols; ++i)
     {
-      if (_initialized[i])
+      if (_table->initialized[i])
       {
         ++count;
       }
@@ -221,7 +262,7 @@ class SymbolStateMap
     {
       if (_flatIdx < kMaxSymbols)
       {
-        return {static_cast<SymbolId>(_flatIdx), _map->_flat[_flatIdx]};
+        return {static_cast<SymbolId>(_flatIdx), _map->_table->flat[_flatIdx]};
       }
       if constexpr (std::is_move_constructible_v<State>)
       {
@@ -260,7 +301,7 @@ class SymbolStateMap
    private:
     void advanceToValid()
     {
-      while (_flatIdx < kMaxSymbols && !_map->_initialized[_flatIdx])
+      while (_flatIdx < kMaxSymbols && !_map->_table->initialized[_flatIdx])
       {
         ++_flatIdx;
       }
@@ -349,12 +390,31 @@ class SymbolStateMap
     size_t size() const { return 0; }
   };
 
-  alignas(64) std::array<State, kMaxSymbols> _flat{};
-  std::array<bool, kMaxSymbols> _initialized{};
+  // The flat table dominates this type's footprint, and it used to sit
+  // inside whatever object held the map. With a 512-level order book as the
+  // State that is 8,384 bytes per slot in a release build and 16,640 with
+  // FLOX_SCALE_CHECKS on (the checks widen Price and Quantity from 8 to 16
+  // bytes), so 256 slots came to roughly 2 MB release and 4 MB checked --
+  // by value. A Strategy holding one therefore could not go on the stack:
+  // two of them in a single frame overran a default 8 MB stack in a checked
+  // build, and the overrun landed in the constructor prologue, before a
+  // line of the strategy had run.
+  //
+  // One heap block, allocated once at construction, owned by the map. The
+  // map itself is then a pointer plus the overflow bookkeeping, so holding
+  // it by value costs nothing worth counting. The hot path pays one extra
+  // dependent load, which is in L1 after the first event for the object.
+  struct Table
+  {
+    alignas(64) std::array<State, kMaxSymbols> flat{};
+    std::array<bool, kMaxSymbols> initialized{};
+  };
+
+  std::unique_ptr<Table> _table{std::make_unique<Table>()};
   OverflowStorage<State, std::is_move_constructible_v<State>> _overflowStorage;
 
   // Single shared landing slot for out-of-range writes when State is not
-  // move-constructible (see operator[] above). Never aliases `_flat[0]` or
+  // move-constructible (see operator[] above). Never aliases `flat[0]` or
   // any other real symbol; not reachable through tryGet/contains/forEach,
   // so it never masquerades as a real symbol's data either.
   [[no_unique_address]] std::conditional_t<std::is_move_constructible_v<State>, char, State>

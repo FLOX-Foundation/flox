@@ -230,6 +230,7 @@ nav:
       - Clock Domains: explanation/clock-domains.md
       - Disruptor Pattern: explanation/disruptor.md
       - Memory Model: explanation/memory-model.md
+      - Per-symbol strategy state: explanation/strategy-state-ownership.md
       - Integration Flow: explanation/integration-flow.md
       - MCP control plane: explanation/mcp-control-plane.md
       - Indicators: explanation/indicators.md
