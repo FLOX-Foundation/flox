@@ -22,6 +22,32 @@ if(UNIX)
   target_link_libraries(quickjs_lib PRIVATE m)
 endif()
 
+# JS_NewFloat64's int32 fast path (quickjs.h) casts an arbitrary double --
+# including NaN and values far outside int32 range, both completely normal
+# inputs here (a timestamp, a computed NaN) -- to int32, then detects the
+# non-representable case via a bit-pattern comparison and falls back to a
+# proper boxed float64 JSValue. The cast is technically undefined behavior
+# under -fsanitize=undefined's float-cast-overflow check; the surrounding
+# code's own fallback makes the observable result correct on every target
+# this project builds for, and it is not fixable without patching the
+# vendored interpreter, which this repo treats as read-only.
+#
+# JS_NewFloat64 is `static inline` in the header, so the cast is compiled
+# (and sanitizer-instrumented) into whichever translation unit calls it --
+# in practice every file in flox_quickjs that builds a JSValue from a
+# timestamp or a computed double, not just quickjs_lib's own .c files.
+# Disabling only quickjs_lib leaves the finding fully in place. Both
+# targets need the flag; the rest of this project's build (the core
+# engine, backtest, venue, ...) keeps this check active, including its
+# own double-to-integer conversions.
+include(CheckCCompilerFlag)
+include(CheckCXXCompilerFlag)
+check_c_compiler_flag("-fno-sanitize=float-cast-overflow" FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_C)
+check_cxx_compiler_flag("-fno-sanitize=float-cast-overflow" FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_CXX)
+if(FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_C)
+  target_compile_options(quickjs_lib PRIVATE -fno-sanitize=float-cast-overflow)
+endif()
+
 # Generate embedded JS stdlib as C string literals via a script
 # Rebuilds when JS source files change
 set(JS_STDLIB_DIR ${CMAKE_SOURCE_DIR}/quickjs/flox)
@@ -112,6 +138,7 @@ add_library(flox_quickjs STATIC
   js_engine.cpp
   js_bindings.cpp
   js_strategy.cpp
+  js_executor.cpp
 )
 add_dependencies(flox_quickjs js_stdlib_gen)
 target_include_directories(flox_quickjs PUBLIC
@@ -125,6 +152,12 @@ target_link_libraries(flox_quickjs PUBLIC
   ${FLOX}
 )
 target_compile_features(flox_quickjs PRIVATE cxx_std_20)
+if(FLOX_QUICKJS_HAS_NO_SANITIZE_FLOAT_CAST_CXX)
+  # See the comment above quickjs_lib's own -fno-sanitize flag: the same
+  # vendored int32 fast path gets inlined into this target's translation
+  # units (js_bindings.cpp, js_strategy.cpp, ...), not just quickjs.c.
+  target_compile_options(flox_quickjs PRIVATE -fno-sanitize=float-cast-overflow)
+endif()
 
 # flox_js_runner executable
 add_executable(flox_js_runner js_runner.cpp)

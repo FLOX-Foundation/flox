@@ -60,4 +60,13 @@ class MultiFeedClock {
     }
 
     reset() { __flox_feed_clock_reset(this._h); }
+
+    // Frees the underlying clock. Safe to call more than once, and safe
+    // to skip: the engine also frees it when this wrapper is garbage
+    // collected. Call it explicitly in a long-lived process (e.g. a live
+    // strategy that creates and discards clocks) so the memory is
+    // reclaimed promptly instead of waiting on the next GC pass.
+    destroy() {
+        if (this._h) { __flox_feed_clock_destroy(this._h); this._h = null; }
+    }
 }

@@ -990,7 +990,11 @@ void FloxJsStrategy::resolveSymbols()
 void FloxJsStrategy::injectHandle(FloxStrategyHandle handle)
 {
   auto* ctx = _engine.context();
-  JSValue handleVal = createHandleObject(ctx, handle);
+  // Borrowed: the C++ side creates, keeps, and destroys this strategy
+  // handle. JS only ever holds a reference to it, so the wrapper must
+  // not free it on finalize -- hence nullptr here, not
+  // flox_strategy_destroy.
+  JSValue handleVal = createHandleObject(ctx, handle, nullptr);
   JS_SetPropertyStr(ctx, _strategyObj, "_handle", handleVal);
 }
 
@@ -1014,116 +1018,83 @@ FloxStrategyCallbacks FloxJsStrategy::getCallbacks()
 // C callback implementations
 // ============================================================
 
+void FloxJsStrategy::invokeMethod(const char* jsPropName, int argc, JSValue* argv,
+                                  const char* errLabel)
+{
+  auto* jsCtx = _engine.context();
+
+  // A script that never called flox.register() leaves _strategyObj
+  // as JS_NULL. Every dispatcher used to look up a property on it anyway,
+  // producing a TypeError that sat pending and got silently overwritten by
+  // the next event. Bail out before doing anything observable.
+  if (JS_IsNull(_strategyObj) || JS_IsUndefined(_strategyObj))
+  {
+    for (int i = 0; i < argc; ++i)
+    {
+      JS_FreeValue(jsCtx, argv[i]);
+    }
+    return;
+  }
+
+  JSValue method = JS_GetPropertyStr(jsCtx, _strategyObj, jsPropName);
+  if (JS_IsFunction(jsCtx, method))
+  {
+    // Reset the interrupt-handler clock so a callback that loops
+    // forever is interrupted instead of hanging the process.
+    _engine.beginWork();
+    JSValue ret = JS_Call(jsCtx, method, _strategyObj, argc, argv);
+    if (JS_IsException(ret))
+    {
+      std::cerr << "[flox-js] Error in " << errLabel << ": " << _engine.getErrorMessage()
+                << std::endl;
+    }
+    JS_FreeValue(jsCtx, ret);
+    // Drain the microtask queue every time control returns to us,
+    // not just at process exit. Without this an `await` inside a callback
+    // never resumes and the queue grows until the heap limit is hit.
+    _engine.pumpPendingJobs();
+  }
+  JS_FreeValue(jsCtx, method);
+  for (int i = 0; i < argc; ++i)
+  {
+    JS_FreeValue(jsCtx, argv[i]);
+  }
+}
+
 void FloxJsStrategy::onTrade(void* userData, const FloxSymbolContext* ctx,
                              const FloxTradeData* trade)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-
-  JSValue ctxObj = self->makeCtxObject(ctx);
-  JSValue tradeObj = self->makeTradeObject(trade);
-
-  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchTrade");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue args[2] = {ctxObj, tradeObj};
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onTrade: " << self->_engine.getErrorMessage() << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
-  JS_FreeValue(jsCtx, ctxObj);
-  JS_FreeValue(jsCtx, tradeObj);
+  JSValue args[2] = {self->makeCtxObject(ctx), self->makeTradeObject(trade)};
+  self->invokeMethod("_dispatchTrade", 2, args, "onTrade");
 }
 
 void FloxJsStrategy::onBook(void* userData, const FloxSymbolContext* ctx,
                             const FloxBookData* book)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-
-  JSValue ctxObj = self->makeCtxObject(ctx);
-  JSValue bookObj = self->makeBookObject(book);
-
-  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchBook");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue args[2] = {ctxObj, bookObj};
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onBookUpdate: " << self->_engine.getErrorMessage()
-                << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
-  JS_FreeValue(jsCtx, ctxObj);
-  JS_FreeValue(jsCtx, bookObj);
+  JSValue args[2] = {self->makeCtxObject(ctx), self->makeBookObject(book)};
+  self->invokeMethod("_dispatchBook", 2, args, "onBookUpdate");
 }
 
 void FloxJsStrategy::onBar(void* userData, const FloxSymbolContext* ctx,
                            const FloxBarData* bar)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-
-  JSValue ctxObj = self->makeCtxObject(ctx);
-  JSValue barObj = self->makeBarObject(bar);
-
-  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchBar");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue args[2] = {ctxObj, barObj};
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onBar: " << self->_engine.getErrorMessage() << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
-  JS_FreeValue(jsCtx, ctxObj);
-  JS_FreeValue(jsCtx, barObj);
+  JSValue args[2] = {self->makeCtxObject(ctx), self->makeBarObject(bar)};
+  self->invokeMethod("_dispatchBar", 2, args, "onBar");
 }
 
 void FloxJsStrategy::onStart(void* userData)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-
-  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "onStart");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 0, nullptr);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onStart: " << self->_engine.getErrorMessage() << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
+  self->invokeMethod("onStart", 0, nullptr, "onStart");
 }
 
 void FloxJsStrategy::onStop(void* userData)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-
-  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "onStop");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 0, nullptr);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onStop: " << self->_engine.getErrorMessage() << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
+  self->invokeMethod("onStop", 0, nullptr, "onStop");
 }
 
 // ============================================================
@@ -1369,73 +1340,24 @@ void FloxJsStrategy::onFill(void* userData, const FloxSymbolContext* ctx,
                             const FloxOrderEventData* ev)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-  JSValue ctxObj = self->makeCtxObject(ctx);
-  JSValue evObj = self->makeOrderEventObject(ev);
-  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchFill");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue args[2] = {ctxObj, evObj};
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onFill: "
-                << self->_engine.getErrorMessage() << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
-  JS_FreeValue(jsCtx, ctxObj);
-  JS_FreeValue(jsCtx, evObj);
+  JSValue args[2] = {self->makeCtxObject(ctx), self->makeOrderEventObject(ev)};
+  self->invokeMethod("_dispatchFill", 2, args, "onFill");
 }
 
 void FloxJsStrategy::onOrderUpdate(void* userData, const FloxSymbolContext* ctx,
                                    const FloxOrderEventData* ev)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-  JSValue ctxObj = self->makeCtxObject(ctx);
-  JSValue evObj = self->makeOrderEventObject(ev);
-  JSValue method = JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchOrderUpdate");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue args[2] = {ctxObj, evObj};
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onOrderUpdate: "
-                << self->_engine.getErrorMessage() << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
-  JS_FreeValue(jsCtx, ctxObj);
-  JS_FreeValue(jsCtx, evObj);
+  JSValue args[2] = {self->makeCtxObject(ctx), self->makeOrderEventObject(ev)};
+  self->invokeMethod("_dispatchOrderUpdate", 2, args, "onOrderUpdate");
 }
 
 void FloxJsStrategy::onQueuePositionChange(void* userData, const FloxSymbolContext* ctx,
                                            const FloxOrderEventData* ev)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-  JSValue ctxObj = self->makeCtxObject(ctx);
-  JSValue evObj = self->makeOrderEventObject(ev);
-  JSValue method =
-      JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchQueuePositionChange");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue args[2] = {ctxObj, evObj};
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onQueuePositionChange: "
-                << self->_engine.getErrorMessage() << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
-  JS_FreeValue(jsCtx, ctxObj);
-  JS_FreeValue(jsCtx, evObj);
+  JSValue args[2] = {self->makeCtxObject(ctx), self->makeOrderEventObject(ev)};
+  self->invokeMethod("_dispatchQueuePositionChange", 2, args, "onQueuePositionChange");
 }
 
 void FloxJsStrategy::onMarketPositionChange(void* userData,
@@ -1443,25 +1365,8 @@ void FloxJsStrategy::onMarketPositionChange(void* userData,
                                             const FloxOrderEventData* ev)
 {
   auto* self = static_cast<FloxJsStrategy*>(userData);
-  auto* jsCtx = self->_engine.context();
-  JSValue ctxObj = self->makeCtxObject(ctx);
-  JSValue evObj = self->makeOrderEventObject(ev);
-  JSValue method =
-      JS_GetPropertyStr(jsCtx, self->_strategyObj, "_dispatchMarketPositionChange");
-  if (JS_IsFunction(jsCtx, method))
-  {
-    JSValue args[2] = {ctxObj, evObj};
-    JSValue ret = JS_Call(jsCtx, method, self->_strategyObj, 2, args);
-    if (JS_IsException(ret))
-    {
-      std::cerr << "[flox-js] Error in onMarketPositionChange: "
-                << self->_engine.getErrorMessage() << std::endl;
-    }
-    JS_FreeValue(jsCtx, ret);
-  }
-  JS_FreeValue(jsCtx, method);
-  JS_FreeValue(jsCtx, ctxObj);
-  JS_FreeValue(jsCtx, evObj);
+  JSValue args[2] = {self->makeCtxObject(ctx), self->makeOrderEventObject(ev)};
+  self->invokeMethod("_dispatchMarketPositionChange", 2, args, "onMarketPositionChange");
 }
 
 }  // namespace flox

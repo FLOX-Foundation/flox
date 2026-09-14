@@ -29,6 +29,16 @@ class FloxJsStrategy
   void loadScript(const std::string& path);
   void resolveSymbols();
 
+  // Common body for every JS-side dispatch: looks up `jsPropName` on the
+  // registered strategy object, skips silently if the script never called
+  // `flox.register()` (previously every dispatcher threw and clobbered
+  // whatever exception the last one left pending), resets the
+  // interrupt-handler clock so a runaway callback is interrupted rather
+  // than hanging forever, calls it, reports a thrown exception the same
+  // way every other dispatcher does, and drains the microtask queue so
+  // `await`/`.then()` inside the callback actually completes.
+  void invokeMethod(const char* jsPropName, int argc, JSValue* argv, const char* errLabel);
+
   // C callbacks dispatched from BridgeStrategy
   static void onTrade(void* userData, const FloxSymbolContext* ctx, const FloxTradeData* trade);
   static void onBook(void* userData, const FloxSymbolContext* ctx, const FloxBookData* book);
