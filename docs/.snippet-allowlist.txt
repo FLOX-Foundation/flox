@@ -282,3 +282,9 @@ docs/how-to/route-and-arb-dex-pools.md
 docs/how-to/dex-on-node.md
 
 docs/how-to/alpha-to-onnx.md   # illustrative: sklearn/skl2onnx export (external dep) and build_dataset over a live tape path, not runnable in CI
+
+# Explanation: the JavaScript value boundary -- migration fragments showing
+# BigInt vs Number arithmetic and the crashes that string conversion now
+# rejects. Statement fragments, not a runnable script; the behaviour behind
+# them is covered by tests/test_quickjs.cpp.
+docs/explanation/javascript-value-boundary.md

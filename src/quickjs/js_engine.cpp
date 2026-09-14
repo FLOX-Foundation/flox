@@ -1,4 +1,5 @@
 #include "js_engine.h"
+#include "js_cstring.h"
 
 #include <cassert>
 #include <fstream>
@@ -113,19 +114,17 @@ std::string FloxJsEngine::getErrorMessage()
     return "(no pending exception)";
   }
 
-  const char* msg = JS_ToCString(_ctx, exception);
+  flox::JsCString msg(_ctx, exception);
   std::string result = msg ? msg : "unknown error";
-  JS_FreeCString(_ctx, msg);
 
   JSValue stack = JS_GetPropertyStr(_ctx, exception, "stack");
   if (!JS_IsUndefined(stack) && !JS_IsException(stack))
   {
-    const char* stackStr = JS_ToCString(_ctx, stack);
+    flox::JsCString stackStr(_ctx, stack);
     if (stackStr)
     {
       result += "\n";
       result += stackStr;
-      JS_FreeCString(_ctx, stackStr);
     }
   }
   JS_FreeValue(_ctx, stack);

@@ -1,5 +1,6 @@
 #include "js_bindings.h"
 #include "flox/capi/flox_capi.h"
+#include "js_cstring.h"
 
 #include <algorithm>
 #include <atomic>
@@ -251,10 +252,14 @@ static uint32_t toUint32(JSContext* ctx, JSValueConst val)
   return u;
 }
 
+// JS_ToInt64Ext rather than JS_ToInt64: a nanosecond timestamp arrives from
+// JS as a BigInt, and plain JS_ToInt64 would route it through ToNumber,
+// which throws on a BigInt. Numbers still convert exactly as before, so an
+// int64 parameter now takes either spelling.
 static int64_t toInt64(JSContext* ctx, JSValueConst val)
 {
   int64_t i = 0;
-  if (JS_ToInt64(ctx, &i, val) < 0)
+  if (JS_ToInt64Ext(ctx, &i, val) < 0)
   {
     clearStrayException(ctx);
     i = 0;
@@ -545,9 +550,9 @@ static JSValue jsBarFromFlox(JSContext* ctx, const FloxBar& b)
   JS_SetPropertyStr(ctx, obj, "volume",
                     JS_NewFloat64(ctx, flox_quantity_to_double(b.volume_raw)));
   JS_SetPropertyStr(ctx, obj, "startNs",
-                    JS_NewFloat64(ctx, static_cast<double>(b.start_time_ns)));
+                    JS_NewBigInt64(ctx, static_cast<int64_t>(b.start_time_ns)));
   JS_SetPropertyStr(ctx, obj, "endNs",
-                    JS_NewFloat64(ctx, static_cast<double>(b.end_time_ns)));
+                    JS_NewBigInt64(ctx, static_cast<int64_t>(b.end_time_ns)));
   return obj;
 }
 
@@ -1109,19 +1114,16 @@ static JSValue js_indicator_adf(JSContext* ctx, JSValueConst, int argc, JSValueC
 {
   auto input = jsArrayToDoubles(ctx, argv[0]);
   uint32_t maxLag = argc > 1 ? toUint32(ctx, argv[1]) : 4;
-  const char* reg = "c";
-  if (argc > 2 && JS_IsString(argv[2]))
+  flox::JsCString regArg = flox::jsOptionalCString(ctx, argc, argv, 2);
+  if (regArg.present() && !regArg.ok())
   {
-    reg = JS_ToCString(ctx, argv[2]);
+    return JS_EXCEPTION;
   }
+  const char* reg = regArg.or_else("c");
   double testStat = 0.0;
   double pValue = 0.0;
   size_t usedLag = 0;
   flox_indicator_adf(input.data(), input.size(), maxLag, reg, &testStat, &pValue, &usedLag);
-  if (argc > 2 && JS_IsString(argv[2]))
-  {
-    JS_FreeCString(ctx, reg);
-  }
   JSValue obj = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, obj, "test_stat", JS_NewFloat64(ctx, testStat));
   JS_SetPropertyStr(ctx, obj, "p_value", JS_NewFloat64(ctx, pValue));
@@ -1327,13 +1329,12 @@ static JSValue js_graph_add_node(JSContext* ctx, JSValueConst, int, JSValueConst
   // A non-string node name (a Symbol, or an object whose toString
   // throws) makes JS_ToCString return null; the string ctor below then
   // calls strlen(nullptr) and segfaults. Same for each dependency name.
-  const char* name = JS_ToCString(ctx, argv[1]);
+  flox::JsCString name(ctx, argv[1]);
   if (!name)
   {
     return JS_EXCEPTION;
   }
   std::string nameStr(name);
-  JS_FreeCString(ctx, name);
 
   std::vector<std::string> deps;
   if (JS_IsArray(ctx, argv[2]))
@@ -1347,14 +1348,13 @@ static JSValue js_graph_add_node(JSContext* ctx, JSValueConst, int, JSValueConst
     for (uint32_t i = 0; i < depsLen; ++i)
     {
       JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
-      const char* s = JS_ToCString(ctx, v);
+      flox::JsCString s(ctx, v);
       if (!s)
       {
         JS_FreeValue(ctx, v);
         return JS_EXCEPTION;
       }
       deps.emplace_back(s);
-      JS_FreeCString(ctx, s);
       JS_FreeValue(ctx, v);
     }
   }
@@ -1383,14 +1383,13 @@ static JSValue js_graph_require(JSContext* ctx, JSValueConst, int, JSValueConst*
 {
   GET_GRAPH_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  const char* name = JS_ToCString(ctx, argv[2]);
+  flox::JsCString name(ctx, argv[2]);
   if (!name)
   {
     return JS_EXCEPTION;
   }
   size_t len = 0;
   const double* p = flox_indicator_graph_require(st->handle, sym, name, &len);
-  JS_FreeCString(ctx, name);
   if (!p)
   {
     // `!p` also happens when a dependency node's own function
@@ -1417,14 +1416,13 @@ static JSValue js_graph_get(JSContext* ctx, JSValueConst, int, JSValueConst* arg
 {
   GET_GRAPH_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  const char* name = JS_ToCString(ctx, argv[2]);
+  flox::JsCString name(ctx, argv[2]);
   if (!name)
   {
     return JS_EXCEPTION;
   }
   size_t len = 0;
   const double* p = flox_indicator_graph_get(st->handle, sym, name, &len);
-  JS_FreeCString(ctx, name);
   if (!p)
   {
     return JS_NULL;
@@ -1551,13 +1549,12 @@ static JSValue js_streaming_destroy(JSContext* ctx, JSValueConst, int, JSValueCo
 static JSValue js_streaming_add_node(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_STREAMING_OR_THROW(ctx, argv);
-  const char* name = JS_ToCString(ctx, argv[1]);
+  flox::JsCString name(ctx, argv[1]);
   if (!name)
   {
     return JS_EXCEPTION;
   }
   std::string nameStr(name);
-  JS_FreeCString(ctx, name);
 
   std::vector<std::string> deps;
   if (JS_IsArray(ctx, argv[2]))
@@ -1571,14 +1568,13 @@ static JSValue js_streaming_add_node(JSContext* ctx, JSValueConst, int, JSValueC
     for (uint32_t i = 0; i < depsLen; ++i)
     {
       JSValue v = JS_GetPropertyUint32(ctx, argv[2], i);
-      const char* s = JS_ToCString(ctx, v);
+      flox::JsCString s(ctx, v);
       if (!s)
       {
         JS_FreeValue(ctx, v);
         return JS_EXCEPTION;
       }
       deps.emplace_back(s);
-      JS_FreeCString(ctx, s);
       JS_FreeValue(ctx, v);
     }
   }
@@ -1624,13 +1620,12 @@ static JSValue js_streaming_current(JSContext* ctx, JSValueConst, int, JSValueCo
 {
   GET_STREAMING_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  const char* name = JS_ToCString(ctx, argv[2]);
+  flox::JsCString name(ctx, argv[2]);
   if (!name)
   {
     return JS_EXCEPTION;
   }
   double val = flox_streaming_graph_current(st->handle, sym, name);
-  JS_FreeCString(ctx, name);
   return JS_NewFloat64(ctx, val);
 }
 
@@ -1869,11 +1864,10 @@ static JSValue js_executor_set_iceberg_priority_mode(JSContext* ctx, JSValueCons
   uint8_t code = 0;
   if (JS_IsString(argv[1]))
   {
-    const char* s = JS_ToCString(ctx, argv[1]);
+    flox::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       std::string name(s);
-      JS_FreeCString(ctx, s);
       if (name == "retain")
       {
         code = 1;
@@ -1978,7 +1972,7 @@ static JSValue js_executor_set_lmm_orders(JSContext* ctx, JSValueConst, int,
   for (uint32_t i = 0; i < n; ++i)
   {
     JSValue v = JS_GetPropertyUint32(ctx, argv[1], i);
-    JS_ToInt64(ctx, reinterpret_cast<int64_t*>(&ids[i]), v);
+    JS_ToInt64Ext(ctx, reinterpret_cast<int64_t*>(&ids[i]), v);
     JS_FreeValue(ctx, v);
   }
   flox_simulated_executor_set_lmm_orders(h, ids.data(), n);
@@ -2126,14 +2120,10 @@ static JSValue js_executor_set_replace_ack_dist(JSContext* ctx, JSValueConst, in
 static JSValue js_executor_apply_latency_profile(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
 {
-  const char* name = JS_ToCString(ctx, argv[1]);
+  FLOX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
   const int ok = flox_simulated_executor_apply_latency_profile(
       static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])), name);
   std::string nameCopy = name ? name : "";
-  if (name)
-  {
-    JS_FreeCString(ctx, name);
-  }
   if (!ok)
   {
     return JS_ThrowTypeError(ctx, "unknown latency profile: %s", nameCopy.c_str());
@@ -2171,11 +2161,10 @@ static JSValue js_executor_set_fok_mode(JSContext* ctx, JSValueConst, int,
   uint8_t code = 0;
   if (JS_IsString(argv[1]))
   {
-    const char* s = JS_ToCString(ctx, argv[1]);
+    flox::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       std::string name(s);
-      JS_FreeCString(ctx, s);
       if (name == "single_price")
       {
         code = 1;
@@ -2210,17 +2199,13 @@ static JSValue js_rate_limit_add_bucket(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
   auto h = static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0]));
-  const char* name = JS_ToCString(ctx, argv[1]);
+  flox::JsCString name(ctx, argv[1]);
   int64_t window = toInt64(ctx, argv[2]);
   uint32_t cap = toUint32(ctx, argv[3]);
   uint32_t sw = toUint32(ctx, argv[4]);
   uint32_t cw = toUint32(ctx, argv[5]);
   uint32_t rw = toUint32(ctx, argv[6]);
   flox_rate_limit_policy_add_bucket(h, name ? name : "bucket", window, cap, sw, cw, rw);
-  if (name)
-  {
-    JS_FreeCString(ctx, name);
-  }
   return JS_UNDEFINED;
 }
 static JSValue js_rate_limit_add_bucket_family(JSContext* ctx, JSValueConst, int,
@@ -2228,7 +2213,7 @@ static JSValue js_rate_limit_add_bucket_family(JSContext* ctx, JSValueConst, int
 {
   // (handle, name, window_ns, capacity, submit_w, cancel_w, replace_w, family, query_w)
   auto h = static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0]));
-  const char* name = JS_ToCString(ctx, argv[1]);
+  flox::JsCString name(ctx, argv[1]);
   int64_t window = toInt64(ctx, argv[2]);
   uint32_t cap = toUint32(ctx, argv[3]);
   uint32_t sw = toUint32(ctx, argv[4]);
@@ -2238,10 +2223,6 @@ static JSValue js_rate_limit_add_bucket_family(JSContext* ctx, JSValueConst, int
   uint32_t qw = toUint32(ctx, argv[8]);
   flox_rate_limit_policy_add_bucket_family(h, name ? name : "bucket", window, cap,
                                            sw, cw, rw, family, qw);
-  if (name)
-  {
-    JS_FreeCString(ctx, name);
-  }
   return JS_UNDEFINED;
 }
 static JSValue js_rate_limit_set_ban(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -2254,14 +2235,10 @@ static JSValue js_rate_limit_set_ban(JSContext* ctx, JSValueConst, int, JSValueC
 static JSValue js_rate_limit_load_profile(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  const char* name = JS_ToCString(ctx, argv[1]);
+  FLOX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
   const int ok = flox_rate_limit_policy_load_profile(
       static_cast<FloxRateLimitPolicyHandle>(getHandle(ctx, argv[0])), name);
   std::string nameCopy = name ? name : "";
-  if (name)
-  {
-    JS_FreeCString(ctx, name);
-  }
   if (!ok)
   {
     return JS_ThrowTypeError(ctx, "unknown rate-limit profile: %s", nameCopy.c_str());
@@ -2271,9 +2248,9 @@ static JSValue js_rate_limit_load_profile(JSContext* ctx, JSValueConst, int,
 static JSValue js_rate_limit_ban_until_ns(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
-  return JS_NewInt64(ctx, flox_rate_limit_policy_ban_until_ns(
-                              static_cast<FloxRateLimitPolicyHandle>(
-                                  getHandle(ctx, argv[0]))));
+  return JS_NewBigInt64(ctx, flox_rate_limit_policy_ban_until_ns(
+                                 static_cast<FloxRateLimitPolicyHandle>(
+                                     getHandle(ctx, argv[0]))));
 }
 static JSValue js_rate_limit_consecutive_rejects(JSContext* ctx, JSValueConst, int,
                                                  JSValueConst* argv)
@@ -2437,14 +2414,10 @@ static JSValue js_fee_schedule_add_tier(JSContext* ctx, JSValueConst, int,
 static JSValue js_fee_schedule_load_profile(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  const char* name = JS_ToCString(ctx, argv[1]);
+  FLOX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
   const int ok = flox_fee_schedule_load_profile(
       static_cast<FloxFeeScheduleHandle>(getHandle(ctx, argv[0])), name);
   std::string nameCopy = name ? name : "";
-  if (name)
-  {
-    JS_FreeCString(ctx, name);
-  }
   if (!ok)
   {
     return JS_ThrowTypeError(ctx, "unknown fee-schedule profile: %s", nameCopy.c_str());
@@ -2498,11 +2471,10 @@ static JSValue js_liquidation_engine_set_adl_ranking(JSContext* ctx, JSValueCons
   uint8_t code = 0;
   if (JS_IsString(argv[1]))
   {
-    const char* s = JS_ToCString(ctx, argv[1]);
+    flox::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       std::string name(s);
-      JS_FreeCString(ctx, s);
       if (name == "binance")
       {
         code = 1;
@@ -2627,7 +2599,7 @@ static JSValue js_liquidation_engine_set_mark_impact_model(
   uint8_t code = 0;
   if (argc >= 2 && JS_IsString(argv[1]))
   {
-    const char* s = JS_ToCString(ctx, argv[1]);
+    flox::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       const std::string name(s);
@@ -2639,7 +2611,6 @@ static JSValue js_liquidation_engine_set_mark_impact_model(
       {
         code = 2;
       }
-      JS_FreeCString(ctx, s);
     }
   }
   else if (argc >= 2 && JS_IsNumber(argv[1]))
@@ -2713,7 +2684,7 @@ static JSValue js_account_create(JSContext* ctx, JSValueConst, int argc,
   double equity = 0.0;
   if (argc >= 1)
   {
-    JS_ToInt64(ctx, &id, argv[0]);
+    JS_ToInt64Ext(ctx, &id, argv[0]);
   }
   if (argc >= 2)
   {
@@ -2771,14 +2742,13 @@ static JSValue js_account_set_margin_mode(JSContext* ctx, JSValueConst, int argc
   uint8_t code = 0;
   if (argc >= 2 && JS_IsString(argv[1]))
   {
-    const char* s = JS_ToCString(ctx, argv[1]);
+    flox::JsCString s(ctx, argv[1]);
     if (s != nullptr)
     {
       if (std::string(s) == "isolated")
       {
         code = 1;
       }
-      JS_FreeCString(ctx, s);
     }
   }
   else if (argc >= 2 && JS_IsNumber(argv[1]))
@@ -2841,7 +2811,7 @@ static JSValue js_account_set_mark(JSContext* ctx, JSValueConst, int argc,
   if (argc >= 4 && JS_IsNumber(argv[3]))
   {
     int64_t ts = 0;
-    JS_ToInt64(ctx, &ts, argv[3]);
+    JS_ToInt64Ext(ctx, &ts, argv[3]);
     flox_account_set_mark_at(
         static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), sym, px, ts);
   }
@@ -2865,8 +2835,8 @@ static JSValue js_account_has_stale_marks(JSContext* ctx, JSValueConst, int,
                                           JSValueConst* argv)
 {
   int64_t now = 0, budget = 0;
-  JS_ToInt64(ctx, &now, argv[1]);
-  JS_ToInt64(ctx, &budget, argv[2]);
+  JS_ToInt64Ext(ctx, &now, argv[1]);
+  JS_ToInt64Ext(ctx, &budget, argv[2]);
   return JS_NewBool(
       ctx, flox_account_has_stale_marks(
                static_cast<FloxAccountHandle>(getHandle(ctx, argv[0])), now,
@@ -2897,7 +2867,7 @@ static JSValue js_liquidation_engine_on_marks(JSContext* ctx, JSValueConst,
   int64_t ts = 0;
   if (argc >= 3 && JS_IsNumber(argv[2]))
   {
-    JS_ToInt64(ctx, &ts, argv[2]);
+    JS_ToInt64Ext(ctx, &ts, argv[2]);
   }
   const uint32_t total = flox_liquidation_engine_on_marks(
       static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])), n,
@@ -2923,7 +2893,7 @@ static JSValue js_account_record_fill(JSContext* ctx, JSValueConst, int argc,
 {
   int64_t ts = 0;
   double n = 0.0;
-  JS_ToInt64(ctx, &ts, argv[1]);
+  JS_ToInt64Ext(ctx, &ts, argv[1]);
   JS_ToFloat64(ctx, &n, argv[2]);
   if (argc >= 4 && JS_IsNumber(argv[3]))
   {
@@ -2984,7 +2954,7 @@ static JSValue js_liquidation_engine_detach_account(JSContext* ctx, JSValueConst
                                                     int, JSValueConst* argv)
 {
   int64_t id = 0;
-  JS_ToInt64(ctx, &id, argv[1]);
+  JS_ToInt64Ext(ctx, &id, argv[1]);
   flox_liquidation_engine_detach_account(
       static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0])),
       static_cast<uint64_t>(id));
@@ -3019,7 +2989,7 @@ static JSValue js_venue_stack_create(JSContext* ctx, JSValueConst, int argc,
   }
   if (argc >= 2)
   {
-    JS_ToInt64(ctx, &accountId, argv[1]);
+    JS_ToInt64Ext(ctx, &accountId, argv[1]);
   }
   if (argc >= 3)
   {
@@ -3231,13 +3201,9 @@ static JSValue js_funding_schedule_load_profile(JSContext* ctx, JSValueConst, in
                                                 JSValueConst* argv)
 {
   auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
-  const char* name = JS_ToCString(ctx, argv[1]);
+  FLOX_JS_CSTRING_OR_THROW(name, ctx, argv[1]);
   const int ok = flox_funding_schedule_load_profile(h, name);
   std::string nameCopy = name ? name : "";
-  if (name)
-  {
-    JS_FreeCString(ctx, name);
-  }
   if (!ok)
   {
     return JS_ThrowTypeError(ctx, "unknown funding-schedule profile: %s", nameCopy.c_str());
@@ -3248,12 +3214,8 @@ static JSValue js_funding_schedule_load_tape(JSContext* ctx, JSValueConst, int,
                                              JSValueConst* argv)
 {
   auto h = static_cast<FloxFundingScheduleHandle>(getHandle(ctx, argv[0]));
-  const char* path = JS_ToCString(ctx, argv[1]);
+  FLOX_JS_CSTRING_OR_THROW(path, ctx, argv[1]);
   const uint8_t ok = flox_funding_schedule_load_tape(h, path);
-  if (path)
-  {
-    JS_FreeCString(ctx, path);
-  }
   return JS_NewBool(ctx, ok != 0);
 }
 static JSValue js_funding_schedule_set_tape_by_symbol(JSContext* ctx, JSValueConst,
@@ -3271,7 +3233,7 @@ static JSValue js_funding_schedule_set_tape_by_symbol(JSContext* ctx, JSValueCon
   for (uint32_t i = 0; i < n; ++i)
   {
     JSValue tv = JS_GetPropertyUint32(ctx, argv[1], i);
-    JS_ToInt64(ctx, &ts[i], tv);
+    JS_ToInt64Ext(ctx, &ts[i], tv);
     JS_FreeValue(ctx, tv);
     JSValue sv = JS_GetPropertyUint32(ctx, argv[2], i);
     JS_ToUint32(ctx, &sy[i], sv);
@@ -3438,8 +3400,8 @@ static JSValue js_backtest_result_stats(JSContext* ctx, JSValueConst, int,
   JS_SetPropertyStr(ctx, obj, "timeWeightedReturn",
                     JS_NewFloat64(ctx, s.timeWeightedReturn));
   JS_SetPropertyStr(ctx, obj, "returnPct", JS_NewFloat64(ctx, s.returnPct));
-  JS_SetPropertyStr(ctx, obj, "startTimeNs", JS_NewInt64(ctx, s.startTimeNs));
-  JS_SetPropertyStr(ctx, obj, "endTimeNs", JS_NewInt64(ctx, s.endTimeNs));
+  JS_SetPropertyStr(ctx, obj, "startTimeNs", JS_NewBigInt64(ctx, s.startTimeNs));
+  JS_SetPropertyStr(ctx, obj, "endTimeNs", JS_NewBigInt64(ctx, s.endTimeNs));
   return obj;
 }
 static JSValue js_backtest_result_equity_curve(JSContext* ctx, JSValueConst, int,
@@ -3456,7 +3418,7 @@ static JSValue js_backtest_result_equity_curve(JSContext* ctx, JSValueConst, int
   for (uint32_t i = 0; i < n; ++i)
   {
     JSValue pt = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, pt, "timestampNs", JS_NewInt64(ctx, pts[i].timestamp_ns));
+    JS_SetPropertyStr(ctx, pt, "timestampNs", JS_NewBigInt64(ctx, pts[i].timestamp_ns));
     JS_SetPropertyStr(ctx, pt, "equity", JS_NewFloat64(ctx, pts[i].equity));
     JS_SetPropertyStr(ctx, pt, "drawdownPct", JS_NewFloat64(ctx, pts[i].drawdown_pct));
     JS_SetPropertyUint32(ctx, arr, i, pt);
@@ -3466,14 +3428,13 @@ static JSValue js_backtest_result_equity_curve(JSContext* ctx, JSValueConst, int
 static JSValue js_backtest_result_write_csv(JSContext* ctx, JSValueConst, int,
                                             JSValueConst* argv)
 {
-  const char* path = JS_ToCString(ctx, argv[1]);
+  flox::JsCString path(ctx, argv[1]);
   if (!path)
   {
     return JS_NewBool(ctx, 0);
   }
   uint8_t ok = flox_backtest_result_write_equity_curve_csv(
       static_cast<FloxBacktestResultHandle>(getHandle(ctx, argv[0])), path);
-  JS_FreeCString(ctx, path);
   return JS_NewBool(ctx, ok != 0);
 }
 
@@ -3712,12 +3673,8 @@ static JSValue js_run_recorder_create(JSContext* ctx, JSValueConst, int argc, JS
       JS_FreeValue(ctx, v);
       return dflt;
     }
-    const char* s = JS_ToCString(ctx, v);
+    flox::JsCString s(ctx, v);
     std::string out = s ? s : "";
-    if (s)
-    {
-      JS_FreeCString(ctx, s);
-    }
     JS_FreeValue(ctx, v);
     return out;
   };
@@ -3727,7 +3684,7 @@ static JSValue js_run_recorder_create(JSContext* ctx, JSValueConst, int argc, JS
     int64_t out = dflt;
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      JS_ToInt64(ctx, &out, v);
+      JS_ToInt64Ext(ctx, &out, v);
     }
     JS_FreeValue(ctx, v);
     return out;
@@ -3764,12 +3721,8 @@ static JSValue js_run_recorder_add_tape_ref(JSContext* ctx, JSValueConst, int ar
       JS_FreeValue(ctx, v);
       return "";
     }
-    const char* s = JS_ToCString(ctx, v);
+    flox::JsCString s(ctx, v);
     std::string out = s ? s : "";
-    if (s)
-    {
-      JS_FreeCString(ctx, s);
-    }
     JS_FreeValue(ctx, v);
     return out;
   };
@@ -3779,7 +3732,7 @@ static JSValue js_run_recorder_add_tape_ref(JSContext* ctx, JSValueConst, int ar
     int64_t out = 0;
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      JS_ToInt64(ctx, &out, v);
+      JS_ToInt64Ext(ctx, &out, v);
     }
     JS_FreeValue(ctx, v);
     return out;
@@ -3812,7 +3765,7 @@ static JSValue js_run_recorder_write_signal(JSContext* ctx, JSValueConst, int ar
     int64_t out = d;
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      JS_ToInt64(ctx, &out, v);
+      JS_ToInt64Ext(ctx, &out, v);
     }
     JS_FreeValue(ctx, v);
     return out;
@@ -3838,11 +3791,10 @@ static JSValue js_run_recorder_write_signal(JSContext* ctx, JSValueConst, int ar
     JSValue v = JS_GetPropertyStr(ctx, opts, "name");
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      const char* s = JS_ToCString(ctx, v);
+      flox::JsCString s(ctx, v);
       if (s)
       {
         name = s;
-        JS_FreeCString(ctx, s);
       }
     }
     JS_FreeValue(ctx, v);
@@ -3861,11 +3813,10 @@ static JSValue js_run_recorder_write_signal(JSContext* ctx, JSValueConst, int ar
     JSValue v = JS_GetPropertyStr(ctx, opts, "payload");
     if (JS_IsString(v))
     {
-      const char* s = JS_ToCString(ctx, v);
+      flox::JsCString s(ctx, v);
       if (s)
       {
-        payload.assign(s, s + std::strlen(s));
-        JS_FreeCString(ctx, s);
+        payload.assign(s.get(), s.get() + std::strlen(s.get()));
       }
     }
     JS_FreeValue(ctx, v);
@@ -3891,7 +3842,7 @@ static JSValue js_run_recorder_write_order_event(JSContext* ctx, JSValueConst, i
     int64_t out = d;
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      JS_ToInt64(ctx, &out, v);
+      JS_ToInt64Ext(ctx, &out, v);
     }
     JS_FreeValue(ctx, v);
     return out;
@@ -3912,11 +3863,10 @@ static JSValue js_run_recorder_write_order_event(JSContext* ctx, JSValueConst, i
     JSValue v = JS_GetPropertyStr(ctx, opts, "reason");
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      const char* s = JS_ToCString(ctx, v);
+      flox::JsCString s(ctx, v);
       if (s)
       {
         reason = s;
-        JS_FreeCString(ctx, s);
       }
     }
     JS_FreeValue(ctx, v);
@@ -3948,7 +3898,7 @@ static JSValue js_run_recorder_write_fill(JSContext* ctx, JSValueConst, int argc
     int64_t out = d;
     if (!JS_IsUndefined(v) && !JS_IsNull(v))
     {
-      JS_ToInt64(ctx, &out, v);
+      JS_ToInt64Ext(ctx, &out, v);
     }
     JS_FreeValue(ctx, v);
     return out;
@@ -3986,12 +3936,8 @@ static JSValue js_run_reader_open(JSContext* ctx, JSValueConst, int argc, JSValu
   {
     return JS_ThrowTypeError(ctx, "TraceReader(path)");
   }
-  const char* path = JS_ToCString(ctx, argv[0]);
+  flox::JsCString path(ctx, argv[0]);
   auto h = flox_run_reader_open(path ? path : "");
-  if (path)
-  {
-    JS_FreeCString(ctx, path);
-  }
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "TraceReader: cannot open path");
@@ -4019,13 +3965,13 @@ static JSValue js_run_reader_strategy_id(JSContext* ctx, JSValueConst, int, JSVa
 static JSValue js_run_reader_run_started_ns(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
-  return JS_NewInt64(ctx, flox_run_reader_run_started_ns(h));
+  return JS_NewBigInt64(ctx, flox_run_reader_run_started_ns(h));
 }
 
 static JSValue js_run_reader_run_ended_ns(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   auto h = static_cast<FloxRunReaderHandle>(getHandle(ctx, argv[0]));
-  return JS_NewInt64(ctx, flox_run_reader_run_ended_ns(h));
+  return JS_NewBigInt64(ctx, flox_run_reader_run_ended_ns(h));
 }
 
 static JSValue js_run_reader_signals(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -4056,8 +4002,8 @@ static JSValue js_run_reader_signals(JSContext* ctx, JSValueConst, int, JSValueC
       flox_run_reader_signal_payload(h, i, payload.data(), payload_len);
     }
     JSValue rec = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewInt64(ctx, run_ts));
-    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewInt64(ctx, feed_ts));
+    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewBigInt64(ctx, run_ts));
+    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewBigInt64(ctx, feed_ts));
     JS_SetPropertyStr(ctx, rec, "signalId", JS_NewUint32(ctx, sid));
     JS_SetPropertyStr(ctx, rec, "flags", JS_NewUint32(ctx, flags));
     JS_SetPropertyStr(ctx, rec, "strengthRaw", JS_NewInt64(ctx, strength));
@@ -4090,8 +4036,8 @@ static JSValue js_run_reader_orders(JSContext* ctx, JSValueConst, int, JSValueCo
       flox_run_reader_order_event_reason(h, i, reason.data(), reason_len);
     }
     JSValue rec = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewInt64(ctx, run_ts));
-    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewInt64(ctx, feed_ts));
+    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewBigInt64(ctx, run_ts));
+    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewBigInt64(ctx, feed_ts));
     JS_SetPropertyStr(ctx, rec, "orderId", JS_NewInt64(ctx, static_cast<int64_t>(oid)));
     JS_SetPropertyStr(ctx, rec, "parentSignalId", JS_NewInt64(ctx, static_cast<int64_t>(pid)));
     JS_SetPropertyStr(ctx, rec, "priceRaw", JS_NewInt64(ctx, price));
@@ -4120,8 +4066,8 @@ static JSValue js_run_reader_fills(JSContext* ctx, JSValueConst, int, JSValueCon
     uint8_t side = 0, liq = 0;
     flox_run_reader_fill(h, i, &run_ts, &feed_ts, &oid, &fid, &price, &qty, &fee, &sid, &side, &liq);
     JSValue rec = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewInt64(ctx, run_ts));
-    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewInt64(ctx, feed_ts));
+    JS_SetPropertyStr(ctx, rec, "runTsNs", JS_NewBigInt64(ctx, run_ts));
+    JS_SetPropertyStr(ctx, rec, "feedTsNs", JS_NewBigInt64(ctx, feed_ts));
     JS_SetPropertyStr(ctx, rec, "orderId", JS_NewInt64(ctx, static_cast<int64_t>(oid)));
     JS_SetPropertyStr(ctx, rec, "fillId", JS_NewInt64(ctx, static_cast<int64_t>(fid)));
     JS_SetPropertyStr(ctx, rec, "priceRaw", JS_NewInt64(ctx, price));
@@ -4150,7 +4096,7 @@ static JSValue js_order_group_create(JSContext* ctx, JSValueConst, int, JSValueC
   uint32_t policy = 0;
   if (argv)
   {
-    JS_ToInt64(ctx, &parent, argv[0]);
+    JS_ToInt64Ext(ctx, &parent, argv[0]);
     JS_ToUint32(ctx, &policy, argv[1]);
   }
   auto h = flox_order_group_create(static_cast<uint64_t>(parent), static_cast<uint8_t>(policy));
@@ -4224,7 +4170,7 @@ static JSValue js_order_group_record_submit(JSContext* ctx, JSValueConst, int,
   auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
   uint32_t i = toUint32(ctx, argv[1]);
   int64_t order_id = 0;
-  JS_ToInt64(ctx, &order_id, argv[2]);
+  JS_ToInt64Ext(ctx, &order_id, argv[2]);
   flox_order_group_record_submit(h, i, static_cast<uint64_t>(order_id));
   return JS_UNDEFINED;
 }
@@ -4389,7 +4335,7 @@ static JSValue js_order_group_set_pair_latency_budget_ns(JSContext* ctx, JSValue
 {
   auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
   int64_t budget = 0;
-  JS_ToInt64(ctx, &budget, argv[1]);
+  JS_ToInt64Ext(ctx, &budget, argv[1]);
   flox_order_group_set_pair_latency_budget_ns(h, budget);
   return JS_UNDEFINED;
 }
@@ -4399,8 +4345,8 @@ static JSValue js_order_group_pair_latency_decision(JSContext* ctx, JSValueConst
 {
   auto h = static_cast<FloxOrderGroupHandle>(getHandle(ctx, argv[0]));
   int64_t submit_ts = 0, ack_ts = 0;
-  JS_ToInt64(ctx, &submit_ts, argv[1]);
-  JS_ToInt64(ctx, &ack_ts, argv[2]);
+  JS_ToInt64Ext(ctx, &submit_ts, argv[1]);
+  JS_ToInt64Ext(ctx, &ack_ts, argv[2]);
   uint32_t ack_received = toUint32(ctx, argv[3]);
   uint8_t d = flox_order_group_pair_latency_decision(h, submit_ts, ack_ts,
                                                      static_cast<uint8_t>(ack_received));
@@ -4559,7 +4505,7 @@ static JSValue js_live_queue_position_snapshot(JSContext* ctx, JSValueConst, int
                     JS_NewFloat64(ctx, flox_quantity_to_double(slots[1])));
   JS_SetPropertyStr(ctx, obj, "total",
                     JS_NewFloat64(ctx, flox_quantity_to_double(slots[2])));
-  JS_SetPropertyStr(ctx, obj, "lastUpdateNs", JS_NewInt64(ctx, slots[3]));
+  JS_SetPropertyStr(ctx, obj, "lastUpdateNs", JS_NewBigInt64(ctx, slots[3]));
   JS_SetPropertyStr(ctx, obj, "confidence", JS_NewFloat64(ctx, conf));
   JS_SetPropertyStr(ctx, obj, "hiddenVolumeSeen",
                     JS_NewFloat64(ctx, flox_quantity_to_double(slots[5])));
@@ -4604,7 +4550,7 @@ static JSValue js_bar_dispatch_recorder_on_trade(JSContext* ctx, JSValueConst, i
   double price = toDouble(ctx, argv[2]);
   double qty = toDouble(ctx, argv[3]);
   int64_t ts_ns = 0;
-  JS_ToInt64(ctx, &ts_ns, argv[4]);
+  JS_ToInt64Ext(ctx, &ts_ns, argv[4]);
   flox_bar_dispatch_recorder_on_trade(h, symbol, price, qty, ts_ns);
   return JS_UNDEFINED;
 }
@@ -4650,18 +4596,10 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
   {
     return JS_ThrowTypeError(ctx, "tapeDiff: need leftPath and rightPath");
   }
-  const char* left = JS_ToCString(ctx, argv[0]);
-  const char* right = JS_ToCString(ctx, argv[1]);
+  flox::JsCString left(ctx, argv[0]);
+  flox::JsCString right(ctx, argv[1]);
   if (!left || !right)
   {
-    if (left)
-    {
-      JS_FreeCString(ctx, left);
-    }
-    if (right)
-    {
-      JS_FreeCString(ctx, right);
-    }
     return JS_ThrowTypeError(ctx, "tapeDiff: paths must be strings");
   }
   uint32_t max_mismatches = 16;
@@ -4677,17 +4615,15 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
     v = JS_GetPropertyStr(ctx, argv[2], "fieldToleranceNs");
     if (!JS_IsUndefined(v))
     {
-      JS_ToInt64(ctx, &tolerance_ns, v);
+      JS_ToInt64Ext(ctx, &tolerance_ns, v);
     }
     JS_FreeValue(ctx, v);
   }
 
   FloxTapeDiffHandle h =
       flox_tape_diff_create(left, right, max_mismatches, tolerance_ns);
-  std::string leftStr = left;
-  std::string rightStr = right;
-  JS_FreeCString(ctx, left);
-  JS_FreeCString(ctx, right);
+  std::string leftStr = left.str();
+  std::string rightStr = right.str();
   if (!h)
   {
     return JS_ThrowTypeError(ctx, "tapeDiff: failed to read tape directory(ies)");
@@ -4728,7 +4664,7 @@ static JSValue js_tape_diff(JSContext* ctx, JSValueConst, int argc, JSValueConst
       auto putSide = [&](const char* key, const FloxTapeDiffTrade& t)
       {
         JSValue o = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, o, "exchangeTsNs", JS_NewInt64(ctx, t.exchange_ts_ns));
+        JS_SetPropertyStr(ctx, o, "exchangeTsNs", JS_NewBigInt64(ctx, t.exchange_ts_ns));
         JS_SetPropertyStr(ctx, o, "symbolId", JS_NewUint32(ctx, t.symbol_id));
         JS_SetPropertyStr(ctx, o, "priceRaw", JS_NewInt64(ctx, t.price_raw));
         JS_SetPropertyStr(ctx, o, "qtyRaw", JS_NewInt64(ctx, t.qty_raw));
@@ -4887,7 +4823,7 @@ static JSValue js_exec_step(JSContext* ctx, JSValueConst, int, JSValueConst* arg
     {
       JSValue o = JS_NewObject(ctx);
       JS_SetPropertyStr(ctx, o, "orderId", JS_NewInt64(ctx, static_cast<int64_t>(c.order_id)));
-      JS_SetPropertyStr(ctx, o, "timestampNs", JS_NewInt64(ctx, c.timestamp_ns));
+      JS_SetPropertyStr(ctx, o, "timestampNs", JS_NewBigInt64(ctx, c.timestamp_ns));
       JS_SetPropertyStr(ctx, o, "qty", JS_NewFloat64(ctx, c.qty));
       JS_SetPropertyStr(ctx, o, "price", JS_NewFloat64(ctx, c.price));
       JS_SetPropertyStr(ctx, o, "type",
@@ -4994,7 +4930,7 @@ static JSValue js_portfolio_risk_update(JSContext* ctx, JSValueConst, int argc,
     return JS_ThrowTypeError(ctx, "update(handle, name, fields)");
   }
   auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
-  const char* name = JS_ToCString(ctx, argv[1]);
+  flox::JsCString name(ctx, argv[1]);
   if (!name)
   {
     return JS_ThrowTypeError(ctx, "update: name must be a string");
@@ -5017,7 +4953,7 @@ static JSValue js_portfolio_risk_update(JSContext* ctx, JSValueConst, int argc,
     if (!JS_IsUndefined(v))
     {
       int64_t tmp = 0;
-      JS_ToInt64(ctx, &tmp, v);
+      JS_ToInt64Ext(ctx, &tmp, v);
       out = static_cast<uint64_t>(tmp);
       mask |= bit;
     }
@@ -5030,7 +4966,6 @@ static JSValue js_portfolio_risk_update(JSContext* ctx, JSValueConst, int argc,
   putDouble("netExposure", 1u << 4, f.net_exposure);
   putInt("tradeCount", 1u << 5, f.trade_count);
   flox_portfolio_risk_update(h, name, &f, mask);
-  JS_FreeCString(ctx, name);
   return JS_UNDEFINED;
 }
 
@@ -5038,11 +4973,10 @@ static JSValue js_portfolio_risk_remove(JSContext* ctx, JSValueConst, int,
                                         JSValueConst* argv)
 {
   auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
-  const char* name = JS_ToCString(ctx, argv[1]);
+  flox::JsCString name(ctx, argv[1]);
   if (name)
   {
     flox_portfolio_risk_remove(h, name);
-    JS_FreeCString(ctx, name);
   }
   return JS_UNDEFINED;
 }
@@ -5073,22 +5007,14 @@ static JSValue js_portfolio_risk_check_order(JSContext* ctx, JSValueConst, int a
     return JS_ThrowTypeError(ctx, "checkOrder(handle, strategy, notional, side)");
   }
   auto h = static_cast<FloxPortfolioRiskHandle>(getHandle(ctx, argv[0]));
-  const char* strat = JS_ToCString(ctx, argv[1]);
+  flox::JsCString strat(ctx, argv[1]);
   double notional = 0.0;
   JS_ToFloat64(ctx, &notional, argv[2]);
-  const char* side = JS_ToCString(ctx, argv[3]);
+  flox::JsCString side(ctx, argv[3]);
   FloxBreach b{};
   uint8_t hit = flox_portfolio_risk_check_order(h, strat ? strat : "",
                                                 notional, side ? side : "", &b);
   JSValue out = hit ? breachToJsObject(ctx, b) : JS_NULL;
-  if (strat)
-  {
-    JS_FreeCString(ctx, strat);
-  }
-  if (side)
-  {
-    JS_FreeCString(ctx, side);
-  }
   return out;
 }
 
@@ -5315,24 +5241,42 @@ static JSValue js_console_impl(JSContext* ctx, int argc, JSValueConst* argv, FIL
     {
       fputc(' ', stream);
     }
+    bool printed = false;
     if (JS_IsObject(argv[i]) && !JS_IsFunction(ctx, argv[i]))
     {
+      // JSONStringify refuses an object holding a BigInt, which every
+      // event object now does (its nanosecond fields). Fall through to
+      // the plain string conversion rather than printing nothing.
       JSValue json = JS_JSONStringify(ctx, argv[i], JS_UNDEFINED, JS_UNDEFINED);
-      const char* s = JS_ToCString(ctx, json);
-      if (s)
+      if (JS_IsException(json))
       {
-        fputs(s, stream);
-        JS_FreeCString(ctx, s);
+        clearStrayException(ctx);
+      }
+      else
+      {
+        flox::JsCString s(ctx, json);
+        if (s.ok())
+        {
+          fputs(s.get(), stream);
+          printed = true;
+        }
       }
       JS_FreeValue(ctx, json);
     }
-    else
+    if (!printed)
     {
-      const char* str = JS_ToCString(ctx, argv[i]);
-      if (str)
+      flox::JsCString str(ctx, argv[i]);
+      if (str.ok())
       {
-        fputs(str, stream);
-        JS_FreeCString(ctx, str);
+        fputs(str.get(), stream);
+      }
+      else
+      {
+        // A Symbol, or a toString that threw. Logging must not swallow the
+        // value silently, and must not leave the exception pending for
+        // whatever the script does next.
+        clearStrayException(ctx);
+        fputs("[unprintable]", stream);
       }
     }
   }
@@ -5608,7 +5552,7 @@ static JSValue js_ojt_row_to_obj(JSContext* c, const FloxOrderTraceRow& r)
   JS_SetPropertyStr(c, o, "seq", JS_NewUint32(c, r.seq));
   JS_SetPropertyStr(c, o, "status", JS_NewUint32(c, r.status));
   JS_SetPropertyStr(c, o, "isMaker", JS_NewBool(c, r.is_maker != 0));
-  JS_SetPropertyStr(c, o, "tsNs", JS_NewInt64(c, r.ts_ns));
+  JS_SetPropertyStr(c, o, "tsNs", JS_NewBigInt64(c, r.ts_ns));
   JS_SetPropertyStr(c, o, "fillQty",
                     JS_NewFloat64(c, static_cast<double>(r.fill_qty_raw) / 1e8));
   JS_SetPropertyStr(c, o, "fillPrice",
@@ -5617,14 +5561,14 @@ static JSValue js_ojt_row_to_obj(JSContext* c, const FloxOrderTraceRow& r)
                     JS_NewFloat64(c, static_cast<double>(r.queue_ahead_raw) / 1e8));
   JS_SetPropertyStr(c, o, "queueTotal",
                     JS_NewFloat64(c, static_cast<double>(r.queue_total_raw) / 1e8));
-  JS_SetPropertyStr(c, o, "submittedAtNs", JS_NewInt64(c, r.submitted_at_ns));
-  JS_SetPropertyStr(c, o, "acceptedAtNs", JS_NewInt64(c, r.accepted_at_ns));
-  JS_SetPropertyStr(c, o, "firstFillAtNs", JS_NewInt64(c, r.first_fill_at_ns));
-  JS_SetPropertyStr(c, o, "lastFillAtNs", JS_NewInt64(c, r.last_fill_at_ns));
-  JS_SetPropertyStr(c, o, "canceledAtNs", JS_NewInt64(c, r.canceled_at_ns));
-  JS_SetPropertyStr(c, o, "rejectedAtNs", JS_NewInt64(c, r.rejected_at_ns));
-  JS_SetPropertyStr(c, o, "triggeredAtNs", JS_NewInt64(c, r.triggered_at_ns));
-  JS_SetPropertyStr(c, o, "expiredAtNs", JS_NewInt64(c, r.expired_at_ns));
+  JS_SetPropertyStr(c, o, "submittedAtNs", JS_NewBigInt64(c, r.submitted_at_ns));
+  JS_SetPropertyStr(c, o, "acceptedAtNs", JS_NewBigInt64(c, r.accepted_at_ns));
+  JS_SetPropertyStr(c, o, "firstFillAtNs", JS_NewBigInt64(c, r.first_fill_at_ns));
+  JS_SetPropertyStr(c, o, "lastFillAtNs", JS_NewBigInt64(c, r.last_fill_at_ns));
+  JS_SetPropertyStr(c, o, "canceledAtNs", JS_NewBigInt64(c, r.canceled_at_ns));
+  JS_SetPropertyStr(c, o, "rejectedAtNs", JS_NewBigInt64(c, r.rejected_at_ns));
+  JS_SetPropertyStr(c, o, "triggeredAtNs", JS_NewBigInt64(c, r.triggered_at_ns));
+  JS_SetPropertyStr(c, o, "expiredAtNs", JS_NewBigInt64(c, r.expired_at_ns));
   return o;
 }
 
@@ -5742,11 +5686,10 @@ static JSValue js_pg_prune(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_dw_create(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  const char* dir = JS_ToCString(c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   uint64_t mb = (JS_IsUndefined(a[1]) || JS_IsNull(a[1])) ? 256 : static_cast<uint64_t>(toInt64(c, a[1]));
   uint8_t eid = (JS_IsUndefined(a[2]) || JS_IsNull(a[2])) ? 0 : static_cast<uint8_t>(toUint32(c, a[2]));
   JSValue ret = createHandleObject(c, flox_data_writer_create(dir, mb, eid), flox_data_writer_destroy);
-  JS_FreeCString(c, dir);
   return ret;
 }
 
@@ -5881,7 +5824,7 @@ static JSValue js_dw_write_book(JSContext* c, JSValueConst, int, JSValueConst* a
 
 static JSValue js_blrh_create(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  const char* dir = JS_ToCString(c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   uint64_t mb = (argc < 2 || JS_IsUndefined(a[1]) || JS_IsNull(a[1]))
                     ? 256
                     : static_cast<uint64_t>(toInt64(c, a[1]));
@@ -5893,21 +5836,15 @@ static JSValue js_blrh_create(JSContext* c, JSValueConst, int argc, JSValueConst
                      : static_cast<uint8_t>(toUint32(c, a[3]));
   // Optional a[4] = exchange_name, a[5] = instrument_type. Both feed the
   // RecordingMetadata stamp the merged-tape reader keys on.
-  const char* exch = (argc > 4 && JS_IsString(a[4])) ? JS_ToCString(c, a[4]) : nullptr;
-  const char* itype = (argc > 5 && JS_IsString(a[5])) ? JS_ToCString(c, a[5]) : nullptr;
-  JSValue ret = createHandleObject(
+  flox::JsCString exch = flox::jsOptionalCString(c, argc, a, 4);
+  flox::JsCString itype = flox::jsOptionalCString(c, argc, a, 5);
+  if ((exch.present() && !exch.ok()) || (itype.present() && !itype.ok()))
+  {
+    return JS_EXCEPTION;
+  }
+  return createHandleObject(
       c, flox_binary_log_recorder_hook_create_ex(dir, mb, eid, comp, exch, itype),
       flox_binary_log_recorder_hook_destroy);
-  JS_FreeCString(c, dir);
-  if (exch)
-  {
-    JS_FreeCString(c, exch);
-  }
-  if (itype)
-  {
-    JS_FreeCString(c, itype);
-  }
-  return ret;
 }
 
 // ── Recorder-handle drivers (used by smoke tests + bindings that want
@@ -5973,25 +5910,17 @@ static JSValue js_blrh_add_symbol(JSContext* c, JSValueConst, int argc, JSValueC
 {
   auto h = static_cast<FloxBinaryLogRecorderHookHandle>(getHandle(c, a[0]));
   uint32_t symbolId = toUint32(c, a[1]);
-  const char* name = JS_ToCString(c, a[2]);
-  const char* base = argc > 3 ? JS_ToCString(c, a[3]) : nullptr;
-  const char* quote = argc > 4 ? JS_ToCString(c, a[4]) : nullptr;
+  FLOX_JS_CSTRING_OR_THROW(name, c, a[2]);
+  flox::JsCString base = flox::jsOptionalCString(c, argc, a, 3);
+  flox::JsCString quote = flox::jsOptionalCString(c, argc, a, 4);
+  if ((base.present() && !base.ok()) || (quote.present() && !quote.ok()))
+  {
+    return JS_EXCEPTION;
+  }
   int8_t pp = argc > 5 ? static_cast<int8_t>(toInt64(c, a[5])) : 8;
   int8_t qp = argc > 6 ? static_cast<int8_t>(toInt64(c, a[6])) : 8;
-  flox_binary_log_recorder_hook_add_symbol(h, symbolId, name ? name : "", base ? base : "",
-                                           quote ? quote : "", pp, qp);
-  if (name)
-  {
-    JS_FreeCString(c, name);
-  }
-  if (base)
-  {
-    JS_FreeCString(c, base);
-  }
-  if (quote)
-  {
-    JS_FreeCString(c, quote);
-  }
+  flox_binary_log_recorder_hook_add_symbol(h, symbolId, name.get(), base.or_else(""),
+                                           quote.or_else(""), pp, qp);
   return JS_UNDEFINED;
 }
 
@@ -6022,15 +5951,14 @@ static JSValue js_blrh_stats(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_dr_create(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  const char* dir = JS_ToCString(c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   JSValue ret = createHandleObject(c, flox_data_reader_create(dir), flox_data_reader_destroy);
-  JS_FreeCString(c, dir);
   return ret;
 }
 
 static JSValue js_dr_create_filtered(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  const char* dir = JS_ToCString(c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   int64_t from_ns = toInt64(c, a[1]);
   int64_t to_ns = toInt64(c, a[2]);
   // a[3] optional: array of symbol ids
@@ -6053,7 +5981,6 @@ static JSValue js_dr_create_filtered(JSContext* c, JSValueConst, int argc, JSVal
       flox_data_reader_create_filtered(dir, from_ns, to_ns, syms.empty() ? nullptr : syms.data(),
                                        static_cast<uint32_t>(syms.size())),
       flox_data_reader_destroy);
-  JS_FreeCString(c, dir);
   return ret;
 }
 
@@ -6072,8 +5999,8 @@ static JSValue js_dr_summary(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
   FloxDatasetSummary s = flox_data_reader_summary(static_cast<FloxDataReaderHandle>(getHandle(c, a[0])));
   JSValue o = JS_NewObject(c);
-  JS_SetPropertyStr(c, o, "firstEventNs", JS_NewInt64(c, s.first_event_ns));
-  JS_SetPropertyStr(c, o, "lastEventNs", JS_NewInt64(c, s.last_event_ns));
+  JS_SetPropertyStr(c, o, "firstEventNs", JS_NewBigInt64(c, s.first_event_ns));
+  JS_SetPropertyStr(c, o, "lastEventNs", JS_NewBigInt64(c, s.last_event_ns));
   JS_SetPropertyStr(c, o, "totalEvents", JS_NewInt64(c, static_cast<int64_t>(s.total_events)));
   JS_SetPropertyStr(c, o, "segmentCount", JS_NewUint32(c, s.segment_count));
   JS_SetPropertyStr(c, o, "totalBytes", JS_NewInt64(c, static_cast<int64_t>(s.total_bytes)));
@@ -6104,8 +6031,8 @@ static JSValue js_dr_build_trades_array(JSContext* c, const std::vector<FloxTrad
   {
     const auto& t = trades[i];
     JSValue o = JS_NewObject(c);
-    JS_SetPropertyStr(c, o, "exchangeTsNs", JS_NewInt64(c, t.exchange_ts_ns));
-    JS_SetPropertyStr(c, o, "recvTsNs", JS_NewInt64(c, t.recv_ts_ns));
+    JS_SetPropertyStr(c, o, "exchangeTsNs", JS_NewBigInt64(c, t.exchange_ts_ns));
+    JS_SetPropertyStr(c, o, "recvTsNs", JS_NewBigInt64(c, t.recv_ts_ns));
     JS_SetPropertyStr(c, o, "price", JS_NewFloat64(c, static_cast<double>(t.price_raw) / 1e8));
     JS_SetPropertyStr(c, o, "qty", JS_NewFloat64(c, static_cast<double>(t.qty_raw) / 1e8));
     JS_SetPropertyStr(c, o, "tradeId", JS_NewInt64(c, static_cast<int64_t>(t.trade_id)));
@@ -6123,8 +6050,8 @@ static JSValue js_dr_build_bbos_array(JSContext* c, const std::vector<FloxBBO>& 
   {
     const auto& b = bbos[i];
     JSValue o = JS_NewObject(c);
-    JS_SetPropertyStr(c, o, "exchangeTsNs", JS_NewInt64(c, b.exchange_ts_ns));
-    JS_SetPropertyStr(c, o, "recvTsNs", JS_NewInt64(c, b.recv_ts_ns));
+    JS_SetPropertyStr(c, o, "exchangeTsNs", JS_NewBigInt64(c, b.exchange_ts_ns));
+    JS_SetPropertyStr(c, o, "recvTsNs", JS_NewBigInt64(c, b.recv_ts_ns));
     JS_SetPropertyStr(c, o, "seq", JS_NewInt64(c, b.seq));
     JS_SetPropertyStr(c, o, "symbolId", JS_NewUint32(c, b.symbol_id));
     JS_SetPropertyStr(c, o, "eventType", JS_NewUint32(c, b.event_type));
@@ -6224,8 +6151,8 @@ static JSValue js_dr_build_book_updates_array(JSContext* c,
   {
     const auto& hdr = headers[i];
     JSValue o = JS_NewObject(c);
-    JS_SetPropertyStr(c, o, "exchangeTsNs", JS_NewInt64(c, hdr.exchange_ts_ns));
-    JS_SetPropertyStr(c, o, "recvTsNs", JS_NewInt64(c, hdr.recv_ts_ns));
+    JS_SetPropertyStr(c, o, "exchangeTsNs", JS_NewBigInt64(c, hdr.exchange_ts_ns));
+    JS_SetPropertyStr(c, o, "recvTsNs", JS_NewBigInt64(c, hdr.recv_ts_ns));
     JS_SetPropertyStr(c, o, "seq", JS_NewInt64(c, hdr.seq));
     JS_SetPropertyStr(c, o, "symbolId", JS_NewUint32(c, hdr.symbol_id));
     JS_SetPropertyStr(c, o, "eventType", JS_NewUint32(c, hdr.event_type));
@@ -6300,22 +6227,34 @@ static JSValue js_mtr_create(JSContext* c, JSValueConst, int argc, JSValueConst*
   // a[1]: fromNs (int64, -1 = none)
   // a[2]: toNs   (int64, -1 = none)
   // a[3]: symbol filter (uint32[], optional)
+  // The paths are copied out of QuickJS rather than borrowed: the C call
+  // below wants a stable array of pointers, and a converted string only
+  // lives as long as the holder that owns it.
+  std::vector<std::string> path_owned;
   std::vector<const char*> path_cstrs;
-  std::vector<JSValue> path_jsvals;  // hold for JS_FreeCString
   if (JS_IsArray(c, a[0]))
   {
     JSValue lenVal = JS_GetPropertyStr(c, a[0], "length");
     uint32_t n = 0;
     JS_ToUint32(c, &n, lenVal);
     JS_FreeValue(c, lenVal);
-    path_cstrs.reserve(n);
-    path_jsvals.reserve(n);
+    path_owned.reserve(n);
     for (uint32_t i = 0; i < n; i++)
     {
       JSValue e = JS_GetPropertyUint32(c, a[0], i);
-      const char* s = JS_ToCString(c, e);
-      path_cstrs.push_back(s ? s : "");
-      path_jsvals.push_back(e);  // freed after C call
+      flox::JsCString s(c, e);
+      if (!s.ok())
+      {
+        JS_FreeValue(c, e);
+        return JS_EXCEPTION;
+      }
+      path_owned.emplace_back(s.get());
+      JS_FreeValue(c, e);
+    }
+    path_cstrs.reserve(path_owned.size());
+    for (const auto& p : path_owned)
+    {
+      path_cstrs.push_back(p.c_str());
     }
   }
   int64_t from_ns = argc > 1 ? toInt64(c, a[1]) : -1;
@@ -6341,16 +6280,6 @@ static JSValue js_mtr_create(JSContext* c, JSValueConst, int argc, JSValueConst*
       path_cstrs.empty() ? nullptr : path_cstrs.data(),
       static_cast<uint32_t>(path_cstrs.size()), from_ns, to_ns,
       syms.empty() ? nullptr : syms.data(), static_cast<uint32_t>(syms.size()));
-
-  // Release borrowed strings + JS values
-  for (size_t i = 0; i < path_cstrs.size(); ++i)
-  {
-    if (path_cstrs[i])
-    {
-      JS_FreeCString(c, path_cstrs[i]);
-    }
-    JS_FreeValue(c, path_jsvals[i]);
-  }
 
   return createHandleObject(c, handle, flox_merged_tape_reader_destroy);
 }
@@ -6497,9 +6426,9 @@ static JSValue partitionArrayToJs(JSContext* ctx, const std::vector<FloxPartitio
     const auto& p = parts[i];
     JSValue o = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, o, "partitionId", JS_NewUint32(ctx, p.partition_id));
-    JS_SetPropertyStr(ctx, o, "fromNs", JS_NewInt64(ctx, p.from_ns));
-    JS_SetPropertyStr(ctx, o, "toNs", JS_NewInt64(ctx, p.to_ns));
-    JS_SetPropertyStr(ctx, o, "warmupFromNs", JS_NewInt64(ctx, p.warmup_from_ns));
+    JS_SetPropertyStr(ctx, o, "fromNs", JS_NewBigInt64(ctx, p.from_ns));
+    JS_SetPropertyStr(ctx, o, "toNs", JS_NewBigInt64(ctx, p.to_ns));
+    JS_SetPropertyStr(ctx, o, "warmupFromNs", JS_NewBigInt64(ctx, p.warmup_from_ns));
     JS_SetPropertyStr(ctx, o, "estimatedEvents", JS_NewInt64(ctx, static_cast<int64_t>(p.estimated_events)));
     JS_SetPropertyStr(ctx, o, "estimatedBytes", JS_NewInt64(ctx, static_cast<int64_t>(p.estimated_bytes)));
     JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), o);
@@ -6524,9 +6453,8 @@ static std::vector<FloxPartition> doPartition(
 
 static JSValue js_part_create(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  const char* dir = JS_ToCString(c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   JSValue ret = createHandleObject(c, flox_partitioner_create(dir), flox_partitioner_destroy);
-  JS_FreeCString(c, dir);
   return ret;
 }
 
@@ -6630,7 +6558,7 @@ static std::vector<int64_t> jsArrayToInt64s(JSContext* ctx, JSValueConst arr)
   {
     JSValue e = JS_GetPropertyUint32(ctx, arr, i);
     int64_t v = 0;
-    JS_ToInt64(ctx, &v, e);
+    JS_ToInt64Ext(ctx, &v, e);
     JS_FreeValue(ctx, e);
     out[i] = v;
   }
@@ -6645,7 +6573,7 @@ static JSValue barsToJsArray(JSContext* ctx, const std::vector<FloxBar>& bars)
     const auto& b = bars[i];
     JSValue o = JS_NewObject(ctx);
     static constexpr double kScale = 1e8;
-    JS_SetPropertyStr(ctx, o, "ts", JS_NewInt64(ctx, b.start_time_ns));
+    JS_SetPropertyStr(ctx, o, "ts", JS_NewBigInt64(ctx, b.start_time_ns));
     JS_SetPropertyStr(ctx, o, "open", JS_NewFloat64(ctx, b.open_raw / kScale));
     JS_SetPropertyStr(ctx, o, "high", JS_NewFloat64(ctx, b.high_raw / kScale));
     JS_SetPropertyStr(ctx, o, "low", JS_NewFloat64(ctx, b.low_raw / kScale));
@@ -6745,11 +6673,9 @@ static JSValue js_agg_heikin(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_seg_merge_dir(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  const char* in = JS_ToCString(c, a[0]);
-  const char* out = JS_ToCString(c, a[1]);
+  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
   FloxMergeResult r = flox_segment_merge_dir(in, out);
-  JS_FreeCString(c, in);
-  JS_FreeCString(c, out);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "success", JS_NewBool(c, r.success));
   JS_SetPropertyStr(c, o, "segmentsMerged", JS_NewInt64(c, static_cast<int64_t>(r.segments_merged)));
@@ -6760,14 +6686,12 @@ static JSValue js_seg_merge_dir(JSContext* c, JSValueConst, int, JSValueConst* a
 
 static JSValue js_seg_split(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  const char* in = JS_ToCString(c, a[0]);
-  const char* dir = JS_ToCString(c, a[1]);
+  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(dir, c, a[1]);
   uint8_t mode = argc > 2 ? static_cast<uint8_t>(toUint32(c, a[2])) : 0;
   int64_t tns = argc > 3 ? toInt64(c, a[3]) : 0;
   uint64_t epc = argc > 4 ? static_cast<uint64_t>(toInt64(c, a[4])) : 0;
   FloxSplitResult r = flox_segment_split(in, dir, mode, tns, epc);
-  JS_FreeCString(c, in);
-  JS_FreeCString(c, dir);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "success", JS_NewBool(c, r.success));
   JS_SetPropertyStr(c, o, "segmentsCreated", JS_NewUint32(c, r.segments_created));
@@ -6777,8 +6701,8 @@ static JSValue js_seg_split(JSContext* c, JSValueConst, int argc, JSValueConst* 
 
 static JSValue js_seg_export(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  const char* in = JS_ToCString(c, a[0]);
-  const char* out = JS_ToCString(c, a[1]);
+  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
   uint8_t fmt = argc > 2 ? static_cast<uint8_t>(toUint32(c, a[2])) : 0;
   int64_t from = argc > 3 ? toInt64(c, a[3]) : 0;
   int64_t to = argc > 4 ? toInt64(c, a[4]) : 0;
@@ -6799,8 +6723,6 @@ static JSValue js_seg_export(JSContext* c, JSValueConst, int argc, JSValueConst*
   FloxExportResult r = flox_segment_export(in, out, fmt, from, to,
                                            syms.empty() ? nullptr : syms.data(),
                                            static_cast<uint32_t>(syms.size()));
-  JS_FreeCString(c, in);
-  JS_FreeCString(c, out);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "success", JS_NewBool(c, r.success));
   JS_SetPropertyStr(c, o, "eventsExported", JS_NewInt64(c, static_cast<int64_t>(r.events_exported)));
@@ -6810,11 +6732,10 @@ static JSValue js_seg_export(JSContext* c, JSValueConst, int argc, JSValueConst*
 
 static JSValue js_seg_validate_full(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  const char* path = JS_ToCString(c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(path, c, a[0]);
   FloxSegmentValidation r = flox_segment_validate_full(path,
                                                        argc > 1 ? static_cast<uint8_t>(JS_ToBool(c, a[1])) : 1,
                                                        argc > 2 ? static_cast<uint8_t>(JS_ToBool(c, a[2])) : 1);
-  JS_FreeCString(c, path);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "valid", JS_NewBool(c, r.valid));
   JS_SetPropertyStr(c, o, "headerValid", JS_NewBool(c, r.header_valid));
@@ -6831,9 +6752,8 @@ static JSValue js_seg_validate_full(JSContext* c, JSValueConst, int argc, JSValu
 
 static JSValue js_dataset_validate(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  const char* dir = JS_ToCString(c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
   FloxDatasetValidation r = flox_dataset_validate(dir);
-  JS_FreeCString(c, dir);
   JSValue o = JS_NewObject(c);
   JS_SetPropertyStr(c, o, "valid", JS_NewBool(c, r.valid));
   JS_SetPropertyStr(c, o, "totalSegments", JS_NewUint32(c, r.total_segments));
@@ -6848,19 +6768,17 @@ static JSValue js_dataset_validate(JSContext* c, JSValueConst, int, JSValueConst
 
 static JSValue js_seg_recompress(JSContext* c, JSValueConst, int argc, JSValueConst* a)
 {
-  const char* in = JS_ToCString(c, a[0]);
-  const char* out = JS_ToCString(c, a[1]);
+  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
   uint8_t comp = argc > 2 ? static_cast<uint8_t>(toUint32(c, a[2])) : 1;
   JSValue ret = JS_NewBool(c, flox_segment_recompress(in, out, comp));
-  JS_FreeCString(c, in);
-  JS_FreeCString(c, out);
   return ret;
 }
 
 static JSValue js_seg_extract_symbols(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  const char* in = JS_ToCString(c, a[0]);
-  const char* out = JS_ToCString(c, a[1]);
+  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
   std::vector<uint32_t> syms;
   if (JS_IsArray(c, a[2]))
   {
@@ -6876,18 +6794,14 @@ static JSValue js_seg_extract_symbols(JSContext* c, JSValueConst, int, JSValueCo
     }
   }
   uint64_t written = flox_segment_extract_symbols(in, out, syms.data(), static_cast<uint32_t>(syms.size()));
-  JS_FreeCString(c, in);
-  JS_FreeCString(c, out);
   return JS_NewInt64(c, static_cast<int64_t>(written));
 }
 
 static JSValue js_seg_extract_time(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  const char* in = JS_ToCString(c, a[0]);
-  const char* out = JS_ToCString(c, a[1]);
+  FLOX_JS_CSTRING_OR_THROW(in, c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
   uint64_t written = flox_segment_extract_time_range(in, out, toInt64(c, a[2]), toInt64(c, a[3]));
-  JS_FreeCString(c, in);
-  JS_FreeCString(c, out);
   return JS_NewInt64(c, static_cast<int64_t>(written));
 }
 
@@ -6917,9 +6831,8 @@ static int64_t detectTimestampNs(int64_t ts)
 
 static JSValue js_load_csv(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  const char* path = JS_ToCString(c, a[0]);
+  FLOX_JS_CSTRING_OR_THROW(path, c, a[0]);
   std::ifstream f(path);
-  JS_FreeCString(c, path);
   if (!f.is_open())
   {
     return JS_ThrowTypeError(c, "loadCsv: file not found");
@@ -7679,17 +7592,14 @@ void registerFloxBindings(JSContext* ctx)
   // Segment ops
   addGlobalFunc(ctx, "__flox_segment_validate", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
-                  const char* path = JS_ToCString(c, a[0]);
+                  FLOX_JS_CSTRING_OR_THROW(path, c, a[0]);
                   uint8_t r = flox_segment_validate(path);
-                  JS_FreeCString(c, path);
                   return JS_NewBool(c, r); }, 1);
   addGlobalFunc(ctx, "__flox_segment_merge", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue
                 {
-                  const char* dir = JS_ToCString(c, a[0]);
-                  const char* out = JS_ToCString(c, a[1]);
+                  FLOX_JS_CSTRING_OR_THROW(dir, c, a[0]);
+                  FLOX_JS_CSTRING_OR_THROW(out, c, a[1]);
                   uint8_t r = flox_segment_merge(dir, out);
-                  JS_FreeCString(c, dir);
-                  JS_FreeCString(c, out);
                   return JS_NewBool(c, r); }, 2);
 
   addGlobalFunc(ctx, "__flox_stat_profit_factor", [](JSContext* c, JSValueConst, int, JSValueConst* a) -> JSValue

@@ -128,8 +128,16 @@ trade.price       // 50123.45
 trade.qty         // 1.5
 trade.side        // "buy" or "sell"
 trade.isBuy       // true/false
-trade.timestampNs // nanosecond timestamp
+trade.timestampNs // nanosecond timestamp, a BigInt
 ```
+
+Nanosecond timestamps are `BigInt`, not `Number`. A clock reading in
+nanoseconds sits far past the 2^53 where a double still holds every
+integer, and rounding it there gave two events 100 ns apart the same
+value. Durations and order ids are still numbers. See
+[the JavaScript value boundary](../explanation/javascript-value-boundary.md)
+for the full list and what a strategy written against the old types has to
+change.
 
 ## Indicators
 
