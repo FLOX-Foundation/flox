@@ -76,8 +76,13 @@ setTimeout(() => {
   runner.stop();
 
   console.log(`${passed} passed, ${failed} failed`);
-  // Forced exit: runner.stop() does not release the threaded Runner's
-  // ThreadSafeFunction (separately tracked, see test_types.ts), so the
-  // event loop would otherwise sit alive until GC happens to collect it.
-  process.exit(failed > 0 ? 1 : 0);
+  process.exitCode = failed > 0 ? 1 : 0;
+
+  // runner.stop() releases the channel, so the loop drains and the process
+  // ends on its own. The unref'd timer fires only if it does not.
+  const watchdog = setTimeout(() => {
+    console.error('test_tsfn_backpressure: the event loop is still alive 10s after stop()');
+    process.exit(3);
+  }, 10000);
+  watchdog.unref();
 }, 3000);

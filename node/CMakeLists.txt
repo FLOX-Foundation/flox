@@ -150,6 +150,31 @@ else()
 endif()
 target_compile_definitions(flox_node PRIVATE FLOX_NUMA_LIBRARY_LINKED=0)
 
+# Opt-in sanitizer build of the addon's own translation units.
+#
+# cmake-js assembles CMAKE_CXX_FLAGS itself, so -DCMAKE_CXX_FLAGS on the
+# command line is silently dropped and the addon compiles uninstrumented while
+# the archive next to it is instrumented -- a configuration that loads, runs,
+# and reports nothing, which reads exactly like a clean run. Attaching the
+# flags to the target instead is what actually takes effect.
+#
+#   cmake --build build-tsan            # flox core with the same sanitizer
+#   npx cmake-js compile --out build-tsan \
+#     --CDFLOX_NODE_SANITIZE=thread \
+#     --CDFLOX_LIB=<repo>/build-tsan/libflox.a
+#
+# The archive has to carry the same sanitizer as the addon; mixing an
+# instrumented half with an uninstrumented one gives partial shadow state and
+# under-reports.
+set(FLOX_NODE_SANITIZE "" CACHE STRING
+    "Sanitizer to build the addon with: thread, address, or undefined")
+if(FLOX_NODE_SANITIZE)
+  message(STATUS "flox_node: building with -fsanitize=${FLOX_NODE_SANITIZE}")
+  target_compile_options(flox_node PRIVATE
+                         -fsanitize=${FLOX_NODE_SANITIZE} -g -fno-omit-frame-pointer)
+  target_link_options(flox_node PRIVATE -fsanitize=${FLOX_NODE_SANITIZE})
+endif()
+
 # Mirror the LZ4 detection from the core CMakeLists. find_library(FLOX_LIB)
 # locates a static archive but does not propagate the PUBLIC dependencies of
 # the original `flox` target, so the binding has to re-discover lz4 itself.
