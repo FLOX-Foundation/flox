@@ -232,6 +232,9 @@ Emitted by strategies, received by the order backend.
 | `trailing_bps` | `int32_t` | Trailing stop callback rate (basis points) |
 | `new_price` | `double` | Modify: updated price |
 | `new_quantity` | `double` | Modify: updated quantity |
+| `range_lower` | `double` | Provide/withdraw liquidity: lower bound of the range |
+| `range_upper` | `double` | Provide liquidity: upper bound of the range (0 on withdraw) |
+| `liquidity` | `double` | Provide/withdraw liquidity: position size |
 
 ### `FloxBar`
 

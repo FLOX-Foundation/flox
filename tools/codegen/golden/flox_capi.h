@@ -489,6 +489,9 @@ extern "C"
     int32_t trailing_bps;
     double new_price;
     double new_quantity;
+    double range_lower;
+    double range_upper;
+    double liquidity;
   } FloxSignal;
 
   typedef struct

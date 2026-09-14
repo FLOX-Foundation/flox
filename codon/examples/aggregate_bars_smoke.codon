@@ -1,0 +1,105 @@
+# Smoke test: the batch bar aggregators (flox.tools.aggregate_*_bars) that
+# used to have only a raw C import in Codon, with no wrapper to read the
+# FloxBar array back without hand-rolled pointer arithmetic at every call
+# site. Exercises all six aggregators and checks the returned bars are
+# well-formed and reach the buffer-decode path correctly -- not the bar
+# policies' own boundary semantics (covered by the C++ test suite).
+
+from flox.tools import (
+    aggregate_time_bars, aggregate_tick_bars, aggregate_volume_bars,
+    aggregate_range_bars, aggregate_renko_bars, aggregate_heikin_ashi_bars,
+    AggBar,
+)
+
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL  " + msg)
+
+
+def build_trades():
+    n = 40
+    timestamps = [1_000_000_000 * i for i in range(n)]
+    prices = [100.0 + float(i) for i in range(n)]
+    quantities = [1.0 for _ in range(n)]
+    is_buy = [i % 2 == 0 for i in range(n)]
+    return timestamps, prices, quantities, is_buy
+
+
+def check_well_formed(bars: List[AggBar], label: str, expect_nonempty: bool = True):
+    if expect_nonempty:
+        check(len(bars) > 0, f"{label}: produced at least one bar")
+    if len(bars) == 0:
+        return
+    check(bars[0].start_time_ns >= 0, f"{label}: first bar start_time_ns >= 0")
+    ordered = all(bars[i].start_time_ns <= bars[i + 1].start_time_ns
+                  for i in range(len(bars) - 1))
+    check(ordered, f"{label}: bars are time-ordered")
+    sane = all(b.high() >= b.low() and b.high() >= b.open() and b.high() >= b.close()
+               and b.low() <= b.open() and b.low() <= b.close() for b in bars)
+    check(sane, f"{label}: every bar has low <= open/close <= high")
+    check(bars[-1].close() > 0.0, f"{label}: last close is a real price (got {bars[-1].close()})")
+
+
+def run():
+    timestamps, prices, quantities, is_buy = build_trades()
+
+    check_well_formed(aggregate_time_bars(timestamps, prices, quantities, is_buy, 5.0),
+                      "time")
+    check_well_formed(aggregate_tick_bars(timestamps, prices, quantities, is_buy, 5),
+                      "tick")
+    check_well_formed(aggregate_volume_bars(timestamps, prices, quantities, is_buy, 5.0),
+                      "volume")
+    check_well_formed(aggregate_range_bars(timestamps, prices, quantities, is_buy, 2.0),
+                      "range")
+    renko = aggregate_renko_bars(timestamps, prices, quantities, is_buy, 2.0)
+    check_well_formed(renko, "renko")
+    check_well_formed(aggregate_heikin_ashi_bars(timestamps, prices, quantities, is_buy, 5.0),
+                      "heikin_ashi")
+
+    # The specific case named in the finding: renko bricks decode with
+    # the same field values a direct FloxBar read would give.
+    if len(renko) > 0:
+        first = renko[0]
+        check(abs(first.open() - 100.0) < 1e-6,
+              f"renko: first brick opens at the first trade price (got {first.open()})")
+        check(first.trade_count > 0, f"renko: first brick has trade_count > 0")
+
+    # A gap wider than one brick makes flox_aggregate_renko_bars() report
+    # more bars than there were input trades -- see the aggregate_renko_
+    # bars() comment in flox.tools. Two trades, a 5.5-brick gap: without
+    # the retry-with-a-bigger-buffer fix, _decode_agg_bars would be told
+    # to read 5 bars out of a 2-bar buffer, walking off the end of it and
+    # returning wrong/truncated data (the C++ side of the same bug is a
+    # heap-buffer-overflow read under ASan -- see
+    # node/test/test_renko_gap_bricks.js and node/src/aggregators.h).
+    gap_ts = [0, 1_000_000_000]
+    gap_px = [100.0, 155.0]
+    gap_qty = [1.0, 1.0]
+    gap_ib = [True, True]
+    gap_bars = aggregate_renko_bars(gap_ts, gap_px, gap_qty, gap_ib, 10.0)
+    check(len(gap_bars) == 5,
+          f"renko gap: 1 real + 4 synthesized bricks (got {len(gap_bars)})")
+    if len(gap_bars) == 5:
+        check(abs(gap_bars[0].open() - 100.0) < 1e-6, "renko gap: first brick opens at 100")
+        check(abs(gap_bars[0].close() - 100.0) < 1e-6, "renko gap: first brick closes at 100")
+        expected_opens = [110.0, 120.0, 130.0, 140.0]
+        expected_closes = [120.0, 130.0, 140.0, 150.0]
+        for i in range(4):
+            check(abs(gap_bars[i + 1].open() - expected_opens[i]) < 1e-6,
+                  f"renko gap: brick {i} open (got {gap_bars[i + 1].open()})")
+            check(abs(gap_bars[i + 1].close() - expected_closes[i]) < 1e-6,
+                  f"renko gap: brick {i} close (got {gap_bars[i + 1].close()})")
+
+    if failed > 0:
+        raise ValueError(str(failed) + " check(s) failed")
+    print("done")
+
+
+run()

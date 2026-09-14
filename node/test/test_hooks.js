@@ -238,6 +238,48 @@ function testExecutorBacktest() {
   check(submits[0]?.orderType === 'market', `orderType='market'`);
 }
 
+// ── LP signal fields ────────────────────────────────────────────────
+
+function testLpSignalFields() {
+  console.log('testLpSignalFields');
+  const reg = new flox.SymbolRegistry();
+  const sym = reg.addSymbol('test', 'ETH-USDC', 0.01);
+  const onSignalCalls = [];
+  const runner = new flox.Runner(reg, (sig) => onSignalCalls.push(sig), false);
+
+  let fired = false;
+  runner.addStrategy({
+    symbols: [sym],
+    onTrade(_ctx, _trade, emit) {
+      if (fired) return;
+      fired = true;
+      // provideLiquidity(priceLower, priceUpper, liquidity, [symbol]) and
+      // withdrawLiquidity(liquidity, [symbol]) -- symbol trails and is
+      // optional, same convention as marketBuy/marketSell/etc.
+      emit.provideLiquidity(1800.0, 2200.0, 5.0, Number(sym));
+      emit.withdrawLiquidity(2.5, Number(sym));
+    },
+  });
+  runner.start();
+  runner.onTrade(Number(sym), 100, 1, true, 1000);
+  runner.stop();
+
+  check(onSignalCalls.length === 2, `both liquidity signals fired, got ${onSignalCalls.length}`);
+  const [provide, withdraw] = onSignalCalls;
+  check(provide?.orderType === 'provide_liquidity',
+        `first signal is provide_liquidity, got ${provide?.orderType}`);
+  check(Math.abs(provide?.rangeLower - 1800.0) < 1e-9,
+        `rangeLower crosses the boundary, got ${provide?.rangeLower}`);
+  check(Math.abs(provide?.rangeUpper - 2200.0) < 1e-9,
+        `rangeUpper crosses the boundary, got ${provide?.rangeUpper}`);
+  check(Math.abs(provide?.liquidity - 5.0) < 1e-9,
+        `liquidity crosses the boundary, got ${provide?.liquidity}`);
+  check(withdraw?.orderType === 'withdraw_liquidity',
+        `second signal is withdraw_liquidity, got ${withdraw?.orderType}`);
+  check(Math.abs(withdraw?.liquidity - 2.5) < 1e-9,
+        `withdraw liquidity crosses the boundary, got ${withdraw?.liquidity}`);
+}
+
 // ── setLogCallback ──────────────────────────────────────────────────
 
 function testLogCallback() {
@@ -260,6 +302,7 @@ testExecutor();
 testMarketDataRecorder();
 testExecutionListenerBacktest();
 testExecutorBacktest();
+testLpSignalFields();
 testLogCallback();
 
 console.log(`\n${passed} passed, ${failed} failed`);

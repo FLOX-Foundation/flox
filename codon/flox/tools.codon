@@ -144,6 +144,179 @@ from C import flox_aggregate_renko_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[u8], i
 from C import flox_aggregate_heikin_ashi_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[u8], int,
                                                f64, cobj, u32) -> u32
 
+# ======================================================================
+# Batch bar aggregation
+#
+# The six flox_aggregate_*_bars() imports above are exactly what every
+# other binding calls (see node/src/aggregators.h, python/aggregator_
+# bindings.h) -- a raw trade array in, an FloxBar array out. Unlike
+# Python and Node, Codon had no wrapper: the declaration above types
+# `bars_out` as `cobj`, so calling any of these six meant hand-rolling
+# the output buffer and reading FloxBar's 72-byte layout back by pointer
+# arithmetic at every call site. AggBar + _decode_agg_bars() below do
+# that once, the same way DataReader.read_trades() already does for
+# FloxTradeRecord a few hundred lines down.
+# ======================================================================
+
+
+@dataclass
+class AggBar:
+    """One aggregated bar. Mirrors the C FloxBar struct."""
+    start_time_ns: int
+    end_time_ns:   int
+    open_raw:      int
+    high_raw:      int
+    low_raw:       int
+    close_raw:     int
+    volume_raw:    int
+    buy_volume_raw: int
+    trade_count:   int
+
+    def open(self) -> float:
+        return float(self.open_raw) / 1e8
+
+    def high(self) -> float:
+        return float(self.high_raw) / 1e8
+
+    def low(self) -> float:
+        return float(self.low_raw) / 1e8
+
+    def close(self) -> float:
+        return float(self.close_raw) / 1e8
+
+    def volume(self) -> float:
+        return float(self.volume_raw) / 1e8
+
+    def buy_volume(self) -> float:
+        return float(self.buy_volume_raw) / 1e8
+
+
+def _decode_agg_bars(buf: List[byte], count: int) -> List[AggBar]:
+    # FloxBar layout (include/flox/capi/flox_capi.h):
+    #   i64 start_time_ns   (0)
+    #   i64 end_time_ns     (8)
+    #   i64 open_raw        (16)
+    #   i64 high_raw        (24)
+    #   i64 low_raw         (32)
+    #   i64 close_raw       (40)
+    #   i64 volume_raw      (48)
+    #   i64 buy_volume_raw  (56)
+    #   u32 trade_count     (64) + 4 bytes padding
+    #   total: 72 bytes (python/aggregator_bindings.h static_asserts this)
+    stride = 72
+    result = list[AggBar]()
+    for i in range(count):
+        base = i * stride
+        lp = Ptr[i64](Ptr[byte](buf.arr.ptr) + base)
+        up = Ptr[u32](Ptr[byte](buf.arr.ptr) + base)
+        result.append(AggBar(
+            start_time_ns=int(lp[0]),
+            end_time_ns=int(lp[1]),
+            open_raw=int(lp[2]),
+            high_raw=int(lp[3]),
+            low_raw=int(lp[4]),
+            close_raw=int(lp[5]),
+            volume_raw=int(lp[6]),
+            buy_volume_raw=int(lp[7]),
+            trade_count=int(up[16]),  # byte offset 64 -> u32 index 16
+        ))
+    return result
+
+
+def _run_aggregate_f64(fn, timestamps: List[int], prices: List[float],
+                       quantities: List[float], is_buy: List[bool],
+                       threshold: float, max_bars: int) -> List[AggBar]:
+    ts = [i64(t) for t in timestamps]
+    ib = [u8(1) if b else u8(0) for b in is_buy]
+    n = len(timestamps)
+    buf = [byte(0)] * (max_bars * 72)
+    count = int(fn(ts.arr.ptr, prices.arr.ptr, quantities.arr.ptr, ib.arr.ptr, n,
+                   threshold, Ptr[byte](buf.arr.ptr), u32(max_bars)))
+    return _decode_agg_bars(buf, count)
+
+
+def aggregate_time_bars(timestamps: List[int], prices: List[float],
+                        quantities: List[float], is_buy: List[bool],
+                        interval_seconds: float) -> List[AggBar]:
+    """Aggregate trades into fixed-duration time bars."""
+    return _run_aggregate_f64(flox_aggregate_time_bars, timestamps, prices,
+                              quantities, is_buy, interval_seconds,
+                              len(timestamps))
+
+
+def aggregate_tick_bars(timestamps: List[int], prices: List[float],
+                        quantities: List[float], is_buy: List[bool],
+                        tick_count: int) -> List[AggBar]:
+    """Aggregate trades into bars of a fixed trade count each."""
+    n = len(timestamps)
+    ts = [i64(t) for t in timestamps]
+    ib = [u8(1) if b else u8(0) for b in is_buy]
+    max_bars = n // tick_count + 1
+    buf = [byte(0)] * (max_bars * 72)
+    count = int(flox_aggregate_tick_bars(
+        ts.arr.ptr, prices.arr.ptr, quantities.arr.ptr, ib.arr.ptr, n,
+        u32(tick_count), Ptr[byte](buf.arr.ptr), u32(max_bars)))
+    return _decode_agg_bars(buf, count)
+
+
+def aggregate_volume_bars(timestamps: List[int], prices: List[float],
+                          quantities: List[float], is_buy: List[bool],
+                          volume_threshold: float) -> List[AggBar]:
+    """Aggregate trades into bars that close once traded volume crosses
+    the threshold."""
+    return _run_aggregate_f64(flox_aggregate_volume_bars, timestamps, prices,
+                              quantities, is_buy, volume_threshold,
+                              len(timestamps))
+
+
+def aggregate_range_bars(timestamps: List[int], prices: List[float],
+                         quantities: List[float], is_buy: List[bool],
+                         range_size: float) -> List[AggBar]:
+    """Aggregate trades into bars that close once price has moved
+    `range_size` from the bar's open."""
+    return _run_aggregate_f64(flox_aggregate_range_bars, timestamps, prices,
+                              quantities, is_buy, range_size, len(timestamps))
+
+
+def aggregate_renko_bars(timestamps: List[int], prices: List[float],
+                         quantities: List[float], is_buy: List[bool],
+                         brick_size: float) -> List[AggBar]:
+    """Aggregate trades into Renko bricks of a fixed price size."""
+    # Every other aggregator here closes at most one bar per input trade,
+    # so max_bars = len(timestamps) is always enough room. Renko is the
+    # exception: a trade that gaps past more than one brick width closes
+    # the forming brick and also synthesizes the bricks in between (see
+    # gapBricks() in renko_bar_policy.h), so a single trade can produce
+    # several bars. flox_aggregate_renko_bars() is bounds-checked and
+    # never writes past max_bars, but if it reports more bars than that,
+    # the extra ones were silently dropped rather than written -- decoding
+    # `count` entries out of a max_bars-sized buffer in that case would
+    # read past the end of it. Redo the call with a buffer sized to the
+    # real count instead.
+    ts = [i64(t) for t in timestamps]
+    ib = [u8(1) if b else u8(0) for b in is_buy]
+    n = len(timestamps)
+    max_bars = n
+    buf = [byte(0)] * (max_bars * 72)
+    count = int(flox_aggregate_renko_bars(
+        ts.arr.ptr, prices.arr.ptr, quantities.arr.ptr, ib.arr.ptr, n,
+        brick_size, Ptr[byte](buf.arr.ptr), u32(max_bars)))
+    if count > max_bars:
+        buf = [byte(0)] * (count * 72)
+        count = int(flox_aggregate_renko_bars(
+            ts.arr.ptr, prices.arr.ptr, quantities.arr.ptr, ib.arr.ptr, n,
+            brick_size, Ptr[byte](buf.arr.ptr), u32(count)))
+    return _decode_agg_bars(buf, count)
+
+
+def aggregate_heikin_ashi_bars(timestamps: List[int], prices: List[float],
+                               quantities: List[float], is_buy: List[bool],
+                               interval_seconds: float) -> List[AggBar]:
+    """Aggregate trades into Heikin-Ashi bars over a fixed duration."""
+    return _run_aggregate_f64(flox_aggregate_heikin_ashi_bars, timestamps,
+                              prices, quantities, is_buy, interval_seconds,
+                              len(timestamps))
+
 from C import flox_stat_permutation_test(Ptr[f64], int, Ptr[f64], int, u32) -> f64
 from C import flox_stat_bootstrap_ci(Ptr[f64], int, f64, u32, Ptr[f64], Ptr[f64], Ptr[f64])
 

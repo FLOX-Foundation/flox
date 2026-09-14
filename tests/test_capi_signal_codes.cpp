@@ -36,6 +36,9 @@ struct Seen
   std::vector<uint8_t> types;
   std::vector<double> prices;
   std::vector<double> quantities;
+  std::vector<double> rangeLowers;
+  std::vector<double> rangeUppers;
+  std::vector<double> liquidities;
 };
 
 void onSignal(void* ud, const FloxSignal* s)
@@ -44,6 +47,9 @@ void onSignal(void* ud, const FloxSignal* s)
   seen->types.push_back(s->order_type);
   seen->prices.push_back(s->price);
   seen->quantities.push_back(s->quantity);
+  seen->rangeLowers.push_back(s->range_lower);
+  seen->rangeUppers.push_back(s->range_upper);
+  seen->liquidities.push_back(s->liquidity);
 }
 
 struct RunnerCtx
@@ -143,6 +149,43 @@ TEST(CapiSignalCodesTest, ALiquiditySignalIsDistinguishableFromZeroNotionalMarke
   EXPECT_NE(seen.types[0], seen.types[1]);
   EXPECT_EQ(seen.types[1], FLOX_SIGNAL_TYPE_MARKET);
   EXPECT_NEAR(seen.quantities[1], 1.0, 1e-9);
+}
+
+// The code told a gate this wasn't a market order; it still couldn't see
+// the range or the size, because FloxSignal.price / .quantity carry
+// nothing for these two types and nothing else crossed the boundary.
+TEST(CapiSignalCodesTest, ProvideLiquidityCarriesRangeAndAmountAcrossTheBoundary)
+{
+  Seen seen;
+  RunnerCtx ctx;
+  makeRunner(ctx, seen);
+
+  bridge(ctx.strategy)
+      ->publicEmitProvideLiquidity(ctx.symbol, flox::Price::fromDouble(1800.0),
+                                   flox::Price::fromDouble(2200.0),
+                                   flox::Quantity::fromDouble(5.0));
+
+  ASSERT_EQ(seen.types.size(), 1u);
+  EXPECT_EQ(seen.types[0], FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY);
+  EXPECT_NEAR(seen.rangeLowers[0], 1800.0, 1e-9);
+  EXPECT_NEAR(seen.rangeUppers[0], 2200.0, 1e-9);
+  EXPECT_NEAR(seen.liquidities[0], 5.0, 1e-9);
+}
+
+TEST(CapiSignalCodesTest, WithdrawLiquidityCarriesAmountAcrossTheBoundary)
+{
+  Seen seen;
+  RunnerCtx ctx;
+  makeRunner(ctx, seen);
+
+  bridge(ctx.strategy)->publicEmitWithdrawLiquidity(ctx.symbol, flox::Quantity::fromDouble(5.0));
+
+  ASSERT_EQ(seen.types.size(), 1u);
+  EXPECT_EQ(seen.types[0], FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY);
+  EXPECT_NEAR(seen.liquidities[0], 5.0, 1e-9);
+  // Withdraw has no upper bound; both C++ Signal and the wire struct leave
+  // it at zero.
+  EXPECT_NEAR(seen.rangeUppers[0], 0.0, 1e-9);
 }
 
 TEST(CapiSignalCodesTest, EveryCodeHasAName)

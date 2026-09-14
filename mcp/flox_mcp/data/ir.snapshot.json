@@ -16191,6 +16191,18 @@
         {
           "name": "new_quantity",
           "type": "double"
+        },
+        {
+          "name": "range_lower",
+          "type": "double"
+        },
+        {
+          "name": "range_upper",
+          "type": "double"
+        },
+        {
+          "name": "liquidity",
+          "type": "double"
         }
       ],
       "name": "FloxSignal"

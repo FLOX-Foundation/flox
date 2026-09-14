@@ -4259,6 +4259,10 @@
         },
         {
           "kind": "class",
+          "name": "AggBar"
+        },
+        {
+          "kind": "class",
           "name": "AutoCorrelation"
         },
         {
@@ -4723,6 +4727,30 @@
         },
         {
           "kind": "function",
+          "name": "aggregate_heikin_ashi_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_range_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_renko_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_tick_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_time_bars"
+        },
+        {
+          "kind": "function",
+          "name": "aggregate_volume_bars"
+        },
+        {
+          "kind": "function",
           "name": "atr"
         },
         {
@@ -5048,6 +5076,36 @@
           "kind": "method",
           "name": "total_unrealised_pnl",
           "parent": "Account"
+        },
+        {
+          "kind": "method",
+          "name": "buy_volume",
+          "parent": "AggBar"
+        },
+        {
+          "kind": "method",
+          "name": "close",
+          "parent": "AggBar"
+        },
+        {
+          "kind": "method",
+          "name": "high",
+          "parent": "AggBar"
+        },
+        {
+          "kind": "method",
+          "name": "low",
+          "parent": "AggBar"
+        },
+        {
+          "kind": "method",
+          "name": "open",
+          "parent": "AggBar"
+        },
+        {
+          "kind": "method",
+          "name": "volume",
+          "parent": "AggBar"
         },
         {
           "kind": "method",
@@ -30262,6 +30320,11 @@
         },
         {
           "kind": "method",
+          "name": "liquidity",
+          "parent": "Signal"
+        },
+        {
+          "kind": "method",
           "name": "orderId",
           "parent": "Signal"
         },
@@ -30278,6 +30341,16 @@
         {
           "kind": "method",
           "name": "quantity",
+          "parent": "Signal"
+        },
+        {
+          "kind": "method",
+          "name": "rangeLower",
+          "parent": "Signal"
+        },
+        {
+          "kind": "method",
+          "name": "rangeUpper",
           "parent": "Signal"
         },
         {
@@ -35761,6 +35834,11 @@
         },
         {
           "kind": "method",
+          "name": "liquidity",
+          "parent": "Signal"
+        },
+        {
+          "kind": "method",
           "name": "new_price",
           "parent": "Signal"
         },
@@ -35782,6 +35860,16 @@
         {
           "kind": "method",
           "name": "quantity",
+          "parent": "Signal"
+        },
+        {
+          "kind": "method",
+          "name": "range_lower",
+          "parent": "Signal"
+        },
+        {
+          "kind": "method",
+          "name": "range_upper",
           "parent": "Signal"
         },
         {

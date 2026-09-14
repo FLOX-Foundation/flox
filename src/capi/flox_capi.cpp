@@ -12,6 +12,7 @@
 #include "flox/engine/symbol_registry.h"
 #include "flox/log/abstract_logger.h"
 #include "flox/log/log_stream.h"
+#include "tracker_ownership.h"
 
 #include "flox/aggregator/bar.h"
 #include "flox/aggregator/policies/tick_bar_policy.h"
@@ -6029,31 +6030,35 @@ class RunnerSignalHandler : public ISignalHandler
  public:
   RunnerSignalHandler(FloxOnSignalCallback cb, void* ud) : _cb(cb), _ud(ud) {}
 
-  // Set or clear the optional pre-trade hooks. Atomic acquire/release swap;
-  // safe to call from any thread while consumer threads are active.
-  void setRiskManager(FloxRiskManagerImpl* rm) noexcept
+  // Set or clear the optional pre-trade hooks. Safe to call from any
+  // thread while consumer threads are active: the handle is resolved to a
+  // strong reference through the registry, and set() swaps that reference
+  // into the slot atomically. See tracker_ownership.h for why a bare
+  // pointer swap is not enough here -- a dispatch thread may already be
+  // inside the previous hook's callback with the old reference in hand.
+  void setRiskManager(FloxRiskManagerImpl* rm)
   {
-    _risk.store(rm, std::memory_order_release);
+    _risk.set(TrackerRegistry<FloxRiskManagerImpl>::lookup(rm));
   }
-  void setKillSwitch(FloxKillSwitchImpl* ks) noexcept
+  void setKillSwitch(FloxKillSwitchImpl* ks)
   {
-    _kill.store(ks, std::memory_order_release);
+    _kill.set(TrackerRegistry<FloxKillSwitchImpl>::lookup(ks));
   }
-  void setOrderValidator(FloxOrderValidatorImpl* ov) noexcept
+  void setOrderValidator(FloxOrderValidatorImpl* ov)
   {
-    _validator.store(ov, std::memory_order_release);
+    _validator.set(TrackerRegistry<FloxOrderValidatorImpl>::lookup(ov));
   }
-  void setPnLTracker(FloxPnLTrackerImpl* p) noexcept
+  void setPnLTracker(FloxPnLTrackerImpl* p)
   {
-    _pnl.store(p, std::memory_order_release);
+    _pnl.set(TrackerRegistry<FloxPnLTrackerImpl>::lookup(p));
   }
-  void setStorageSink(FloxStorageSinkImpl* s) noexcept
+  void setStorageSink(FloxStorageSinkImpl* s)
   {
-    _sink.store(s, std::memory_order_release);
+    _sink.set(TrackerRegistry<FloxStorageSinkImpl>::lookup(s));
   }
-  void setExecutor(FloxExecutorImpl* e) noexcept
+  void setExecutor(FloxExecutorImpl* e)
   {
-    _executor.store(e, std::memory_order_release);
+    _executor.set(TrackerRegistry<FloxExecutorImpl>::lookup(e));
   }
   void setTraceRecorder(void* rec) noexcept
   {
@@ -6176,6 +6181,9 @@ class RunnerSignalHandler : public ISignalHandler
     fs.trailing_bps = sig.trailingCallbackRate;
     fs.new_price = sig.newPrice.toDouble();
     fs.new_quantity = sig.newQuantity.toDouble();
+    fs.range_lower = sig.priceLower.toDouble();
+    fs.range_upper = sig.priceUpper.toDouble();
+    fs.liquidity = sig.liquidity.toDouble();
 
     switch (sig.type)
     {
@@ -6224,24 +6232,24 @@ class RunnerSignalHandler : public ISignalHandler
     // RiskManager. Each is optional; an unset hook or a NULL fn pointer
     // is a no-op (let the signal through). Returning 0 drops the signal
     // and skips the remaining hooks.
-    if (auto* ks = _kill.load(std::memory_order_acquire);
-        ks != nullptr && ks->cb.check != nullptr)
+    // Each get() below returns a strong reference that outlives whatever
+    // destroy() may do concurrently on another thread for the rest of this
+    // scope -- see tracker_ownership.h.
+    if (auto ks = _kill.get(); ks && ks->cb.check != nullptr)
     {
       if (ks->cb.check(ks->cb.user_data, &fs) == 0)
       {
         return;
       }
     }
-    if (auto* ov = _validator.load(std::memory_order_acquire);
-        ov != nullptr && ov->cb.validate != nullptr)
+    if (auto ov = _validator.get(); ov && ov->cb.validate != nullptr)
     {
       if (ov->cb.validate(ov->cb.user_data, &fs) == 0)
       {
         return;
       }
     }
-    if (auto* rm = _risk.load(std::memory_order_acquire);
-        rm != nullptr && rm->cb.allow != nullptr)
+    if (auto rm = _risk.get(); rm && rm->cb.allow != nullptr)
     {
       if (rm->cb.allow(rm->cb.user_data, &fs) == 0)
       {
@@ -6256,8 +6264,7 @@ class RunnerSignalHandler : public ISignalHandler
     // (where the user submits orders directly) keeps working unchanged.
     // If a user has both an executor and on_signal-based submission, the
     // order will be sent twice — that's the user's responsibility.
-    if (auto* exec = _executor.load(std::memory_order_acquire);
-        exec != nullptr)
+    if (auto exec = _executor.get(); exec)
     {
       switch (sig.type)
       {
@@ -6321,13 +6328,11 @@ class RunnerSignalHandler : public ISignalHandler
     // Return type is void; observers cannot drop the signal (it's already
     // been delivered). The user callback runs first so the binding's
     // hot-path latency isn't affected by observer cost.
-    if (auto* pnl = _pnl.load(std::memory_order_acquire);
-        pnl != nullptr && pnl->cb.on_signal != nullptr)
+    if (auto pnl = _pnl.get(); pnl && pnl->cb.on_signal != nullptr)
     {
       pnl->cb.on_signal(pnl->cb.user_data, &fs);
     }
-    if (auto* sink = _sink.load(std::memory_order_acquire);
-        sink != nullptr && sink->cb.store != nullptr)
+    if (auto sink = _sink.get(); sink && sink->cb.store != nullptr)
     {
       sink->cb.store(sink->cb.user_data, &fs);
     }
@@ -6336,12 +6341,12 @@ class RunnerSignalHandler : public ISignalHandler
  private:
   FloxOnSignalCallback _cb;
   void* _ud;
-  std::atomic<FloxRiskManagerImpl*> _risk{nullptr};
-  std::atomic<FloxKillSwitchImpl*> _kill{nullptr};
-  std::atomic<FloxOrderValidatorImpl*> _validator{nullptr};
-  std::atomic<FloxPnLTrackerImpl*> _pnl{nullptr};
-  std::atomic<FloxStorageSinkImpl*> _sink{nullptr};
-  std::atomic<FloxExecutorImpl*> _executor{nullptr};
+  TrackerSlot<FloxRiskManagerImpl> _risk;
+  TrackerSlot<FloxKillSwitchImpl> _kill;
+  TrackerSlot<FloxOrderValidatorImpl> _validator;
+  TrackerSlot<FloxPnLTrackerImpl> _pnl;
+  TrackerSlot<FloxStorageSinkImpl> _sink;
+  TrackerSlot<FloxExecutorImpl> _executor;
   // Optional trace recorder. Owned by caller; written into on every
   // signal so the run captures without per-strategy instrumentation.
   std::atomic<void*> _traceRecorder{nullptr};
@@ -7488,8 +7493,8 @@ using namespace capi_impl;
 FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks)
 {
   FLOX_CAPI_ENTER_NOHANDLE;
-  auto* rm = new FloxRiskManagerImpl{callbacks};
-  return static_cast<FloxRiskManagerHandle>(rm);
+  return static_cast<FloxRiskManagerHandle>(
+      TrackerRegistry<FloxRiskManagerImpl>::create(FloxRiskManagerImpl{callbacks}));
   FLOX_CAPI_LEAVE;
 }
 
@@ -7504,15 +7509,15 @@ FloxRiskManagerHandle flox_risk_manager_create_p(const FloxRiskManagerCallbacks*
 void flox_risk_manager_destroy(FloxRiskManagerHandle rm)
 {
   FLOX_CAPI_ENTER_DESTROY(rm);
-  delete static_cast<FloxRiskManagerImpl*>(rm);
+  TrackerRegistry<FloxRiskManagerImpl>::destroy(static_cast<FloxRiskManagerImpl*>(rm));
   FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks)
 {
   FLOX_CAPI_ENTER_NOHANDLE;
-  auto* ks = new FloxKillSwitchImpl{callbacks};
-  return static_cast<FloxKillSwitchHandle>(ks);
+  return static_cast<FloxKillSwitchHandle>(
+      TrackerRegistry<FloxKillSwitchImpl>::create(FloxKillSwitchImpl{callbacks}));
   FLOX_CAPI_LEAVE;
 }
 
@@ -7527,15 +7532,15 @@ FloxKillSwitchHandle flox_kill_switch_create_p(const FloxKillSwitchCallbacks* ca
 void flox_kill_switch_destroy(FloxKillSwitchHandle ks)
 {
   FLOX_CAPI_ENTER_DESTROY(ks);
-  delete static_cast<FloxKillSwitchImpl*>(ks);
+  TrackerRegistry<FloxKillSwitchImpl>::destroy(static_cast<FloxKillSwitchImpl*>(ks));
   FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks)
 {
   FLOX_CAPI_ENTER_NOHANDLE;
-  auto* ov = new FloxOrderValidatorImpl{callbacks};
-  return static_cast<FloxOrderValidatorHandle>(ov);
+  return static_cast<FloxOrderValidatorHandle>(
+      TrackerRegistry<FloxOrderValidatorImpl>::create(FloxOrderValidatorImpl{callbacks}));
   FLOX_CAPI_LEAVE;
 }
 
@@ -7550,14 +7555,15 @@ FloxOrderValidatorHandle flox_order_validator_create_p(const FloxOrderValidatorC
 void flox_order_validator_destroy(FloxOrderValidatorHandle ov)
 {
   FLOX_CAPI_ENTER_DESTROY(ov);
-  delete static_cast<FloxOrderValidatorImpl*>(ov);
+  TrackerRegistry<FloxOrderValidatorImpl>::destroy(static_cast<FloxOrderValidatorImpl*>(ov));
   FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks)
 {
   FLOX_CAPI_ENTER_NOHANDLE;
-  return static_cast<FloxPnLTrackerHandle>(new FloxPnLTrackerImpl{callbacks});
+  return static_cast<FloxPnLTrackerHandle>(
+      TrackerRegistry<FloxPnLTrackerImpl>::create(FloxPnLTrackerImpl{callbacks}));
   FLOX_CAPI_LEAVE;
 }
 
@@ -7572,14 +7578,15 @@ FloxPnLTrackerHandle flox_pnl_tracker_create_p(const FloxPnLTrackerCallbacks* ca
 void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker)
 {
   FLOX_CAPI_ENTER_DESTROY(tracker);
-  delete static_cast<FloxPnLTrackerImpl*>(tracker);
+  TrackerRegistry<FloxPnLTrackerImpl>::destroy(static_cast<FloxPnLTrackerImpl*>(tracker));
   FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks)
 {
   FLOX_CAPI_ENTER_NOHANDLE;
-  return static_cast<FloxStorageSinkHandle>(new FloxStorageSinkImpl{callbacks});
+  return static_cast<FloxStorageSinkHandle>(
+      TrackerRegistry<FloxStorageSinkImpl>::create(FloxStorageSinkImpl{callbacks}));
   FLOX_CAPI_LEAVE;
 }
 
@@ -7594,7 +7601,7 @@ FloxStorageSinkHandle flox_storage_sink_create_p(const FloxStorageSinkCallbacks*
 void flox_storage_sink_destroy(FloxStorageSinkHandle sink)
 {
   FLOX_CAPI_ENTER_DESTROY(sink);
-  delete static_cast<FloxStorageSinkImpl*>(sink);
+  TrackerRegistry<FloxStorageSinkImpl>::destroy(static_cast<FloxStorageSinkImpl*>(sink));
   FLOX_CAPI_LEAVE_VOID;
 }
 
@@ -7875,7 +7882,8 @@ void flox_execution_listener_destroy(FloxExecutionListenerHandle listener)
 FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks)
 {
   FLOX_CAPI_ENTER_NOHANDLE;
-  return static_cast<FloxExecutorHandle>(new FloxExecutorImpl{callbacks});
+  return static_cast<FloxExecutorHandle>(
+      TrackerRegistry<FloxExecutorImpl>::create(FloxExecutorImpl{callbacks}));
   FLOX_CAPI_LEAVE;
 }
 
@@ -7890,7 +7898,7 @@ FloxExecutorHandle flox_executor_create_p(const FloxExecutorCallbacks* callbacks
 void flox_executor_destroy(FloxExecutorHandle executor)
 {
   FLOX_CAPI_ENTER_DESTROY(executor);
-  delete static_cast<FloxExecutorImpl*>(executor);
+  TrackerRegistry<FloxExecutorImpl>::destroy(static_cast<FloxExecutorImpl*>(executor));
   FLOX_CAPI_LEAVE_VOID;
 }
 
