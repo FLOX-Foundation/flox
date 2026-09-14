@@ -653,4 +653,170 @@ TEST(VenueMatchingIntegrity, QuoteCarriesVisibleQuantityAndTimeInForce)
   EXPECT_EQ(eng.book().find(11), nullptr);
 }
 
+// ---------------------------------------------------------------------------
+// All-or-none is decided once, before anything prints.
+//
+// These drive the matcher directly, because the thing under test is what
+// happens when the risk answer CHANGES between the precheck and the sweep.
+// Inside one shard nothing else runs in that gap, so the only way to stage the
+// gap is to make the two answers differ on purpose -- which is exactly the
+// shape of the hazard: a liquidation, a funding settlement or a close from
+// another instrument moving the position out from under a sweep in flight.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+RestingOrder resting(OrderId id, uint64_t acct, double price, double q)
+{
+  RestingOrder r;
+  r.id = id;
+  r.accountId = acct;
+  r.price = px(price);
+  r.leaves = qty(q);
+  return r;
+}
+
+// A position that the sweep's own prints move, plus a one-off jolt from
+// somewhere else entirely, applied the moment the first print lands.
+struct ShiftingPosition
+{
+  int64_t makerPos = 0;  // raw contracts held by the maker account
+  int64_t externalJolt = 0;
+  bool jolted = false;
+
+  // How much of a prospective bite the maker's reduce-only limit allows,
+  // against the position as it stands right now.
+  int64_t allow(int64_t want) const
+  {
+    const int64_t reducible = (makerPos > 0) ? makerPos : 0;
+    return std::min(want, reducible);
+  }
+};
+
+}  // namespace
+
+TEST(VenueMatchingIntegrity, FillOrKillPrintsNothingWhenThePositionMovesMidSweep)
+{
+  MatchingBook book;
+  // Two reduce-only sells of 10, one account, against a long of 20. Every
+  // contract of that depth is genuinely tradeable when the order arrives.
+  book.addResting(Side::SELL, resting(1, 5, 100.0, 10));
+  book.addResting(Side::SELL, resting(2, 5, 100.0, 10));
+
+  ShiftingPosition state;
+  state.makerPos = qty(20).raw();
+  state.externalJolt = qty(10).raw();  // half the position vanishes elsewhere
+
+  Matcher<MatchingBook> matcher;
+  // The precheck's view: the position as it stands, plus what the sweep has
+  // already simulated. This is the answer the plan is built from.
+  matcher.setFillLimitDryHook(
+      [&](const RestingOrder& maker, const NewOrder&, Quantity want,
+          const PositionDeltas& deltas)
+      {
+        ShiftingPosition asPlanned = state;
+        asPlanned.makerPos += deltas.of(maker.accountId);
+        const int64_t allowed = asPlanned.allow(want.raw());
+        FillLimit lim;
+        lim.qty = Quantity::fromRaw(allowed);
+        lim.makerQty = lim.qty;
+        lim.takerQty = want;
+        lim.makerBlocked = (allowed <= 0);
+        lim.reason = CancelReason::ReduceOnlyNotReducing;
+        return lim;
+      });
+  // The sweep's view: live state, which the jolt has moved by the time the
+  // second maker is measured.
+  matcher.setFillLimitHook(
+      [&](const RestingOrder&, const NewOrder&, Quantity want)
+      {
+        const int64_t allowed = state.allow(want.raw());
+        FillLimit lim;
+        lim.qty = Quantity::fromRaw(allowed);
+        lim.makerQty = lim.qty;
+        lim.takerQty = want;
+        lim.makerBlocked = (allowed <= 0);
+        lim.reason = CancelReason::ReduceOnlyNotReducing;
+        return lim;
+      });
+
+  NewOrder fok = limitOrder(9, Side::BUY, 100.0, 20, 6);
+  fok.tif = TimeInForce::FOK;
+
+  Quantity printed{};
+  uint64_t tradeId = 0;
+  const MatchOutcome out = matcher.cross(
+      fok, book, [&]()
+      { return ++tradeId; },
+      [&](const OutboundEvent& e)
+      {
+        if (const auto* t = std::get_if<Trade>(&e))
+        {
+          printed += t->quantity;
+          state.makerPos -= t->quantity.raw();  // the sweep's own print
+          if (!state.jolted)
+          {
+            state.jolted = true;
+            state.makerPos -= state.externalJolt;  // and the one from outside
+          }
+        }
+      });
+
+  // All-or-none: 20 or nothing. Half is the outcome the promise rules out.
+  EXPECT_TRUE(printed.isZero() || printed == qty(20))
+      << "printed " << printed.raw() << " of " << fok.quantity.raw();
+  EXPECT_EQ(printed, qty(20));  // the depth was there when the order arrived
+  EXPECT_EQ(out.filled, qty(20));
+  EXPECT_TRUE(out.takerComplete);
+}
+
+TEST(VenueMatchingIntegrity, FillOrKillStillRefusesWhenTheDepthWasNeverThere)
+{
+  MatchingBook book;
+  book.addResting(Side::SELL, resting(1, 5, 100.0, 10));
+  book.addResting(Side::SELL, resting(2, 5, 100.0, 10));
+
+  ShiftingPosition state;
+  state.makerPos = qty(10).raw();  // only 10 of the 20 is reducible
+
+  Matcher<MatchingBook> matcher;
+  matcher.setFillLimitDryHook(
+      [&](const RestingOrder& maker, const NewOrder&, Quantity want,
+          const PositionDeltas& deltas)
+      {
+        ShiftingPosition asPlanned = state;
+        asPlanned.makerPos += deltas.of(maker.accountId);
+        const int64_t allowed = asPlanned.allow(want.raw());
+        FillLimit lim;
+        lim.qty = Quantity::fromRaw(allowed);
+        lim.makerQty = lim.qty;
+        lim.takerQty = want;
+        lim.makerBlocked = (allowed <= 0);
+        lim.reason = CancelReason::ReduceOnlyNotReducing;
+        return lim;
+      });
+
+  NewOrder fok = limitOrder(9, Side::BUY, 100.0, 20, 6);
+  fok.tif = TimeInForce::FOK;
+
+  Quantity printed{};
+  uint64_t tradeId = 0;
+  const MatchOutcome out = matcher.cross(
+      fok, book, [&]()
+      { return ++tradeId; },
+      [&](const OutboundEvent& e)
+      {
+        if (const auto* t = std::get_if<Trade>(&e))
+        {
+          printed += t->quantity;
+        }
+      });
+
+  EXPECT_EQ(out.reject, RejectReason::FillOrKillUnfulfillable);
+  EXPECT_TRUE(printed.isZero());
+  EXPECT_EQ(matcher.fillOrKillRejected(), 1u);
+  EXPECT_EQ(matcher.fillOrKillRiskConstrained(), 1u);
+}
+
 }  // namespace

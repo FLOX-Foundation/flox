@@ -94,6 +94,19 @@ Every state-mutating input is an `InboundCommand` (`NewOrder`,
 `LastLookDecision`, `SetMark`, `ApplyFunding`, `AdminCmd`) — that is
 what makes deterministic journal replay possible.
 
+Journal and snapshot records carry a format version, and a build reads
+only the version it writes. A file from another version is refused as a
+`JournalFormatError` naming both numbers; a segment in that state stops
+the shard from starting, a snapshot falls back a generation. Note that
+`FLOX_SCALE_CHECKS` (on by default without `NDEBUG`) widens `Decimal`
+and is therefore its own format version, so a journal written by a debug
+build is refused by a release one rather than misread.
+
+A `FOK` decides everything before it prints anything: it plans every
+bite of the sweep against the risk limits, refuses if the plan is short,
+and then does not re-ask. Nothing an agent does between the plan and the
+sweep can leave it half filled.
+
 `CancelOrder`, `ModifyOrder` and `Quote` address orders by id, and the
 engine checks that the command's `accountId` owns the order it names
 (`NotOrderOwner` otherwise). Order ids are one global namespace, so

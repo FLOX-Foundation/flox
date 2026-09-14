@@ -24,6 +24,7 @@
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/sequenced_shard.h"
 #include "flox-venue/session_registry.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -41,6 +42,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -134,7 +136,7 @@ bool ledgersEqual(const Ledger& a, const Ledger& b, int maxAcct)
 // cleanly, which is what made this suite flaky under parallel/contended runs.
 std::string pidPath(const std::string& suffix)
 {
-  return "/tmp/flox_test_venue_" + suffix + "_" + std::to_string(::getpid());
+  return tmpPath("venue_" + suffix);
 }
 
 // Remove the legacy file and every checkpoint generation of `base`.
@@ -877,6 +879,114 @@ TEST(VenueCheckpoint, TornSnapshotFallsBackToPreviousGeneration)
     EXPECT_EQ(s2->engine().stateHash(), liveHash);
     s2->stop();
   }
+  cleanFiles(base);
+}
+
+// A snapshot in a format version this build does not read is one more
+// generation that does not validate: recovery says so by name and falls back,
+// rather than decoding a layout it does not have the rules for. A journal
+// segment in that state is different -- there is no older generation of a
+// segment to fall back to, so the shard refuses to start.
+TEST(VenueCheckpoint, ForeignFormatVersionFallsBackForSnapshotsAndRefusesForSegments)
+{
+  const std::string base = pidPath("checkpoint_version") + ".bin";
+  cleanFiles(base);
+
+  venue::SymbolConfig c = cfg();
+  Ledger led1;
+  auto t1 = clockState(1'000'000);
+  auto s1 = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off,
+                                               clockOf(t1));
+  s1->engine().setLedger(&led1, VENUE_ACCT);
+  s1->start();
+  s1->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
+  s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s1->submit(InboundCommand{limit(1, Side::SELL, 100.00, 2.0, 1)});
+  s1->submit(InboundCommand{limit(2, Side::BUY, 99.00, 1.0, 2)});
+  ASSERT_TRUE(s1->checkpointNow());                                 // generation A
+  s1->submit(InboundCommand{limit(3, Side::BUY, 100.00, 1.0, 2)});  // trades vs 1
+  ASSERT_TRUE(s1->checkpointNow());                                 // generation B
+  s1->submit(InboundCommand{CancelOrder{2, SYM, 2}});               // lands in the newest segment
+  s1->flush();
+  const uint64_t liveHash = s1->engine().stateHash();
+  s1->stop();
+  s1.reset();
+
+  const auto gens = SequencedShard<>::scanGenerations(base);
+  ASSERT_EQ(gens.snapshots.size(), 2u);
+  ASSERT_FALSE(gens.segments.empty());
+  const std::string snapB = SequencedShard<>::snapshotPath(base, gens.snapshots[1]);
+
+  // Restamp the newest snapshot as a version this build does not read. One
+  // byte: the format stamp of its first record.
+  const auto readAll = [](const std::string& p)
+  {
+    std::ifstream in(p, std::ios::binary);
+    return std::vector<char>((std::istreambuf_iterator<char>(in)),
+                             std::istreambuf_iterator<char>());
+  };
+  const auto writeAll = [](const std::string& p, const std::vector<char>& b)
+  {
+    std::ofstream out(p, std::ios::binary | std::ios::trunc);
+    out.write(b.data(), static_cast<std::streamsize>(b.size()));
+  };
+
+  const std::vector<char> pristineSnap = readAll(snapB);
+  ASSERT_GT(pristineSnap.size(), Journal::kHeaderSize);
+  {
+    std::vector<char> restamped = pristineSnap;
+    restamped[8] = static_cast<char>(kVersionedMark | 7);
+    writeAll(snapB, restamped);
+  }
+
+  {
+    Ledger led2;
+    auto t2 = clockState(9'000'000);
+    auto s2 = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off,
+                                                 clockOf(t2));
+    s2->engine().setLedger(&led2, VENUE_ACCT);
+    s2->start();
+    // Fell back to generation A and still rebuilt the exact state.
+    EXPECT_GT(s2->recoveredFromSnapshotRecords(), 0u);
+    EXPECT_EQ(s2->engine().stateHash(), liveHash);
+    EXPECT_TRUE(ledgersEqual(led2, led1, 2));
+    s2->stop();
+  }
+  writeAll(snapB, pristineSnap);
+
+  // Same byte in a journal SEGMENT. There is no older copy of a segment, so
+  // continuing would mean serving traffic on a history that is short by
+  // however much that file held. The shard refuses to start instead.
+  const std::string seg = SequencedShard<>::segmentPath(base, gens.segments.back());
+  const std::vector<char> pristineSeg = readAll(seg);
+  ASSERT_GT(pristineSeg.size(), Journal::kHeaderSize);
+  {
+    std::vector<char> restamped = pristineSeg;
+    restamped[8] = static_cast<char>(kVersionedMark | 7);
+    writeAll(seg, restamped);
+
+    Ledger led3;
+    auto t3 = clockState(20'000'000);
+    bool refused = false;
+    std::string what;
+    try
+    {
+      auto s3 = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off,
+                                                   clockOf(t3));
+      s3->engine().setLedger(&led3, VENUE_ACCT);
+      s3->start();
+      s3->stop();
+    }
+    catch (const JournalFormatError& e)
+    {
+      refused = true;
+      what = e.what();
+    }
+    EXPECT_TRUE(refused) << "a segment in an unreadable format was replayed anyway";
+    EXPECT_NE(what.find("format version 7"), std::string::npos) << what;
+    writeAll(seg, pristineSeg);
+  }
+
   cleanFiles(base);
 }
 

@@ -11,6 +11,7 @@
 #include "flox-venue/sequenced_shard.h"
 #include "flox-venue/workload.h"
 #include "flox/book/ladder_book.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 #include <chrono>
@@ -21,6 +22,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -96,8 +98,8 @@ TEST(Sequenced, EngineSuite)
   //
   // The shard opens its journal for APPEND and replays it on start (recovery
   // semantics), so a stale file from a previous run must be removed first.
-  const char* journalPath = "/tmp/flox_test_venue_sequenced_seq_journal.bin";
-  std::remove(journalPath);
+  const std::string journalPath = tmpPath("venue_sequenced_journal", ".bin");
+  std::remove(journalPath.c_str());
   auto shard = std::make_unique<SequencedShard<LadderBook>>(
       cfg(), journalPath, LadderBook{ladderCfg()}, Journal::Sync::Off);
   CHECK(shard->subscribeOutbound(&sink, true));

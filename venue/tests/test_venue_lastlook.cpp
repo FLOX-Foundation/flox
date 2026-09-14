@@ -27,6 +27,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/sequenced_shard.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -40,6 +41,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -896,7 +898,7 @@ void test_fok_vs_lastlook()
 void test_shard_idle_sweeper()
 {
   std::printf("test_shard_idle_sweeper\n");
-  const std::string path = "/tmp/flox_test_venue_lastlook_sweeper.bin";
+  const std::string path = tmpPath("venue_lastlook_sweeper", ".bin");
   std::remove(path.c_str());
 
   auto now = std::make_shared<std::atomic<int64_t>>(1000);
@@ -1046,7 +1048,7 @@ void test_clordid_dedup()
 void test_clordid_dedup_survives_replay()
 {
   std::printf("test_clordid_dedup_survives_replay\n");
-  const std::string path = "/tmp/flox_test_venue_lastlook_clordid.bin";
+  const std::string path = tmpPath("venue_lastlook_clordid", ".bin");
   std::remove(path.c_str());
 
   struct Sink : IEngineEventListener

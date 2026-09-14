@@ -11,12 +11,17 @@
  * the log through a fresh engine.
  *
  * Record framing (native-endian, one record per command):
- *   [ts:8][tag:1][len:4][body:len][crc32:4]
- * tag is the InboundCommand variant index; len is sizeof the body struct; crc32
- * (flox::util::Crc32) covers ts+tag+len+body. A torn tail (a record whose bytes are
- * not fully present) or a corrupted record is DETECTED on load: the loader
- * returns the largest intact prefix and never materialises a partial/garbage
- * command.
+ *   [ts:8][stamp:1][tag:1][len:4][body:len][crc32:4]
+ * stamp carries the format version (see kRecordVersion); tag is the
+ * InboundCommand variant index; len is sizeof the body struct; crc32
+ * (flox::util::Crc32) covers ts+stamp+tag+len+body. A torn tail (a record whose
+ * bytes are not fully present) or a corrupted record is DETECTED on load: the
+ * loader returns the largest intact prefix and never materialises a
+ * partial/garbage command.
+ *
+ * Format compatibility: ONE version is readable, the one this build writes.
+ * A file in any other version is refused by name (JournalFormatError) rather
+ * than decoded, truncated or guessed at. See docs/venue/runtime.md.
  *
  * Durability: the writer uses a raw file descriptor, so an appended record is
  * in the OS page cache before append() returns -- it survives a process crash
@@ -29,6 +34,7 @@
 
 #include "flox-venue/messages.h"
 
+#include "flox/util/base/scale_check.h"  // FLOX_SCALE_CHECKS: it changes the on-disk layout
 #include "flox/util/crc32.h"
 
 #include <fcntl.h>
@@ -90,6 +96,105 @@ static_assert(std::variant_size_v<InboundCommand> == 34,
               "new InboundCommand alternative: extend expectedBodySize/appendDecoded and the "
               "blittable asserts above");
 
+// Version of the on-disk record format this build writes and reads. Bodies go
+// to disk as raw bytes, so the version stands for the layout of all 34 command
+// structs as much as for the framing around them.
+//
+// A scale-checked build is a DIFFERENT format, not a debugging variant of the
+// same one: FLOX_SCALE_CHECKS widens Decimal, so sizeof(Price) goes 8 -> 16 and
+// every body that holds a price or a quantity moves its fields. Giving the two
+// layouts one version number would mean a journal written by a debug venue is
+// read at the wrong offsets by a release one, which is the failure this whole
+// stamp exists to prevent. They get separate numbers and refuse each other by
+// name.
+#if FLOX_SCALE_CHECKS
+inline constexpr uint8_t kRecordVersion = 2;
+#else
+inline constexpr uint8_t kRecordVersion = 1;
+#endif
+
+// Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
+// The mark exists so a file written before versioning is recognised as such
+// instead of being misread: its byte at that offset is the variant tag, which
+// is below 34 and therefore always has bit 7 clear.
+inline constexpr uint8_t kVersionedMark = 0x80;
+inline constexpr uint8_t kVersionMask = 0x7F;
+inline constexpr uint8_t kRecordStamp = kVersionedMark | kRecordVersion;
+
+// Fingerprint of the wire layout kRecordVersion stands for: FNV-1a over the
+// size of every journaled body, in tag order.
+consteval uint64_t bodyLayoutFingerprint()
+{
+  constexpr size_t kSizes[] = {
+      sizeof(NewOrder),
+      sizeof(CancelOrder),
+      sizeof(ModifyOrder),
+      sizeof(MassCancel),
+      sizeof(Quote),
+      sizeof(LastLookDecision),
+      sizeof(SetMark),
+      sizeof(ApplyFunding),
+      sizeof(AdminCmd),
+      sizeof(Deposit),
+      sizeof(Withdraw),
+      sizeof(ListInstrument),
+      sizeof(SetBands),
+      sizeof(TimeTick),
+      sizeof(SetTriggerRef),
+      sizeof(SnapshotBegin),
+      sizeof(RestoreOrder),
+      sizeof(RestoreStop),
+      sizeof(RestorePeg),
+      sizeof(RestoreHeld),
+      sizeof(RestorePosition),
+      sizeof(RestoreMmpCfg),
+      sizeof(RestoreClOrdIds),
+      sizeof(SnapshotEnd),
+      sizeof(RestoreReservation),
+      sizeof(RestoreBalance),
+      sizeof(RestoreMmpFills),
+      sizeof(SetStpGroup),
+      sizeof(SetFundingSchedule),
+      sizeof(RestoreFunding),
+      sizeof(ForceClosePosition),
+      sizeof(RestoreOrderStp),
+      sizeof(SetAdmissionProfile),
+      sizeof(SetRiskLimits),
+  };
+  uint64_t h = 1469598103934665603ULL;
+  for (const size_t s : kSizes)
+  {
+    h ^= static_cast<uint64_t>(s);
+    h *= 1099511628211ULL;
+  }
+  return h;
+}
+
+// The guard the format did not have. A field added to any journaled command
+// silently changed what a record means and surfaced much later, as a length
+// that did not add up during recovery. Now it stops the build here, next to
+// the version it invalidates.
+#if FLOX_SCALE_CHECKS
+static_assert(bodyLayoutFingerprint() == 0x0ca8c2de008c6fcfULL,
+              "a journaled command struct changed size, so the on-disk layout is no longer the "
+              "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
+              "record the change in docs/venue/runtime.md");
+#else
+static_assert(bodyLayoutFingerprint() == 0xf08f4cc2d02ad417ULL,
+              "a journaled command struct changed size, so the on-disk layout is no longer the "
+              "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
+              "record the change in docs/venue/runtime.md");
+#endif
+
+// A journal or snapshot written in a format version this build does not read.
+// Distinct from a torn tail or a crc failure, which are recoverable and leave
+// the intact prefix behind: this one says the file is not ours to decode.
+class JournalFormatError : public std::runtime_error
+{
+ public:
+  explicit JournalFormatError(const std::string& what) : std::runtime_error(what) {}
+};
+
 class Journal
 {
  public:
@@ -114,7 +219,8 @@ class Journal
     Append,
   };
 
-  static constexpr size_t kHeaderSize = sizeof(int64_t) + 1 + sizeof(uint32_t);  // ts+tag+len = 13
+  // ts + stamp + tag + len = 14
+  static constexpr size_t kHeaderSize = sizeof(int64_t) + 1 + 1 + sizeof(uint32_t);
 
   explicit Journal(const std::string& path, Sync sync = Sync::Off,
                    OpenMode mode = OpenMode::Truncate)
@@ -162,8 +268,9 @@ class Journal
 
   void append(const InboundCommand& c) { append(c, 0); }
 
-  // Write-ahead record: [ts][tag][len][body][crc]. The sequencer timestamp is
-  // journaled so replay reproduces last-look / MMP / LULD timing exactly.
+  // Write-ahead record: [ts][stamp][tag][len][body][crc]. The sequencer
+  // timestamp is journaled so replay reproduces last-look / MMP / LULD timing
+  // exactly; the stamp names the format the body was written in.
   void append(const InboundCommand& c, int64_t tsNs)
   {
     const uint8_t tag = static_cast<uint8_t>(c.index());
@@ -171,8 +278,10 @@ class Journal
         [&](const auto& v)
         {
           const uint32_t len = static_cast<uint32_t>(sizeof(v));
+          const uint8_t stamp = kRecordStamp;
           rec_.clear();
           appendBytes(&tsNs, sizeof(tsNs));
+          appendBytes(&stamp, sizeof(stamp));
           appendBytes(&tag, sizeof(tag));
           appendBytes(&len, sizeof(len));
           appendBytes(&v, sizeof(v));
@@ -239,6 +348,14 @@ class Journal
   // Replay records with their sequencer timestamps. Stops at the first record
   // that is short (torn tail) or fails its crc (corruption), returning the
   // intact prefix -- a partial trailing record is never materialised.
+  //
+  // Throws JournalFormatError if a record carries a format version this build
+  // does not read. That is deliberately NOT the torn-tail treatment: a torn
+  // tail is the expected shape of a crash and the prefix before it is sound,
+  // whereas a foreign version means every byte after the header was laid out
+  // by rules this build does not have. Returning a prefix there would hand
+  // back a state that looks plausible and is short of history, which is the
+  // outcome the whole recovery path is written to refuse.
   static std::vector<std::pair<int64_t, InboundCommand>> loadTimed(const std::string& path)
   {
     std::ifstream in(path, std::ios::binary);
@@ -256,9 +373,14 @@ class Journal
       {
         break;  // no more (complete) headers
       }
-      const uint8_t tag = frame[8];
+      const uint8_t stamp = frame[8];
+      if (stamp != kRecordStamp)
+      {
+        throw JournalFormatError(versionMismatchMessage(path, v.size(), stamp));
+      }
+      const uint8_t tag = frame[9];
       uint32_t len;
-      std::memcpy(&len, frame.data() + 9, sizeof(len));
+      std::memcpy(&len, frame.data() + 10, sizeof(len));
 
       const uint32_t expect = expectedBodySize(tag);
       if (expect == 0 || len != expect)
@@ -288,6 +410,27 @@ class Journal
   }
 
  private:
+  // What to tell an operator whose file this build will not read. The point is
+  // to name the two versions: the old failure mode was a length that did not
+  // add up, several structs away from the field that had changed.
+  static std::string versionMismatchMessage(const std::string& path, size_t recordsBefore,
+                                            uint8_t stamp)
+  {
+    std::string msg = "Journal: '" + path + "' record " + std::to_string(recordsBefore) + " is ";
+    if ((stamp & kVersionedMark) == 0)
+    {
+      msg += "in the unversioned format (version 0, written before records carried a version)";
+    }
+    else
+    {
+      msg += "format version " + std::to_string(static_cast<unsigned>(stamp & kVersionMask));
+    }
+    msg += "; this build reads version " + std::to_string(static_cast<unsigned>(kRecordVersion)) +
+           " only. Older versions are not converted -- replay the file with the build that "
+           "wrote it, or start from a snapshot taken by this one.";
+    return msg;
+  }
+
   // Expected body size for a variant tag, or 0 if the tag is unknown.
   static uint32_t expectedBodySize(uint8_t tag)
   {

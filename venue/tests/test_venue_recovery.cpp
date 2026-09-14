@@ -22,18 +22,25 @@
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/sequenced_shard.h"
 
+#include "flox/util/crc32.h"
+#include "support/tmp_path.h"
+
 #include <gtest/gtest.h>
 
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -148,7 +155,7 @@ std::vector<InboundCommand> childCommands()
 // exactly like a reference engine that was fed that prefix directly.
 TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_procdeath.bin";
+  const std::string path = tmpPath("venue_recovery_procdeath", ".bin");
   std::remove(path.c_str());
 
   const auto cmds = childCommands();
@@ -252,7 +259,7 @@ TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
 // must not erase it -- the restart replays it and keeps appending.
 TEST(VenueRecovery, RestartPreservesAndReplaysJournal)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_restart.bin";
+  const std::string path = tmpPath("venue_recovery_restart", ".bin");
   std::remove(path.c_str());
 
   {
@@ -311,7 +318,7 @@ TEST(VenueRecovery, RestartPreservesAndReplaysJournal)
 // With the old ts=0 journaling, the hold would never expire on replay.
 TEST(VenueRecovery, TimedReplayReproducesLastLookExpiry)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_lastlook.bin";
+  const std::string path = tmpPath("venue_recovery_lastlook", ".bin");
   std::remove(path.c_str());
 
   venue::SymbolConfig c = cfg();
@@ -371,7 +378,7 @@ TEST(VenueRecovery, TimedReplayReproducesLastLookExpiry)
 // conservation holds on both runs.
 TEST(VenueRecovery, GenesisReplaysFromEmptyLedger)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_genesis.bin";
+  const std::string path = tmpPath("venue_recovery_genesis", ".bin");
   std::remove(path.c_str());
 
   const std::vector<std::pair<int64_t, InboundCommand>> cmds{
@@ -434,7 +441,7 @@ TEST(VenueRecovery, GenesisReplaysFromEmptyLedger)
 // halt.
 TEST(VenueRecovery, ConfigReplayReproducesInstrumentState)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_config.bin";
+  const std::string path = tmpPath("venue_recovery_config", ".bin");
   std::remove(path.c_str());
 
   const std::vector<std::pair<int64_t, InboundCommand>> cmds{
@@ -491,5 +498,171 @@ TEST(VenueRecovery, ConfigReplayReproducesInstrumentState)
     }
   }
   EXPECT_TRUE(rejectedHalted);
+  std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// Format version. A file written in a version this build does not read is
+// refused by name; nothing about it is decoded, truncated or guessed at.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+// Build a record by hand so a test can write a version this build never
+// writes. Framing: [ts][stamp][tag][len][body][crc], crc over everything but
+// itself. `kNoStamp` writes the pre-versioning framing, which had no stamp
+// byte at all.
+constexpr int kNoStamp = -1;
+
+void appendHandMade(std::vector<uint8_t>& out, int64_t ts, int stamp, uint8_t tag,
+                    const void* body, uint32_t len)
+{
+  std::vector<uint8_t> rec;
+  auto put = [&](const void* p, size_t n)
+  {
+    const auto* b = static_cast<const uint8_t*>(p);
+    rec.insert(rec.end(), b, b + n);
+  };
+  put(&ts, sizeof(ts));
+  if (stamp != kNoStamp)
+  {
+    const auto s = static_cast<uint8_t>(stamp);
+    put(&s, sizeof(s));
+  }
+  put(&tag, sizeof(tag));
+  put(&len, sizeof(len));
+  put(body, len);
+  const uint32_t crc = flox::util::Crc32::compute(rec.data(), rec.size());
+  put(&crc, sizeof(crc));
+  out.insert(out.end(), rec.begin(), rec.end());
+}
+
+void writeFile(const std::string& path, const std::vector<uint8_t>& bytes)
+{
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  out.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+}
+
+}  // namespace
+
+TEST(VenueRecovery, PreviousFormatVersionIsRefusedByNameInsteadOfSilentlyTruncated)
+{
+  const std::string path = tmpPath("venue_journal_v0", ".bin");
+
+  // Nine records in the framing that predates versioning. The sixth is a
+  // RestoreOrder as the earlier build laid it out: one 8-byte field shorter
+  // than this build's. That is the shape the format change actually took.
+  std::vector<uint8_t> bytes;
+  NewOrder o = limit(0, Side::BUY, 100.0, 1.0, 1);
+  for (uint64_t i = 1; i <= 5; ++i)
+  {
+    o.id = i;
+    appendHandMade(bytes, static_cast<int64_t>(i), kNoStamp, 0, &o, sizeof(NewOrder));
+  }
+  const std::vector<uint8_t> shortRestoreOrder(sizeof(RestoreOrder) - 8, 0);
+  appendHandMade(bytes, 6, kNoStamp, 16, shortRestoreOrder.data(),
+                 static_cast<uint32_t>(shortRestoreOrder.size()));
+  for (uint64_t i = 7; i <= 9; ++i)
+  {
+    o.id = i;
+    appendHandMade(bytes, static_cast<int64_t>(i), kNoStamp, 0, &o, sizeof(NewOrder));
+  }
+  writeFile(path, bytes);
+
+  // Before the stamp this returned the five records ahead of the short body
+  // and said nothing at all about the other four.
+  try
+  {
+    const auto records = Journal::loadTimed(path);
+    ADD_FAILURE() << "loaded " << records.size() << " of 9 records from a file this build "
+                  << "cannot read, and reported nothing";
+  }
+  catch (const JournalFormatError& e)
+  {
+    const std::string what = e.what();
+    const std::string reads =
+        "version " + std::to_string(static_cast<unsigned>(kRecordVersion));
+    EXPECT_NE(what.find("version 0"), std::string::npos) << what;  // what was found
+    EXPECT_NE(what.find(reads), std::string::npos) << what;        // what is read
+    EXPECT_NE(what.find(path), std::string::npos) << what;         // which file
+  }
+  std::remove(path.c_str());
+}
+
+TEST(VenueRecovery, UnknownFormatVersionNamesTheVersionItFound)
+{
+  const std::string path = tmpPath("venue_journal_v9", ".bin");
+
+  std::vector<uint8_t> bytes;
+  NewOrder o = limit(1, Side::BUY, 100.0, 1.0, 1);
+  appendHandMade(bytes, 1, kRecordStamp, 0, &o, sizeof(NewOrder));
+  o.id = 2;
+  appendHandMade(bytes, 2, kVersionedMark | 9, 0, &o, sizeof(NewOrder));
+  writeFile(path, bytes);
+
+  try
+  {
+    Journal::loadTimed(path);
+    ADD_FAILURE() << "a version 9 record was accepted";
+  }
+  catch (const JournalFormatError& e)
+  {
+    const std::string what = e.what();
+    EXPECT_NE(what.find("format version 9"), std::string::npos) << what;
+    EXPECT_NE(what.find("record 1"), std::string::npos) << what;  // and where
+  }
+  std::remove(path.c_str());
+}
+
+// The scale-checked build widens Decimal, so sizeof(Price) goes 8 -> 16 and
+// every journaled body moves its fields. That is a different format and gets a
+// different version, so a file from the other build is named rather than read
+// at the wrong offsets.
+TEST(VenueRecovery, TheOtherScaleModeIsADifferentFormatVersion)
+{
+  const std::string path = tmpPath("venue_journal_xm", ".bin");
+  const unsigned other = (kRecordVersion == 1) ? 2u : 1u;
+
+  std::vector<uint8_t> bytes;
+  NewOrder o = limit(1, Side::BUY, 100.0, 1.0, 1);
+  appendHandMade(bytes, 1, static_cast<int>(kVersionedMark | other), 0, &o, sizeof(NewOrder));
+  writeFile(path, bytes);
+
+  try
+  {
+    Journal::loadTimed(path);
+    ADD_FAILURE() << "a record from the other scale mode was accepted";
+  }
+  catch (const JournalFormatError& e)
+  {
+    const std::string what = e.what();
+    EXPECT_NE(what.find("format version " + std::to_string(other)), std::string::npos) << what;
+  }
+  std::remove(path.c_str());
+}
+
+TEST(VenueRecovery, ThisBuildReadsWhatItWrites)
+{
+  const std::string path = tmpPath("venue_journal_rt", ".bin");
+  {
+    Journal j(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    for (uint64_t i = 1; i <= 4; ++i)
+    {
+      j.append(InboundCommand{limit(i, Side::SELL, 100.0, 1.0, 1)}, static_cast<int64_t>(i));
+    }
+    j.flush();
+  }
+  const auto records = Journal::loadTimed(path);
+  ASSERT_EQ(records.size(), 4u);
+
+  // And the stamp really is on the wire, at the offset the loader reads.
+  std::ifstream in(path, std::ios::binary);
+  const std::vector<uint8_t> raw((std::istreambuf_iterator<char>(in)),
+                                 std::istreambuf_iterator<char>());
+  ASSERT_GE(raw.size(), Journal::kHeaderSize);
+  EXPECT_EQ(raw[8], kRecordStamp);
+  EXPECT_EQ(raw[9], 0);  // NewOrder is variant tag 0
   std::remove(path.c_str());
 }

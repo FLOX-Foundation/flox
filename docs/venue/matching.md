@@ -220,7 +220,7 @@ reserved, and keep its slot in `maxOpenOrders` while cancel answers
 ### Fill-or-kill and the depth that cannot fill it
 
 A `FOK` either fills in full or never exists. Some of the depth visible in the
-book cannot fill one, and the precheck subtracts it before answering:
+book cannot fill one, and the plan below subtracts it before answering:
 
 - same-STP-scope makers, which the sweep cancels or decrements instead of
   trading;
@@ -230,8 +230,34 @@ book cannot fill one, and the precheck subtracts it before answering:
   the next maker is measured against: two reduce-only sells of 10 against a
   long of 10 look like depth 20 to the book and are worth 10 at the fill.
 
-Both matching policies run that precheck and both carry the same safety net
-behind it: whatever the precheck concluded, a `FOK` residual is killed with
+#### The decision is made once
+
+A `FOK` walks its crossing range before it prints anything and writes down the
+size of every bite the sweep will take. If those bites do not add up to the
+whole order, it is refused and nothing prints. If they do, the sweep spends
+that plan and does not ask the risk limits again.
+
+Asking again mid-sweep looks safer and is not. The second answer describes a
+position the earlier prints have already moved, and if it disagrees there is
+nothing to do about it: a venue does not un-print a trade that is already on
+the public feed, journaled and settled. The order would print its first half
+and kill the second, which is the outcome all-or-none exists to rule out.
+Deciding once, before anything is printed, removes that gap instead of
+narrowing it. The same goes for a position moved by something outside the
+sweep -- a liquidation, a funding settlement, a close on another instrument.
+
+The plan walks only as far as the order's own quantity. Depth past that point
+is depth the sweep never reaches, and counting simulated position moves that
+will not happen is how an order that fills perfectly well gets refused.
+
+The other way to close the gap was to refuse any `FOK` whose crossing range
+holds a risk-limited maker at all. On a randomised perp workload (200,000
+commands, three seeds) that rule would have refused 21.8% to 22.6% of the
+all-or-none orders that fill in full today -- better than one in five honest
+orders, to remove an outcome the plan removes for nothing.
+
+Both matching policies run that plan and both carry the same safety net behind
+it: whatever it concluded, a `FOK` residual is killed with
 `FillOrKillResidual` rather than left resting as a GTC.
 
 ## The engine

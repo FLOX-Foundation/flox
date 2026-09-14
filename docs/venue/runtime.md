@@ -127,11 +127,49 @@ One caveat worth stating: on macOS `fsync` does not flush the drive's write
 cache (`F_FULLFSYNC` does), so these figures are an upper bound for durability
 on that platform and the Linux gap may be larger.
 
-Records are `[ts:8][tag:1][struct]`; every command type is trivially copyable
-(enforced by `static_assert`), so a record is a tag plus a raw blob. The
+Records are `[ts:8][stamp:1][tag:1][len:4][body][crc:4]`; every command type is
+trivially copyable (enforced by `static_assert`), so a body is a raw blob. The
 sequencer timestamp is stored, so `loadTimed` reproduces time-dependent
 behaviour (GTD expiry, last-look windows, MMP windows, LULD pauses) at the
 same points it happened live.
+
+### Format version and what is readable
+
+The `stamp` byte carries the format version. A build reads exactly one version,
+the one it writes. There is no conversion layer and no plan to add one.
+
+A file in any other version is refused by name, as a `JournalFormatError`
+naming the version found and the version expected. Nothing in it is decoded,
+and it is not treated as a torn tail: a torn tail is the expected shape of a
+crash and the prefix ahead of it is sound, whereas a foreign version means
+every byte after the header was laid out by rules this build does not have.
+
+What that means per file:
+
+- a journal segment in a foreign version stops the shard from starting. There
+  is no older copy of a segment, so continuing would mean serving traffic on a
+  history short by whatever that file held;
+- a snapshot in a foreign version is one more generation that does not
+  validate: recovery logs the reason and falls back a generation, exactly as it
+  does for a torn one.
+
+To move a venue across a format version, drain it and take a snapshot with the
+build that wrote the journal, or replay the old files with that build. Bit 7 of
+the stamp is always set, which is what lets a file written before versioning
+existed be named as version 0 rather than misread.
+
+A scale-checked build (`FLOX_SCALE_CHECKS`, the default without `NDEBUG`) is a
+different format under this rule, not a debugging variant of the same one. It
+widens `Decimal`, so `sizeof(Price)` goes 8 to 16 and every body holding a price
+or a quantity moves its fields. Those layouts carry version 2 and version 1
+respectively, so a journal from a debug venue is refused by name in a release
+one rather than read at the wrong offsets.
+
+Bumping the version is a deliberate edit, and the build stops you from
+forgetting it. The sizes of all 34 journaled command structs are folded into a
+compile-time fingerprint next to the version constant; adding a field to any of
+them fails that assertion with the reason, instead of surfacing months later as
+a length that does not add up during someone's recovery.
 
 A `SequencedShard` opens its journal in append mode and, on `start()`, replays
 whatever the file already holds into the engine before serving traffic
@@ -155,9 +193,16 @@ empty ledger.
 
 An unbounded WAL means unbounded restart time. A checkpoint bounds both: it
 serializes the engine into a **journal-format snapshot** -- the same
-`[ts][tag][len][body][crc]` framing, applied on load through the same engine
-paths live traffic uses. There is no second binary format and no second
-deserializer to drift; the torn-tail/CRC machinery guards snapshots for free.
+`[ts][stamp][tag][len][body][crc]` framing, applied on load through the same
+engine paths live traffic uses. There is no second binary format and no second
+deserializer to drift; the torn-tail, CRC and format-version machinery guards
+snapshots for free.
+
+A snapshot therefore carries two version numbers with different jobs. The
+stamp on every record says how to read the bytes, and a build reads one value
+of it. `SnapshotBegin.formatVersion` says what the records mean -- which
+records a snapshot of this generation is expected to contain -- and a mismatch
+there names both numbers and discards the generation.
 
 Snapshot contents, in canonical order (price levels best-first, FIFO within a
 level; everything else sorted by key -- the file is byte-for-byte
@@ -178,7 +223,8 @@ deterministic):
   last applied rate and the live funding calendar (`nextFundingNs`,
   `intervalNs`). It is a record rather than three more fields on `SnapshotEnd`
   because `SnapshotEnd` is a strictly-sized journal body -- widening it would
-  change its `expectedBodySize` and make every existing snapshot unreadable.
+  change the on-disk layout and cost a format-version bump (the compile-time
+  fingerprint next to `kRecordVersion` stops the build until it gets one).
   An engine with no funding state at all writes no such record, and a file
   without one restores rate 0 and no schedule, exactly as before the record
   existed (read compatibility, pinned by a test);
@@ -188,9 +234,10 @@ deterministic):
   `RestoreReservation` / `RestorePosition` then only rebuild the engine-side
   reservation and position tables (the records still carry the exact live
   amounts: partial fills, held slices and STP interactions make a formula
-  re-derivation unfaithful). Snapshots written by format v1 carried `Deposit`
-  totals instead; those records still apply (read compatibility) and
-  reconstitute `reserved` by re-reservation;
+  re-derivation unfaithful). Contents format 1 carried `Deposit` totals here
+  instead; a file declaring that version is refused at `SnapshotBegin`, so the
+  `Deposit` path survives only for a hand-built file that declares the current
+  version and uses the older records;
 - snapshot-only `Restore*` records: book orders (applied straight to the tail
   of their level, no matching pass -- a crossing restore marks the file
   corrupt), pending stops with their current triggers, peg specs, open
