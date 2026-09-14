@@ -20,6 +20,12 @@
 
 #include "flox/capi/flox_export.h"
 
+// ABI version of this header and of the library that ships with it. Bumped
+// whenever a struct on this boundary changes shape, a function changes
+// signature, or an existing code space gains a meaning.
+// flox::export_macro(group="abi_version")
+#define FLOX_CAPI_ABI_VERSION 1
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -1192,6 +1198,25 @@ extern "C"
   FLOX_EXPORT(group = "composite_book")
   void flox_composite_book_check_staleness(FloxCompositeBookHandle book, int64_t now_ns,
                                            int64_t threshold_ns);
+  // Feeds one exchange/symbol slot of the composite book. `is_delta=false`
+  // (apply_snapshot) replaces both sides of that exchange's top-of-book
+  // wholesale; `is_delta=true` (apply_delta) updates only the side(s)
+  // present here and leaves the other side exactly as it was, matching
+  // BookUpdateType::SNAPSHOT / DELTA in the C++ CompositeBookMatrix this
+  // wraps. `recv_ns` is a monotonic receive timestamp used for staleness
+  // checks (see flox_composite_book_check_staleness above).
+  FLOX_EXPORT(group = "composite_book")
+  void flox_composite_book_apply_snapshot(FloxCompositeBookHandle book, uint32_t exchange,
+                                          uint32_t symbol, const double* bid_prices,
+                                          const double* bid_qtys, size_t bid_len,
+                                          const double* ask_prices, const double* ask_qtys,
+                                          size_t ask_len, int64_t recv_ns);
+  FLOX_EXPORT(group = "composite_book")
+  void flox_composite_book_apply_delta(FloxCompositeBookHandle book, uint32_t exchange,
+                                       uint32_t symbol, const double* bid_prices,
+                                       const double* bid_qtys, size_t bid_len,
+                                       const double* ask_prices, const double* ask_qtys,
+                                       size_t ask_len, int64_t recv_ns);
 
   // ============================================================
   // Executor fill access
@@ -2233,6 +2258,42 @@ extern "C"
   } FloxSignal;
 
   typedef void (*FloxOnSignalCallback)(void* user_data, const FloxSignal* signal);
+
+  // FLOX_SIGNAL_TYPE_* is the code space used ONLY by FloxSignal.order_type
+  // above. It swaps LIMIT and MARKET relative to the C++ flox::OrderType
+  // enum, which is the space every other order_type / type field on this
+  // page uses. Do not reuse these codes to decode any of those.
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_MARKET 0
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_LIMIT 1
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_STOP_MARKET 2
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_STOP_LIMIT 3
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET 4
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT 5
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_TRAILING_STOP 6
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_CANCEL 7
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_CANCEL_ALL 8
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_MODIFY 9
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_ICEBERG 10
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_OCO 11
+  // The liquidity pair acts on an AMM pool rather than on an order book, so
+  // `price` and `quantity` on the signal carry nothing: the range and the
+  // amount live on the C++ Signal and do not cross this struct.
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY 12
+  // flox::export_macro(group="signal_type")
+  #define FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY 13
 
   // ============================================================
   // RiskManager — pre-trade hook callable from runner / live engine.

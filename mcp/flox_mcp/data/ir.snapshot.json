@@ -2550,6 +2550,100 @@
     },
     {
       "group": "composite_book",
+      "name": "flox_composite_book_apply_delta",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxCompositeBookHandle"
+        },
+        {
+          "name": "exchange",
+          "type": "uint32_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bid_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_len",
+          "type": "size_t"
+        },
+        {
+          "name": "ask_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_len",
+          "type": "size_t"
+        },
+        {
+          "name": "recv_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "composite_book",
+      "name": "flox_composite_book_apply_snapshot",
+      "params": [
+        {
+          "name": "book",
+          "type": "FloxCompositeBookHandle"
+        },
+        {
+          "name": "exchange",
+          "type": "uint32_t"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "bid_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "bid_len",
+          "type": "size_t"
+        },
+        {
+          "name": "ask_prices",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_qtys",
+          "type": "const double *"
+        },
+        {
+          "name": "ask_len",
+          "type": "size_t"
+        },
+        {
+          "name": "recv_ns",
+          "type": "int64_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "composite_book",
       "name": "flox_composite_book_best_ask",
       "params": [
         {
@@ -14355,6 +14449,83 @@
         }
       ],
       "return_type": "uint32_t"
+    }
+  ],
+  "macros": [
+    {
+      "group": "abi_version",
+      "name": "FLOX_CAPI_ABI_VERSION",
+      "value": "1"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_CANCEL",
+      "value": "7"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_CANCEL_ALL",
+      "value": "8"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_ICEBERG",
+      "value": "10"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_LIMIT",
+      "value": "1"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_MARKET",
+      "value": "0"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_MODIFY",
+      "value": "9"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_OCO",
+      "value": "11"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY",
+      "value": "12"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_STOP_LIMIT",
+      "value": "3"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_STOP_MARKET",
+      "value": "2"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT",
+      "value": "5"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET",
+      "value": "4"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_TRAILING_STOP",
+      "value": "6"
+    },
+    {
+      "group": "signal_type",
+      "name": "FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY",
+      "value": "13"
     }
   ],
   "structs": [

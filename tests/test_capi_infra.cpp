@@ -184,6 +184,89 @@ TEST(CapiL3BookTest, AddRemoveQuery)
 }
 
 // ============================================================
+// Composite book
+// ============================================================
+
+TEST(CapiCompositeBookTest, ApplySnapshotThenQuery)
+{
+  FloxCompositeBookHandle book = flox_composite_book_create();
+  ASSERT_NE(book, nullptr);
+
+  double p = 0, q = 0;
+  EXPECT_EQ(flox_composite_book_best_bid(book, 1, &p, &q), 0);
+
+  double bid_p[] = {100.0};
+  double bid_q[] = {1.5};
+  double ask_p[] = {100.02};
+  double ask_q[] = {0.5};
+  flox_composite_book_apply_snapshot(book, /*exchange=*/1, /*symbol=*/1, bid_p, bid_q, 1, ask_p,
+                                     ask_q, 1, /*recv_ns=*/1'000);
+
+  EXPECT_EQ(flox_composite_book_best_bid(book, 1, &p, &q), 1);
+  EXPECT_NEAR(p, 100.0, 0.001);
+  EXPECT_NEAR(q, 1.5, 0.001);
+
+  EXPECT_EQ(flox_composite_book_best_ask(book, 1, &p, &q), 1);
+  EXPECT_NEAR(p, 100.02, 0.001);
+
+  flox_composite_book_destroy(book);
+}
+
+TEST(CapiCompositeBookTest, BidOnlyDeltaDoesNotWipeAskSide)
+{
+  // Same contract as the C++ CompositeBookMatrix this wraps
+  // (CompositeBookMatrixTest.BidOnlyDeltaDoesNotWipeAskSide): a delta that
+  // carries only the bid side must leave a previously-set ask side intact,
+  // not zero it out.
+  FloxCompositeBookHandle book = flox_composite_book_create();
+  ASSERT_NE(book, nullptr);
+
+  double bid_p[] = {100.0};
+  double bid_q[] = {1.0};
+  double ask_p[] = {100.05};
+  double ask_q[] = {2.0};
+  flox_composite_book_apply_snapshot(book, 1, 7, bid_p, bid_q, 1, ask_p, ask_q, 1, 0);
+
+  double new_bid_p[] = {100.01};
+  double new_bid_q[] = {3.0};
+  flox_composite_book_apply_delta(book, 1, 7, new_bid_p, new_bid_q, 1, nullptr, nullptr, 0, 0);
+
+  double p = 0, q = 0;
+  EXPECT_EQ(flox_composite_book_best_bid(book, 7, &p, &q), 1);
+  EXPECT_NEAR(p, 100.01, 0.001);
+
+  EXPECT_EQ(flox_composite_book_best_ask(book, 7, &p, &q), 1);
+  EXPECT_NEAR(p, 100.05, 0.001);  // unchanged by the bid-only delta
+
+  flox_composite_book_destroy(book);
+}
+
+TEST(CapiCompositeBookTest, ArbitrageAcrossExchanges)
+{
+  FloxCompositeBookHandle book = flox_composite_book_create();
+  ASSERT_NE(book, nullptr);
+
+  double bid_p1[] = {101.0};
+  double bid_q1[] = {1.0};
+  double ask_p1[] = {101.5};
+  double ask_q1[] = {1.0};
+  flox_composite_book_apply_snapshot(book, /*exchange=*/1, /*symbol=*/3, bid_p1, bid_q1, 1, ask_p1,
+                                     ask_q1, 1, 0);
+
+  // A second exchange bids above the first exchange's ask -- an arbitrage.
+  double bid_p2[] = {102.0};
+  double bid_q2[] = {1.0};
+  double ask_p2[] = {103.0};
+  double ask_q2[] = {1.0};
+  flox_composite_book_apply_snapshot(book, /*exchange=*/2, /*symbol=*/3, bid_p2, bid_q2, 1, ask_p2,
+                                     ask_q2, 1, 0);
+
+  EXPECT_EQ(flox_composite_book_has_arb(book, 3), 1);
+
+  flox_composite_book_destroy(book);
+}
+
+// ============================================================
 // Order tracker
 // ============================================================
 

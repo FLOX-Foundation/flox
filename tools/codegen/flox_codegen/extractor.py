@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import ir
 
@@ -215,18 +215,18 @@ _KV_RE = re.compile(
 _FLAG_RE = re.compile(r"\s*(?P<flag>[A-Za-z_][A-Za-z0-9_]*)\s*,?\s*")
 
 
-def parse_annotation(raw: str) -> dict:
-    """Parse a raw clang::annotate string ("flox::export(k=v, ...)") into a dict.
+def _parse_kv_body(body: str) -> dict:
+    """Parse a `k=v, flag, k2="v2"` argument body into a dict.
 
-    Bare flags (e.g. `pointer_out_wrapper`) are stored as the flag name keyed to
-    the empty string, distinguishing them from absence.
+    Shared by every annotation flavour (`flox::export(...)` on declarations,
+    `flox::export_macro(...)` in a comment above a `#define`) so the two
+    never drift in what they accept as a key/value pair.
+
+    Bare flags (e.g. `pointer_out_wrapper`) are stored as the flag name keyed
+    to the empty string, distinguishing them from absence.
 
     Raises ValueError if the body is malformed.
     """
-    m = _ANNOT_RE.match(raw)
-    if not m:
-        raise ValueError(f"not a flox::export annotation: {raw!r}")
-    body = m.group(1).strip()
     if not body:
         return {}
     out: dict = {}
@@ -250,6 +250,194 @@ def parse_annotation(raw: str) -> dict:
             continue
         raise ValueError(
             f"could not parse annotation body at offset {pos}: {body[pos:pos + 40]!r}"
+        )
+    return out
+
+
+def parse_annotation(raw: str) -> dict:
+    """Parse a raw clang::annotate string ("flox::export(k=v, ...)") into a dict.
+
+    Bare flags (e.g. `pointer_out_wrapper`) are stored as the flag name keyed to
+    the empty string, distinguishing them from absence.
+
+    Raises ValueError if the body is malformed.
+    """
+    m = _ANNOT_RE.match(raw)
+    if not m:
+        raise ValueError(f"not a flox::export annotation: {raw!r}")
+    return _parse_kv_body(m.group(1).strip())
+
+
+# A macro constant carries no clang cursor an attribute can attach to (a
+# `#define` isn't a declaration), so it is marked for export with a plain
+# comment reusing the same `flox::export_*(...)` vocabulary, one line above
+# the `#define` it applies to.
+_MACRO_ANNOT_RE = re.compile(
+    r"^\s*//\s*flox::export_macro\s*\((.*)\)\s*$"
+)
+
+
+def parse_macro_group_annotation(line: str) -> Optional[dict]:
+    """Match a `// flox::export_macro(group="...")` marker line.
+
+    Returns the parsed argument dict, or None if `line` isn't a marker.
+    Raises ValueError if it looks like a marker but its body is malformed.
+    """
+    m = _MACRO_ANNOT_RE.match(line)
+    if not m:
+        return None
+    return _parse_kv_body(m.group(1).strip())
+
+
+# ── Macro constant extraction ────────────────────────────────────────
+
+
+def macro_definition_cursors(
+    path: Path, *, args: List[str]
+) -> List[Tuple[str, str, int]]:
+    """Parse `path` with libclang using `args`, return every object-like
+    `#define NAME value` macro defined directly in `path` (not pulled in
+    transitively via #include) as (name, normalized_value, line) triples,
+    in source order.
+
+    Requires PARSE_DETAILED_PROCESSING_RECORD — libclang does not emit
+    MACRO_DEFINITION cursors otherwise. Restricting to cursors whose
+    location file is `path` itself keeps macros from <stdint.h> and
+    friends out of the result.
+
+    This is the single place that walks macro cursors; both the spec's
+    macro-constant IDL group (below) and check_signatures' golden/live
+    macro diff call it, so the two can never see a different macro set for
+    the same file just because one of them drifted its own copy of this
+    walk.
+    """
+    _ensure_libclang_loaded()
+    import clang.cindex
+
+    index = clang.cindex.Index.create()
+    tu = index.parse(
+        str(path),
+        args=args,
+        options=clang.cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
+    )
+
+    diags = [d for d in tu.diagnostics if d.severity >= clang.cindex.Diagnostic.Error]
+    if diags:
+        msg = "\n".join(f"  {d.location}: {d.spelling}" for d in diags)
+        raise RuntimeError(f"libclang errors parsing {path}:\n{msg}")
+
+    resolved = path.resolve()
+    out: List[Tuple[str, str, int]] = []
+    for c in tu.cursor.get_children():
+        if c.kind != clang.cindex.CursorKind.MACRO_DEFINITION:
+            continue
+        loc_file = c.location.file
+        if loc_file is None or Path(str(loc_file)).resolve() != resolved:
+            continue
+        tokens = [t.spelling for t in c.get_tokens()]
+        value = re.sub(r"\s+", " ", " ".join(tokens[1:])).strip() if len(tokens) > 1 else ""
+        out.append((c.spelling, value, c.location.line))
+    return out
+
+
+def _scan_macro_group_markers(text: str) -> Dict[int, str]:
+    """Walk the raw spec source and return {define_line: group} for every
+    `#define` immediately preceded (module blank lines and comments aside)
+    by a `// flox::export_macro(group="...")` marker.
+
+    A macro can't carry a `[[clang::annotate]]` attribute the way a
+    function or handle declaration can, so grouping is recovered from plain
+    source text rather than from a clang cursor. The rule mirrors
+    FLOX_EXPORT's own convention of one annotation per declaration: a
+    marker applies to exactly the next `#define` line and is consumed by
+    it. Any other line (real code, not blank/comment) is a marker put on
+    the wrong kind of declaration and raises rather than silently letting
+    it leak onto an unrelated macro further down.
+
+    Raises ValueError if a marker is not immediately followed by a
+    `#define` (a stale/misplaced annotation, caught either right where the
+    mismatch happens or at end of file) or if the marker line can't be
+    parsed as `flox::export_macro(...)`.
+    """
+    define_re = re.compile(r"^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)")
+    out: Dict[int, str] = {}
+    pending: Optional[Tuple[str, int]] = None  # (group, marker_line)
+    in_block_comment = False
+
+    for lineno, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+
+        if in_block_comment:
+            if "*/" in line:
+                in_block_comment = False
+            continue
+
+        if not line:
+            continue
+
+        annot = parse_macro_group_annotation(raw)
+        if annot is not None:
+            if "group" not in annot:
+                raise ValueError(
+                    f"{lineno}: flox::export_macro(...) missing group= : {raw!r}"
+                )
+            pending = (annot["group"], lineno)
+            continue
+
+        if line.startswith("//"):
+            continue
+
+        if line.startswith("/*"):
+            if "*/" not in line:
+                in_block_comment = True
+            continue
+
+        m = define_re.match(line)
+        if m:
+            if pending is not None:
+                out[lineno] = pending[0]
+                pending = None
+            continue
+
+        # Any other real source line means the marker was put on something
+        # that isn't a macro at all (a struct, a function, ...) -- that's
+        # an authoring mistake, not a marker to just drop quietly.
+        if pending is not None:
+            raise ValueError(
+                f"flox::export_macro(...) on line {pending[1]} is not "
+                f"followed by a #define (line {lineno} is neither)"
+            )
+
+    if pending is not None:
+        raise ValueError(
+            f"flox::export_macro(...) on line {pending[1]} is not "
+            f"followed by a #define"
+        )
+    return out
+
+
+def extract_macros(spec_path: Path, *, args: List[str]) -> List["ir.MacroConstant"]:
+    """Combine the macro cursor walk with the group-marker text scan to
+    build the spec's macro-constant IDL group.
+
+    A `#define` with no `flox::export_macro(...)` marker directly above it
+    is invisible here, exactly like a function with no `FLOX_EXPORT(...)`.
+    """
+    spec_path = Path(spec_path)
+    line_to_group = _scan_macro_group_markers(spec_path.read_text())
+
+    out: List[ir.MacroConstant] = []
+    for name, value, line in macro_definition_cursors(spec_path, args=args):
+        group = line_to_group.get(line)
+        if group is None:
+            continue
+        out.append(
+            ir.MacroConstant(
+                name=name,
+                value=value,
+                group=group,
+                source_location=f"{spec_path}:{line}",
+            )
         )
     return out
 
@@ -489,4 +677,6 @@ def parse_spec(
             f"libclang errors parsing {spec_path}:\n{msg}"
         )
 
-    return _walk_module(tu.cursor, spec_path=spec_path)
+    mod = _walk_module(tu.cursor, spec_path=spec_path)
+    mod.macros = extract_macros(spec_path, args=args)
+    return mod

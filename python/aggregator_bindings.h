@@ -70,7 +70,22 @@ inline PyExtBar barToExtBar(const Bar& b)
           .trade_count = b.tradeCount.raw()};
 }
 
-// Batch aggregation: takes pre-extracted vectors (no GIL needed)
+// Batch aggregation: takes pre-extracted vectors (no GIL needed).
+//
+// Only fully closed bars are returned -- the trailing bar still open when
+// the input runs out is dropped, exactly like the C ABI's doAggregateC
+// (src/capi/flox_capi.cpp), which every other binding (Node, QuickJS,
+// Codon) goes through. This used to append that trailing bar unconditionally,
+// which made the bar count binding-dependent (Python returned one more bar
+// than everyone else on the same input) and input-order-dependent (appending
+// one more trade could silently turn "the last real bar" into "a different,
+// still-open bar" with no way to tell the two apart -- FloxBar/PyExtBar
+// carry no closed/partial flag). A batch call's result has to depend only on
+// its input, not on where the caller happened to stop feeding it; a
+// consumer that wants the currently-open bar during live streaming has that
+// through a different, already-existing path: BarAggregator (bus-fed) via
+// Strategy::lastClosedBar, or the partial bar surfaced with
+// BarCloseReason::Forced when BarAggregator::stop() flushes it.
 template <typename Policy>
 std::vector<PyExtBar> doAggregate(Policy& policy, const int64_t* ts, const double* px,
                                   const double* qty, const uint8_t* ib, size_t n)
@@ -117,11 +132,6 @@ std::vector<PyExtBar> doAggregate(Policy& policy, const int64_t* ts, const doubl
     }
 
     policy.update(trade, currentBar);
-  }
-
-  if (initialized)
-  {
-    bars.push_back(barToExtBar(currentBar));
   }
 
   return bars;

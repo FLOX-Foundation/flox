@@ -61,3 +61,28 @@ def test_function_signature_format():
     )
     text = emit_llms.emit(m)
     assert "`int flox_x(double a, size_t b)`" in text
+
+
+def test_macro_constants_listed_by_group():
+    m = ir.Module(
+        macros=[
+            ir.MacroConstant(name="FLOX_A_ONE", value="0", group="alpha"),
+            ir.MacroConstant(name="FLOX_A_TWO", value="1", group="alpha"),
+        ]
+    )
+    text = emit_llms.emit(m)
+    assert "## Macro constants" in text
+    assert "### alpha" in text
+    assert "`FLOX_A_ONE` = `0`" in text
+    assert "`FLOX_A_TWO` = `1`" in text
+
+
+def test_no_macros_omits_macro_section():
+    m = ir.Module(
+        functions=[
+            ir.Function(name="flox_a", return_type="void", params=(),
+                        annotations={"group": "g"})
+        ],
+    )
+    text = emit_llms.emit(m)
+    assert "Macro constants" not in text

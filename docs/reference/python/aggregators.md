@@ -15,7 +15,13 @@ All aggregation functions share the same input signature:
 
 `is_buy` is the inverse of the `side` field on `PyTrade` from [`DataReader`](replay.md#pytrade-dtype), where `0 = buy` and `1 = sell`. Convert with `(trades['side'] == 0).astype(np.uint8)` — passing `side` straight through inverts every bar's buy volume.
 
-**Returns:** `numpy.ndarray` with `PyExtBar` structured dtype.
+**Returns:** `numpy.ndarray` with `PyExtBar` structured dtype. Only fully
+closed bars are returned -- a trailing bar still open when the trade array
+ends is dropped, so the bar count depends only on the input, not on where
+the array happens to stop. Node, QuickJS, and Codon return the same count on
+identical input. To see a bar the moment it closes during a live run, use
+the bus-fed `BarAggregator` / `Strategy.lastClosedBar` path instead of this
+batch function.
 
 ### PyExtBar Dtype
 

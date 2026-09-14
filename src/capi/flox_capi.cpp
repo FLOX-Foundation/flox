@@ -3148,6 +3148,60 @@ void flox_composite_book_check_staleness(FloxCompositeBookHandle h, int64_t now_
   FLOX_CAPI_LEAVE_VOID;
 }
 
+namespace
+{
+// Shared by flox_composite_book_apply_snapshot/_delta below -- same shape as
+// FloxBookImpl::applyUpdate above, but addressed at one exchange/symbol slot
+// of a multi-venue CompositeBookMatrix rather than at a single-venue book.
+void applyCompositeBookUpdate(CompositeBookMatrix<>* matrix, uint32_t exchange, uint32_t symbol,
+                              const double* bp, const double* bq, size_t bl, const double* ap,
+                              const double* aq, size_t al, int64_t recv_ns, BookUpdateType type)
+{
+  std::byte buf[32768];
+  std::pmr::monotonic_buffer_resource res(buf, sizeof(buf));
+  BookUpdateEvent ev(&res);
+  ev.update.symbol = symbol;
+  ev.update.type = type;
+  ev.sourceExchange = static_cast<ExchangeId>(exchange);
+  ev.recvNs = MonoNanos::fromRaw(static_cast<uint64_t>(recv_ns));
+  ev.update.bids.reserve(bl);
+  for (size_t i = 0; i < bl; ++i)
+  {
+    ev.update.bids.push_back({Price::fromDouble(bp[i]), Quantity::fromDouble(bq[i])});
+  }
+  ev.update.asks.reserve(al);
+  for (size_t i = 0; i < al; ++i)
+  {
+    ev.update.asks.push_back({Price::fromDouble(ap[i]), Quantity::fromDouble(aq[i])});
+  }
+  matrix->onBookUpdate(ev);
+}
+}  // namespace
+
+void flox_composite_book_apply_snapshot(FloxCompositeBookHandle h, uint32_t exchange, uint32_t symbol,
+                                        const double* bid_prices, const double* bid_qtys,
+                                        size_t bid_len, const double* ask_prices,
+                                        const double* ask_qtys, size_t ask_len, int64_t recv_ns)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  applyCompositeBookUpdate(static_cast<CompositeBookMatrix<>*>(h), exchange, symbol, bid_prices,
+                           bid_qtys, bid_len, ask_prices, ask_qtys, ask_len, recv_ns,
+                           BookUpdateType::SNAPSHOT);
+  FLOX_CAPI_LEAVE_VOID;
+}
+
+void flox_composite_book_apply_delta(FloxCompositeBookHandle h, uint32_t exchange, uint32_t symbol,
+                                     const double* bid_prices, const double* bid_qtys, size_t bid_len,
+                                     const double* ask_prices, const double* ask_qtys, size_t ask_len,
+                                     int64_t recv_ns)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  applyCompositeBookUpdate(static_cast<CompositeBookMatrix<>*>(h), exchange, symbol, bid_prices,
+                           bid_qtys, bid_len, ask_prices, ask_qtys, ask_len, recv_ns,
+                           BookUpdateType::DELTA);
+  FLOX_CAPI_LEAVE_VOID;
+}
+
 // ============================================================
 // Executor fill access
 // ============================================================

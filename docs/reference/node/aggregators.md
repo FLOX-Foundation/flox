@@ -29,3 +29,7 @@ Each returned bar object:
 | `volume` | `number` | Total volume |
 | `buyVolume` | `number` | Buy-side volume |
 | `tradeCount` | `number` | Number of trades |
+
+Only fully closed bars are returned -- a trailing bar still open when the
+trade array ends is dropped, so the bar count depends only on the input.
+Python, QuickJS, and Codon return the same count on identical input.

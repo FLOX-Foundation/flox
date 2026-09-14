@@ -60,14 +60,26 @@ Aggregates books across multiple exchanges per symbol.
 
 ```javascript
 const matrix = new flox.CompositeBookMatrix();
+matrix.applySnapshot(exchangeId, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
 ```
 
 | Method | Returns | Description |
 |--------|---------|-------------|
+| `applySnapshot(exchange, symbol, bp, bq, ap, aq, recvNs?)` | `void` | Full snapshot for one exchange's side of the symbol (Float64Arrays) |
+| `applyDelta(exchange, symbol, bp, bq, ap, aq, recvNs?)` | `void` | Incremental update for one exchange's side; an absent side (empty arrays) is left untouched, not cleared |
 | `bestBid(symbol)` | `{ price, qty } \| null` | Best bid across exchanges |
 | `bestAsk(symbol)` | `{ price, qty } \| null` | Best ask across exchanges |
 | `hasArbitrage(symbol)` | `boolean` | True if arbitrage opportunity exists |
 | `markStale(exchange, symbol)` | `void` | Mark exchange data as stale |
 | `checkStaleness(nowNs, thresholdNs)` | `void` | Evict stale data |
 
-There is currently no method to feed book updates into a `CompositeBookMatrix` from Node (or from QuickJS or Codon) -- the C ABI this binding wraps does not export an update entry point for it yet, only the Python binding (`flox_py.CompositeBookMatrix.update_book`) reaches `onBookUpdate` directly. A `CompositeBookMatrix` constructed here starts, and stays, empty.
+`applySnapshot` replaces both sides of that exchange's top-of-book wholesale,
+including clearing a side that arrives as an empty array. `applyDelta` only
+touches the side(s) actually present in the call -- a side passed as an empty
+array is left exactly as it was, not zeroed. `recvNs` defaults to `0` and
+feeds `checkStaleness`'s staleness clock; pass the actual receive timestamp
+if you use staleness eviction. Codon (`CompositeBook.apply_snapshot` /
+`apply_delta`) has the same two methods. QuickJS does not yet -- see
+[the C API reference](../api/capi/flox_capi.md) for the underlying
+`flox_composite_book_apply_snapshot` / `_apply_delta` functions if you need
+to drive one from there in the meantime.

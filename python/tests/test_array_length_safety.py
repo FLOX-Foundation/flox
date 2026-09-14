@@ -134,7 +134,12 @@ class AggregateBarsStrideSafety(unittest.TestCase):
         self.assertTrue(
             np.array_equal(strided_bars["close_raw"], contig_bars["close_raw"])
         )
-        self.assertEqual(len(strided_bars), n)  # one trade per second, 1s bars
+        # One trade per second on 1s bars: n-1 boundaries are actually
+        # crossed, and the trailing bar still open when the input ends is
+        # not returned -- see doAggregate's docstring in
+        # python/aggregator_bindings.h. Node/QuickJS/Codon agree on this
+        # same count through the shared C ABI batch aggregator.
+        self.assertEqual(len(strided_bars), n - 1)
 
 
 class BuildDatasetFieldView(unittest.TestCase):
@@ -164,10 +169,13 @@ class BuildDatasetFieldView(unittest.TestCase):
         self.assertFalse(trades["exchange_ts_ns"].flags["C_CONTIGUOUS"])
 
         bars = _bars_from_trades(trades, interval_seconds=1.0)
-        # One trade per second at 1s bars: exactly `n` bars, strictly
-        # increasing start times -- not 199-from-10 with timestamps
-        # jumping between 2023 and 1972, measured by hand against the unfixed binding.
-        self.assertEqual(len(bars), n)
+        # One trade per second at 1s bars: n-1 bars actually close before
+        # the input runs out (the still-open trailing bar is not returned,
+        # matching Node/QuickJS/Codon -- see doAggregate's docstring in
+        # python/aggregator_bindings.h), with strictly increasing start
+        # times -- not 199-from-10 with timestamps jumping between 2023 and
+        # 1972, measured by hand against the unfixed binding.
+        self.assertEqual(len(bars), n - 1)
         starts = bars["start_time_ns"]
         self.assertTrue(np.all(np.diff(starts) > 0))
 

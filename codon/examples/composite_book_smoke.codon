@@ -1,0 +1,52 @@
+# Smoke test: CompositeBook ingestion through the C API.
+#
+# Codon had no way to feed a CompositeBook at all -- the C ABI it wraps
+# exported create/destroy/best-price/arbitrage/staleness but no update entry
+# point, so a book built here stayed empty forever. This drives the new
+# apply_snapshot/apply_delta bindings end to end.
+
+from flox.tools import CompositeBook
+
+book = CompositeBook()
+
+empty_bid = book.best_bid(1)
+if empty_bid is None:
+    print("ok  empty book has no bid")
+else:
+    print("FAIL empty book should have no bid")
+
+book.apply_snapshot(1, 1, [100.0], [1.5], [100.02], [0.5], 1000)
+
+bid = book.best_bid(1)
+ask = book.best_ask(1)
+if bid is not None and abs(bid[0] - 100.0) < 1e-9 and abs(bid[1] - 1.5) < 1e-9:
+    print("ok  best bid after snapshot")
+else:
+    print("FAIL best bid after snapshot:", bid)
+if ask is not None and abs(ask[0] - 100.02) < 1e-9:
+    print("ok  best ask after snapshot")
+else:
+    print("FAIL best ask after snapshot:", ask)
+
+book.apply_snapshot(1, 7, [100.0], [1.0], [100.05], [2.0], 0)
+book.apply_delta(1, 7, [100.01], [3.0], [], [], 0)
+
+bid7 = book.best_bid(7)
+ask7 = book.best_ask(7)
+if bid7 is not None and abs(bid7[0] - 100.01) < 1e-9:
+    print("ok  bid-only delta moves the bid")
+else:
+    print("FAIL bid-only delta bid:", bid7)
+if ask7 is not None and abs(ask7[0] - 100.05) < 1e-9:
+    print("ok  bid-only delta leaves the ask side untouched")
+else:
+    print("FAIL bid-only delta wiped the ask side:", ask7)
+
+book.apply_snapshot(2, 3, [101.0], [1.0], [101.5], [1.0], 0)
+book.apply_snapshot(1, 3, [102.0], [1.0], [103.0], [1.0], 0)
+if book.has_arbitrage(3):
+    print("ok  arbitrage detected across exchanges")
+else:
+    print("FAIL expected arbitrage across exchanges")
+
+print("done")

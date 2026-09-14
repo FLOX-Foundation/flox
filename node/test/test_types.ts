@@ -384,6 +384,23 @@ void l3.bidAtPrice(100);
 void l3.askAtPrice(100);
 
 const cbm = new CompositeBookMatrix();
+cbm.applySnapshot(
+  1,
+  1,
+  new Float64Array([100.0]),
+  new Float64Array([1.5]),
+  new Float64Array([100.02]),
+  new Float64Array([0.5]),
+  1000n,
+);
+cbm.applyDelta(
+  1,
+  1,
+  new Float64Array([100.01]),
+  new Float64Array([2.0]),
+  new Float64Array([]),
+  new Float64Array([]),
+);
 const bidQ = cbm.bestBid(1);
 if (bidQ) {
   void bidQ.price;

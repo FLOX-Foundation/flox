@@ -98,6 +98,40 @@ def test_emit_long_signature_wraps():
     assert all(len(line) <= 110 for line in fn_lines)
 
 
+def test_emit_macro_constant_renders_as_define():
+    mod = ir.Module(
+        macros=[
+            ir.MacroConstant(name="FLOX_THING_A", value="0", group="thing"),
+            ir.MacroConstant(name="FLOX_THING_B", value="1", group="thing"),
+        ]
+    )
+    text = emit_capi.emit(mod)
+    assert "#define FLOX_THING_A 0" in text
+    assert "#define FLOX_THING_B 1" in text
+
+
+def test_emit_macro_groups_get_their_own_banner():
+    mod = ir.Module(
+        macros=[
+            ir.MacroConstant(name="FLOX_A_ONE", value="0", group="alpha"),
+            ir.MacroConstant(name="FLOX_B_ONE", value="0", group="beta"),
+        ]
+    )
+    text = emit_capi.emit(mod)
+    # Alpha comes before beta (groups sorted), and each macro sits under its
+    # own group's section rather than a single flat dump.
+    assert text.find("FLOX_A_ONE") < text.find("FLOX_B_ONE")
+
+
+def test_no_macros_emits_no_macro_section():
+    mod = ir.Module(functions=[
+        ir.Function(name="flox_x", return_type="void", params=(),
+                    annotations={"group": "g"}),
+    ])
+    text = emit_capi.emit(mod)
+    assert "Macro constants" not in text
+
+
 def test_round_trip_produces_compilable_header(tmp_path):
     """The slice spec → generated header must be a valid C TU."""
     repo_root = Path(__file__).resolve().parents[3]

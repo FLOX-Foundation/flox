@@ -5,9 +5,9 @@ artifacts) into the structured JSON / SQLite snapshots that
 ``flox-mcp`` ships in its wheel for offline use. Three artifacts:
 
 * ``ir.snapshot.json`` — minimal cross-language IR (functions /
-  structs / enums / typedefs / function pointers) with a versioned
-  schema. The build is deterministic — order is fixed alphabetically
-  so re-runs are byte-identical.
+  structs / enums / typedefs / function pointers / macro constants)
+  with a versioned schema. The build is deterministic — order is
+  fixed alphabetically so re-runs are byte-identical.
 * ``binding_manifest.json`` — per-binding symbol inventory, joined
   by IDL group, so ``lookup_symbol`` / ``list_bindings`` MCP tools can
   resolve a name across languages.
@@ -102,6 +102,10 @@ def ir_to_snapshot(module: ir.Module) -> Dict[str, Any]:
         }
         for fp in sorted(module.function_pointers, key=lambda x: x.name)
     ]
+    macros = [
+        {"name": m.name, "value": m.value, "group": m.group}
+        for m in sorted(module.macros, key=lambda x: x.name)
+    ]
     return {
         "version": SCHEMA_VERSION,
         "functions": functions,
@@ -109,6 +113,7 @@ def ir_to_snapshot(module: ir.Module) -> Dict[str, Any]:
         "enums": enums,
         "typedefs": handles,
         "function_pointers": function_pointers,
+        "macros": macros,
     }
 
 

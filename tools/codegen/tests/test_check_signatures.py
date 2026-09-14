@@ -178,11 +178,18 @@ def test_matching_struct_and_macro_is_clean(tmp_path):
     assert extra == []
 
 
-def test_known_missing_macros_exemption_does_not_hide_a_value_mismatch(tmp_path):
+def test_known_missing_macros_exemption_does_not_hide_a_value_mismatch(monkeypatch, tmp_path):
     # The exemption must only suppress "absent from actual"; a macro that
     # IS present in actual, with the wrong value, is a real regression and
     # must still fail even if its name is in KNOWN_MISSING_MACROS.
-    name = next(iter(check_signatures.KNOWN_MISSING_MACROS))
+    #
+    # KNOWN_MISSING_MACROS is empty on a healthy checkout (every macro the
+    # spec exports lands in the golden artifacts), so this test patches in
+    # a throwaway entry rather than depending on the real set having
+    # members -- the exemption mechanism is what's under test, not any
+    # specific still-open gap.
+    name = "FLOX_TEST_ONLY_EXEMPTED_MACRO"
+    monkeypatch.setattr(check_signatures, "KNOWN_MISSING_MACROS", {name})
     a = _write_header(tmp_path / "a.h", f"#define {name} 0\n")
     b = _write_header(tmp_path / "b.h", f"#define {name} 99\n")
     mismatches, missing, extra = check_signatures.check(
@@ -191,3 +198,12 @@ def test_known_missing_macros_exemption_does_not_hide_a_value_mismatch(tmp_path)
     assert len(mismatches) == 1
     assert mismatches[0].reason == "macro-value"
     assert mismatches[0].name == name
+
+
+def test_known_missing_macros_is_empty():
+    # The spec now has a macro-constant IDL group (flox::export_macro(...)
+    # markers in flox_capi_spec.hpp), so every macro the live header
+    # declares can be taught to the spec and land in the golden artifacts.
+    # A name reappearing here means a macro exists without that marker --
+    # add the marker in the spec instead of re-exempting it.
+    assert check_signatures.KNOWN_MISSING_MACROS == set()
