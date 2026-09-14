@@ -269,7 +269,62 @@ FloxJsEngine engine(64 * 1024 * 1024);  // 64MB
 FloxJsEngine engine(0);                  // unlimited
 ```
 
+## Threads
+
+A `FloxJsStrategy` is single-threaded by construction. It owns one QuickJS
+runtime, and that runtime may only be entered from the thread that created
+it. `flox_js_runner` and every test in this repo already work that way (one
+thread, one call at a time), so most embeddings never have to think about
+this at all.
+
+A live engine is different. `flox_live_engine_add_strategy` subscribes a
+strategy to three independently-threaded event buses (trades, book
+updates, bars), each with its own consumer thread, and calls straight into
+the strategy's callbacks from whichever thread that is. Hand a bare
+`FloxJsStrategy`'s callbacks to a live engine and up to three threads can
+enter the same runtime at once. QuickJS was not built for that, and it
+does not fail safely when it happens.
+
+For any embedding that dispatches events from more than one thread, build
+a `FloxJsExecutor` instead of a `FloxJsStrategy`:
+
+```cpp
+#include "js_executor.h"
+
+flox::SymbolRegistry registry;
+flox::FloxJsExecutor executor("strategy.js", registry);
+
+auto strategy = flox_strategy_create(
+    1, executor.symbolIds().data(), executor.symbolIds().size(),
+    registryHandle, executor.getCallbacks());
+executor.injectHandle(strategy);
+
+flox_live_engine_add_strategy(engine, strategy, onSignal, userData);
+```
+
+`FloxJsExecutor` builds the runtime on one dedicated thread and keeps it
+there for the object's whole lifetime. The callbacks it hands back only
+ever enqueue an event onto a bounded queue: the JS side of every callback
+(market data, fills, order updates, start, stop, a hot-reload's callback
+swap) always runs on that one thread. A full queue blocks the calling
+thread rather than dropping the event. Default capacity is 65,536,
+configurable through the constructor.
+
+If an embedder reaches into the runtime from a second thread anyway (say,
+by calling into a `FloxJsStrategy` it obtained some other way), it gets a
+loud failure in a debug build, or a refused and logged call in a release
+build. Not memory corruption.
+
 ## Limitations
 
 - QuickJS is an interpreter — suitable for prototyping and backtesting, latency-sensitive production should use Codon or C++
-- Scripts are evaluated with `JS_EVAL_TYPE_GLOBAL`; ES module syntax (`import` / `export`) is not supported 
+- Scripts are evaluated with `JS_EVAL_TYPE_GLOBAL`; ES module syntax (`import` / `export`) is not supported
+- A strategy subscribed to more than one live event bus for the same
+  symbol (the normal live-engine setup) can still race inside the core
+  strategy/book-keeping state that feeds the callback, separately from the
+  JS threading model above. That is being tracked on its own.
+- A strategy subscribed to more than one live event bus for the same
+  symbol (the normal live-engine configuration) can race inside the core
+  strategy/book-keeping state that feeds the callback, independent of the
+  JS layer described above. This is being tracked separately from the JS
+  threading model.
