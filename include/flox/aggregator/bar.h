@@ -28,12 +28,19 @@ enum class BarType : uint8_t
   BpsRange
 };
 
+// No policy runs a time-gap detector, so a hypothetical `Gap` value would
+// need one built for every bar type before anything could ever set it --
+// that used to sit at 1 here and was removed rather than shipped unset
+// forever. `Forced` and `Warmup` keep their original numeric values (2, 3)
+// rather than sliding down to 1 and 2, because `Bar` (this `reason` byte
+// included) is written to disk as a raw struct by MmapBarWriter: renumbering
+// them would silently change the meaning of a byte already sitting in
+// existing bar files.
 enum class BarCloseReason : uint8_t
 {
-  Threshold,  // Normal close: interval/count/volume reached
-  Gap,        // Gap in data: new bar started due to time gap
-  Forced,     // Forced close: stop() called or manual flush
-  Warmup      // Historical warmup bar
+  Threshold = 0,  // Normal close: interval/count/volume reached
+  Forced = 2,     // Forced close: stop() called or manual flush
+  Warmup = 3      // Set by the caller, not the engine -- see BarMatrix::warmup()
 };
 
 struct Bar

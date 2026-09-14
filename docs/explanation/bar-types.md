@@ -132,7 +132,7 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
 
 - Loses timing information
 - Can miss reversals within brick
-- A single trade that gaps past the brick size does not get split into the intermediate bricks (see "Gaps" below)
+- The synthesized bricks from a gap (see "Gaps" below) carry no volume or trade-count data of their own, since no trade actually happened at those prices
 
 **Use when**:
 
@@ -142,7 +142,7 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
 
 **Unique property**: Renko bars only move one direction until reversal. A series of up-bricks means consistent upward movement without significant pullbacks.
 
-**Gaps**: a brick closes when a trade's price is at least one brick size away from the brick's open (which is the previous brick's close). If a single trade jumps several brick sizes at once -- a real gap, or just a thin book -- Flox does not synthesize the intermediate bricks a continuous price path would have produced. The current brick closes as it stood before that trade, and the next brick opens directly at the new trade's price; a large, sudden move can therefore appear as one ordinary-looking brick with no record of how far the price actually travelled. If your strategy depends on seeing every intermediate brick, replay the tape at a tick resolution fine enough that no single trade can cross more than one brick, rather than relying on gap-splitting.
+**Gaps**: a brick closes when a trade's price is at least one brick size away from the brick's open (which is the previous brick's close). If a single trade jumps several brick sizes at once -- a real gap, or just a thin book -- Flox fills in the intermediate bricks a continuous price path would have produced: the brick that was already forming closes as it stood before that trade (with the real volume and trade count it accumulated), and then one synthetic brick per additional whole brick width is emitted, walking the price from there to the new trade in clean steps of exactly one brick size. A new brick opens at the trade's exact price for whatever comes next. For example, a trade that jumps from 100 to 155 with a brick size of 10 spans 5.5 bricks: the real brick (100 to 100) plus 4 synthesized bricks (110, 120, 130, 140, each one brick tall) account for the 5 complete bricks the move spans, leaving a new brick open at 155. The synthesized bricks have no volume or trade count of their own -- no trade happened at those prices -- so treat them as a price-path marker, not as a record of activity.
 
 `param()` reports the brick size in the instrument's own price units (e.g. `10` for `RenkoBarPolicy::fromDouble(10.0)`), matching `TimeframeId::renko(brickSize)`.
 

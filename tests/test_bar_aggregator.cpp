@@ -476,6 +476,76 @@ TEST(RenkoBarPolicyTest, CreatesBricksOnPriceMove)
   EXPECT_EQ(result[0].open, Price::fromDouble(100.0));
 }
 
+// A single trade that gaps 5.5 brick-widths past the open (100 -> 155,
+// brick size 10) used to collapse into one zero-range bar and silently drop
+// the other 4.5 bricks' worth of movement. It must now come out as the real
+// bar (open=high=low=close=100, since no trade touched a price in between)
+// followed by 4 synthesized bricks that walk the price up from 100 to 150
+// in clean steps of 10, with a new bar left open at 155 for whatever comes
+// next -- exactly the number of complete bricks a continuous price path
+// would have produced.
+TEST(RenkoBarPolicyTest, GapPastSeveralBricksSynthesizesTheMissingOnes)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  BarAggregator<RenkoBarPolicy> aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 155, 1, 1));  // gaps 5.5 bricks past 100
+
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 5) << "one real bar plus 4 synthesized bricks (5.5 "
+                                 "brick-widths spans 5 complete bricks)";
+
+  EXPECT_EQ(result[0].open, Price::fromDouble(100.0));
+  EXPECT_EQ(result[0].high, Price::fromDouble(100.0));
+  EXPECT_EQ(result[0].low, Price::fromDouble(100.0));
+  EXPECT_EQ(result[0].close, Price::fromDouble(100.0));
+
+  const double expectedOpens[] = {110.0, 120.0, 130.0, 140.0};
+  const double expectedCloses[] = {120.0, 130.0, 140.0, 150.0};
+  for (int i = 0; i < 4; ++i)
+  {
+    const Bar& brick = result[i + 1];
+    EXPECT_EQ(brick.open, Price::fromDouble(expectedOpens[i])) << "brick " << i;
+    EXPECT_EQ(brick.close, Price::fromDouble(expectedCloses[i])) << "brick " << i;
+    EXPECT_EQ(brick.high, Price::fromDouble(expectedCloses[i])) << "brick " << i;
+    EXPECT_EQ(brick.low, Price::fromDouble(expectedOpens[i])) << "brick " << i;
+  }
+
+  // Reported as forced-closed by stop(), open at the raw trade price (155),
+  // still 5 points short of the next brick.
+  ASSERT_EQ(result.size(), 5);
+}
+
+// A trade that closes only the ordinary single brick must keep emitting
+// exactly one bar -- gap-brick synthesis must not fire for the common case.
+TEST(RenkoBarPolicyTest, OrdinarySingleBrickCloseIsUnaffected)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  BarAggregator<RenkoBarPolicy> aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
+  auto strat = std::make_unique<TestStrategy>(result);
+  bus.subscribe(strat.get());
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.onTrade(makeTrade(SYMBOL, 114, 1, 1));  // 1.4 bricks -- one whole brick
+
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 1);
+  EXPECT_EQ(result[0].open, Price::fromDouble(100.0));
+}
+
 // ============================================================================
 // RangeBarPolicy Tests
 // ============================================================================
@@ -1423,4 +1493,74 @@ TEST(MultiTimeframeAggregatorTest, DoubleStartClearsState)
   // Only the bar after restart should be emitted
   ASSERT_EQ(result.size(), 1);
   EXPECT_EQ(result[0].open, Price::fromDouble(200.0));
+}
+
+// ============================================================================
+// BarCloseReason::Warmup
+// ============================================================================
+//
+// No aggregator in this file ever assigns BarCloseReason::Warmup -- it is
+// documented as a value the caller sets on Bar objects it builds from
+// historical data before calling BarMatrix::warmup(), not something the
+// engine produces on its own. These tests are that contract's only coverage:
+// they prove a caller-supplied Warmup bar actually survives the trip through
+// BarMatrix::warmup() and BarSeries::push() unchanged, rather than being
+// silently reset to Threshold or dropped.
+
+TEST(BarMatrixWarmupTest, CallerSuppliedWarmupReasonSurvivesIntoTheMatrix)
+{
+  BarMatrix<16, 4, 32> matrix;
+  const std::array<TimeframeId, 1> tfs = {TimeframeId::time(std::chrono::seconds(60))};
+  matrix.configure(tfs);
+
+  Bar historical{};
+  historical.open = Price::fromDouble(100.0);
+  historical.high = Price::fromDouble(101.0);
+  historical.low = Price::fromDouble(99.0);
+  historical.close = Price::fromDouble(100.5);
+  historical.reason = BarCloseReason::Warmup;
+
+  const std::array<Bar, 1> history = {historical};
+  matrix.warmup(SYMBOL, tfs[0], history);
+
+  const auto* series = matrix.series(SYMBOL, tfs[0]);
+  ASSERT_NE(series, nullptr);
+  ASSERT_EQ(series->size(), 1u);
+  EXPECT_EQ((*series)[0].reason, BarCloseReason::Warmup);
+  EXPECT_EQ((*series)[0].open, Price::fromDouble(100.0));
+}
+
+// A warmed-up history and a live aggregator feeding the same matrix must
+// stay distinguishable by reason: the seeded bars read Warmup, the ones the
+// aggregator goes on to close for real read Threshold.
+TEST(BarMatrixWarmupTest, WarmupBarsAndLiveBarsRemainDistinguishableByReason)
+{
+  BarMatrix<16, 4, 32> matrix;
+  const std::array<TimeframeId, 1> tfs = {TimeframeId::time(std::chrono::seconds(60))};
+  matrix.configure(tfs);
+
+  Bar seeded{};
+  seeded.open = Price::fromDouble(50.0);
+  seeded.close = Price::fromDouble(50.0);
+  seeded.reason = BarCloseReason::Warmup;
+  const std::array<Bar, 1> history = {seeded};
+  matrix.warmup(SYMBOL, tfs[0], history);
+
+  BarBus bus;
+  bus.enableDrainOnStop();
+  MultiTimeframeAggregator<4> aggregator(&bus);
+  aggregator.addTimeInterval(std::chrono::seconds(60));
+  bus.subscribe(&matrix);
+
+  bus.start();
+  aggregator.start();
+  aggregator.onTrade(makeTrade(SYMBOL, 100, 1, 0));
+  aggregator.stop();  // flushes the partial bar with BarCloseReason::Forced
+  bus.stop();
+
+  const auto* series = matrix.series(SYMBOL, tfs[0]);
+  ASSERT_NE(series, nullptr);
+  ASSERT_EQ(series->size(), 2u);
+  EXPECT_EQ((*series)[0].reason, BarCloseReason::Forced) << "the live bar the aggregator just flushed";
+  EXPECT_EQ((*series)[1].reason, BarCloseReason::Warmup) << "the seeded historical bar, still underneath it";
 }

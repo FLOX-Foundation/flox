@@ -65,7 +65,7 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `bar.volume`, `bar.buyVolume` | `number` | Total / buy-side volume |
 | `bar.startTimeNs`, `bar.endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
 | `bar.barType`, `bar.barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
-| `bar.closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine currently emits only `Threshold` (a bar closed the normal way) and `Forced` (flushed by `stop()`); `Gap` is reserved and not yet distinguished from `Threshold`, and `Warmup` is never assigned by the engine itself -- it exists for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
+| `bar.closeReason` | `number` | 0=Threshold, 2=Forced, 3=Warmup (1 is unused). The engine emits `Threshold` for a normal close and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
 
 ### `onStart()` / `onStop()`
 

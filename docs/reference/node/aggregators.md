@@ -2,6 +2,11 @@
 
 All functions take `(timestamps, prices, quantities, isBuy, param)` where `timestamps`, `prices`, `quantities` are `Float64Array` and `isBuy` is `Uint8Array`. Return an array of bar objects.
 
+`aggregateRenkoBars` can return more bar objects than there were input trades: a trade that
+gaps past more than one brick width closes the brick that was forming and synthesizes the
+bricks in between (see [bar types](../../explanation/bar-types.md#renko-bars)). Every other
+function here closes at most one bar per input trade.
+
 | Function | Param | Description |
 |----------|-------|-------------|
 | `aggregateTimeBars(ts, px, qty, ib, intervalSeconds)` | seconds | Time bars |

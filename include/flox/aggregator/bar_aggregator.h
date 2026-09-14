@@ -73,6 +73,21 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
     if (_policy.shouldClose(trade, state.bar)) [[unlikely]]
     {
       emitBar(trade.trade.symbol, state);
+      // Renko is the one policy whose close can gap past more than one
+      // brick on a single trade; it alone offers gapBricks() to fill in the
+      // ones a continuous price path would have produced. The other six
+      // policies never gain this branch (`requires` fails to compile it for
+      // them at all), so this cannot turn into an unbounded loop for a
+      // policy whose very first trade already clears its threshold.
+      if constexpr (requires(const Policy& p, const TradeEvent& t, const Bar& b) {
+                      { p.gapBricks(t, b) } -> std::same_as<std::vector<Bar>>;
+                    })
+      {
+        for (const Bar& synthetic : _policy.gapBricks(trade, state.bar))
+        {
+          publishBar(trade.trade.symbol, state.instrument, synthetic);
+        }
+      }
       _policy.initBar(trade, state.bar);
       state.instrument = trade.trade.instrument;
       return;
@@ -94,12 +109,16 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
   void emitBar(SymbolId symbol, SymbolState& state, BarCloseReason reason = BarCloseReason::Threshold)
   {
     state.bar.reason = reason;
+    publishBar(symbol, state.instrument, state.bar);
+  }
 
+  void publishBar(SymbolId symbol, InstrumentType instrument, const Bar& bar)
+  {
     BarEvent ev{.symbol = symbol,
-                .instrument = state.instrument,
+                .instrument = instrument,
                 .barType = Policy::kBarType,
                 .barTypeParam = _policy.param(),
-                .bar = state.bar};
+                .bar = bar};
 
     if (_bus) [[likely]]
     {

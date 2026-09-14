@@ -12325,7 +12325,10 @@ bars = flox.aggregate_range_bars(timestamps, prices, quantities, is_buy,
 
 ### `aggregate_renko_bars(..., brick_size)`
 
-Aggregate trades into Renko bars with a fixed brick size.
+Aggregate trades into Renko bars with a fixed brick size. Unlike the other aggregators here,
+Renko can return more bars than there were input trades: a trade that gaps past more than one
+brick width closes the brick that was forming and synthesizes the bricks in between, walking
+the price from there to the trade in clean brick-size steps (see [bar types](../../explanation/bar-types.md#renko-bars)).
 
 ```python
 bars = flox.aggregate_renko_bars(timestamps, prices, quantities, is_buy,
@@ -14374,7 +14377,7 @@ All callbacks are optional.
 | `volume`, `buyVolume` | `number` | Total / buy-side volume |
 | `startTimeNs`, `endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
 | `barType`, `barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
-| `closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine currently emits only `Threshold` (a bar closed the normal way) and `Forced` (flushed by `stop()`); `Gap` is reserved and not yet distinguished from `Threshold`, and `Warmup` is never assigned by the engine itself -- it exists for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
+| `closeReason` | `number` | 0=Threshold, 2=Forced, 3=Warmup (1 is unused). The engine emits `Threshold` for a normal close and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
 
 ### SymbolContext (`ctx`)
 
@@ -14790,6 +14793,11 @@ for (const v of stream) {
 # Bar aggregation
 
 All functions take `(timestamps, prices, quantities, isBuy, param)` where `timestamps`, `prices`, `quantities` are `Float64Array` and `isBuy` is `Uint8Array`. Return an array of bar objects.
+
+`aggregateRenkoBars` can return more bar objects than there were input trades: a trade that
+gaps past more than one brick width closes the brick that was forming and synthesizes the
+bricks in between (see [bar types](../../explanation/bar-types.md#renko-bars)). Every other
+function here closes at most one bar per input trade.
 
 | Function | Param | Description |
 |----------|-------|-------------|
@@ -16793,7 +16801,7 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `bar.volume`, `bar.buyVolume` | `number` | Total / buy-side volume |
 | `bar.startTimeNs`, `bar.endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
 | `bar.barType`, `bar.barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
-| `bar.closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine currently emits only `Threshold` (a bar closed the normal way) and `Forced` (flushed by `stop()`); `Gap` is reserved and not yet distinguished from `Threshold`, and `Warmup` is never assigned by the engine itself -- it exists for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
+| `bar.closeReason` | `number` | 0=Threshold, 2=Forced, 3=Warmup (1 is unused). The engine emits `Threshold` for a normal close and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
 
 ### `onStart()` / `onStop()`
 
@@ -17103,7 +17111,10 @@ Extended operations:
 
 ## Bar aggregation
 
-Each helper takes `(timestamps, prices, quantities, sides, param)`:
+Each helper takes `(timestamps, prices, quantities, sides, param)`. `flox.renkoBars` can return
+more bars than there were input trades: a trade that gaps past more than one brick width closes
+the brick that was forming and synthesizes the bricks in between (see [bar types](../../explanation/bar-types.md#renko-bars)).
+Every other helper here closes at most one bar per input trade.
 
 | Call | `param` |
 |------|---------|
@@ -17948,7 +17959,14 @@ QuickJS and Node bindings.
 
 ## Bar aggregation
 
-All functions return the number of bars written.
+All functions return the total number of bars the input produced, and write as many of them
+as fit into `bars_out` (capacity `max`). Time, Tick, Volume, Range, and Heikin-Ashi close at
+most one bar per input trade, so sizing `bars_out` to `len` is always enough for them. Renko is
+the exception: a single trade that gaps past more than one brick width closes the brick that
+was forming and also synthesizes the bricks in between (see [bar types](../../../explanation/bar-types.md#renko-bars)),
+so it can return more bars than there were input trades. If the return value is greater than
+`max`, only the first `max` bars were written -- call again with a buffer sized to the return
+value to get the rest.
 
 | Function | Description |
 |----------|-------------|
@@ -19338,7 +19356,7 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
 
 - Loses timing information
 - Can miss reversals within brick
-- A single trade that gaps past the brick size does not get split into the intermediate bricks (see "Gaps" below)
+- The synthesized bricks from a gap (see "Gaps" below) carry no volume or trade-count data of their own, since no trade actually happened at those prices
 
 **Use when**:
 
@@ -19348,7 +19366,7 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
 
 **Unique property**: Renko bars only move one direction until reversal. A series of up-bricks means consistent upward movement without significant pullbacks.
 
-**Gaps**: a brick closes when a trade's price is at least one brick size away from the brick's open (which is the previous brick's close). If a single trade jumps several brick sizes at once -- a real gap, or just a thin book -- Flox does not synthesize the intermediate bricks a continuous price path would have produced. The current brick closes as it stood before that trade, and the next brick opens directly at the new trade's price; a large, sudden move can therefore appear as one ordinary-looking brick with no record of how far the price actually travelled. If your strategy depends on seeing every intermediate brick, replay the tape at a tick resolution fine enough that no single trade can cross more than one brick, rather than relying on gap-splitting.
+**Gaps**: a brick closes when a trade's price is at least one brick size away from the brick's open (which is the previous brick's close). If a single trade jumps several brick sizes at once -- a real gap, or just a thin book -- Flox fills in the intermediate bricks a continuous price path would have produced: the brick that was already forming closes as it stood before that trade (with the real volume and trade count it accumulated), and then one synthetic brick per additional whole brick width is emitted, walking the price from there to the new trade in clean steps of exactly one brick size. A new brick opens at the trade's exact price for whatever comes next. For example, a trade that jumps from 100 to 155 with a brick size of 10 spans 5.5 bricks: the real brick (100 to 100) plus 4 synthesized bricks (110, 120, 130, 140, each one brick tall) account for the 5 complete bricks the move spans, leaving a new brick open at 155. The synthesized bricks have no volume or trade count of their own -- no trade happened at those prices -- so treat them as a price-path marker, not as a record of activity.
 
 `param()` reports the brick size in the instrument's own price units (e.g. `10` for `RenkoBarPolicy::fromDouble(10.0)`), matching `TimeframeId::renko(brickSize)`.
 

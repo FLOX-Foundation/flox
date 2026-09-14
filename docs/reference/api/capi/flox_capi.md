@@ -737,7 +737,14 @@ QuickJS and Node bindings.
 
 ## Bar aggregation
 
-All functions return the number of bars written.
+All functions return the total number of bars the input produced, and write as many of them
+as fit into `bars_out` (capacity `max`). Time, Tick, Volume, Range, and Heikin-Ashi close at
+most one bar per input trade, so sizing `bars_out` to `len` is always enough for them. Renko is
+the exception: a single trade that gaps past more than one brick width closes the brick that
+was forming and also synthesizes the bricks in between (see [bar types](../../../explanation/bar-types.md#renko-bars)),
+so it can return more bars than there were input trades. If the return value is greater than
+`max`, only the first `max` bars were written -- call again with a buffer sized to the return
+value to get the rest.
 
 | Function | Description |
 |----------|-------------|
