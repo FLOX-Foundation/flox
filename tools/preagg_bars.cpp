@@ -210,7 +210,7 @@ int main(int argc, char** argv)
           trade.trade.exchangeTsNs = UnixNanos::fromRaw(ev.trade.exchange_ts_ns);
           trade.trade.isBuy = (ev.trade.side == 1);
           trade.trade.instrument = static_cast<InstrumentType>(ev.trade.instrument);
-          trade.exchangeMsgTsNs = ev.trade.exchange_ts_ns;
+          trade.exchangeMsgTsNs = UnixNanos::fromRaw(ev.trade.exchange_ts_ns);
 
           aggregator.onTrade(trade);
           ++tradeCount;
@@ -236,7 +236,8 @@ int main(int argc, char** argv)
   std::cout << "\n=== Complete ===\n";
   std::cout << "Processed: " << tradeCount << " trades\n";
   std::cout << "Duration:  " << durationMs << " ms\n";
-  std::cout << "Speed:     " << (tradeCount * 1000 / std::max(1L, durationMs)) << " trades/sec\n";
+  std::cout << "Speed:     " << (tradeCount * 1000 / std::max<decltype(durationMs)>(1, durationMs))
+            << " trades/sec\n";
   std::cout << "\nOutput files:\n";
 
   for (int tfSec : timeframeSecs)

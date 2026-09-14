@@ -226,7 +226,8 @@ jobs:
               -DFLOX_BUILD_CAPI=ON \
               -DFLOX_BUILD_PYTHON=ON \
               -DFLOX_BUILD_CODON=ON \
-              -DFLOX_BUILD_QUICKJS=ON
+              -DFLOX_BUILD_QUICKJS=ON \
+              -DFLOX_BUILD_TOOLS=ON
 
     - name: Build
       run: cmake --build build -j$(nproc)
@@ -626,7 +627,8 @@ jobs:
               -DFLOX_BUILD_BENCHMARKS=ON \
               -DFLOX_BUILD_DEMO=ON \
               -DFLOX_ENABLE_LZ4=ON \
-              -DFLOX_ENABLE_BACKTEST=ON
+              -DFLOX_ENABLE_BACKTEST=ON \
+              -DFLOX_BUILD_TOOLS=ON
 
     - name: Build
       run: cmake --build build -j$(sysctl -n hw.ncpu)
