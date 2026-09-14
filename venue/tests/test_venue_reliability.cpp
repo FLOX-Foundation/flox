@@ -12,6 +12,7 @@
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/symbol_router.h"
 #include "flox-venue/workload.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -24,6 +25,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -80,7 +82,7 @@ void test_journal_replay()
   cmds.emplace_back(CancelOrder{123, 1, 1});
   cmds.emplace_back(CancelOrder{999999, 1, 1});
 
-  const std::string path = "/tmp/flox_test_venue_reliability_journal_test.bin";
+  const std::string path = tmpPath("venue_reliability_journal", ".bin");
 
   uint64_t hashLive;
   uint64_t journaled;
@@ -105,7 +107,7 @@ void test_journal_replay()
 void test_journal_torn_and_corrupt_tail()
 {
   std::printf("test_journal_torn_and_corrupt_tail\n");
-  const std::string path = "/tmp/flox_test_venue_reliability_journal_torn.bin";
+  const std::string path = tmpPath("venue_reliability_journal_torn", ".bin");
 
   std::vector<InboundCommand> cmds;
   for (uint64_t i = 1; i <= 10; ++i)
@@ -143,7 +145,7 @@ void test_journal_torn_and_corrupt_tail()
   size_t prev = 0;
   for (size_t len = 0; len <= fileBytes.size(); ++len)
   {
-    const std::string tp = "/tmp/flox_test_venue_reliability_journal_trunc.bin";
+    const std::string tp = tmpPath("venue_reliability_journal_trunc", ".bin");
     {
       std::ofstream out(tp, std::ios::binary | std::ios::trunc);
       out.write(reinterpret_cast<const char*>(fileBytes.data()),
@@ -163,7 +165,7 @@ void test_journal_torn_and_corrupt_tail()
     const size_t recSize = Journal::kHeaderSize + sizeof(NewOrder) + sizeof(uint32_t);
     CHECK(bytes.size() == recSize * cmds.size());
     bytes[bytes.size() - recSize + Journal::kHeaderSize + 4] ^= 0xFF;  // flip a body byte
-    const std::string cp = "/tmp/flox_test_venue_reliability_journal_corrupt.bin";
+    const std::string cp = tmpPath("venue_reliability_journal_corrupt", ".bin");
     {
       std::ofstream out(cp, std::ios::binary | std::ios::trunc);
       out.write(reinterpret_cast<const char*>(bytes.data()),

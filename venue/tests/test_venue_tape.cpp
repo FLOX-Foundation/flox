@@ -12,6 +12,7 @@
 #include "flox-venue/workload.h"
 
 #include "flox/replay/readers/binary_log_reader.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 #include <cstdint>
@@ -22,6 +23,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -55,7 +57,7 @@ SymbolConfig cfg()
 
 TEST(Tape, EngineSuite)
 {
-  const std::string dir = "/tmp/flox_test_venue_tape_dir";
+  const std::string dir = tmpPath("venue_tape_dir");
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
 

@@ -24,6 +24,7 @@
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/sequenced_shard.h"
 #include "flox-venue/session_registry.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -41,6 +42,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -134,7 +136,7 @@ bool ledgersEqual(const Ledger& a, const Ledger& b, int maxAcct)
 // cleanly, which is what made this suite flaky under parallel/contended runs.
 std::string pidPath(const std::string& suffix)
 {
-  return "/tmp/flox_test_venue_" + suffix + "_" + std::to_string(::getpid());
+  return tmpPath("venue_" + suffix);
 }
 
 // Remove the legacy file and every checkpoint generation of `base`.

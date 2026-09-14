@@ -23,6 +23,7 @@
 #include "flox-venue/sequenced_shard.h"
 
 #include "flox/util/crc32.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -39,6 +40,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -153,7 +155,7 @@ std::vector<InboundCommand> childCommands()
 // exactly like a reference engine that was fed that prefix directly.
 TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_procdeath.bin";
+  const std::string path = tmpPath("venue_recovery_procdeath", ".bin");
   std::remove(path.c_str());
 
   const auto cmds = childCommands();
@@ -257,7 +259,7 @@ TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
 // must not erase it -- the restart replays it and keeps appending.
 TEST(VenueRecovery, RestartPreservesAndReplaysJournal)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_restart.bin";
+  const std::string path = tmpPath("venue_recovery_restart", ".bin");
   std::remove(path.c_str());
 
   {
@@ -316,7 +318,7 @@ TEST(VenueRecovery, RestartPreservesAndReplaysJournal)
 // With the old ts=0 journaling, the hold would never expire on replay.
 TEST(VenueRecovery, TimedReplayReproducesLastLookExpiry)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_lastlook.bin";
+  const std::string path = tmpPath("venue_recovery_lastlook", ".bin");
   std::remove(path.c_str());
 
   venue::SymbolConfig c = cfg();
@@ -376,7 +378,7 @@ TEST(VenueRecovery, TimedReplayReproducesLastLookExpiry)
 // conservation holds on both runs.
 TEST(VenueRecovery, GenesisReplaysFromEmptyLedger)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_genesis.bin";
+  const std::string path = tmpPath("venue_recovery_genesis", ".bin");
   std::remove(path.c_str());
 
   const std::vector<std::pair<int64_t, InboundCommand>> cmds{
@@ -439,7 +441,7 @@ TEST(VenueRecovery, GenesisReplaysFromEmptyLedger)
 // halt.
 TEST(VenueRecovery, ConfigReplayReproducesInstrumentState)
 {
-  const std::string path = "/tmp/flox_test_venue_recovery_config.bin";
+  const std::string path = tmpPath("venue_recovery_config", ".bin");
   std::remove(path.c_str());
 
   const std::vector<std::pair<int64_t, InboundCommand>> cmds{
@@ -547,7 +549,7 @@ void writeFile(const std::string& path, const std::vector<uint8_t>& bytes)
 
 TEST(VenueRecovery, PreviousFormatVersionIsRefusedByNameInsteadOfSilentlyTruncated)
 {
-  const std::string path = "/tmp/flox_venue_journal_v0_" + std::to_string(::getpid()) + ".bin";
+  const std::string path = tmpPath("venue_journal_v0", ".bin");
 
   // Nine records in the framing that predates versioning. The sixth is a
   // RestoreOrder as the earlier build laid it out: one 8-byte field shorter
@@ -591,7 +593,7 @@ TEST(VenueRecovery, PreviousFormatVersionIsRefusedByNameInsteadOfSilentlyTruncat
 
 TEST(VenueRecovery, UnknownFormatVersionNamesTheVersionItFound)
 {
-  const std::string path = "/tmp/flox_venue_journal_v9_" + std::to_string(::getpid()) + ".bin";
+  const std::string path = tmpPath("venue_journal_v9", ".bin");
 
   std::vector<uint8_t> bytes;
   NewOrder o = limit(1, Side::BUY, 100.0, 1.0, 1);
@@ -620,7 +622,7 @@ TEST(VenueRecovery, UnknownFormatVersionNamesTheVersionItFound)
 // at the wrong offsets.
 TEST(VenueRecovery, TheOtherScaleModeIsADifferentFormatVersion)
 {
-  const std::string path = "/tmp/flox_venue_journal_xm_" + std::to_string(::getpid()) + ".bin";
+  const std::string path = tmpPath("venue_journal_xm", ".bin");
   const unsigned other = (kRecordVersion == 1) ? 2u : 1u;
 
   std::vector<uint8_t> bytes;
@@ -643,7 +645,7 @@ TEST(VenueRecovery, TheOtherScaleModeIsADifferentFormatVersion)
 
 TEST(VenueRecovery, ThisBuildReadsWhatItWrites)
 {
-  const std::string path = "/tmp/flox_venue_journal_rt_" + std::to_string(::getpid()) + ".bin";
+  const std::string path = tmpPath("venue_journal_rt", ".bin");
   {
     Journal j(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
     for (uint64_t i = 1; i <= 4; ++i)

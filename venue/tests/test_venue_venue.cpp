@@ -17,6 +17,7 @@
 #include "flox-venue/session_registry.h"
 
 #include "flox/backtest/fee_schedule.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 #include <chrono>
@@ -31,6 +32,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -132,7 +134,7 @@ uint64_t runReplay(const std::vector<std::pair<int64_t, InboundCommand>>& cmds, 
 void test_auction_recovery()
 {
   std::printf("test_auction_recovery\n");
-  const std::string jpath = "/tmp/flox_test_venue_venue_auction_journal.bin";
+  const std::string jpath = tmpPath("venue_venue_auction_journal", ".bin");
   std::vector<std::pair<int64_t, InboundCommand>> cmds = genesis();  // deposits in the stream
   cmds.emplace_back(10, InboundCommand{AdminCmd{SYM, AdminAction::BeginPreOpen}});
   cmds.emplace_back(20, InboundCommand{limit(1, Side::SELL, 100, 5, 1)});             // accumulate (no match)
@@ -233,7 +235,7 @@ TEST(Venue, EngineSuite)
     return frameCount(a) >= want;
   };
   MarketDataPublisher<> md([](const MdMessage&) {}, px(0.01), SYM);
-  const std::string journalPath = "/tmp/flox_test_venue_venue_venue_journal.bin";
+  const std::string journalPath = tmpPath("venue_venue_journal", ".bin");
   Journal journal(journalPath);
   uint64_t liveHash = 1469598103934665603ULL;
 

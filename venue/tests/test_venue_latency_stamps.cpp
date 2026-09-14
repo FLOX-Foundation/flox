@@ -22,6 +22,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/metrics.h"
 #include "flox-venue/sequenced_shard.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -34,6 +35,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -78,7 +80,7 @@ struct MetricsPump final : IEngineEventListener
 TEST(VenueLatencyStamps, HistogramsFillFromTheRealPath)
 {
   const std::string dir =
-      (std::filesystem::temp_directory_path() / "flox_latency_stamps_test").string();
+      tmpPath("venue_latency_stamps");
   std::filesystem::remove_all(dir);
 
   MetricsPump pump;
