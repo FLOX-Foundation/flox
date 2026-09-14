@@ -6,7 +6,7 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Offline protocol test (CONN-13): Polymarket book/price_change/trade
+ * Offline protocol test: Polymarket book/price_change/trade
  * messages carry the venue's own "timestamp" field, but the connector used
  * to stamp exchangeTsNs with local processing time instead of reading it.
  * Feed frames with a timestamp far in the past and assert the event

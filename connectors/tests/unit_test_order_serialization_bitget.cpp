@@ -10,9 +10,9 @@
  * important negative result from the audit -- Bitget already translates
  * order type and triggerPrice correctly, that must not regress -- and
  * covers what actually needed fixing: force (time-in-force) driven by the
- * order instead of a static config value (CONN-02), and tradeSide/posSide
+ * order instead of a static config value, and tradeSide/posSide
  * gated by an explicit account position mode instead of firing
- * unconditionally off reduceOnly alone (CONN-08).
+ * unconditionally off reduceOnly alone.
  */
 
 #include "flox-connectors/bitget/authenticated_rest_client.h"
@@ -111,7 +111,7 @@ TEST(BitgetOrderSerialization, MarketOrderTranslatesToLowercaseMarketWithNoForce
 }
 
 // force must reflect the order's own timeInForce, not a static config
-// value ignored per order (CONN-02).
+// value ignored per order.
 TEST(BitgetOrderSerialization, LimitOrderForceComesFromOrderTimeInForce)
 {
   auto transport = std::make_unique<FakeTransport>();
@@ -201,12 +201,12 @@ TEST(BitgetOrderSerialization, StopMarketStillRoutesToPlanOrderWithTriggerPrice)
   EXPECT_NE(body.find(R"("planType":"normal_plan")"), std::string::npos) << body;
   EXPECT_NE(body.find(R"("triggerPrice":"58000)"), std::string::npos) << body;
   EXPECT_NE(body.find(R"("orderType":"market")"), std::string::npos) << body;
-  // tradeSide/posSide gating by position mode (CONN-08) applies to this
+  // tradeSide/posSide gating by position mode applies to this
   // path too -- it is exercised by the OneWay/Hedge tests below against
   // the regular submitOrder path; not re-asserted here.
 }
 
-// CONN-08: tradeSide/posSide must not fire unconditionally off reduceOnly
+// tradeSide/posSide must not fire unconditionally off reduceOnly
 // alone -- they now require the account's position mode to be known.
 TEST(BitgetOrderSerialization, OneWayModeOmitsTradeSideAndPosSide)
 {

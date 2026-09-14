@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay-equivalence CI gate (W2-T017).
+"""Replay-equivalence CI gate.
 
 Builds a deterministic tape and runs every frozen scenario under
 ``tests/replay-equivalence/scenarios/`` through a single SimulatedExecutor

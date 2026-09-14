@@ -1,4 +1,4 @@
-// Composite-condition DSL parity test for the Node binding (W1-T028).
+// Composite-condition DSL parity test for the Node binding.
 // The DSL is pure JavaScript sugar built on top of `lastNClosedBars`,
 // so we drive it with a fake strategy holding a synthetic bar ring.
 // End-to-end engine integration is exercised by the QuickJS suite in
@@ -52,7 +52,7 @@ const emptyStrat = fakeStrat([]);
 const emptyFast = when(emptyStrat, 1, BAR_TYPE_TIME, M1).ema(3);
 check('empty ring not ready', !emptyFast.isReady());
 
-// Indicator-grid sugar (W3-T017).
+// Indicator-grid sugar.
 const { grid } = require('../lib/composite');
 const H1 = 3600 * 1000000000;
 const g = grid(climbStrat, [1, 2], [M1, [BAR_TYPE_TIME, H1]]).ema(3);

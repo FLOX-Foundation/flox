@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Tuple
 
 import mcp.server.stdio
 from mcp.server.lowlevel import Server
@@ -518,8 +518,11 @@ def build_server() -> Server:
                         },
                         "wall_timeout_s": {
                             "type": "integer",
+                            "minimum": 1,
+                            "maximum": runtime.MAX_WALL_TIMEOUT_S,
                             "description":
-                                "Wall-clock timeout in seconds. Default 60.",
+                                "Wall-clock timeout in seconds. Default 60, "
+                                f"capped at {runtime.MAX_WALL_TIMEOUT_S}.",
                         },
                     },
                 },
@@ -1246,9 +1249,16 @@ def build_server() -> Server:
             ),
         ])
 
-    async def _call_tool(ctx: Any, params: CallToolRequestParams) -> CallToolResult:
-        name = params.name
-        arguments = params.arguments or {}
+    def _dispatch_tool_sync(name: str, arguments: dict) -> Tuple[str, bool]:
+        """Runs every tool implementation. Synchronous and blocking by
+        design -- some tools shell out (record_data, run_backtest) or do
+        real CPU work (compute_indicator) -- so `_call_tool` below always
+        calls this through `asyncio.to_thread`, never directly on the
+        event loop. Returns (text, is_error); is_error is True whenever
+        the requested action did not happen, so a client branching on the
+        MCP `isError` flag sees an accurate signal instead of the `False`
+        every path used to return regardless of outcome."""
+        is_error = False
         try:
             if name == "flox_overview":
                 text = overview.flox_overview()
@@ -1386,7 +1396,7 @@ def build_server() -> Server:
                     state_path=arguments.get("state_path"),
                 )
             elif name == "place_order":
-                text = control.place_order(
+                text, is_error = control.place_order(
                     account=arguments["account"],
                     symbol=int(arguments["symbol"]),
                     side=arguments["side"],
@@ -1398,25 +1408,25 @@ def build_server() -> Server:
                     approve_token=arguments.get("approve_token"),
                 )
             elif name == "cancel_order":
-                text = control.cancel_order(
+                text, is_error = control.cancel_order(
                     account=arguments["account"],
                     order_id=int(arguments["order_id"]),
                     dry_run=bool(arguments.get("dry_run", True)),
                 )
             elif name == "cancel_all":
-                text = control.cancel_all(
+                text, is_error = control.cancel_all(
                     account=arguments["account"],
                     symbol=int(arguments.get("symbol", 0)),
                     dry_run=bool(arguments.get("dry_run", True)),
                 )
             elif name == "flatten_positions":
-                text = control.flatten_positions(
+                text, is_error = control.flatten_positions(
                     account=arguments["account"],
                     symbol=arguments.get("symbol"),
                     dry_run=bool(arguments.get("dry_run", True)),
                 )
             elif name == "set_kill_switch":
-                text = control.set_kill_switch(
+                text, is_error = control.set_kill_switch(
                     active=bool(arguments["active"]),
                     reason=arguments.get("reason", ""),
                     dry_run=bool(arguments.get("dry_run", True)),
@@ -1465,11 +1475,29 @@ def build_server() -> Server:
                 )
             else:
                 text = f"unknown tool: {name}"
+                is_error = True
         except Exception as exc:  # surface real errors to the AI client
             log.exception("tool %s failed", name)
             text = f"flox-mcp error: {type(exc).__name__}: {exc}"
+            is_error = True
 
-        return CallToolResult(content=[TextContent(type="text", text=text)])
+        return text, is_error
+
+    async def _call_tool(ctx: Any, params: CallToolRequestParams) -> CallToolResult:
+        # _dispatch_tool_sync blocks (subprocess.run for record_data /
+        # run_backtest, CPU-bound work for compute_indicator, network I/O
+        # for the control-plane tools). Running it inline on this coroutine
+        # would stall the single-threaded asyncio event loop the whole MCP
+        # server runs on for the duration of that call, so every other
+        # concurrent request -- including ones with no long-running work of
+        # their own -- would stop making progress too. to_thread offloads
+        # it to a worker thread instead.
+        name = params.name
+        arguments = params.arguments or {}
+        text, is_error = await asyncio.to_thread(_dispatch_tool_sync, name, arguments)
+        return CallToolResult(
+            content=[TextContent(type="text", text=text)], isError=is_error
+        )
 
     server.add_request_handler("tools/list", PaginatedRequestParams, _list_tools)
     server.add_request_handler("tools/call", CallToolRequestParams, _call_tool)

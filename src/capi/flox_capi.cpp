@@ -1995,7 +1995,7 @@ void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity
 }
 
 // ============================================================
-// Multi-leg order group (W15-T004)
+// Multi-leg order group
 // ============================================================
 
 #include "flox/execution/order_group.h"
@@ -2247,7 +2247,7 @@ uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
 }
 
 // ============================================================
-// Multi-feed clock (W6-T021)
+// Multi-feed clock
 // ============================================================
 
 #include "flox/feed/multi_feed_clock.h"
@@ -8423,7 +8423,7 @@ void flox_backtest_runner_set_pnl_tracker(FloxBacktestRunnerHandle h,
 }
 
 // ============================================================
-// Walk-forward (W6-T007 / T008)
+// Walk-forward
 // ============================================================
 
 namespace
@@ -8641,7 +8641,7 @@ uint32_t flox_walk_forward_run_csv(FloxRegistryHandle reg_handle,
 }
 
 // ============================================================
-// Grid search (W6-T002 sequential)
+// Grid search (sequential)
 // ============================================================
 
 struct FloxGridSearchImpl
@@ -8741,7 +8741,7 @@ uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
 }
 
 // ============================================================
-// Heatmap rendering (W6-T004)
+// Heatmap rendering
 // ============================================================
 
 uint64_t flox_render_heatmap_html(const FloxHeatmapData* data,
@@ -10459,7 +10459,7 @@ extern "C" uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderH
 }
 
 // ============================================================
-// Streaming tape aggregators (W14-T019)
+// Streaming tape aggregators
 // ============================================================
 
 namespace

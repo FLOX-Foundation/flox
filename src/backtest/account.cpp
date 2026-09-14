@@ -119,7 +119,7 @@ bool Account::hasStaleMarks(int64_t nowNs, int64_t budgetNs) const
     {
       return true;  // never marked
     }
-    // BT-10: ts == 0 means the caller went through the bare `setMark(symbol,
+    // ts == 0 means the caller went through the bare `setMark(symbol,
     // price)` overload without a timestamp (the default keeps ts at 0, see
     // the header contract above). Computing `nowNs - 0` against a real
     // wall-clock nowNs is always tens of years, so the guard would report

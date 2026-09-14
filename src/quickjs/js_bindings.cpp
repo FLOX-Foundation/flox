@@ -611,7 +611,7 @@ static JSValue js_strategy_set_bar_ring_capacity(JSContext* ctx, JSValueConst, i
 }
 
 // ============================================================
-// Multi-feed clock (W6-T021)
+// Multi-feed clock
 //
 // This used to hand the raw heap pointer straight back to the script as
 // a BigInt (visible in plaintext, defeating ASLR) and accept any BigInt

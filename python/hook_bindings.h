@@ -1412,7 +1412,7 @@ class PyExecutionListenerCxxAdapter : public flox::IOrderExecutionListener
 // (Mapping is one-to-one: onOrderSubmitted → on_submitted, etc., done in
 // each macro instance.)
 
-// ── Pre-trade gate adapters (W1-T036) ────────────────────────────────
+// ── Pre-trade gate adapters ────────────────────────────────
 //
 // Bridge the existing PyRiskManager / PyKillSwitch / PyOrderValidator /
 // PyPnLTracker (which work on PySignal) into the engine-side

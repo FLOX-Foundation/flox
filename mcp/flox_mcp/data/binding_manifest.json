@@ -40543,7 +40543,7 @@
       "napi": {
         "classes": [],
         "functions": [],
-        "reason": "exposed via flox.report.heatmapHtml namespace, not as a class or top-level function. Cosmetic gap; tracked under W6-T004 follow-up if dts shape needs flattening.",
+        "reason": "exposed via flox.report.heatmapHtml namespace, not as a class or top-level function. Cosmetic gap; tracked as a follow-up if dts shape needs flattening.",
         "status": "allowlist"
       },
       "pybind11": {

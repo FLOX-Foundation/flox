@@ -1,4 +1,4 @@
-"""Unit tests for the polyglot MCP tools introduced in W2-T014.
+"""Unit tests for the polyglot MCP tools.
 
 Each test calls the framework-agnostic tool function directly (no MCP
 client) so failure surfaces are tight. The bundled data must already
@@ -111,7 +111,7 @@ def test_lookup_symbol_attaches_gotcha_when_resolved():
     ],
 )
 def test_lookup_symbol_finds_polyglot_classes(klass: str):
-    """W15-T063: polyglot classes (Account, VenueStack, LiquidationEngine,
+    """Polyglot classes (Account, VenueStack, LiquidationEngine,
     ...) have no C-ABI symbol with that exact spelling. The resolver
     must consult the inverted class->group index from
     binding_manifest.json so an AI agent searching for the class name

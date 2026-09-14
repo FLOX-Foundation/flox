@@ -59,7 +59,7 @@ class Decimal
 
   constexpr double toDouble() const { return static_cast<double>(_raw) / Scale; }
 
-  // Scale-aware conversions (W17-T001). The compile-time Scale is the default
+  // Scale-aware conversions. The compile-time Scale is the default
   // (1e8) used by CEX symbols; a DEX symbol carries its own scale in
   // SymbolInfo and converts through these explicit-scale overloads so the
   // raw int64 is interpreted correctly for its value range.

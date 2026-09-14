@@ -76,7 +76,7 @@ void IxWebSocketClient::stop()
   // The reconnect backoff sleep is a separate wait, not this tick: wake it up
   // explicitly so a stop() that lands while run() is backing off does not
   // have to wait out the remainder (up to MAX_BACKOFF_MS) of an
-  // uninterruptible sleep_for (CONN-11).
+  // uninterruptible sleep_for.
   _backoffCv.notify_all();
 }
 
@@ -198,7 +198,7 @@ void IxWebSocketClient::run()
                     "ms... (attempt " + std::to_string(failures) + ")");
       // Interruptible wait: stop() calls _backoffCv.notify_all() so shutdown
       // does not have to sleep out the remainder of a backoff up to
-      // MAX_BACKOFF_MS (CONN-11) -- it returns as soon as _running goes
+      // MAX_BACKOFF_MS -- it returns as soon as _running goes
       // false, same tick-latency budget as the connectionClosed wait above.
       std::unique_lock<std::mutex> backoffLock(_backoffMutex);
       _backoffCv.wait_for(backoffLock, std::chrono::milliseconds(backoffMs),

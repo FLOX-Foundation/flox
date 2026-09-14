@@ -1,5 +1,5 @@
 """
-python/tests/test_dex_router.py -- router / arb / chain ingest (W24-T004).
+python/tests/test_dex_router.py -- router / arb / chain ingest.
 
 Best-execution routing, depth-aware cross-pool arb sizing, and the address-to-Pool /
 address-to-Tape ingest adapters. The arb is checked against an actual clone-based

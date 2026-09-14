@@ -91,7 +91,7 @@ std::string_view bitgetForceToken(NormalizedTif tif)
 // tradeSide/posSide only get sent once the account's position mode is
 // actually known. Sending them unconditionally off reduceOnly alone (the
 // pre-fix behaviour) meant the field's meaning depended on an account
-// setting this connector never tracked (CONN-08).
+// setting this connector never tracked.
 void appendPositionFields(std::string& body, const Order& order, const Bitget::Params& params)
 {
   if (params.positionMode != Bitget::PositionMode::Hedge)
@@ -325,7 +325,7 @@ void BitgetOrderExecutorT<Policies>::publishRejection(const Order& order, const 
 // A client-side rate-limit rejection never reached the venue and left no
 // trace anywhere -- the tracker (if any record existed) kept reporting the
 // order active with no signal that a cancel or replace silently never left
-// the process (CONN-05). Deliberately does not touch OrderTracker: unlike
+// the process. Deliberately does not touch OrderTracker: unlike
 // publishRejection, there was no submission attempt to mark rejected.
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::publishRateLimited(const Order& order)
@@ -422,7 +422,7 @@ void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
   if (!isMarket)
   {
     // force carries the order's own timeInForce/postOnly now, not a static
-    // config value that ignored per-order intent (CONN-02).
+    // config value that ignored per-order intent.
     body.append("\"force\":\"").append(bitgetForceToken(tif)).append("\",");
   }
 
@@ -536,7 +536,7 @@ void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
   }
 
   // Looked up before the rate-limit check so a rejected cancel can still be
-  // reported against the order it targeted (CONN-05) instead of vanishing
+  // reported against the order it targeted instead of vanishing
   // with no event while the tracker keeps reporting the order active.
   if (!_policies.rateLimit.tryAcquire(id,
                                       [this, &st]

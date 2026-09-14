@@ -1,6 +1,6 @@
 """Realistic Binance UM perp backtest assembled in one factory call.
 
-Demonstrates the W15-T052 venue stack pattern: every venue subsystem
+Demonstrates the venue stack pattern: every venue subsystem
 (executor, account, liquidation, fee schedule, funding schedule, rate
 limits, venue availability) is wired with venue-realistic defaults in
 a single `flox.VenueStack.binance_um_futures(...)` call.

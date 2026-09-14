@@ -1,4 +1,4 @@
-// node/src/feed_clock.h — Multi-feed clock (W6-T021).
+// node/src/feed_clock.h — Multi-feed clock.
 //
 // Thin NAPI wrap over the C ABI flox_feed_clock_* surface. Policy is
 // taken as a string ('WaitForAll' / 'FireOnAny' / 'LeaderFollower');

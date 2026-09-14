@@ -1,6 +1,6 @@
 """Runtime MCP tools — `run_backtest`, `compute_indicator`, `suggest_indicator`.
 
-These are the W2-T012 follow-up tools. Two run user / agent-supplied
+These are follow-up tools for the runtime module. Two run user / agent-supplied
 data through real Python code at request time, so they need different
 safety treatment than the read-only IR / docs tools:
 
@@ -36,12 +36,21 @@ from typing import Any, Iterable, List, Mapping, Optional, Tuple
 # ── run_backtest ──────────────────────────────────────────────────────
 
 
-# Sandbox limits per W2-T012. Defaults are conservative so the MCP
+# Sandbox limits. Defaults are conservative so the MCP
 # host stays responsive even if every backtest pegs CPU.
 DEFAULT_CPU_SECONDS = 60
 DEFAULT_RSS_BYTES = 1 * 1024 * 1024 * 1024   # 1 GiB
 DEFAULT_FSIZE_BYTES = 64 * 1024 * 1024       # 64 MiB output cap
 DEFAULT_WALL_TIMEOUT_S = 60
+# `wall_timeout_s` is the one sandbox parameter the caller (an AI agent)
+# controls directly, and it was unbounded: no maximum in the tool schema,
+# no clamp here. RLIMIT_CPU still kills a CPU-bound runaway regardless of
+# this value, but work that blocks without spending CPU -- I/O wait, a
+# lock, a hung syscall -- has no other guard, so an agent-supplied
+# wall_timeout_s of a day or a year would hold the worker subprocess (and
+# the `subprocess.run(..., timeout=wall_timeout_s)` call waiting on it)
+# open for that long. 10 minutes is generous for a single backtest call.
+MAX_WALL_TIMEOUT_S = 600
 
 MAX_STRATEGY_CODE_BYTES = 256 * 1024         # 256 KiB code cap
 MAX_DATASET_BYTES = 64 * 1024 * 1024         # 64 MiB dataset cap
@@ -98,6 +107,21 @@ def run_backtest(
         return (
             f"run_backtest: strategy_code is over the "
             f"{MAX_STRATEGY_CODE_BYTES // 1024} KiB cap."
+        )
+    try:
+        wall_timeout_s = int(wall_timeout_s)
+    except (TypeError, ValueError):
+        return (
+            f"run_backtest: `wall_timeout_s` must be an integer number of "
+            f"seconds, got {wall_timeout_s!r}."
+        )
+    if wall_timeout_s <= 0:
+        return "run_backtest: `wall_timeout_s` must be positive."
+    if wall_timeout_s > MAX_WALL_TIMEOUT_S:
+        return (
+            f"run_backtest: wall_timeout_s={wall_timeout_s} is over the "
+            f"{MAX_WALL_TIMEOUT_S}s cap. Split the run or narrow the "
+            f"dataset instead of raising the timeout."
         )
     dataset, err = _validate_dataset_path(dataset_path)
     if err:

@@ -210,6 +210,9 @@ bookkeeping, then dispatches. Override `onSymbolTrade` instead. The base
 constructor takes `(id, symbol, registry)`.
 
 ```cpp
+// Stand-in for your own entry logic, so the example below compiles as shown.
+bool shouldBuy(const TradeEvent&) { return false; }
+
 class DebugStrategy : public Strategy {
 public:
   DebugStrategy(SymbolId symbol, const SymbolRegistry& registry)
@@ -247,7 +250,7 @@ int main() {
   // Inspect state when signal was emitted
   auto state = runner.state();
   std::cout << "Signal emitted at trade #" << state.tradeCount << "\n";
-  std::cout << "Time: " << state.currentTimeNs << "\n";
+  std::cout << "Time: " << state.currentTimeNs.raw() << "\n";
 
   // Continue running
   runner.resume();

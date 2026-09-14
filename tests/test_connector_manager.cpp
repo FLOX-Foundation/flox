@@ -96,7 +96,7 @@ TEST(ConnectorManagerTest, RegisterAndStartAll)
   EXPECT_TRUE(tradeCalled);
 }
 
-// POS-08: startAll used to move the caller's callbacks into a fresh lambda on
+// startAll used to move the caller's callbacks into a fresh lambda on
 // every loop iteration. With two connectors, only the first (lexicographically
 // smallest exchangeId(), since `connectors` is a std::map) kept a live
 // callback; the second's copy of the moved-from MoveOnlyFunction was non-null
@@ -144,7 +144,7 @@ TEST(ConnectorManagerTest, StartAllWiresCallbacksToEveryConnectorNotJustTheFirst
   EXPECT_EQ(tradeCount, 2);
 }
 
-// CONN-12: ConnectorManager had no way to stop what it started, and its
+// ConnectorManager had no way to stop what it started, and its
 // destructor let shared_ptr-owned connectors go out of scope while still
 // running. stopAll() must reach every registered connector, and the
 // destructor must call it.

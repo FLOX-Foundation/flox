@@ -1185,7 +1185,7 @@ class DataReader:
 
 
 # ======================================================================
-# MergedTapeReader -- k-tape consumption (W14-T016)
+# MergedTapeReader -- k-tape consumption
 # ======================================================================
 
 
@@ -1220,7 +1220,7 @@ class MergedTapeReader:
     Opens a set of ``.floxlog`` directories, rekeys their symbols into a
     global id space keyed by ``(metadata.exchange, name)``, and exposes
     a time-sorted view across all tapes. Mirrors ``flox_py.MergedTapeReader``
-    and the pybind11 binding documented under W14-T016.
+    and the pybind11 binding documented alongside it.
 
     Example::
 

@@ -3,7 +3,7 @@
 # it to a Runner, drives a tape that crosses an M5 bar boundary,
 # and reads the bar ring back through Strategy.last_closed_bar.
 #
-# Before W9-T003 the Codon FFI couldn't model struct-by-value
+# Before this fix, the Codon FFI couldn't model struct-by-value
 # parameters, so this smoke would never have run. With the pointer
 # variants in place, pure-Codon strategies are constructible.
 

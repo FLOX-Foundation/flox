@@ -2355,7 +2355,7 @@ class PyBacktestRunner
   std::unique_ptr<flox_py::cxx_adapters::PyExecutorCxxAdapter> _executor_adapter;
   std::vector<std::unique_ptr<flox_py::cxx_adapters::PyExecutionListenerCxxAdapter>>
       _listener_adapters;
-  // Pre-trade gate adapters (W1-T036). Owned so they outlive the
+  // Pre-trade gate adapters. Owned so they outlive the
   // runner's non-owning IRiskManager / IKillSwitch / IOrderValidator
   // / IPnLTracker pointers. Replaced on every set_* call.
   std::unique_ptr<flox_py::cxx_adapters::PyRiskManagerCxxAdapter> _risk_adapter;

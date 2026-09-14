@@ -353,9 +353,9 @@ def diff_structs(
 
 # Pre-existing coverage gaps, exempted from the "missing" list until a
 # dedicated follow-up closes them. This module only learned to see macros
-# at all in flox-audit-2026-09 batch B02 (OPS-03); these specific names were
+# at all after a recent fix; these specific names were
 # already missing from the golden/codegen artifacts before that change, so
-# turning macro coverage on must not fail every PR over a gap this batch
+# turning macro coverage on must not fail every PR over a gap this change
 # did not create. Do NOT add a name here to silence a NEW gap your own
 # change introduced -- exempt only what already existed, and delete the
 # entry once something actually closes it.
@@ -363,15 +363,14 @@ KNOWN_MISSING_MACROS = {
     # FLOX_SIGNAL_TYPE_* order-type codes exist only in the hand-written
     # include/flox/capi/flox_capi.h; the codegen spec has no macro-constant
     # IDL group, so golden/flox_capi.{h,codon,md} never learned about them.
-    # Checked again after flox-audit-2026-09 batch B01 (order-type-code
-    # unification, PR #460) merged: B01 solved the cross-binding order-type
-    # drift via a runtime name<->code table (order_type_names.hpp), not by
-    # teaching codegen about this macro group, so it did NOT close this gap
-    # -- these 11 names are still absent from every golden artifact after
-    # B01. No batch currently owns closing it; needs its own follow-up
-    # (extend the codegen spec / emitters with a macro-constant IDL group)
-    # rather than being lumped into a future PR that happens to touch
-    # order-type codes again.
+    # Checked again after the cross-binding order-type unification merged:
+    # that fix solved the cross-binding order-type drift via a runtime
+    # name<->code table (order_type_names.hpp), not by teaching codegen
+    # about this macro group, so it did NOT close this gap -- these 11
+    # names are still absent from every golden artifact. Nothing currently
+    # owns closing it; needs its own follow-up (extend the codegen spec /
+    # emitters with a macro-constant IDL group) rather than being lumped
+    # into a future PR that happens to touch order-type codes again.
     "FLOX_SIGNAL_TYPE_MARKET",
     "FLOX_SIGNAL_TYPE_LIMIT",
     "FLOX_SIGNAL_TYPE_STOP_MARKET",

@@ -164,4 +164,3 @@ TEST(LiveQueuePositionEstimator, ConfidenceClampedToUnitInterval)
     EXPECT_LE(snap->confidence, 1.0);
   }
 }
-// W15-T020 — gated test below

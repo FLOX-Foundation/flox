@@ -20,7 +20,7 @@
 //   2. The FLOX_SCALE_CHECK guardrail and a checked int128->int64 narrowing
 //      helper used by the fixed-point arithmetic.
 //
-// Per-symbol scale (W17-T001) removes the compile-time guarantee that every
+// Per-symbol scale removes the compile-time guarantee that every
 // Price shares one scale. The guarantee is recovered at dev/CI time through
 // FLOX_SCALE_CHECK; in release builds the check compiles to nothing. The
 // macro spelling for contracts is still settling across toolchains, so any
@@ -172,6 +172,18 @@ inline void resetFixedPointDivisionsByZero() noexcept
   detail::g_divisionsByZero.store(0, std::memory_order_relaxed);
 }
 
+// `constexpr` here holds only in a build where FLOX_SCALE_CHECKS is 0
+// (NDEBUG, i.e. every configuration this project's CMakeLists.txt
+// actually produces -- CMAKE_BUILD_TYPE is forced to Release). With
+// FLOX_SCALE_CHECKS on, FLOX_SCALE_CHECK below always expands to
+// `assert(false && ...)`, which no compiler can constant-evaluate, so
+// the function cannot be a constant expression for any input in that
+// configuration. Clang diagnoses that as a hard error by default
+// (-Winvalid-constexpr) the moment such a build compiles this header;
+// GCC has no equivalent diagnostic, so the project's GCC-based
+// sanitizer lane (Debug, checks on) does not see it. Not live in any
+// build this project's CI runs today, but real enough that a future
+// Clang-based debug lane would hit it immediately.
 constexpr int64_t dividedByZeroI64(int64_t numerator) noexcept
 {
   FLOX_SCALE_CHECK(false, "fixed-point division by zero");

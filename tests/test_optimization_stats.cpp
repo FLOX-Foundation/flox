@@ -293,7 +293,7 @@ TEST_F(OptimizationStatsTest, BootstrapCIMultipleValues)
   EXPECT_LT(ci.lower, ci.upper);
 }
 
-// === BT-07 / TD-06: determinism, add-one p-value correction, OOB safety ===
+// === determinism, add-one p-value correction, OOB safety ===
 
 // Before the fix, both permutationTest and bootstrapCI seeded their RNG from
 // `std::random_device` inside the function body -- the same call on the same
@@ -371,7 +371,7 @@ TEST_F(OptimizationStatsTest, PermutationTestNeverReturnsExactZero)
   EXPECT_GE(pValue, 1.0 / 501.0 - 1e-12);
 }
 
-// BT-07: confidenceLevel == 1.0 must not read past the end of the sorted
+// confidenceLevel == 1.0 must not read past the end of the sorted
 // bootstrap-means buffer (a confirmed ASan heap-buffer-overflow before the
 // fix: upperIdx == numSamples).
 TEST_F(OptimizationStatsTest, BootstrapCIConfidenceLevelOneDoesNotReadOutOfBounds)
@@ -382,7 +382,7 @@ TEST_F(OptimizationStatsTest, BootstrapCIConfidenceLevelOneDoesNotReadOutOfBound
   EXPECT_LE(ci.median, ci.upper);
 }
 
-// BT-07: numSamples == 0 must not crash (a confirmed SEGV before the fix:
+// numSamples == 0 must not crash (a confirmed SEGV before the fix:
 // indexing into an empty bootstrapMeans vector).
 TEST_F(OptimizationStatsTest, BootstrapCIZeroSamplesReturnsZeroInsteadOfCrashing)
 {
@@ -429,7 +429,7 @@ TEST_F(OptimizationStatsTest, GenerateReportEmpty)
   std::vector<OptimizationResult<MockParams>> empty;
   auto reportPath = _test_dir / "empty_report.md";
 
-  // TD-07: generateReport now reports success/failure via its return value
+  // generateReport now reports success/failure via its return value
   // instead of leaving the caller to infer it from the log stream. With a
   // valid (writable) path, opening the file succeeds even for zero results
   // -- the report is headers-only, not absent.
@@ -487,7 +487,7 @@ TEST_F(OptimizationStatsTest, GenerateReportInvalidPath)
   results.push_back(r);
 
   auto invalidPath = "/nonexistent/directory/report.md";
-  // TD-07: before this fix, the only way to tell a lost report from a
+  // Before this fix, the only way to tell a lost report from a
   // written one was to notice the ERROR line in the log stream -- the
   // function returned void either way. It must now report failure via its
   // return value, and the file must genuinely not have been created.

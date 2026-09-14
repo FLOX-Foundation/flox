@@ -47,7 +47,7 @@ namespace flox
 // bin book + volatility state for Meteora DLMM. An n-token SwapDelta names the
 // (i, j) pair explicitly; a swap off the connector's pair still moves the pool. A
 // dedicated LiquidityDelta record (avoid re-anchoring on a mint/burn) is the
-// remaining W23-T001 piece.
+// remaining piece.
 
 enum class PoolRecord : uint8_t
 {

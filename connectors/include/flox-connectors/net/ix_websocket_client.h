@@ -60,7 +60,7 @@ class IxWebSocketClient : public IWebSocketClient
   std::mutex _sendMutex;
 
   // Guards the reconnect backoff wait so stop() can interrupt it instead of
-  // sleeping it out (see CONN-11: an uninterruptible sleep_for here made
+  // sleeping it out (an uninterruptible sleep_for here used to make
   // shutdown take up to MAX_BACKOFF_MS instead of one wait-loop tick).
   std::mutex _backoffMutex;
   std::condition_variable _backoffCv;
@@ -71,7 +71,7 @@ class IxWebSocketClient : public IWebSocketClient
 
   // Written from the ix callback thread (reset to 0 on Open), read and
   // incremented from run(). Plain int next to a deliberately atomic _running
-  // was flagged as a hygiene risk (CONN-10): the only path that could race it
+  // was flagged as a hygiene risk: the only path that could race it
   // requires ix::WebSocket::stop() to throw and leave its worker thread
   // alive, which was not reproduced, but atomic costs nothing here.
   std::atomic<int> _consecutiveFailures{0};

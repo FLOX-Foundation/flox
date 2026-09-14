@@ -42,17 +42,32 @@ def _apply_rlimits(cpu_seconds: int, rss_bytes: int, fsize_bytes: int) -> None:
         resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
     except (ValueError, OSError):
         pass
-    # RLIMIT_AS bounds total virtual memory; macOS does not always
-    # honour it (kernel returns OK but doesn't enforce). RLIMIT_RSS
-    # is Linux-only. Try AS first, fall back silently.
+    # RLIMIT_AS bounds total virtual memory; RLIMIT_RSS is Linux-only, so
+    # RLIMIT_DATA is the fallback. On macOS, both calls raise ValueError
+    # ("current limit exceeds maximum limit") for any rss_bytes below the
+    # kernel's hard ceiling -- there is no lower memory rlimit to set on
+    # this platform, full stop. That used to be swallowed by `except:
+    # continue` with no trace anywhere, so a memory-hungry strategy ran
+    # completely unbounded (RLIMIT_CPU still applies and eventually kills
+    # a CPU-bound runaway, but a memory leak that barely uses CPU would
+    # not trip it) and nothing in the response said so.
+    memory_limited = False
     for limit_name in ("RLIMIT_AS", "RLIMIT_DATA"):
         if hasattr(resource, limit_name):
             try:
                 resource.setrlimit(getattr(resource, limit_name),
                                     (rss_bytes, rss_bytes))
+                memory_limited = True
                 break
             except (ValueError, OSError):
                 continue
+    if not memory_limited:
+        sys.stderr.write(
+            "worker: no memory rlimit could be applied on this platform "
+            f"(tried RLIMIT_AS, RLIMIT_DATA for {rss_bytes} bytes); "
+            "the backtest runs with unbounded memory. Only the CPU-time "
+            "and output-size limits are enforced here.\n"
+        )
     try:
         resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_bytes, fsize_bytes))
     except (ValueError, OSError):

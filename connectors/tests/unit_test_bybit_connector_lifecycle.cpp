@@ -6,7 +6,7 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * CONN-12: BybitExchangeConnector declared no destructor, and _pingThread
+ * BybitExchangeConnector declared no destructor, and _pingThread
  * (a joinable std::thread once start() has run) was its last member.
  * Destroying a running connector on any path that skips an explicit stop()
  * call -- an early return, an exception, or simply falling out of scope --

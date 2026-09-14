@@ -26,7 +26,7 @@ class ConnectorManager
 
   // Registered connectors are owned via shared_ptr; destroying a running
   // connector without stop() first is a guaranteed abort for implementations
-  // that join a worker thread in their destructor (see CONN-12). stopAll()
+  // that join a worker thread in their destructor. stopAll()
   // makes sure every connector this manager started is stopped before its
   // last owning reference goes away here.
   ~ConnectorManager() { stopAll(); }
