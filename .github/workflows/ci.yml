@@ -603,8 +603,13 @@ jobs:
   macos:
     needs: [format-check, verify-docs-current]
     runs-on: macos-latest
-    # Observed: ~7 min.
-    timeout-minutes: 25
+    # Observed: ~7-8 min plain, +119% with the undefined-behavior sanitizer
+    # (~15 min) -- still at or below linux-gcc, the longest job in the
+    # matrix, so this does not lengthen the overall run. LeakSanitizer and
+    # ThreadSanitizer stay off this job: ASan leak detection is unsupported
+    # on Darwin (silently ignored) and TSan is covered on Linux already, so
+    # only UBSan is worth the macOS runner cost here.
+    timeout-minutes: 30
 
     steps:
     - uses: actions/checkout@v5
@@ -616,6 +621,7 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/google/googletest.git
         cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_FLAGS="-fsanitize=undefined -fno-omit-frame-pointer" \
           -DCMAKE_INSTALL_PREFIX=~/gtest-install
         cmake --build gtest-build
         cmake --install gtest-build
@@ -635,6 +641,8 @@ jobs:
         LZ4_PREFIX=$(brew --prefix lz4)
         cmake -B build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CXX_FLAGS="-fsanitize=undefined -fno-omit-frame-pointer -g" \
+              -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined" \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install;$LZ4_PREFIX" \
               -DCMAKE_LIBRARY_PATH="$LZ4_PREFIX/lib" \
               -DCMAKE_INCLUDE_PATH="$LZ4_PREFIX/include" \
@@ -648,10 +656,14 @@ jobs:
     - name: Build
       run: cmake --build build -j$(sysctl -n hw.ncpu)
 
-    - name: Run tests
+    - name: Run tests with undefined-behavior sanitizer
+      env:
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
       run: ctest --output-on-failure --test-dir build
 
-    - name: Run demo
+    - name: Run demo with undefined-behavior sanitizer
+      env:
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
       run: ./build/demo/flox_demo
 
   windows-msvc:
