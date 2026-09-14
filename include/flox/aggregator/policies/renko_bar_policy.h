@@ -12,6 +12,7 @@
 #include "flox/aggregator/aggregation_policy.h"
 
 #include <cmath>
+#include <vector>
 
 namespace flox
 {
@@ -71,6 +72,45 @@ class RenkoBarPolicy
   void initBar(const TradeEvent& trade, Bar& bar) noexcept
   {
     initBarFromTrade(trade, bar);
+  }
+
+  // A single trade can jump past several brick sizes at once (a real gap, or
+  // just a thin book). `bar` here is the bar that just closed under the
+  // ordinary single-brick rule above -- already emitted by the caller,
+  // unmodified by this call. This fills in the bricks a continuous price
+  // path would have produced between that bar and the trade that closed it:
+  // one Bar per additional whole brick spanned, chained from `bar.open` in
+  // the direction of the move, each exactly one brick tall. Empty when the
+  // trade closed only the ordinary single brick (the common case), so
+  // callers that ignore the return value see no change in behavior.
+  [[nodiscard]] std::vector<Bar> gapBricks(const TradeEvent& trade, const Bar& bar) const
+  {
+    const int64_t openRaw = bar.open.raw();
+    const int64_t diff = trade.trade.price.raw() - openRaw;
+    const int64_t bricksSpanned = std::abs(diff) / _brickSizeRaw;
+
+    std::vector<Bar> bricks;
+    if (bricksSpanned < 2)
+    {
+      return bricks;
+    }
+
+    const int64_t sign = diff >= 0 ? 1 : -1;
+    const auto tradeTs = fromUnixNs(trade.trade.exchangeTsNs);
+    bricks.reserve(static_cast<size_t>(bricksSpanned - 1));
+    for (int64_t i = 2; i <= bricksSpanned; ++i)
+    {
+      Bar brick{};
+      brick.open = Price::fromRaw(openRaw + (i - 1) * sign * _brickSizeRaw);
+      brick.close = Price::fromRaw(openRaw + i * sign * _brickSizeRaw);
+      brick.high = Price::fromRaw(std::max(brick.open.raw(), brick.close.raw()));
+      brick.low = Price::fromRaw(std::min(brick.open.raw(), brick.close.raw()));
+      brick.startTime = tradeTs;
+      brick.endTime = tradeTs;
+      brick.reason = BarCloseReason::Threshold;
+      bricks.push_back(brick);
+    }
+    return bricks;
   }
 
  private:

@@ -120,9 +120,24 @@ inline Napi::Value agg_renko_bars(const Napi::CallbackInfo& info)
 {
   auto t = extractTrades(info);
   double brick = info[4].As<Napi::Number>().DoubleValue();
+  // Every other aggregator in this file closes at most one bar per input
+  // trade, so `maxBars = t.n` is always enough room. Renko is the
+  // exception: a trade that gaps past more than one brick width closes the
+  // forming brick AND synthesizes the bricks in between (see gapBricks() in
+  // renko_bar_policy.h), so a single trade can produce several bars.
+  // flox_aggregate_renko_bars() is bounds-checked and never writes past
+  // maxBars, but if it reports more bars than that, the extra ones were
+  // silently dropped rather than written -- reading `count` entries out of
+  // a `t.n`-sized vector in that case would walk off the end of it. Redo
+  // the call with a buffer sized to the real count instead.
   uint32_t maxBars = t.n;
   std::vector<FloxBar> bars(maxBars);
   uint32_t count = flox_aggregate_renko_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, brick, bars.data(), maxBars);
+  if (count > maxBars)
+  {
+    bars.assign(count, FloxBar{});
+    count = flox_aggregate_renko_bars(t.ts.data(), t.px, t.qty, t.ib, t.n, brick, bars.data(), count);
+  }
   return barsToJs(info.Env(), bars.data(), count);
 }
 

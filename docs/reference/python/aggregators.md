@@ -89,7 +89,10 @@ bars = flox.aggregate_range_bars(timestamps, prices, quantities, is_buy,
 
 ### `aggregate_renko_bars(..., brick_size)`
 
-Aggregate trades into Renko bars with a fixed brick size.
+Aggregate trades into Renko bars with a fixed brick size. Unlike the other aggregators here,
+Renko can return more bars than there were input trades: a trade that gaps past more than one
+brick width closes the brick that was forming and synthesizes the bricks in between, walking
+the price from there to the trade in clean brick-size steps (see [bar types](../../explanation/bar-types.md#renko-bars)).
 
 ```python
 bars = flox.aggregate_renko_bars(timestamps, prices, quantities, is_buy,

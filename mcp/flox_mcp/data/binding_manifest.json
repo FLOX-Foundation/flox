@@ -21791,6 +21791,11 @@
         },
         {
           "kind": "method",
+          "name": "gapBricks",
+          "parent": "RenkoBarPolicy"
+        },
+        {
+          "kind": "method",
           "name": "initBar",
           "parent": "RenkoBarPolicy"
         },
@@ -23888,6 +23893,11 @@
           "kind": "method",
           "name": "begin",
           "parent": "SymbolStateMap"
+        },
+        {
+          "kind": "method",
+          "name": "publishBar",
+          "parent": "SymbolState"
         },
         {
           "kind": "method",
