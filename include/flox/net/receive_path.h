@@ -158,7 +158,11 @@ class UdpSocketReceivePath : public IReceivePath
     while (delivered < maxPackets)
     {
       iovec iov{_buffer.data(), _buffer.size()};
-      alignas(cmsghdr) char control[256];
+      // Sized generously for whichever ancillary message the platform
+      // sends; extractRxTimestampNs() copies out of it rather than casting
+      // in place, so this buffer's own alignment does not need to match
+      // any particular payload type (see rx_timestamp.h).
+      alignas(std::max_align_t) char control[256];
       msghdr msg{};
       msg.msg_iov = &iov;
       msg.msg_iovlen = 1;
