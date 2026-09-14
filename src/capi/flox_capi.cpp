@@ -7646,6 +7646,12 @@ flox_binary_log_recorder_hook_create_ex(const char* output_dir,
   impl->recorder_view.cb.on_start = &capi_impl::blrhOnStart;
   impl->recorder_view.cb.on_stop = &capi_impl::blrhOnStop;
   impl->recorder_view.cb.user_data = impl;
+  // Borrowed: the recorder handle callers get from
+  // flox_binary_log_recorder_hook_as_recorder points at this member, so
+  // flox_market_data_recorder_destroy on it would free part of the hook.
+  // The header has always said not to; registering it means a caller that
+  // does anyway gets a no-op instead of a corrupted heap.
+  FloxBorrowedHandles::add(&impl->recorder_view);
   return static_cast<FloxBinaryLogRecorderHookHandle>(impl);
   FLOX_CAPI_LEAVE;
 }
@@ -7653,7 +7659,9 @@ flox_binary_log_recorder_hook_create_ex(const char* output_dir,
 void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle h)
 {
   FLOX_CAPI_ENTER_DESTROY(h);
-  delete static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h);
+  auto* impl = static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h);
+  FloxBorrowedHandles::remove(&impl->recorder_view);
+  delete impl;
   FLOX_CAPI_LEAVE_VOID;
 }
 
@@ -12538,18 +12546,22 @@ extern "C" size_t flox_pool_replay_trade_count(FloxPoolReplayHandle replay)
 extern "C" FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay)
 {
   FLOX_CAPI_ENTER(replay);
-  if (replay == nullptr)
-  {
-    return nullptr;
-  }
-  return const_cast<flox::INTokenCurve*>(toReplay(replay)->replay->curve());
+  // Borrowed: the replay owns this curve. Registered on the way out rather
+  // than at construction because the replay only has a curve once the tape
+  // carried a checkpoint, and a caller cannot hold the pointer without
+  // having come through here first.
+  auto* curve = const_cast<flox::INTokenCurve*>(toReplay(replay)->replay->curve());
+  FloxBorrowedHandles::add(curve);
+  return curve;
   FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_pool_replay_destroy(FloxPoolReplayHandle replay)
 {
   FLOX_CAPI_ENTER_DESTROY(replay);
-  delete toReplay(replay);
+  auto* impl = toReplay(replay);
+  FloxBorrowedHandles::remove(const_cast<flox::INTokenCurve*>(impl->replay->curve()));
+  delete impl;
   FLOX_CAPI_LEAVE_VOID;
 }
 

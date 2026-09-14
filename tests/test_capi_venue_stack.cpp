@@ -22,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <string>
 
 TEST(CapiVenueStackTest, ExecutorAccessorReturnsAUsableExecutorHandle)
@@ -112,4 +113,87 @@ TEST(CapiVenueStackTest, VenueNameSurvivesTheAccessor)
   ASSERT_NE(name, nullptr);
   EXPECT_GT(std::string(name).size(), 0u);
   flox_venue_stack_destroy(stack);
+}
+
+// The venue stack is not the only composite that hands out a view into its
+// own memory. These two were found by the JavaScript engine's audit of the
+// same question, from the other side of the boundary: it had to decide, for
+// every handle it wraps, whether its finaliser owns the memory. Its answer
+// was seven borrowed views, against the six the venue stack has. The extra
+// one is the recorder view below; the pool replay curve is an eighth that
+// falls outside the JS surface because that binding has no pool tape yet.
+//
+// Both were documented as "do not destroy this" in the header and nowhere
+// enforced, which is exactly the shape of the venue stack defect.
+
+TEST(CapiVenueStackTest, DestroyingTheRecorderViewOfAHookIsANoOp)
+{
+  auto dir = std::filesystem::temp_directory_path() / "flox_capi_recorder_view";
+  std::filesystem::create_directories(dir);
+
+  FloxBinaryLogRecorderHookHandle hook =
+      flox_binary_log_recorder_hook_create(dir.string().c_str(), 16, 0, 0);
+  ASSERT_NE(hook, nullptr);
+
+  FloxMarketDataRecorderHandle view = flox_binary_log_recorder_hook_as_recorder(hook);
+  ASSERT_NE(view, nullptr);
+
+  flox_market_data_recorder_destroy(view);
+
+  // The hook still owns it, and destroying the hook must not double free.
+  EXPECT_EQ(flox_binary_log_recorder_hook_as_recorder(hook), view);
+  flox_binary_log_recorder_hook_destroy(hook);
+
+  std::filesystem::remove_all(dir);
+}
+
+TEST(CapiVenueStackTest, DestroyingAPoolReplaysCurveIsANoOp)
+{
+  const char* r0 = "1000000000000000000000";
+  const char* r1 = "2000000000000000000000";
+
+  FloxPoolTapeHandle tape = flox_pool_tape_create();
+  ASSERT_NE(tape, nullptr);
+  flox_pool_tape_descriptor_constant_product(tape, 997, 1000, 18, 18);
+  ASSERT_EQ(flox_pool_tape_checkpoint(tape, 100, r0, r1), 1);
+
+  FloxPoolReplayHandle replay = flox_pool_tape_replay(tape, 0, 1, 18, 18);
+  ASSERT_NE(replay, nullptr);
+
+  FloxCurveHandle curve = flox_pool_replay_curve(replay);
+  ASSERT_NE(curve, nullptr);
+
+  flox_curve_destroy(curve);
+
+  char out[96] = {0};
+  EXPECT_EQ(flox_curve_balance(curve, 0, out, sizeof(out)), 1);
+
+  flox_pool_replay_destroy(replay);
+  flox_pool_tape_destroy(tape);
+}
+
+// A registration that outlived its owner would be worse than the defect it
+// fixes: the allocator hands the address to a genuinely owned handle later,
+// and _destroy on that one gets refused, so the caller cannot free it at all.
+// The register/unregister pair runs with the composite's lifetime, so this
+// walks a few hundred rounds and insists every owned handle still dies.
+TEST(CapiVenueStackTest, RegistrationsDoNotOutliveTheirOwner)
+{
+  for (int round = 0; round < 512; ++round)
+  {
+    FloxVenueStackHandle stack = flox_venue_stack_create(0, 1, 1000.0);
+    ASSERT_NE(stack, nullptr);
+    FloxAccountHandle borrowed = flox_venue_stack_account(stack);
+    ASSERT_NE(borrowed, nullptr);
+    flox_venue_stack_destroy(stack);
+
+    // Owned, and possibly at the address the stack's member just vacated.
+    FloxAccountHandle owned = flox_account_create(7, 500.0);
+    ASSERT_NE(owned, nullptr);
+    EXPECT_EQ(flox_account_id(owned), 7u);
+    flox_account_destroy(owned);
+    // Refusing to destroy this one would show up as a leak in the tooling
+    // and as a rising handle count here; reading it back after the destroy
+    // is what the sanitizers watch.
+  }
 }
