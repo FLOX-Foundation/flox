@@ -94,6 +94,7 @@ nav:
           - Python - multi-symbol: examples/python-multi-symbol.md
           - Python - live via ccxt: examples/python-ccxt-live.md
           - Node.js - backtest & live: examples/node-backtest-vs-live.md
+          - Node.js - threaded Runner lifetime: examples/node-threaded-runner-lifetime.md
           - Codon - backtest & live: examples/codon-backtest-vs-live.md
           - Codon - full API: examples/codon-full-backtest.md
           - C++ - SMA backtest: examples/cpp-sma-backtest.md
@@ -244,6 +245,7 @@ nav:
       - AMM DEX connector: explanation/amm-dex-connector.md
       - Replay-equivalence gate: explanation/replay-equivalence-gate.md
       - Bar-close ordering on tied timestamps: explanation/bar-close-ordering.md
+      - Threaded Runner lifetime in Node: explanation/node-threaded-runner-lifetime.md
       - Venue-stack reproducibility: explanation/w15-reproducibility.md
       - Build feature flags: build/feature-flags.md
       - Contributing:

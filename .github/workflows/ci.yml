@@ -451,6 +451,14 @@ jobs:
     - name: Run Node.js example
       run: node docs/examples/node_backtest_vs_live.js
 
+    # This one is about the process ending, not about its output: it sets no
+    # exit code of its own and forces no exit, so a step that finishes at all
+    # is the assertion. A threaded Runner that failed to hand the event loop
+    # back would hang here instead, which is what the step is for.
+    - name: Run Node.js threaded-runner lifetime example
+      timeout-minutes: 2
+      run: node docs/examples/node_threaded_runner_lifetime.js
+
     - name: Run demo
       run: ./build/demo/flox_demo
 

@@ -1,6 +1,7 @@
 /build/
 /build-*/
 node/build/
+node/build-*/
 node/.test-build/
 node/authoring/dist/
 site

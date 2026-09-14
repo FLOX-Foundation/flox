@@ -14,6 +14,9 @@
 
 declare const console: { log(...args: unknown[]): void; error(...args: unknown[]): void };
 declare const process: { exitCode?: number; exit(code?: number): never };
+// This file compiles with `types: []`, so Node's globals are declared here
+// rather than pulled in from @types/node.
+declare function setTimeout(handler: () => void, ms: number): { unref(): void };
 
 let _passed = 0;
 let _failed = 0;
@@ -592,15 +595,16 @@ void POSITION_FIFO;
 void POSITION_AVG_COST;
 
 console.log(`test_types: ${_passed} passed, ${_failed} failed`);
-// Forced exit, not process.exitCode: the threadedRunner constructed above
-// (new Runner(registry, cb, true)) holds a ThreadSafeFunction that is
-// never released on stop() -- only in a destructor that GC may or may not
-// run before Node would otherwise decide the loop is idle. Locally this
-// often finishes anyway once GC happens to collect it; on CI it hung one
-// run for hours before a human cancelled it. That non-release is a real,
-// separately tracked defect (TSFN lifecycle on Runner.stop()), not
-// something this test should paper over silently -- hence this comment
-// instead of a quiet process.exit(). This test's job is to check the type
-// contract, not to prove the process exits, so forcing the exit here is
-// legitimate; it is called out because it is also hiding a bug.
-process.exit(_failed > 0 ? 1 : 0);
+process.exitCode = _failed > 0 ? 1 : 0;
+
+// No forced exit. The threaded Runner above releases its channel on stop(),
+// so the loop drains and the process ends on its own; if it ever stops doing
+// that, this file has to say so rather than paper over it. An unref'd timer
+// does not keep the loop alive by itself, so it fires only when something
+// else is holding the loop open -- turning what once cost a CI run hours
+// into a ten-second failure with its own exit code.
+const _loopWatchdog = setTimeout(() => {
+  console.error("test_types: the event loop is still alive 10s after the last check");
+  process.exit(3);
+}, 10000);
+_loopWatchdog.unref();

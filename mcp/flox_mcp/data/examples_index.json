@@ -29,6 +29,13 @@
       "topic": "backtest"
     },
     {
+      "language": "node",
+      "path": "docs/examples/node_threaded_runner_lifetime.js",
+      "sha256": "fdd6937e1502e4f9af2d64848c2a47ddee08e3013b469500d799071c6ecefedc",
+      "size_bytes": 1223,
+      "topic": "strategy"
+    },
+    {
       "language": "python",
       "path": "docs/examples/python_apply_latency_profile.py",
       "sha256": "5fb6d836b0ac2330974e09bce773231a1e5a68fa8c0ca19951d2aec807752279",

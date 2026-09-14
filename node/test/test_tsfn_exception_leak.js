@@ -85,7 +85,14 @@ function drainStep() {
   check(true, `process survived ${N} throwing threaded dispatches without crashing`);
   runner.stop();
   console.log(`${passed} passed, ${failed} failed`);
-  // Forced exit: see the matching comment in test_tsfn_backpressure.js.
-  process.exit(failed > 0 ? 1 : 0);
+  process.exitCode = failed > 0 ? 1 : 0;
+
+  // runner.stop() releases the channel, so the loop drains and the process
+  // ends on its own. The unref'd timer fires only if it does not.
+  const watchdog = setTimeout(() => {
+    console.error('test_tsfn_exception_leak: the event loop is still alive 10s after stop()');
+    process.exit(3);
+  }, 10000);
+  watchdog.unref();
 }
 drainStep();
