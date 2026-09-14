@@ -383,6 +383,20 @@ KNOWN_MISSING_MACROS = {
     "FLOX_SIGNAL_TYPE_CANCEL_ALL",
     "FLOX_SIGNAL_TYPE_MODIFY",
     "FLOX_SIGNAL_TYPE_ICEBERG",
+    # Same family, three codes added later for OCO and the two liquidity
+    # signals -- the ones the conversion switch used to drop into its default
+    # and report as a market order. They land in the same already-exempt
+    # group for the same reason: there is still no macro-constant IDL group,
+    # so no golden artifact can carry them. This is the pre-existing gap
+    # widening by three names, not a new one; the fix is still to teach the
+    # spec and the emitters about macro constants, and no batch owns that.
+    "FLOX_SIGNAL_TYPE_OCO",
+    "FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY",
+    "FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY",
+    # The C ABI version the header declares. Same gap, same reason. The
+    # runtime half of the pair, flox_capi_abi_version(), is a function and
+    # does go through codegen.
+    "FLOX_CAPI_ABI_VERSION",
 }
 
 

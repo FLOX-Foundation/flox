@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 730 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 72 groups.
+**Surface:** 734 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 73 groups.
 
 ## Opaque handles
 
@@ -1003,6 +1003,13 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook, uint32_t symbol_id, const char * name, const char * base, const char * quote, int8_t price_precision, int8_t qty_precision)`
 - `void flox_binary_log_recorder_hook_flush(FloxBinaryLogRecorderHookHandle hook)`
 - `FloxWriterStats flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHandle hook)`
+
+### capi_diagnostics
+
+- `uint32_t flox_capi_abi_version(void)`
+- `int flox_last_error_code(void)`
+- `const char * flox_last_error_message(void)`
+- `void flox_clear_last_error(void)`
 
 ### composite_book
 

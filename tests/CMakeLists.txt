@@ -238,6 +238,14 @@ if(FLOX_BUILD_CAPI)
   target_link_libraries(test_capi_execution_listener PRIVATE flox_capi)
   add_flox_test(test_capi_executor)
   target_link_libraries(test_capi_executor PRIVATE flox_capi)
+  add_flox_test(test_capi_contract)
+  target_link_libraries(test_capi_contract PRIVATE flox_capi)
+  add_flox_test(test_capi_venue_stack)
+  target_link_libraries(test_capi_venue_stack PRIVATE flox_capi)
+  add_flox_test(test_capi_diagnostics)
+  target_link_libraries(test_capi_diagnostics PRIVATE flox_capi)
+  add_flox_test(test_capi_signal_codes)
+  target_link_libraries(test_capi_signal_codes PRIVATE flox_capi)
   # test_capi_logger needs to share a single ILogger global with flox_capi.
   # If we use add_flox_test, the test exe links the static `flox` library
   # alongside flox_capi.dylib (which itself statically embeds `flox`) —

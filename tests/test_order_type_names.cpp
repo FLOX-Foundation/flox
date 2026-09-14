@@ -12,7 +12,7 @@
 // order-type decoder/encoder (Node's orderTypeName/orderToJs/signalToJs,
 // QuickJS's jsOrderTypeName, Python's pyOrderFromC/pySignalFromC) forwards
 // to these functions, so this file is the authoritative test for all of
-// them at once — see CAPI-01, CAPI-09, CAPI-10, NC-06.
+// them at once.
 
 #include "flox/capi/flox_capi.h"
 #include "flox/capi/order_type_names.hpp"
@@ -119,7 +119,8 @@ TEST(OrderTypeNames, SpaceAEncodeRejectsUnknownNames)
 
 TEST(OrderTypeNames, SpaceBCoversAllDefinedCodes)
 {
-  EXPECT_EQ(kSignalTypeNameCount, static_cast<std::size_t>(FLOX_SIGNAL_TYPE_ICEBERG) + 1);
+  EXPECT_EQ(kSignalTypeNameCount,
+            static_cast<std::size_t>(FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY) + 1);
 }
 
 TEST(OrderTypeNames, SpaceBNamesMatchTheWireCodes)
@@ -134,11 +135,16 @@ TEST(OrderTypeNames, SpaceBNamesMatchTheWireCodes)
   EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_CANCEL), "cancel");
   EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_CANCEL_ALL), "cancel_all");
   EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_MODIFY), "modify");
-  // CAPI-10: code 10 used to fall outside a 10-element array (`< 10`) and
-  // come back "unknown".
+  // Code 10 used to fall outside a ten-element array (`< 10`) and come back
+  // as "unknown".
   EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_ICEBERG), "iceberg");
   EXPECT_EQ(FLOX_SIGNAL_TYPE_ICEBERG, 10);
-  EXPECT_STREQ(signalTypeName(11), "unknown");
+  // The three that used to fall into the conversion switch's default and
+  // reach the caller as a market order with two zeros.
+  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_OCO), "oco");
+  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY), "provide_liquidity");
+  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY), "withdraw_liquidity");
+  EXPECT_STREQ(signalTypeName(FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY + 1), "unknown");
   EXPECT_STREQ(signalTypeName(255), "unknown");
 }
 
@@ -146,7 +152,7 @@ TEST(OrderTypeNames, SpaceBNamesMatchTheWireCodes)
 
 TEST(OrderTypeNames, SpacesADisagreeWithBOnMarketAndLimit)
 {
-  // The whole reason CAPI-01/CAPI-09 exist: LIMIT and MARKET are swapped
+  // The whole reason the two spaces keep drifting: LIMIT and MARKET are swapped
   // between the two code spaces on purpose. A binding that decodes one
   // space's code with the other space's table gets exactly these two
   // values backwards.

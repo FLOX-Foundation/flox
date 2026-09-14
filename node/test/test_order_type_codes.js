@@ -1,7 +1,7 @@
 'use strict';
 /**
- * node/test/test_order_type_codes.js — regression test for NC-NEW-01 /
- * CAPI-01: `SimulatedExecutor.submitOrder` used to encode the order-type
+ * node/test/test_order_type_codes.js — regression test:
+ * `SimulatedExecutor.submitOrder` used to encode the order-type
  * string in the FLOX_SIGNAL_TYPE_* space (market=0, limit=1) and hand the
  * result to a C function that reads the flox::OrderType space (LIMIT=0,
  * MARKET=1). A "market" order was submitted as a LIMIT order and a "limit"
