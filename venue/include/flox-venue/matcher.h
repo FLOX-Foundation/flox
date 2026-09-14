@@ -54,6 +54,18 @@ struct FillLimit
   CancelReason reason{CancelReason::ReduceOnlyNotReducing};
 };
 
+// One bite an all-or-none precheck has approved, in the order it walked the
+// crossing range. `allowedRaw` is what the risk limits left that maker at plan
+// time; `blocked` says the maker itself may not trade at all, which is the
+// only case where an allowance of zero means "pull it from the book".
+struct PlannedBite
+{
+  OrderId maker{};
+  int64_t allowedRaw{};
+  bool blocked{false};
+  CancelReason reason{CancelReason::ReduceOnlyNotReducing};
+};
+
 // Signed position changes (raw contracts) an all-or-none precheck has already
 // simulated, keyed by account. A crossing range holds a handful of distinct
 // accounts, so a linear scan beats a hash map here and allocates nothing after
@@ -186,9 +198,19 @@ class Matcher
   // position cap). See crossProRata.
   uint64_t skippedRiskProRata() const noexcept { return skippedRiskProRata_; }
 
+  // All-or-none accounting, in the order the questions are asked:
+  // how many prechecks ran, how many of those met a maker a risk limit would
+  // not let trade in full, and how many ended in a refusal. The middle one is
+  // the population that a "refuse on any risk-limited maker in range" rule
+  // would refuse, so it says what that rule would cost on live flow.
+  uint64_t fillOrKillPrechecks() const noexcept { return fokPrechecks_; }
+  uint64_t fillOrKillRiskConstrained() const noexcept { return fokRiskConstrained_; }
+  uint64_t fillOrKillRejected() const noexcept { return fokRejected_; }
+
   MatchOutcome cross(const NewOrder& order, Book& book,
                      const std::function<uint64_t()>& nextTradeId, const EventSink& sink) const
   {
+    planActive_ = false;
     if (policy_ == MatchPolicy::ProRata)
     {
       return crossProRata(order, book, nextTradeId, sink);
@@ -209,7 +231,7 @@ class Matcher
       }
     }
 
-    if (order.tif == TimeInForce::FOK && !fillOrKillCanFill(order, book, isMarket))
+    if (order.tif == TimeInForce::FOK && !planFillOrKill(order, book, isMarket))
     {
       out.reject = RejectReason::FillOrKillUnfulfillable;
       return out;
@@ -247,13 +269,19 @@ class Matcher
       // hidden reserve (and re-queues at the tail) inside fillBest.
       const Quantity want = qmin(leaves, m->leaves);
       Quantity allowed = want;
-      if (onFillLimit_)
+      if (planActive_ || onFillLimit_)
       {
         // Fill-time risk re-check (perp reduce-only / position cap). A resting
         // order was sized against the position it saw at admission; by the time
         // it fills that position can be smaller, gone, or on the other side.
         // The disallowed part of the bite simply does not trade.
-        const FillLimit lim = onFillLimit_(*m, order, want);
+        //
+        // An all-or-none order spends its plan here instead. Its limits were
+        // settled before the first print, on the same state and the same
+        // thread, precisely so that no answer arriving mid-sweep can leave it
+        // half filled with nothing to undo.
+        const FillLimit lim =
+            planActive_ ? plannedFillLimit(*m, order, want) : onFillLimit_(*m, order, want);
         allowed = lim.qty;
         if (allowed.isZero())
         {
@@ -305,6 +333,7 @@ class Matcher
                  makerAccount, order.accountId});
 
       book.fillBest(restingSide, fill);  // may invalidate `m`
+      spendPlan(makerId, fill.raw());
       leaves -= fill;
       out.filled += fill;
 
@@ -360,8 +389,9 @@ class Matcher
   }
 
  private:
-  // All-or-none precheck: can this FOK really be filled in full, right now, by
-  // liquidity that is allowed to trade with it?
+  // All-or-none plan: walk the crossing range once, decide every bite the
+  // sweep will take, and refuse before a single trade prints unless those
+  // bites add up to the whole order.
   //
   // Three classes of depth are visible in the book and cannot fill the order:
   //   - same-STP-scope makers, which the sweep cancels or decrements instead of
@@ -376,7 +406,17 @@ class Matcher
   //     in sweep order, because each prospective print moves the position the
   //     next maker is measured against: two reduce-only sells of 10 against a
   //     long of 10 look like depth 20 to the book and are worth 10 at the fill.
-  bool fillOrKillCanFill(const NewOrder& order, const Book& book, bool isMarket) const
+  //
+  // The plan is what makes the promise whole. Asking the risk limits again in
+  // the middle of the sweep asks about a state the earlier prints have already
+  // moved, and a different answer arriving after the first print cannot be
+  // acted on: a venue does not un-print a trade. So the question is asked once,
+  // before anything is printed, and the sweep spends the answer.
+  //
+  // Walking stops at the taker's own quantity. Past that point the sweep never
+  // reaches, and counting simulated position moves the sweep will not make is
+  // how an order that fills perfectly well gets refused.
+  bool planFillOrKill(const NewOrder& order, const Book& book, bool isMarket) const
   {
     using namespace detail;
     const bool lastLookActive = static_cast<bool>(onLastLook_);
@@ -388,35 +428,60 @@ class Matcher
     // scratch: one matcher runs on one sequenced-shard thread.
     static thread_local PositionDeltas deltas;
     deltas.clear();
-    Quantity riskShortfall{};
+    plan_.clear();
+    planCursor_ = 0;
+    const int64_t wantRaw = order.quantity.raw();
+    int64_t planned = 0;
+    bool riskConstrained = false;
+
     auto measure = [&](const RestingOrder& m)
     {
       if ((lastLookActive && m.lastLook) || skipStp(m))
       {
         return true;  // excluded from the total entirely
       }
+      const bool covered = (planned >= wantRaw);
+      const Quantity total = m.leaves + m.hidden;
+      PlannedBite bite;
+      bite.maker = m.id;
+      bite.allowedRaw = total.raw();
       if (onFillLimitDry_)
       {
-        const Quantity total = m.leaves + m.hidden;
         const FillLimit lim = onFillLimitDry_(m, order, total, deltas);
-        const Quantity allowed = qmin(lim.qty, total);
-        if (allowed < total)
+        bite.allowedRaw = std::min(lim.qty.raw(), total.raw());
+        if (bite.allowedRaw < 0)
         {
-          riskShortfall += (total - allowed);
+          bite.allowedRaw = 0;
         }
-        if (allowed.raw() > 0)
-        {
-          const int64_t signedQty = allowed.raw();
-          deltas.add(m.accountId, m.side == Side::BUY ? signedQty : -signedQty);
-          deltas.add(order.accountId, order.side == Side::BUY ? signedQty : -signedQty);
-        }
+        bite.blocked = lim.makerBlocked;
+        bite.reason = lim.reason;
+        riskConstrained = riskConstrained || (bite.allowedRaw < total.raw());
       }
+      if (bite.allowedRaw > 0 && !covered)
+      {
+        // Past the point where the plan covers the order the aggressor stops
+        // moving: it will not take more than it asked for. Adding simulated
+        // position for prints the sweep is never going to make is how an order
+        // that fills perfectly well ends up refused, and how a maker deeper in
+        // the range is measured against a position that never happens.
+        const int64_t signedQty = bite.allowedRaw;
+        deltas.add(m.accountId, m.side == Side::BUY ? signedQty : -signedQty);
+        deltas.add(order.accountId, order.side == Side::BUY ? signedQty : -signedQty);
+      }
+      planned += bite.allowedRaw;
+      plan_.push_back(bite);
       return false;
     };
 
     const Quantity firm = book.availableWithinExcl(order.side, order.price, isMarket, measure);
-    if (firm.raw() - riskShortfall.raw() < order.quantity.raw())
+    ++fokPrechecks_;
+    if (riskConstrained)
     {
+      ++fokRiskConstrained_;
+    }
+    if (planned < wantRaw)
+    {
+      ++fokRejected_;
       return false;
     }
     if (lastLookActive)
@@ -425,10 +490,77 @@ class Matcher
           book.availableWithinExcl(order.side, order.price, isMarket, skipStp);
       if (firm < withLastLook)  // a last-look maker sits inside the crossing range
       {
+        ++fokRejected_;
         return false;
       }
     }
+    planActive_ = true;
     return true;
+  }
+
+  // The plan's entry for `maker`, or null when the plan does not cover it --
+  // which means the sweep has walked past the end of the plan, and the live
+  // limit answers instead of an invented allowance.
+  //
+  // The sweep visits makers in the order the plan wrote them down, so the scan
+  // starts where the last one was found and wraps once. A market-priced
+  // all-or-none order plans the whole opposite book; scanning it from the top
+  // for every bite would make the sweep quadratic in the depth it crosses.
+  PlannedBite* plannedBite(OrderId maker) const
+  {
+    const size_t n = plan_.size();
+    for (size_t i = 0; i < n; ++i)
+    {
+      const size_t at = (planCursor_ + i) % n;
+      if (plan_[at].maker == maker)
+      {
+        planCursor_ = at;
+        return &plan_[at];
+      }
+    }
+    return nullptr;
+  }
+
+  // What the plan allows for one bite of `maker`. Read only: an iceberg is
+  // bitten once per displayed peak and the pro-rata allocator asks about every
+  // participant before it decides, so the allowance is drawn down by
+  // spendPlan once the quantity is actually settled.
+  FillLimit plannedFillLimit(const RestingOrder& maker, const NewOrder& order,
+                             Quantity want) const
+  {
+    const PlannedBite* bite = plannedBite(maker.id);
+    if (bite == nullptr)
+    {
+      return onFillLimit_
+                 ? onFillLimit_(maker, order, want)
+                 : FillLimit{want, want, want, false, false, CancelReason::ReduceOnlyNotReducing};
+    }
+    const int64_t give = std::min(want.raw(), bite->allowedRaw);
+    FillLimit lim;
+    lim.qty = Quantity::fromRaw(give > 0 ? give : 0);
+    lim.makerQty = lim.qty;
+    lim.takerQty = want;  // the plan already bounded the aggressor's own leg
+    lim.reason = bite->reason;
+    // A spent allowance is always the MAKER's exhaustion, never the taker's.
+    // The aggressor's own room was settled once, over the whole order, before
+    // anything printed; blocking it here would stop a sweep the plan has
+    // already promised will complete, and a stopped all-or-none sweep is a
+    // partial print. The maker, on the other hand, has traded everything its
+    // limits allow, which is exactly the resting order the sweep pulls.
+    lim.makerBlocked = lim.qty.isZero();
+    return lim;
+  }
+
+  void spendPlan(OrderId maker, int64_t qtyRaw) const
+  {
+    if (!planActive_ || qtyRaw <= 0)
+    {
+      return;
+    }
+    if (PlannedBite* bite = plannedBite(maker); bite != nullptr)
+    {
+      bite->allowedRaw -= std::min(qtyRaw, bite->allowedRaw);
+    }
   }
 
   // Self-trade-prevention scope of an account: its firm group if registered,
@@ -560,7 +692,7 @@ class Matcher
     // depth here, which counts liquidity the STP pass is about to remove: the
     // allocation then had nothing to distribute and the residual fell through
     // to the resting branch below as a GTC.
-    if (order.tif == TimeInForce::FOK && !fillOrKillCanFill(order, book, isMarket))
+    if (order.tif == TimeInForce::FOK && !planFillOrKill(order, book, isMarket))
     {
       out.reject = RejectReason::FillOrKillUnfulfillable;
       return out;
@@ -646,7 +778,20 @@ class Matcher
           continue;
         }
         int64_t sz = level[i].leaves.raw();
-        if (onFillLimit_)
+        if (planActive_)
+        {
+          // All-or-none spends the allowance its plan already approved for this
+          // maker. The aggressor's own leg was bounded once, over the whole
+          // plan, so `takerRoom` stays at what is left of the order.
+          const PlannedBite* bite = plannedBite(level[i].id);
+          sz = (bite != nullptr) ? std::min(sz, bite->allowedRaw) : sz;
+          if (sz <= 0)
+          {
+            ++skippedRiskProRata_;
+            continue;
+          }
+        }
+        else if (onFillLimit_)
         {
           const FillLimit lim = onFillLimit_(level[i], order, Quantity::fromRaw(sz));
           sz = std::min(sz, lim.makerQty.raw());
@@ -710,6 +855,7 @@ class Matcher
         sink(Trade{nextTradeId(), order.symbol, levelPrice, fill, makerId, order.id, order.side,
                    level[i].accountId, order.accountId});
         book.consumeById(makerId, fill);
+        spendPlan(makerId, alloc[i]);
         leaves = Quantity::fromRaw(leaves.raw() - alloc[i]);
         out.filled += fill;
         sink(OrderExecuted{makerId, order.symbol, fill, makerTotalAfter, false,
@@ -768,6 +914,15 @@ class Matcher
   // mutable: cross() is const; these are diagnostic counters, not matching state.
   mutable uint64_t skippedLastLookProRata_{0};
   mutable uint64_t skippedRiskProRata_{0};
+  mutable uint64_t fokPrechecks_{0};
+  mutable uint64_t fokRiskConstrained_{0};
+  mutable uint64_t fokRejected_{0};
+  // The bites an all-or-none plan approved, and whether one is in force. Both
+  // live for the length of one cross() on the matching thread; cross() resets
+  // the flag on entry so no other time-in-force can inherit a stale plan.
+  mutable std::vector<PlannedBite> plan_;
+  mutable size_t planCursor_{0};
+  mutable bool planActive_{false};
 };
 
 }  // namespace flox::venue

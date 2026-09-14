@@ -1652,6 +1652,15 @@ class MatchingEngine
     {
       if (b->formatVersion != kSnapshotFormatVersion)
       {
+        // Name both numbers. The caller discards the generation either way,
+        // and an operator reading the log should not have to guess whether
+        // the file is old, new, or damaged.
+        std::fprintf(stderr,
+                     "flox-venue: snapshot rejected for symbol %llu: contents are format version "
+                     "%u, this build reads version %u only\n",
+                     static_cast<unsigned long long>(cfg_.id),
+                     static_cast<unsigned>(b->formatVersion),
+                     static_cast<unsigned>(kSnapshotFormatVersion));
         return false;
       }
       // Constructor-config guard: a snapshot written by an engine with other
@@ -1815,6 +1824,14 @@ class MatchingEngine
 
   // Pro-rata participants excluded by the fill-time risk limits.
   uint64_t skippedRiskProRata() const noexcept { return matcher_.skippedRiskProRata(); }
+
+  // All-or-none accounting (see Matcher::fillOrKillPrechecks).
+  uint64_t fillOrKillPrechecks() const noexcept { return matcher_.fillOrKillPrechecks(); }
+  uint64_t fillOrKillRiskConstrained() const noexcept
+  {
+    return matcher_.fillOrKillRiskConstrained();
+  }
+  uint64_t fillOrKillRejected() const noexcept { return matcher_.fillOrKillRejected(); }
 
   // ---- asynchronous checkpoint support ----
   // A full engine clone taken under the consumer pause; serialization (fsync,
