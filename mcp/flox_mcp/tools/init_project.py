@@ -51,8 +51,17 @@ def init_project(
 
     # `flox new <name> --template=<t>` creates `<target>/<name>/` and
     # populates it from the bundled template tree. `--here` is the
-    # in-place flavour but we always use the named-dir form here so
-    # the agent can explicitly control where output lands.
+    # in-place flavour; we always use the named-dir form instead so a
+    # target_dir/project_name pair reads as one intended destination.
+    #
+    # Neither piece is confined to the other, though: `project_name` is
+    # not restricted to a single path component (`../elsewhere` walks
+    # `<target>/<name>` back out of `target_dir` before `flox new` ever
+    # runs), and `flox new` writes wherever that combined path resolves
+    # to -- same as it does from a shell. `_copy_template`'s
+    # non-empty-destination check is the only guard against overwriting
+    # existing data; there is no separate containment boundary here to
+    # break.
     cmd = [flox_cli, "new", project_name, f"--template={template}"]
     try:
         proc = subprocess.run(

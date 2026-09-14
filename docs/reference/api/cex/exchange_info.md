@@ -58,8 +58,9 @@ SymbolRegistry registry;
 // Register returns ExchangeId (uint16_t)
 ExchangeId id = registry.registerExchange("Binance", VenueType::CentralizedExchange);
 
-// Get info by ID
-const ExchangeInfo* info = registry.getExchange(id);
+// Get info by ID -- a copy, not a pointer into the registry (see
+// SymbolRegistry's own reference page for why).
+std::optional<ExchangeInfo> info = registry.getExchange(id);
 std::cout << "Name: " << info->nameView() << "\n";
 std::cout << "Type: " << static_cast<int>(info->type) << "\n";
 ```

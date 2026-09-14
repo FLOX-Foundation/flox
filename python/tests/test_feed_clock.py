@@ -50,7 +50,7 @@ def test_leader_follower_requires_fresh_follower() -> None:
 
 
 def test_wait_for_all_timeout_fallback_fires_before_any_full_fire() -> None:
-    # BOOK-11: the timeout fallback used to only work *after* the clock had
+    # The timeout fallback used to only work *after* the clock had
     # already fired once (it checked "last fire timestamp > 0", which is
     # indistinguishable from "never fired"). ETH never ticks here at all,
     # so WaitForAll's normal condition is never met -- only the timeout can
@@ -70,7 +70,7 @@ def test_wait_for_all_timeout_fallback_fires_before_any_full_fire() -> None:
 
 
 def test_wait_for_all_timeout_fallback_survives_a_zero_timestamp_first_fire() -> None:
-    # BOOK-11, beyond the original report: if the first full WaitForAll
+    # A related edge case: if the first full WaitForAll
     # fire happens to land exactly on ts_ns == 0 (a backtest replayed from
     # a zero-based clock), the old check disabled the timeout permanently.
     c = flox_py.MultiFeedClock(symbols=[BTC, ETH],

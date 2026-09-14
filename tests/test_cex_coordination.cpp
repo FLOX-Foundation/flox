@@ -402,7 +402,7 @@ class CompositeBookMatrixTest : public ::testing::Test
 
   // Defaults to SNAPSHOT for the pre-existing tests below, which model a
   // full top-of-book replace. Pass BookUpdateType::DELTA explicitly to
-  // exercise the partial-update path (see the BOOK-12 tests further down).
+  // exercise the partial-update path (see the delta-update tests further down).
   void setupBookUpdate(BookUpdateEvent& ev,
                        SymbolId symbol,
                        ExchangeId exchange,
@@ -539,7 +539,7 @@ TEST_F(CompositeBookMatrixTest, StalenessExclusion)
 }
 
 // ---------------------------------------------------------------------------
-// BOOK-12: a delta touching one side must not wipe the other side.
+// A delta touching one side must not wipe the other side.
 // ---------------------------------------------------------------------------
 
 TEST_F(CompositeBookMatrixTest, BidOnlyDeltaDoesNotWipeAskSide)
@@ -602,7 +602,7 @@ TEST_F(CompositeBookMatrixTest, DeleteOnlyDeltaLeavesStaleSideRatherThanZero)
 
   // A delta that only carries a deletion (qty 0) on the bid side: no
   // replacement level is known, so the cached top must not become a
-  // "valid" $0.00 quote (that asymmetry was BOOK-12(c)).
+  // "valid" $0.00 quote (that asymmetry was a real bug).
   setupBidOnlyDelta(ev, 1, 0, 99 * 1'000'000LL, 0);
   matrix.onBookUpdate(ev);
 
@@ -633,7 +633,7 @@ TEST_F(CompositeBookMatrixTest, SnapshotWithEmptySideInvalidatesThatSide)
   EXPECT_FALSE(askAfter.valid) << "a snapshot with no ask levels must invalidate the ask side";
 }
 
-// BOOK-12(b): writing an out-of-range symbol is guarded two ways, and both
+// Writing an out-of-range symbol is guarded two ways, and both
 // are tested here, the same split used in test_decimal.cpp for the
 // analogous accumulation-overflow guard:
 //   - NDEBUG unset (any debug/sanitizer build): SymbolStateMap's assert

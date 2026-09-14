@@ -1,4 +1,4 @@
-// W15-T004 — multi-leg order group state machine, NAPI parity test.
+// Multi-leg order group state machine, NAPI parity test.
 
 const flox = require('..');
 const { OrderGroupPolicy, OrderGroupState } = flox;

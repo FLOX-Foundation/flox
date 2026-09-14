@@ -107,6 +107,24 @@ The truncation is applied before the order enters the book / queue
 tracker, so the rest of the lifecycle (fills, queue position, etc.)
 operates on the truncated quantity.
 
+### Reduce-only orders bypass the pre-trade gates
+
+`reduce_only` / flatten / `close_position` orders skip the risk
+manager, the kill switch, and the order validator by design — on
+both `BacktestRunner` and the live `Runner`. The gate only fires on
+entry-type orders (no `flags.reduceOnly`). This is deliberate: if a
+strategy holds a position and a tightened risk cap would now reject
+the entry, the exit still has to go through, or the strategy is
+stuck in the position it can no longer afford to hold.
+
+The consequence is that tripping the kill switch, or any other
+pre-trade gate, does not by itself stop reduce-only order flow —
+only new exposure. If you need to block exits too during a halt,
+add a separate guard rather than relying on the gate; setting
+`flags.reduceOnly = true` (or calling `close_position` /
+`Strategy.close_position`) is exactly the escape hatch this bypass
+exists for.
+
 ## GTD expiry timing
 
 `expires_at_ns` is an absolute timestamp in the simulator's clock

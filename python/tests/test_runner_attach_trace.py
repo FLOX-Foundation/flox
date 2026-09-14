@@ -1,4 +1,4 @@
-"""Verify Runner.attach_trace_recorder() surface (W14-T012).
+"""Verify Runner.attach_trace_recorder() surface.
 
 The runner mirrors emitted signals into a TraceRecorder when one is
 attached. Driving real signals through the C ABI from a unit test is

@@ -300,7 +300,7 @@ if (fs.existsSync(btCsv)) {
   const strat = {
     symbols: [Number(btc2)],
     onTrade(ctx, t, emit) {
-      // W17-T002: the emit object exposes the DEX liquidity helpers.
+      // The emit object exposes the DEX liquidity helpers.
       if (typeof emit.provideLiquidity === 'function' &&
           typeof emit.withdrawLiquidity === 'function') {
         lpFnsPresent = true;
@@ -322,7 +322,7 @@ if (fs.existsSync(btCsv)) {
   check(stats !== null && stats.totalTrades > 0,
         `BacktestRunner produced trades (got ${stats && stats.totalTrades})`);
   check(lpFnsPresent,
-        'emit exposes provideLiquidity / withdrawLiquidity (W17-T002)');
+        'emit exposes provideLiquidity / withdrawLiquidity');
 
   const eq = bt.equityCurve();
   check(eq && eq.equity instanceof Float64Array,

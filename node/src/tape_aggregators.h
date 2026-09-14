@@ -1,7 +1,7 @@
 // node/src/tape_aggregators.h
 //
-// NAPI surface for the streaming tape aggregator framework
-// (W14-T019). Five ObjectWrap classes thinly wrap the C ABI
+// NAPI surface for the streaming tape aggregator framework.
+// Five ObjectWrap classes thinly wrap the C ABI
 // (`flox_*_aggregator_create` + `flox_*_read_result`); the matching
 // `DataReader.run([...])` / `MergedTapeReader.run([...])` methods live
 // on the reader wraps in data_ops.h and reach in via the public

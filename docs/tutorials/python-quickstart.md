@@ -98,10 +98,15 @@ and the venue-availability hook. Other factories: `bybit_linear`,
 `okx_swap`, `deribit`. For custom venues see
 [`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
 
-`VenueStack` is a standalone simulation: you drive its subsystems
-directly. It is not an argument to `BacktestRunner`.
+`VenueStack` is a standalone simulation: you can drive its
+subsystems directly, as above, or call
+`runner.set_venue_stack(stack)` to have `BacktestRunner` drive it
+for you and pick up the venue's fill mechanics during `run_csv` /
+`run_bars`. `VenueStack` itself is never a constructor argument —
+`BacktestRunner` takes it through `set_venue_stack` after
+construction.
 
-Full pattern: [Realistic backtest in one call](../how-to/realistic-backtest.md).
+Full pattern: [Realistic backtest in one call](../how-to/realistic-backtest.md#attach-a-venuestack-to-backtestrunner).
 
 ---
 

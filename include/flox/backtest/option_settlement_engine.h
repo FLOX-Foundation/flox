@@ -26,10 +26,10 @@
 // its intrinsic value, so realized PnL = (intrinsic - premium) * qty *
 // multiplier. ITM lands the intrinsic, OTM closes worthless (intrinsic 0, so the
 // long simply loses its premium). closePosition already scales by the position's
-// contractMultiplier (W16-T017), so no extra scaling here.
+// contractMultiplier, so no extra scaling here.
 //
 // Physical settlement (equity) opens the underlying at strike instead, and needs
-// an option->underlying symbol mapping; it is out of scope here (W16-T020 / the
+// an option->underlying symbol mapping; it is out of scope here (the
 // TradFi path) and such symbols are skipped.
 
 namespace flox

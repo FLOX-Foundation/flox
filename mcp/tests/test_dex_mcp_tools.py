@@ -1,4 +1,4 @@
-"""Unit tests for the DEX DX MCP tools (W24-T006).
+"""Unit tests for the DEX DX MCP tools.
 
 route_amm_swap / amm_price_impact / replay_pool_tape are thin server tools over the
 flox.dex comfort layer. These tests pin each tool's JSON output to the flox.dex layer it

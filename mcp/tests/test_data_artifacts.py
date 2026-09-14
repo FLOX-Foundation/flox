@@ -284,7 +284,23 @@ def test_docs_db_only_allowed_roots(docs_db) -> None:
     allowed_roots = {
         "docs/bindings", "docs/how-to", "docs/tutorials",
         "docs/reference", "docs/explanation", "docs/errors",
+        "docs/venue",
     }
     for p in paths:
         prefix = "/".join(p.split("/")[:2])
         assert prefix in allowed_roots, f"unexpected root: {p}"
+
+
+def test_docs_db_includes_venue_pages(docs_db) -> None:
+    """T033: `docs/venue/` was missing from `ALLOWED_DOC_ROOTS`, so
+    `docs_search` could not surface a single page of the venue module --
+    the matching engine, the ledger, the multi-agent demo, none of it
+    existed as far as an agent using MCP could tell. Measured cost of
+    including it: +192,512 bytes to docs.fts.sqlite (+7.76%), landing
+    the whole `data/` bundle at ~4.3 MB against a 10 MB soft cap -- see
+    the decision recorded in `.notes/tracks/W28-audit-2026-09/T033-*.md`.
+    """
+    rows = docs_db.execute(
+        "SELECT COUNT(*) FROM docs WHERE path LIKE 'docs/venue/%'"
+    ).fetchone()[0]
+    assert rows >= 5, f"expected several venue pages indexed, got {rows}"

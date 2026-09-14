@@ -1,6 +1,6 @@
 # Smoke test: BacktestRunner.run_tapes -- multi-tape merged backtest replay.
 #
-# Covers W14-T017 acceptance for the Codon binding:
+# Covers this acceptance criteria for the Codon binding:
 #   * `run_tapes([t])` matches `run_tape(t)` field-by-field for at least
 #     a handful of FloxBacktestStats fields (single-tape merge is a no-op)
 #   * `run_tapes([t1, t2])` runs two tapes from distinct venues to

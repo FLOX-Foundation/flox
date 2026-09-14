@@ -1,5 +1,5 @@
 """
-python/tests/test_dex_amount.py — the 256-bit DEX amount boundary (W1-T039).
+python/tests/test_dex_amount.py — the 256-bit DEX amount boundary.
 
 A u256 / i256 crosses the binding as a native Python int, so a 256-bit wei amount is
 lossless. Run from repo root:

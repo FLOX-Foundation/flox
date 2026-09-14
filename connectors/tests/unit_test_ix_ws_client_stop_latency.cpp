@@ -6,13 +6,14 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * CONN-07 / CONN-11 offline coverage.
+ * Offline coverage for send() return-value propagation and interruptible
+ * shutdown.
  *
- * CONN-07: IxWebSocketClient::send() used to return void and discard
+ * IxWebSocketClient::send() used to return void and discard
  * ix::WebSocket::send()'s own success flag, so a caller had no way to learn a
  * frame was dropped. send() must return that flag.
  *
- * CONN-11: stop() only flipped an atomic; the reconnect backoff wait was an
+ * stop() used to only flip an atomic; the reconnect backoff wait was an
  * uninterruptible std::this_thread::sleep_for(backoffMs), so shutdown against
  * an unreachable exchange took as long as whatever backoff tier run() had
  * reached (measured 3300 ms after the first failure, 23456 ms once the

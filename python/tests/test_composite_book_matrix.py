@@ -1,7 +1,7 @@
 """Tests for `flox_py.CompositeBookMatrix`.
 
 Bound from `include/flox/book/composite_book_matrix.h`
-(`python/composite_book_bindings.h`). See BOOK-12 in the 2026-09 audit:
+(`python/composite_book_bindings.h`).
 `update_book()` previously had no way to distinguish a delta from a
 snapshot at all (it always went in as a snapshot), and the underlying
 engine, when it does see a delta, used to zero out the untouched side.

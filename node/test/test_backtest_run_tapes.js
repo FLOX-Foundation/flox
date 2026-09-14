@@ -1,6 +1,6 @@
 // node/test/test_backtest_run_tapes.js
 //
-// W14-T017 — N-API BacktestRunner.runTapes(paths).
+// N-API BacktestRunner.runTapes(paths).
 // Mirrors the Python suite in
 // python/tests/test_merged_tape_reader.py::test_run_tapes_*:
 //   * runTapes([t]) ≡ runTape(t)   — same stats shape/keys

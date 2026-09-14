@@ -1919,7 +1919,7 @@ export interface DataReaderRunOptions {
   progressIntervalMs?: number;
 }
 
-// ── Streaming tape aggregator framework (W14-T019) ─────────────────
+// ── Streaming tape aggregator framework ─────────────────────────────
 
 /** Event-type filter applied inside each aggregator. Numeric constants
  *  mirror the C ABI: 1 = Trades, 2 = BooksOnly, 3 = Both. */

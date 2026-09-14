@@ -1,6 +1,6 @@
 // node/test/test_progress_callback.js
 //
-// W14-T026 — N-API binding for DataReader.run's onProgress option.
+// N-API binding for DataReader.run's onProgress option.
 // Mirrors python/tests/test_progress_callback.py:
 //   * positional n_threads still works (back-compat)
 //   * onProgress fires at least once; pct ends at 1.0; ts monotonic

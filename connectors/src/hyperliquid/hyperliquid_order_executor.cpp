@@ -94,8 +94,8 @@ std::string_view hlTifToken(NormalizedTif tif)
 // order shape and trailing has no server-side primitive on HL at all; none
 // of that is implemented here. Returns the tif token to send, or empty if
 // the order should be rejected outright -- silently sending an
-// unsupported order type as a plain resting Gtc limit is how CONN-01/
-// CONN-02 happened (a strategy believing a stop or an IOC/reduce-only
+// unsupported order type as a plain resting Gtc limit used to make
+// a strategy believe a stop or an IOC/reduce-only
 // order exists on the venue when what actually rests there is neither).
 std::optional<std::string_view> hlOrderTifOrReject(const Order& order)
 {

@@ -569,7 +569,7 @@ TEST(Account, HasStaleMarksFlagsBeyondBudget)
   // A real (non-zero, non-sentinel) mark timestamp -- realistic wall-clock
   // nanoseconds, not the toy ~1e9 this test used before. tsNs=0 is a
   // reserved sentinel (see HasStaleMarksTreatsUnspecifiedTsAsFresh below);
-  // using it here as an ordinary timestamp masked BT-10 because
+  // using it here as an ordinary timestamp masked a stale-mark bug because
   // `nowNs - 0` at toy scale never exceeded the budget in the "fresh"
   // branch either.
   constexpr int64_t kMarkTsNs = 1'700'000'000'000'000'000;
@@ -582,7 +582,7 @@ TEST(Account, HasStaleMarksFlagsBeyondBudget)
                                /*budgetNs=*/1'000'000'000));
 }
 
-// BT-10: the header contract for `setMark` promises that a caller who
+// The header contract for `setMark` promises that a caller who
 // doesn't pass a timestamp (ts stays at its default, 0) is treated as
 // "fresh" by the stale-mark guard. Before the fix, `hasStaleMarks` computed
 // `nowNs - 0` unconditionally, which at any real wall-clock nowNs is on the
@@ -626,7 +626,7 @@ TEST(Account, MultiSymbolOnMarksUpdatesAllAccountsAtomically)
   EXPECT_DOUBLE_EQ(a.markFor(ETH), 2'250.0);
 }
 
-// === Contract multiplier + option premium semantics (W16-T020) ===
+// === Contract multiplier + option premium semantics ===
 
 namespace
 {

@@ -1,4 +1,4 @@
-// test_dex.js -- the flox/dex comfort layer (W24-T005), the Node mirror of
+// test_dex.js -- the flox/dex comfort layer, the Node mirror of
 // python/tests/test_dex*.py. Verifies every quote matches the raw ammCurve* binding to
 // the wei, that the silent-wrong-answer footgun raises, that CLMM state reads back, and
 // that the router / arb / tape produce the same figures as the Python suite.

@@ -23,7 +23,7 @@ constexpr int64_t kSecondNs = 1'000'000'000;
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// BOOK-11: the WaitForAll timeout fallback must work from the very first
+// The WaitForAll timeout fallback must work from the very first
 // tick, not only after the clock has already fired once.
 // ---------------------------------------------------------------------------
 
@@ -74,7 +74,7 @@ TEST(MultiFeedClockTest, TimeoutFallbackStillWorksAfterAFullFire)
 
 TEST(MultiFeedClockTest, TimeoutFallbackWorksWhenFirstFullFireIsAtTimestampZero)
 {
-  // BOOK-11, "found beyond the report": if the first full fire lands
+  // A related edge case: if the first full fire lands
   // exactly on tsNs == 0 (a backtest replayed from a zero-based clock),
   // the old `_lastFireTs > 0` check made the timeout permanently
   // indistinguishable from "never fired".
@@ -143,7 +143,7 @@ TEST(MultiFeedClockTest, LeaderFollowerRequiresFreshFollower)
 }
 
 // ---------------------------------------------------------------------------
-// BOOK-11: docs/how-to/multi-feed-clock.md claimed an out-of-band symbol's
+// docs/how-to/multi-feed-clock.md claimed an out-of-band symbol's
 // tick "updates the per-symbol last-seen timestamp". It does not -- the
 // early return happens before any state is touched. This pins the actual
 // (and now correctly documented) behavior: an out-of-band tick never fires

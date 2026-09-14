@@ -92,6 +92,17 @@ jobs:
         python3 scripts/check_doc_snippets.py --min-includes 24
     - name: Verify every API symbol named in hand-written docs exists
       run: python3 scripts/check_doc_symbols.py
+    - name: Verify self-contained C++ Strategy examples in docs compile
+      # check_doc_symbols.py only proves a named symbol still exists, not
+      # that its signature still matches the doc's claim -- three
+      # reference pages survived a real field/return-type change with
+      # every doc gate green. This compiles every full Strategy example
+      # against the real headers with -fsyntax-only, so a worked example
+      # calling a method whose signature moved underneath it fails here
+      # instead of shipping silently. Scope: full class-definition
+      # examples only, not single-line signature/field fragments -- see
+      # the script's own docstring for what remains unchecked.
+      run: python3 scripts/check_doc_cpp_examples.py
     - name: Verify docs/examples/* still run (or at least parse)
       run: python3 scripts/check_doc_examples.py
     - name: Verify every doc page is reachable from the mkdocs nav

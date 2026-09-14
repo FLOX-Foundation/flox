@@ -1,7 +1,7 @@
 """Live state inspection tools — read-only positions / orders / PnL /
 kill-switch over a runtime snapshot file.
 
-This is W2-T015 Phase 1: read-only inspection. The MCP server reads
+This is read-only inspection. The MCP server reads
 a JSON snapshot the user's flox app writes periodically. Mutating
 operations (place_order, cancel, set_kill_switch) and a real-time IPC
 transport are deferred to Phase 2.

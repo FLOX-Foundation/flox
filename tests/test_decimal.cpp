@@ -127,7 +127,7 @@ TEST(DecimalTest, FromDoubleOutOfRangeSaturates)
 }
 
 // ---------------------------------------------------------------------------
-// BOOK-08: operator+= must saturate instead of silently overflowing.
+// operator+= must saturate instead of silently overflowing.
 //
 // Overflow is guarded two ways, and this file tests both:
 //   - FLOX_SCALE_CHECKS on (any build without NDEBUG, or an explicit

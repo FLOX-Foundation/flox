@@ -83,7 +83,7 @@ def test_extra_function_is_informational(tmp_path):
     assert extra == ["flox_b"]
 
 
-# OPS-03 (flox-audit-2026-09 batch B02): check() used to index function
+# check() used to index function
 # declarations only -- parsed without PARSE_DETAILED_PROCESSING_RECORD, so
 # macros never entered libclang's AST, and struct fields were never
 # visited at all. Deleting every FLOX_SIGNAL_TYPE_* constant, or slipping

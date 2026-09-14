@@ -1,6 +1,6 @@
 # Smoke test: MergedTapeReader compiles + drives the C ABI.
 #
-# Covers W14-T016 acceptance for the Codon binding:
+# Covers this acceptance criteria for the Codon binding:
 #   * bad-path construction surfaces as ValueError (capi returns NULL)
 #   * a two-tape round-trip via the existing BinaryLogRecorderHook +
 #     Runner produces a global symbol_table() (two exchanges, distinct

@@ -241,8 +241,8 @@
     {
       "language": "python",
       "path": "docs/examples/python_realistic_backtest.py",
-      "sha256": "060dd80cf14951da75380c16ff9fb60104e471c7b0de5a03e6d6c2505cb39e5c",
-      "size_bytes": 2290,
+      "sha256": "2c34c5a087a310a0c06bbd848661cad97309e032ae37725bae6ee2b3b8488e3e",
+      "size_bytes": 2281,
       "topic": "backtest"
     },
     {

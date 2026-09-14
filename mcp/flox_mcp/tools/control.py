@@ -11,6 +11,19 @@ Every tool returns the server's response verbatim, including the
 audit log line it produced. On a missing or unreachable control
 server the tools surface a structured error rather than crashing
 the MCP loop.
+
+Every function here returns ``(text, is_error)``. ``is_error`` is
+``False`` only when the control server accepted and processed the
+call (a 2xx response, which itself may report ``accepted=false`` for
+a `dry_run` or a rejected order inside ``text`` -- that is a
+successful *query*, not a tool failure). Every other outcome --
+no token configured, the control plane unreachable, or the server
+returning an HTTP error status -- means the mutating action the
+caller asked for did not happen, so ``is_error`` is ``True``. The
+caller (``server.py``) surfaces this as the MCP ``isError`` flag on
+the tool result; before this, every path here returned plain text
+and a client branching on ``isError`` would see ``False`` even when
+``place_order`` never reached the exchange.
 """
 from __future__ import annotations
 
@@ -18,7 +31,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Tuple
 
 
 _DEFAULT_URL = "http://127.0.0.1:8765"
@@ -31,7 +44,7 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     return val
 
 
-def _post(path: str, body: Mapping[str, Any]) -> str:
+def _post(path: str, body: Mapping[str, Any]) -> Tuple[str, bool]:
     url = _env("FLOX_CONTROL_URL", _DEFAULT_URL)
     token = _env("FLOX_CONTROL_TOKEN")
     if not token:
@@ -43,7 +56,7 @@ def _post(path: str, body: Mapping[str, Any]) -> str:
                       "FLOX_CONTROL_TOKEN. If you are exploring without "
                       "an engine, use docs_search / lookup_symbol / "
                       "scaffold_strategy / run_backtest instead."),
-        }, indent=2)
+        }, indent=2), True
 
     headers = {
         "Content-Type": "application/json",
@@ -55,18 +68,18 @@ def _post(path: str, body: Mapping[str, Any]) -> str:
     )
     try:
         with urllib.request.urlopen(req, timeout=5.0) as resp:
-            return resp.read().decode("utf-8")
+            return resp.read().decode("utf-8"), False
     except urllib.error.HTTPError as exc:
         try:
             payload = json.loads(exc.read().decode("utf-8"))
         except Exception:
             payload = {"error": f"http {exc.code}"}
-        return json.dumps(payload, indent=2)
+        return json.dumps(payload, indent=2), True
     except urllib.error.URLError as exc:
         return json.dumps({
             "error": f"control plane unreachable at {url}: {exc.reason!r}. "
                      "Is the user app running with ControlServer.start()?",
-        }, indent=2)
+        }, indent=2), True
 
 
 def place_order(
@@ -80,7 +93,7 @@ def place_order(
     reason: str = "",
     dry_run: bool = True,
     approve_token: Optional[str] = None,
-) -> str:
+) -> Tuple[str, bool]:
     body: dict[str, Any] = {
         "account": account,
         "symbol": int(symbol),
@@ -96,7 +109,7 @@ def place_order(
     return _post("/place_order", body)
 
 
-def cancel_order(*, account: str, order_id: int, dry_run: bool = True) -> str:
+def cancel_order(*, account: str, order_id: int, dry_run: bool = True) -> Tuple[str, bool]:
     return _post("/cancel_order", {
         "account": account,
         "order_id": int(order_id),
@@ -104,7 +117,7 @@ def cancel_order(*, account: str, order_id: int, dry_run: bool = True) -> str:
     })
 
 
-def cancel_all(*, account: str, symbol: int = 0, dry_run: bool = True) -> str:
+def cancel_all(*, account: str, symbol: int = 0, dry_run: bool = True) -> Tuple[str, bool]:
     return _post("/cancel_all", {
         "account": account,
         "symbol": int(symbol),
@@ -114,14 +127,14 @@ def cancel_all(*, account: str, symbol: int = 0, dry_run: bool = True) -> str:
 
 def flatten_positions(
     *, account: str, symbol: Optional[int] = None, dry_run: bool = True
-) -> str:
+) -> Tuple[str, bool]:
     body: dict[str, Any] = {"account": account, "dry_run": bool(dry_run)}
     if symbol is not None:
         body["symbol"] = int(symbol)
     return _post("/flatten_positions", body)
 
 
-def set_kill_switch(*, active: bool, reason: str = "", dry_run: bool = True) -> str:
+def set_kill_switch(*, active: bool, reason: str = "", dry_run: bool = True) -> Tuple[str, bool]:
     return _post("/set_kill_switch", {
         "active": bool(active),
         "reason": reason,
