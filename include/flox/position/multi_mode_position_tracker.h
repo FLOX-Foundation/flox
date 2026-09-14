@@ -18,10 +18,13 @@
 #include "flox/strategy/symbol_state_map.h"
 #include "flox/util/base/move_only_function.h"
 
+#include <algorithm>
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace flox
 {
@@ -209,6 +212,34 @@ class MultiModePositionTracker : public IPositionManager
   {
     std::lock_guard<std::mutex> lock(_mutex);
     return getPositionUnlocked(symbol);
+  }
+
+  // Net entry price, or nothing when flat. In PER_SIDE mode a book that is
+  // long and short at once has no single entry price, so the two sides are
+  // blended by quantity the same way the net position is.
+  std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    const auto snap = snapshotUnlocked(symbol);
+    const int64_t longRaw = snap.longQty.raw();
+    const int64_t shortRaw = snap.shortQty.raw();
+    const int64_t totalRaw = longRaw + shortRaw;
+    if (totalRaw == 0)
+    {
+      return std::nullopt;
+    }
+    if (shortRaw == 0)
+    {
+      return snap.longAvgEntry;
+    }
+    if (longRaw == 0)
+    {
+      return snap.shortAvgEntry;
+    }
+    const Volume blended =
+        Volume::fromRaw((snap.longQty * snap.longAvgEntry).raw() +
+                        (snap.shortQty * snap.shortAvgEntry).raw());
+    return blended / Quantity::fromRaw(totalRaw);
   }
 
   Quantity getLongPosition(SymbolId symbol) const
@@ -519,20 +550,25 @@ class MultiModePositionTracker : public IPositionManager
 
   void applyFillInternal(const Order& order, Quantity fillQty, const PrecomputedFill& pc)
   {
+    bool changed = false;
     switch (_mode)
     {
       case PositionAggregationMode::NET:
         updateNet(order.symbol, pc.signedQty, order.price);
+        changed = (pc.signedQty != 0);
         break;
       case PositionAggregationMode::PER_SIDE:
-        updatePerSide(order, fillQty, pc.isClose);
+        changed = updatePerSide(order, fillQty, pc.isClose);
         break;
       case PositionAggregationMode::GROUPED:
-        updateGrouped(order, fillQty, pc.isClose);
+        changed = updateGrouped(order, fillQty, pc.isClose);
         break;
     }
 
-    if (_onChange) [[unlikely]]
+    // Only on a real change. Subscribers used to be told "position changed"
+    // after a fill that moved nothing, and handed back the snapshot they
+    // already had.
+    if (_onChange && changed) [[unlikely]]
     {
       _onChange(order.symbol, snapshotUnlocked(order.symbol));
     }
@@ -568,7 +604,7 @@ class MultiModePositionTracker : public IPositionManager
     }
   }
 
-  void updatePerSide(const Order& order, Quantity qty, bool isClose)
+  bool updatePerSide(const Order& order, Quantity qty, bool isClose)
   {
     auto& s = (*_perSideStates)[order.symbol];
 
@@ -582,70 +618,119 @@ class MultiModePositionTracker : public IPositionManager
           Price pnl = closeLots(s.shortLots, Quantity::fromRaw(closeRaw), order.price, false);
           s.cachedShortQty -= closeRaw;
           s.realizedPnl = Price::fromRaw(s.realizedPnl.raw() + pnl.raw());
+          return true;
         }
+        return false;
       }
-      else
-      {
-        addLot(s.longLots, qty, order.price);
-        s.cachedLongQty += qty.raw();
-      }
+      addLot(s.longLots, qty, order.price);
+      s.cachedLongQty += qty.raw();
+      return qty.raw() != 0;
     }
-    else
+
+    if (isClose)
     {
-      if (isClose)
+      int64_t closeRaw = std::min(qty.raw(), s.cachedLongQty);
+      if (closeRaw > 0)
       {
-        int64_t closeRaw = std::min(qty.raw(), s.cachedLongQty);
-        if (closeRaw > 0)
-        {
-          Price pnl = closeLots(s.longLots, Quantity::fromRaw(closeRaw), order.price, true);
-          s.cachedLongQty -= closeRaw;
-          s.realizedPnl = Price::fromRaw(s.realizedPnl.raw() + pnl.raw());
-        }
+        Price pnl = closeLots(s.longLots, Quantity::fromRaw(closeRaw), order.price, true);
+        s.cachedLongQty -= closeRaw;
+        s.realizedPnl = Price::fromRaw(s.realizedPnl.raw() + pnl.raw());
+        return true;
       }
-      else
-      {
-        addLot(s.shortLots, qty, order.price);
-        s.cachedShortQty += qty.raw();
-      }
+      return false;
     }
+    addLot(s.shortLots, qty, order.price);
+    s.cachedShortQty += qty.raw();
+    return qty.raw() != 0;
   }
 
-  void updateGrouped(const Order& order, Quantity fillQty, bool isClose)
+  // Close against the positions in one tag group, oldest first. Returns what
+  // is left of the fill after the group is exhausted.
+  int64_t closeWithinGroup(const Order& order, int64_t remaining)
+  {
+    GroupId gid = getOrCreateTagGroup(order.orderTag);
+    const auto* group = _groups->getGroup(gid);
+    if (!group)
+    {
+      return remaining;
+    }
+    for (auto pid : group->positionIds)
+    {
+      if (remaining <= 0)
+      {
+        break;
+      }
+      remaining -= closeOnePosition(order, pid, remaining);
+    }
+    return remaining;
+  }
+
+  // Close against every open position on this symbol, oldest first. Position
+  // ids are handed out in order, so sorting them is the arrival order.
+  int64_t closeAcrossSymbol(const Order& order, int64_t remaining)
+  {
+    std::vector<PositionId> ids;
+    for (const auto& [pid, pos] : _groups->positions())
+    {
+      if (!pos.closed && pos.symbol == order.symbol)
+      {
+        ids.push_back(pid);
+      }
+    }
+    std::sort(ids.begin(), ids.end());
+    for (auto pid : ids)
+    {
+      if (remaining <= 0)
+      {
+        break;
+      }
+      remaining -= closeOnePosition(order, pid, remaining);
+    }
+    return remaining;
+  }
+
+  // Returns how much of `remaining` this position absorbed.
+  int64_t closeOnePosition(const Order& order, PositionId pid, int64_t remaining)
+  {
+    auto* pos = _groups->getPosition(pid);
+    if (!pos || pos->closed || pos->symbol != order.symbol)
+    {
+      return 0;
+    }
+    const bool isOpposite = (order.side == Side::SELL && pos->side == Side::BUY) ||
+                            (order.side == Side::BUY && pos->side == Side::SELL);
+    if (!isOpposite)
+    {
+      return 0;
+    }
+    const int64_t closeQty = std::min(remaining, pos->quantity.raw());
+    if (closeQty <= 0)
+    {
+      return 0;
+    }
+    _groups->partialClose(pid, Quantity::fromRaw(closeQty), order.price);
+    return closeQty;
+  }
+
+  bool updateGrouped(const Order& order, Quantity fillQty, bool isClose)
   {
     if (isClose)
     {
+      int64_t remaining = fillQty.raw();
       if (order.orderTag != 0)
       {
-        GroupId gid = getOrCreateTagGroup(order.orderTag);
-        const auto* group = _groups->getGroup(gid);
-        if (group)
-        {
-          int64_t remaining = fillQty.raw();
-          for (auto pid : group->positionIds)
-          {
-            if (remaining <= 0)
-            {
-              break;
-            }
-            auto* pos = _groups->getPosition(pid);
-            if (!pos || pos->closed || pos->symbol != order.symbol)
-            {
-              continue;
-            }
-            bool isOpposite = (order.side == Side::SELL && pos->side == Side::BUY) ||
-                              (order.side == Side::BUY && pos->side == Side::SELL);
-            if (!isOpposite)
-            {
-              continue;
-            }
-
-            int64_t closeQty = std::min(remaining, pos->quantity.raw());
-            _groups->partialClose(pid, Quantity::fromRaw(closeQty), order.price);
-            remaining -= closeQty;
-          }
-        }
+        remaining = closeWithinGroup(order, remaining);
       }
-      return;
+      else
+      {
+        // An untagged close covers the whole symbol. Without this the call
+        // returned having done nothing: a position opened and closed through
+        // the documented API stayed open, its realized PnL was lost, and
+        // `Strategy::emitClosePosition` -- which sets reduceOnly and no tag --
+        // could never close anything in this mode at all.
+        remaining = closeAcrossSymbol(order, remaining);
+      }
+      return remaining < fillQty.raw();
     }
 
     auto* pos = _groups->getPositionByOrder(order.id);
@@ -657,13 +742,25 @@ class MultiModePositionTracker : public IPositionManager
         GroupId gid = getOrCreateTagGroup(order.orderTag);
         _groups->assignToGroup(pid, gid);
       }
+      return true;
     }
-    else
+
+    // A later part of the same order tops the position up. Blend the entry
+    // price by quantity: keeping the first part's price reported a 5@100 plus
+    // 5@200 order as ten units held at 100, a cost basis off by the full
+    // spread between the two fills.
+    const int64_t signedFill = (pos->side == Side::SELL) ? -fillQty.raw() : fillQty.raw();
+    _groups->addToNetCache(pos->symbol, signedFill);
+    const int64_t newQtyRaw = pos->quantity.raw() + fillQty.raw();
+    if (newQtyRaw != 0)
     {
-      int64_t signedFill = (pos->side == Side::SELL) ? -fillQty.raw() : fillQty.raw();
-      _groups->addToNetCache(pos->symbol, signedFill);
-      pos->quantity = Quantity::fromRaw(pos->quantity.raw() + fillQty.raw());
+      const Volume held = pos->quantity * pos->entryPrice;
+      const Volume added = fillQty * order.price;
+      pos->entryPrice =
+          Volume::fromRaw(held.raw() + added.raw()) / Quantity::fromRaw(newQtyRaw);
     }
+    pos->quantity = Quantity::fromRaw(newQtyRaw);
+    return fillQty.raw() != 0;
   }
 
   GroupId getOrCreateTagGroup(uint16_t tag)

@@ -33,6 +33,8 @@ tracker.closeLong(symbol, price, qty, /*tag=*/42);
 
 Works in all modes. In NET mode, `openLong`/`openShort` both aggregate into the net position.
 
+In GROUPED mode the tag scopes the close. A close carrying a tag unwinds the positions in that tag's group, oldest first. A close with no tag, which is the default and what `Strategy::emitClosePosition` sends, unwinds every open position on the symbol, oldest first. An untagged close used to be a silent no-op: the position stayed open, its realized PnL was lost, and subscribers were still told the position had changed.
+
 ## Snapshot
 
 Atomic read of all position fields in a single lock acquisition:
@@ -48,6 +50,17 @@ snap.netQty();      // longQty - shortQty
 snap.unrealizedPnl(currentPrice);  // mark-to-market
 ```
 
+## Net entry price
+
+```cpp
+std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override;
+```
+
+The `IPositionManager` override the strategy context reads. Empty when the
+symbol is flat. In PER_SIDE mode a book that is long and short at once has no
+single entry price, so the two sides are blended by quantity the same way the
+net position is.
+
 ## Position Change Callback
 
 ```cpp
@@ -56,7 +69,9 @@ tracker.onPositionChange([](SymbolId sym, const auto& snap) {
 });
 ```
 
-Fires after every fill. Called under the lock.
+Fires after a fill that moves the position. A fill that moves nothing, such as
+a reduce-only order against no position, does not call it; subscribers used to be
+told the position had changed and handed back the snapshot they already had.
 
 ## Exchange Integration
 

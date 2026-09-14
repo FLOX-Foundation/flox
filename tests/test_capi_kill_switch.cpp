@@ -429,3 +429,102 @@ TEST(CapiPreTradeHooks, IndependentlyDetachable)
   flox_order_validator_destroy(ov);
   flox_kill_switch_destroy(ks);
 }
+
+// ============================================================================
+// The backtest kill switch latches
+// ============================================================================
+
+namespace
+{
+
+struct LatchState
+{
+  int calls{0};
+  FloxStrategyHandle strategy{nullptr};
+  uint32_t symbol{0};
+};
+
+// Halt on the first order, allow everything after. A switch that latches
+// stops the run at the first order; one that only caches its last answer
+// resumes trading on the second.
+uint8_t halt_once_cb(void* ud, const FloxSignal*)
+{
+  auto* s = static_cast<LatchState*>(ud);
+  ++s->calls;
+  return s->calls == 1 ? 0u : 1u;
+}
+
+void emit_alternating(void* ud, const FloxSymbolContext*, const FloxBarData*)
+{
+  auto* s = static_cast<LatchState*>(ud);
+  static int bar = 0;
+  if (bar++ % 2 == 0)
+  {
+    flox_emit_market_buy(s->strategy, s->symbol, 100000000LL);
+  }
+  else
+  {
+    flox_emit_market_sell(s->strategy, s->symbol, 100000000LL);
+  }
+}
+
+}  // namespace
+
+// The C ABI adapter assigned its triggered flag from each check instead of
+// latching it, so an "allow" answer un-triggered a switch that had already
+// said halt: five more orders executed and two round trips completed. The
+// Python adapter for the same interface latches, which meant one strategy
+// produced two different backtest results depending on the binding.
+TEST(CapiKillSwitch, BacktestKillSwitchLatchesAfterTheFirstHalt)
+{
+  auto* registry = flox_registry_create();
+  uint32_t sym = flox_registry_add_symbol(registry, "test", "BTC", 0.01);
+  auto* btr = flox_backtest_runner_create(registry, 0.0, 10000.0);
+
+  LatchState state;
+  state.symbol = sym;
+
+  FloxKillSwitchCallbacks kcb{};
+  kcb.check = halt_once_cb;
+  kcb.user_data = &state;
+  FloxKillSwitchHandle ks = flox_kill_switch_create(kcb);
+  ASSERT_NE(ks, nullptr);
+  flox_backtest_runner_set_kill_switch(btr, ks);
+
+  FloxStrategyCallbacks scb{};
+  scb.on_bar = emit_alternating;
+  scb.user_data = &state;
+  uint32_t syms[] = {sym};
+  auto* strat = flox_strategy_create(1, syms, 1, registry, scb);
+  state.strategy = strat;
+  flox_backtest_runner_set_strategy(btr, strat);
+
+  constexpr uint32_t kBars = 6;
+  int64_t starts[kBars];
+  int64_t ends[kBars];
+  double opens[kBars], highs[kBars], lows[kBars], closes[kBars], volumes[kBars];
+  for (uint32_t i = 0; i < kBars; ++i)
+  {
+    starts[i] = static_cast<int64_t>(i + 1) * 1'000'000'000;
+    ends[i] = starts[i] + 999'999'999;
+    opens[i] = 100.0;
+    highs[i] = 101.0;
+    lows[i] = 99.0;
+    closes[i] = 100.5;
+    volumes[i] = 10.0;
+  }
+
+  FloxBacktestStats stats{};
+  int rc = flox_backtest_runner_run_bars(btr, starts, ends, opens, highs, lows,
+                                         closes, volumes, kBars, "BTC", 0, 0, &stats);
+  EXPECT_EQ(rc, 1);
+
+  EXPECT_GE(state.calls, 1);
+  EXPECT_EQ(stats.totalTrades, 0u)
+      << "orders executed after the kill switch said halt";
+
+  flox_strategy_destroy(strat);
+  flox_backtest_runner_destroy(btr);
+  flox_registry_destroy(registry);
+  flox_kill_switch_destroy(ks);
+}

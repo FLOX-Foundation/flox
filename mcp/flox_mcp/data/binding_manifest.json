@@ -11023,6 +11023,11 @@
           "name": "Account"
         },
         {
+          "header": "include/flox/risk/portfolio_risk.h",
+          "kind": "type",
+          "name": "AccountRow"
+        },
+        {
           "header": "include/flox/backtest/liquidation_engine.h",
           "kind": "type",
           "name": "AccountWalkOutcome"
@@ -13881,6 +13886,46 @@
           "kind": "method",
           "name": "totalUnrealisedPnl",
           "parent": "Account"
+        },
+        {
+          "kind": "method",
+          "name": "breachesLocked",
+          "parent": "AccountRow"
+        },
+        {
+          "kind": "method",
+          "name": "buildSnapshotLocked",
+          "parent": "AccountRow"
+        },
+        {
+          "kind": "method",
+          "name": "contributingAccountsLocked",
+          "parent": "AccountRow"
+        },
+        {
+          "kind": "method",
+          "name": "currentEquityLocked",
+          "parent": "AccountRow"
+        },
+        {
+          "kind": "method",
+          "name": "drawdownPctLocked",
+          "parent": "AccountRow"
+        },
+        {
+          "kind": "method",
+          "name": "reevaluateLocked",
+          "parent": "AccountRow"
+        },
+        {
+          "kind": "method",
+          "name": "totalDailyPnlLocked",
+          "parent": "AccountRow"
+        },
+        {
+          "kind": "method",
+          "name": "totalGrossLocked",
+          "parent": "AccountRow"
         },
         {
           "kind": "method",
@@ -18139,6 +18184,11 @@
         },
         {
           "kind": "method",
+          "name": "getAverageEntryPrice",
+          "parent": "IPositionManager"
+        },
+        {
+          "kind": "method",
           "name": "getPosition",
           "parent": "IPositionManager"
         },
@@ -21459,32 +21509,7 @@
         },
         {
           "kind": "method",
-          "name": "breachesLocked",
-          "parent": "PortfolioRiskAggregator"
-        },
-        {
-          "kind": "method",
-          "name": "buildSnapshotLocked",
-          "parent": "PortfolioRiskAggregator"
-        },
-        {
-          "kind": "method",
           "name": "checkOrder",
-          "parent": "PortfolioRiskAggregator"
-        },
-        {
-          "kind": "method",
-          "name": "currentEquityLocked",
-          "parent": "PortfolioRiskAggregator"
-        },
-        {
-          "kind": "method",
-          "name": "drawdownPctLocked",
-          "parent": "PortfolioRiskAggregator"
-        },
-        {
-          "kind": "method",
-          "name": "reevaluateLocked",
           "parent": "PortfolioRiskAggregator"
         },
         {
@@ -21500,16 +21525,6 @@
         {
           "kind": "method",
           "name": "snapshot",
-          "parent": "PortfolioRiskAggregator"
-        },
-        {
-          "kind": "method",
-          "name": "totalDailyPnlLocked",
-          "parent": "PortfolioRiskAggregator"
-        },
-        {
-          "kind": "method",
-          "name": "totalGrossLocked",
           "parent": "PortfolioRiskAggregator"
         },
         {
@@ -21704,6 +21719,11 @@
         },
         {
           "kind": "method",
+          "name": "getAverageEntryPrice",
+          "parent": "PositionSnapshot"
+        },
+        {
+          "kind": "method",
           "name": "getLongAvgEntry",
           "parent": "PositionSnapshot"
         },
@@ -21839,6 +21859,11 @@
         },
         {
           "kind": "method",
+          "name": "getAverageEntryPrice",
+          "parent": "PositionTracker"
+        },
+        {
+          "kind": "method",
           "name": "getAvgEntryPrice",
           "parent": "PositionTracker"
         },
@@ -21904,7 +21929,22 @@
         },
         {
           "kind": "method",
+          "name": "closeAcrossSymbol",
+          "parent": "PrecomputedFill"
+        },
+        {
+          "kind": "method",
           "name": "closeLots",
+          "parent": "PrecomputedFill"
+        },
+        {
+          "kind": "method",
+          "name": "closeOnePosition",
+          "parent": "PrecomputedFill"
+        },
+        {
+          "kind": "method",
+          "name": "closeWithinGroup",
           "parent": "PrecomputedFill"
         },
         {

@@ -79,6 +79,72 @@ console.log('=== reset_kill_switch ===');
   check(agg.killSwitchActive() === false, 'reset_kill_switch clears the flag');
 }
 
+console.log('=== gate agrees with snapshot ===');
+{
+  // One strategy is 100% of its own book by definition. The gate used to
+  // refuse every opening order it sent while the snapshot showed nothing.
+  const agg = new flox.PortfolioRiskAggregator({
+    rules: { maxConcentrationPct: 0.40 },
+    initialEquity: 100_000,
+  });
+  check(agg.checkOrder('solo', 10_000, 'buy') === null,
+        'solo strategy can open a position');
+  agg.update('solo', { grossExposure: 5_000 });
+  check(agg.checkOrder('solo', 10_000, 'buy') === null,
+        'solo strategy can add to a position');
+  check(agg.snapshot().killSwitchActive === false,
+        'solo strategy does not arm the kill switch');
+}
+
+{
+  // One of two strategies flattens. Counting registered rows rather than
+  // contributing ones halted the whole portfolio here.
+  const agg = new flox.PortfolioRiskAggregator({
+    rules: { maxConcentrationPct: 0.60 },
+    initialEquity: 100_000,
+  });
+  agg.update('a', { grossExposure: 10_000 });
+  agg.update('b', { grossExposure: 10_000 });
+  agg.update('b', { grossExposure: 0 });
+  check(agg.snapshot().killSwitchActive === false,
+        'flattening one of two strategies does not halt the portfolio');
+}
+
+{
+  // Risk-reducing orders pass the exposure cap. Reading an unreported net
+  // as zero made every order look like it increased exposure.
+  const agg = new flox.PortfolioRiskAggregator({
+    rules: { maxGrossExposure: 50_000 },
+    initialEquity: 100_000,
+  });
+  agg.update('a', { grossExposure: 49_000 });
+  check(agg.checkOrder('a', 10_000, 'buy') !== null,
+        'buy over the gross cap is rejected');
+  check(agg.checkOrder('a', 10_000, 'reduce') === null,
+        'reduce passes the gross cap');
+  check(agg.checkOrder('a', 10_000, 'sell') === null,
+        'sell against reported gross passes the gross cap');
+}
+
+console.log('=== drawdown needs a capital base ===');
+{
+  let threw = false;
+  try {
+    new flox.PortfolioRiskAggregator({ rules: { maxDrawdownPct: 0.20 } });
+  } catch (e) {
+    threw = true;
+  }
+  check(threw, 'maxDrawdownPct without initialEquity is refused');
+
+  let ok = true;
+  try {
+    new flox.PortfolioRiskAggregator({ rules: { maxGrossExposure: 1_000 } });
+  } catch (e) {
+    ok = false;
+  }
+  check(ok, 'other rules still construct with no initial equity');
+}
+
 if (failed > 0) {
   console.error(`\n${failed} check(s) failed`);
   process.exit(1);

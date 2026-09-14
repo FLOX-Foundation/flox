@@ -16111,6 +16111,10 @@
           "type": "uint32_t"
         },
         {
+          "name": "has_avg_entry_price",
+          "type": "uint8_t"
+        },
+        {
           "name": "position_raw",
           "type": "int64_t"
         },

@@ -11,6 +11,7 @@
 
 #include "flox/replay/binary_format_v1.h"
 
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -22,6 +23,17 @@ namespace flox::run
 
 namespace
 {
+
+// event_count is a 32-bit field read straight out of the file, so reserving
+// against it hands an attacker-controlled allocation of up to four billion
+// records. No segment can hold more records than its own byte count allows,
+// so cap the reservation at that.
+size_t safeReserveCount(uint32_t declared, size_t segmentBytes, size_t recordBytes)
+{
+  const size_t frameBytes = sizeof(flox::replay::FrameHeader) + recordBytes;
+  const size_t possible = frameBytes > 0 ? segmentBytes / frameBytes : 0;
+  return std::min(static_cast<size_t>(declared), possible);
+}
 
 // Minimal JSON pull parser. Just enough to read the manifest produced by the
 // recorder. We avoid pulling a JSON library for the engine target so the run
@@ -407,7 +419,24 @@ std::optional<TraceManifest::Segment> TraceReader::findSegment(RecordKind kind) 
 
 std::vector<uint8_t> TraceReader::readSegmentBytes(const std::string& name) const
 {
-  std::filesystem::path full = std::filesystem::path(_root) / name;
+  // Segment names come out of the bundle's own manifest, which arrives with
+  // the bundle. Appending one unchecked let a manifest name an absolute path
+  // or climb out with "..", and the reader would happily open whatever was
+  // there: std::filesystem::path("/tmp/run") / "/etc/hosts" is "/etc/hosts".
+  const std::filesystem::path rel(name);
+  if (rel.is_absolute() || rel.has_root_name())
+  {
+    throw std::runtime_error("trace reader: segment name must be relative: " + name);
+  }
+  for (const auto& part : rel)
+  {
+    if (part == "..")
+    {
+      throw std::runtime_error("trace reader: segment name escapes the bundle: " + name);
+    }
+  }
+
+  std::filesystem::path full = std::filesystem::path(_root) / rel;
   std::ifstream in(full, std::ios::binary);
   if (!in)
   {
@@ -444,7 +473,7 @@ std::vector<OwnedSignal> TraceReader::readAllSignals()
     throw std::runtime_error("trace reader: signal segment header invalid");
   }
   size_t cursor = sizeof(hdr);
-  out.reserve(hdr.event_count);
+  out.reserve(safeReserveCount(hdr.event_count, bytes.size(), sizeof(SignalRecord)));
   for (uint32_t i = 0; i < hdr.event_count; ++i)
   {
     if (cursor + sizeof(flox::replay::FrameHeader) > bytes.size())
@@ -473,6 +502,23 @@ std::vector<OwnedSignal> TraceReader::readAllSignals()
     }
     SignalRecord rec{};
     std::memcpy(&rec, bytes.data() + cursor, sizeof(rec));
+
+    // The three lengths live inside the record, which lives inside the bytes
+    // the CRC is taken over, so a doctored file checksums clean. Without this
+    // cross-check the reader took the lengths at their word and read past the
+    // segment: 60,000 bytes for a name out of a 124-byte file, 262,140 for a
+    // symbol list, and payload_len is 32-bit, so up to 4 GB. No exception, no
+    // crash in the small cases -- just whatever was next in the heap, copied
+    // into the signal and carried on into the report and the bundle.
+    const size_t declared = static_cast<size_t>(rec.name_len) +
+                            static_cast<size_t>(rec.symbol_count) * sizeof(uint32_t) +
+                            static_cast<size_t>(rec.payload_len);
+    if (declared > fh.size - sizeof(rec))
+    {
+      throw std::runtime_error(
+          "trace reader: signal record lengths overrun the frame");
+    }
+
     OwnedSignal os;
     os.run_ts_ns = rec.run_ts_ns;
     os.feed_ts_ns = rec.feed_ts_ns;
@@ -523,7 +569,7 @@ std::vector<OwnedOrderEvent> TraceReader::readAllOrderEvents()
     throw std::runtime_error("trace reader: order segment header invalid");
   }
   size_t cursor = sizeof(hdr);
-  out.reserve(hdr.event_count);
+  out.reserve(safeReserveCount(hdr.event_count, bytes.size(), sizeof(OrderEventRecord)));
   for (uint32_t i = 0; i < hdr.event_count; ++i)
   {
     if (cursor + sizeof(flox::replay::FrameHeader) > bytes.size())
@@ -552,6 +598,16 @@ std::vector<OwnedOrderEvent> TraceReader::readAllOrderEvents()
     }
     OrderEventRecord rec{};
     std::memcpy(&rec, bytes.data() + cursor, sizeof(rec));
+
+    // Same shape of trust as the signal path above: reason_len is 32-bit and
+    // was taken straight from the record, so a doctored file with a valid CRC
+    // read up to 4 GB past the segment into the reason string.
+    if (static_cast<size_t>(rec.reason_len) > fh.size - sizeof(rec))
+    {
+      throw std::runtime_error(
+          "trace reader: order record reason length overruns the frame");
+    }
+
     OwnedOrderEvent oe;
     oe.run_ts_ns = rec.run_ts_ns;
     oe.feed_ts_ns = rec.feed_ts_ns;
@@ -595,7 +651,7 @@ std::vector<FillRecord> TraceReader::readAllFills()
     throw std::runtime_error("trace reader: fill segment header invalid");
   }
   size_t cursor = sizeof(hdr);
-  out.reserve(hdr.event_count);
+  out.reserve(safeReserveCount(hdr.event_count, bytes.size(), sizeof(FillRecord)));
   for (uint32_t i = 0; i < hdr.event_count; ++i)
   {
     if (cursor + sizeof(flox::replay::FrameHeader) > bytes.size())

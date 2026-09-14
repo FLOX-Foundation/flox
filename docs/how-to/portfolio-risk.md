@@ -93,18 +93,53 @@ Multi-process aggregation through shared state is a Phase 2 concern. The public 
 
 | Rule | Trips when |
 |---|---|
-| `max_drawdown_pct` | `(peak_equity - current_equity) / peak_equity` exceeds the threshold. |
-| `max_daily_loss` | Combined daily PnL across every strategy goes more negative than this. |
+| `max_drawdown_pct` | `(peak_equity - current_equity) / peak_equity` exceeds the threshold. Reported as a fraction between 0 and 1. |
+| `max_daily_loss` | Combined daily PnL across every strategy goes more negative than this. The sign you pass carries no meaning: `-10_000` and `10_000` both cap the loss at 10,000. |
 | `max_gross_exposure` | Sum of `gross_exposure` across all strategies exceeds this cap. |
-| `max_concentration_pct` | Any single strategy holds more than this share of total gross exposure. Only fires with 2+ contributing strategies. |
+| `max_concentration_pct` | Any single strategy holds more than this share of total gross exposure. Only fires when two or more strategies actually carry gross exposure. A registered row sitting at zero does not count, so one of a pair flattening out does not turn the other into "100% of gross". |
 
 Each rule is independent. Setting any to `None` disables that rule. A breach on any rule trips the kill switch and fires the optional `on_breach` callback once.
+
+### `max_drawdown_pct` needs a capital base
+
+A drawdown is a fraction of something. `initial_equity` is that something, and
+a `max_drawdown_pct` rule without a positive one raises `ValueError` in Python,
+throws in Node and QuickJS, and returns a null handle through the C ABI. Pass
+the account's starting equity alongside the rule:
+
+```python
+from flox_py.portfolio_risk import PortfolioRiskAggregator, RiskRules
+
+aggregator = PortfolioRiskAggregator(
+    rules=RiskRules(max_drawdown_pct=0.20),
+    initial_equity=100_000,
+)
+```
 
 ## Pre-trade gating
 
 `check_order(strategy, notional, side)` inspects a candidate order against the current aggregate without mutating state. It returns either `None` (allowed) or a `Breach` describing why the order should be rejected. Use it from your `RiskManager` hook; it is cheap to call and thread-safe.
 
-The gate applies the gross-exposure cap (does the proposed order push gross past the limit?) and refuses anything when the kill switch is already active. Daily-loss and drawdown breaches do not directly reject orders through `check_order`; they trip the switch through `update`, which then makes every subsequent `check_order` reject everything.
+An active kill switch refuses everything. Below that, the gate applies all four
+rules to any order that would grow the position, and lets risk-reducing orders
+through untouched. Every rejection it hands back names a rule `snapshot()` also
+reports, so an operator reading the snapshot can see why an order was refused.
+
+### How the gate decides an order reduces risk
+
+`side` is `"buy"`, `"sell"` or `"reduce"`:
+
+* `"reduce"` always counts as risk-reducing, whatever the book looks like. Use
+  it when you know the order closes something and do not want to reason about
+  direction.
+* `"buy"` and `"sell"` are read against the strategy's `net_exposure`. An order
+  that shrinks `|net|` reduces risk.
+* If you have never reported a `net_exposure` for that strategy, its gross
+  exposure stands in: a `"sell"` against a non-zero gross counts as reducing.
+
+Feed `net_exposure` through `update` if you want direction handled precisely.
+Without it the gate falls back to the gross heuristic above, which is right for
+a one-directional book and wrong for one that is long and short at once.
 
 ## Reading the aggregate
 

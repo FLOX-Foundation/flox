@@ -198,6 +198,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | field | type |
 |---|---|
 | `symbol_id` | `uint32_t` |
+| `has_avg_entry_price` | `uint8_t` |
 | `position_raw` | `int64_t` |
 | `avg_entry_price_raw` | `int64_t` |
 | `last_trade_price_raw` | `int64_t` |

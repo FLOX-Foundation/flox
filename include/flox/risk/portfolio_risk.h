@@ -71,6 +71,13 @@ struct PortfolioSnapshot
 class PortfolioRiskAggregator
 {
  public:
+  // A `max_drawdown_pct` rule needs a capital base to measure against. Under
+  // the default `initial_equity` of zero the rule did nothing at all: a
+  // 500,000 loss reported a drawdown of 0.0000, the kill switch stayed down
+  // and every order went through. Once any profit landed, the peak became
+  // that profit alone and a pullback from +1000 to +500 read as a 50%
+  // drawdown on an account deep in the red. Asking for a drawdown cap without
+  // a positive initial equity now throws std::invalid_argument.
   explicit PortfolioRiskAggregator(RiskRules rules = {},
                                    double initial_equity = 0.0);
 
@@ -86,6 +93,12 @@ class PortfolioRiskAggregator
 
   // Pre-trade gate: returns the first matching breach, or nullopt
   // if the order is allowed. Does not mutate state.
+  //
+  // `side` is "buy" / "sell" / "reduce" (case-insensitive for the first two).
+  // "reduce" always marks the order as risk-reducing; "buy" and "sell" are
+  // read against the strategy's reported `net_exposure`, falling back to its
+  // gross exposure when the caller has never reported a net. Risk-reducing
+  // orders pass every state limit, which is the point of having them.
   std::optional<Breach> checkOrder(const std::string& strategy,
                                    double notional,
                                    const std::string& side) const;
@@ -93,11 +106,22 @@ class PortfolioRiskAggregator
   PortfolioSnapshot snapshot() const;
 
  private:
+  // One stored row: the public account fields plus whether the caller has
+  // ever reported a net exposure for this strategy. Without that flag a
+  // caller who only feeds gross exposure -- the shape every example and every
+  // test uses -- reads back a net of zero, and the "does this order reduce
+  // risk" test answers "no" for every order ever submitted.
+  struct AccountRow : StrategyAccount
+  {
+    bool net_exposure_reported{false};
+  };
+
   // All called with _mutex held.
   double totalGrossLocked() const;
   double totalDailyPnlLocked() const;
   double currentEquityLocked() const;
   double drawdownPctLocked() const;
+  size_t contributingAccountsLocked() const;
   std::vector<Breach> breachesLocked() const;
   void reevaluateLocked();
   PortfolioSnapshot buildSnapshotLocked() const;
@@ -105,7 +129,7 @@ class PortfolioRiskAggregator
   RiskRules _rules;
   double _initial_equity;
   double _peak_equity;
-  std::map<std::string, StrategyAccount> _accounts;
+  std::map<std::string, AccountRow> _accounts;
   bool _kill_switch_active{false};
   mutable std::mutex _mutex;
 };

@@ -1066,7 +1066,7 @@ this.symbols                 // ["BTCUSDT", "ETHUSDT"]
 ctx.symbol        // "BTCUSDT" (string)
 ctx.symbolId      // 1 (numeric, for advanced use)
 ctx.position      // current position size
-ctx.avgEntryPrice // average entry price
+ctx.avgEntryPrice // average entry price, NaN when the position manager reports none
 ctx.book.bidPrice // best bid
 ctx.book.askPrice // best ask
 
@@ -3798,12 +3798,32 @@ anything else falls back to `gtc`.
 | `last_trade_price` / `lastTradePrice` | float | Most recent trade price |
 | `best_bid` / `bestBid`, `best_ask` / `bestAsk` | float | Top-of-book |
 | `mid_price` / `midPrice` | float | `(best_bid + best_ask) / 2` |
-| `unrealized_pnl` (Py) | float | Unrealized PnL on the current position |
+| `unrealized_pnl` (Py) | float | Unrealized PnL on the current position, `NaN` when no entry price is available |
 | `is_long()` / `is_short()` / `is_flat()` (Py/Codon) | bool | Position state |
 | `book_spread()` (Py/Codon) | float | `best_ask - best_bid` |
 
 Node's `SymbolContext` is the narrower set: `position`, `symbolId`,
 `lastTradePrice`, `bestBid`, `bestAsk`, `midPrice`.
+
+Give every C++ strategy in a process its own `SubscriberId`. Nothing checks it,
+and the id does double duty: the buses route on it, and it is also the
+namespace for that strategy's order ids, which number from 1 within each
+strategy. Duplicate ids mean duplicate order ids, which the executor and the
+order tracker cannot tell apart. The bindings assign ids for you.
+
+Allocate a C++ `Strategy` on the heap. It holds 256 per-symbol context slots by
+value and each one carries a full 512-level book, so the object comes to about
+2 MB in a release build and about 4 MB in a checked one. Two in the same
+function overrun a default 8 MB stack wherever scale checks are on, and the
+overflow lands in the constructor prologue before a single line of the strategy
+has run. The bindings allocate for you.
+
+`unrealized_pnl` is measured against the average entry price the attached
+position manager reports. A manager that keeps no cost basis reports none, and
+the field comes through as `NaN` instead of a number; the JavaScript engine's
+`ctx.avgEntryPrice` is `NaN` in the same case. Test for it before comparing
+against a threshold. The two shipped managers, `PositionTracker` and
+`MultiModePositionTracker`, report an entry price whenever a position is open.
 
 ## C++ ↔ binding name map
 
@@ -11496,11 +11516,18 @@ volume / range threshold the aggregator was configured with.
 | `best_bid` | `float` | Best bid price |
 | `best_ask` | `float` | Best ask price |
 | `mid_price` | `float` | Mid price |
-| `unrealized_pnl` | `float` | Unrealized P&L |
+| `unrealized_pnl` | `float` | Unrealized P&L, or `NaN` when the position manager reports no entry price (see below) |
 | `book_spread()` | `float` | Bid-ask spread |
 | `is_long()` | `bool` | True if long |
 | `is_short()` | `bool` | True if short |
 | `is_flat()` | `bool` | True if no position |
+
+`unrealized_pnl` needs an average entry price, which comes from the position
+manager attached to the strategy. A manager that keeps no cost basis reports
+none, and the field is `NaN` rather than a number. Check it with
+`math.isnan()` before comparing against a threshold; the two shipped managers,
+`PositionTracker` and `MultiModePositionTracker`, always report one while a
+position is open.
 
 ## Class: `flox_py.TradeData`
 
@@ -16635,7 +16662,7 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `ctx.symbol` | `string` | Symbol name |
 | `ctx.symbolId` | `number` | Numeric symbol ID |
 | `ctx.position` | `number` | Current position size |
-| `ctx.avgEntryPrice` | `number` | Average entry price |
+| `ctx.avgEntryPrice` | `number` | Average entry price, `NaN` when the position manager reports none |
 | `ctx.book.bidPrice` | `number` | Best bid |
 | `ctx.book.askPrice` | `number` | Best ask |
 | `trade.symbol` | `string` | Symbol name |

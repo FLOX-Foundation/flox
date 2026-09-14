@@ -188,11 +188,18 @@ volume / range threshold the aggregator was configured with.
 | `best_bid` | `float` | Best bid price |
 | `best_ask` | `float` | Best ask price |
 | `mid_price` | `float` | Mid price |
-| `unrealized_pnl` | `float` | Unrealized P&L |
+| `unrealized_pnl` | `float` | Unrealized P&L, or `NaN` when the position manager reports no entry price (see below) |
 | `book_spread()` | `float` | Bid-ask spread |
 | `is_long()` | `bool` | True if long |
 | `is_short()` | `bool` | True if short |
 | `is_flat()` | `bool` | True if no position |
+
+`unrealized_pnl` needs an average entry price, which comes from the position
+manager attached to the strategy. A manager that keeps no cost basis reports
+none, and the field is `NaN` rather than a number. Check it with
+`math.isnan()` before comparing against a threshold; the two shipped managers,
+`PositionTracker` and `MultiModePositionTracker`, always report one while a
+position is open.
 
 ## Class: `flox_py.TradeData`
 

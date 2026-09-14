@@ -213,4 +213,120 @@ constexpr int64_t checkedAddI64(int64_t a, int64_t b) noexcept
   return static_cast<int64_t>(usum);
 }
 
+// Full-width multiply-then-divide over fixed-point raws. Written out as
+// `(a * b) / d` in int64 the product overflows long before any of the three
+// operands does: a 200 USD fee raw against a 7-unit quantity raw is
+// 2e10 * 7e8 = 1.4e19, past the int64 ceiling. Signed overflow is undefined
+// behaviour rather than a wrap, and what came out of it in practice was a
+// NEGATIVE fee, money credited to an account for a trade that cost it. The
+// product is carried at full width here and only the quotient, which does
+// fit, is narrowed.
+//
+// A zero divisor routes through dividedByZeroI64, so it is counted and
+// saturated the same way as every other fixed-point division by zero.
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
+constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
+{
+  using i128 = __int128_t;
+  if (d == 0)
+  {
+    const bool nonZero = (a != 0) && (b != 0);
+    const bool negative = (a < 0) != (b < 0);
+    return dividedByZeroI64(nonZero ? (negative ? -1 : 1) : 0);
+  }
+  return checkedNarrowI64((i128)a * (i128)b / (i128)d);
+}
+#else
+namespace detail
+{
+// 64x64 -> 128 through 32-bit halves, for toolchains with no native 128-bit
+// integer type.
+constexpr void umul64(uint64_t a, uint64_t b, uint64_t& hi, uint64_t& lo) noexcept
+{
+  const uint64_t aLo = a & 0xFFFFFFFFull;
+  const uint64_t aHi = a >> 32;
+  const uint64_t bLo = b & 0xFFFFFFFFull;
+  const uint64_t bHi = b >> 32;
+
+  const uint64_t p0 = aLo * bLo;
+  const uint64_t p1 = aLo * bHi;
+  const uint64_t p2 = aHi * bLo;
+  const uint64_t p3 = aHi * bHi;
+
+  const uint64_t middle = p1 + (p0 >> 32) + (p2 & 0xFFFFFFFFull);
+  lo = (middle << 32) | (p0 & 0xFFFFFFFFull);
+  hi = p3 + (p2 >> 32) + (middle >> 32);
+}
+
+// (hi:lo) / d by shift-subtract. The caller establishes hi < d first, so the
+// quotient is known to fit in 64 bits.
+constexpr uint64_t udiv128By64(uint64_t hi, uint64_t lo, uint64_t d) noexcept
+{
+  uint64_t quotient = 0;
+  uint64_t remainder = 0;
+  for (int bit = 127; bit >= 0; --bit)
+  {
+    const uint64_t nextBit =
+        (bit >= 64) ? ((hi >> (bit - 64)) & 1u) : ((lo >> bit) & 1u);
+    remainder = (remainder << 1) | nextBit;
+    if (remainder >= d)
+    {
+      remainder -= d;
+      if (bit < 64)
+      {
+        quotient |= (uint64_t{1} << bit);
+      }
+    }
+  }
+  return quotient;
+}
+
+constexpr uint64_t absToU64(int64_t v) noexcept
+{
+  return v < 0 ? (~static_cast<uint64_t>(v) + 1u) : static_cast<uint64_t>(v);
+}
+}  // namespace detail
+
+constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
+{
+  if (d == 0)
+  {
+    const bool nonZeroProduct = (a != 0) && (b != 0);
+    const bool negativeProduct = (a < 0) != (b < 0);
+    return dividedByZeroI64(nonZeroProduct ? (negativeProduct ? -1 : 1) : 0);
+  }
+
+  const bool negative = ((a < 0) != (b < 0)) != (d < 0);
+  uint64_t hi = 0;
+  uint64_t lo = 0;
+  detail::umul64(detail::absToU64(a), detail::absToU64(b), hi, lo);
+  const uint64_t ud = detail::absToU64(d);
+
+  constexpr uint64_t kMax = static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
+  if (hi >= ud)
+  {
+    FLOX_SCALE_CHECK(false, "fixed-point mulDiv overflow (quotient exceeds int64 range)");
+    return negative ? (std::numeric_limits<int64_t>::min)()
+                    : (std::numeric_limits<int64_t>::max)();
+  }
+
+  const uint64_t q = detail::udiv128By64(hi, lo, ud);
+  if (negative)
+  {
+    if (q > kMax + 1u)
+    {
+      FLOX_SCALE_CHECK(false, "fixed-point mulDiv overflow (quotient exceeds int64 range)");
+      return (std::numeric_limits<int64_t>::min)();
+    }
+    return static_cast<int64_t>(~q + 1u);
+  }
+  if (q > kMax)
+  {
+    FLOX_SCALE_CHECK(false, "fixed-point mulDiv overflow (quotient exceeds int64 range)");
+    return (std::numeric_limits<int64_t>::max)();
+  }
+  return static_cast<int64_t>(q);
+}
+#endif
+
 }  // namespace flox

@@ -126,6 +126,10 @@ Sharpe and Sortino annualize the series with `sqrt(metricsAnnualizationFactor)`.
 
 `TradeRecord.fee` now includes both the entry-fill fee and the exit-fill fee pro-rated by the quantity closed in the trade. Partial closes keep the residual entry fee accrued to the remaining open portion of the position.
 
+`maxDrawdownPct` is measured against the peak equity that stood at the moment of the drawdown, the same denominator `EquityPoint.drawdownPct` uses point by point. The summary card and the drawdown timeline on a report page therefore agree. Dividing the absolute maximum by the peak as it stands at the end of the run instead would understate risk by however much the account grew afterwards: a curve running 1,000,000 to 700,000 to 3,000,000 has a 30% drawdown, and that denominator reports 10%. Calmar uses the same figure.
+
+The per-trade fee split is carried at full width. The per-side fee in quote currency times the quantity passes the int64 ceiling at about 922, which a 7 BTC round trip at four basis points already does, and the narrow form wrapped there into a negative fee: equity after a flat round trip finished above where it started while `totalFees` and `netPnl` in the same object stayed correct.
+
 ## EquityPoint
 
 ```cpp

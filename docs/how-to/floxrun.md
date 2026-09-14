@@ -220,6 +220,20 @@ run.floxrun/
 
 `manifest.json` is JSON; the segment files are little-endian binary with the same `FrameHeader` and CRC layout as `.floxlog`. Segment files only exist for kinds the recorder actually wrote; an empty run produces only `manifest.json`.
 
+### Reading a bundle you did not write
+
+A `.floxrun` is meant to travel, so the reader treats one as untrusted input.
+It raises `std::runtime_error` (`RuntimeError` in Python) rather than reading
+past the end of a segment or outside the bundle directory:
+
+- A record whose declared name, symbol-list or payload length runs past its own
+  frame is rejected. Those lengths live inside the bytes the frame CRC covers,
+  so a checksum that matches proves nothing about them.
+- A segment name in the manifest has to be a relative path inside the bundle.
+  An absolute path, or one that climbs out with `..`, is refused.
+
+A bundle written by the recorder never hits either case.
+
 ## See also
 
 - [floxrun spec v1.0](../spec/floxrun.md). Wire layout, manifest schema, frame types.

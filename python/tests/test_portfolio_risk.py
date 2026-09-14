@@ -199,5 +199,91 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertAlmostEqual(snap.total_daily_pnl, 200.0)
 
 
+
+class GateAgreesWithSnapshotTests(unittest.TestCase):
+    """The pre-trade gate and the snapshot have to describe the same book.
+
+    Every disagreement between them was silent: an order came back refused
+    and ``snapshot()`` had nothing in it to explain why.
+    """
+
+    def test_single_strategy_can_open_a_position(self) -> None:
+        agg = pr.PortfolioRiskAggregator(
+            rules=pr.RiskRules(max_concentration_pct=0.40),
+            initial_equity=100_000,
+        )
+        self.assertIsNone(
+            agg.check_order(strategy="solo", notional=10_000, side="buy"))
+        agg.update("solo", gross_exposure=5_000)
+        self.assertIsNone(
+            agg.check_order(strategy="solo", notional=10_000, side="buy"))
+        self.assertFalse(agg.snapshot().kill_switch_active)
+
+    def test_flattening_one_of_two_does_not_halt_the_portfolio(self) -> None:
+        agg = pr.PortfolioRiskAggregator(
+            rules=pr.RiskRules(max_concentration_pct=0.60),
+            initial_equity=100_000,
+        )
+        agg.update("a", gross_exposure=10_000)
+        agg.update("b", gross_exposure=10_000)
+        agg.update("b", gross_exposure=0)
+        snap = agg.snapshot()
+        self.assertFalse(snap.kill_switch_active)
+        self.assertEqual(snap.breaches, [])
+
+    def test_reduce_passes_the_gross_cap(self) -> None:
+        agg = pr.PortfolioRiskAggregator(
+            rules=pr.RiskRules(max_gross_exposure=50_000),
+            initial_equity=100_000,
+        )
+        agg.update("a", gross_exposure=49_000)
+        self.assertIsNotNone(
+            agg.check_order(strategy="a", notional=10_000, side="buy"))
+        self.assertIsNone(
+            agg.check_order(strategy="a", notional=10_000, side="reduce"))
+        self.assertIsNone(
+            agg.check_order(strategy="a", notional=10_000, side="sell"))
+
+    def test_daily_loss_boundary_matches_the_breach_list(self) -> None:
+        agg = pr.PortfolioRiskAggregator(
+            rules=pr.RiskRules(max_daily_loss=10_000),
+            initial_equity=100_000,
+        )
+        agg.update("a", realized_pnl=-10_000)
+        self.assertEqual(agg.snapshot().breaches, [])
+        self.assertIsNone(
+            agg.check_order(strategy="a", notional=100, side="buy"))
+
+    def test_negative_daily_loss_cap_is_a_magnitude(self) -> None:
+        agg = pr.PortfolioRiskAggregator(
+            rules=pr.RiskRules(max_daily_loss=-10_000),
+            initial_equity=100_000,
+        )
+        agg.update("a", realized_pnl=0.0)
+        self.assertIsNone(
+            agg.check_order(strategy="a", notional=100, side="buy"))
+
+
+class DrawdownCapitalBaseTests(unittest.TestCase):
+    def test_drawdown_rule_needs_a_capital_base(self) -> None:
+        # Left at the default initial equity of zero the rule did nothing:
+        # a 500,000 loss reported a drawdown of 0.0000 and every order went
+        # through.
+        with self.assertRaises(ValueError):
+            pr.PortfolioRiskAggregator(rules=pr.RiskRules(max_drawdown_pct=0.20))
+
+    def test_other_rules_still_default_to_zero_equity(self) -> None:
+        agg = pr.PortfolioRiskAggregator(
+            rules=pr.RiskRules(max_gross_exposure=1_000))
+        self.assertIsNotNone(agg)
+
+    def test_drawdown_is_clamped_to_one(self) -> None:
+        agg = pr.PortfolioRiskAggregator(
+            rules=pr.RiskRules(max_drawdown_pct=0.20), initial_equity=1.0)
+        agg.update("a", realized_pnl=1_000.0)
+        agg.update("a", realized_pnl=-500_000.0)
+        self.assertLessEqual(agg.snapshot().drawdown_pct, 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

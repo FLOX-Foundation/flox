@@ -119,7 +119,7 @@ this.symbols                 // ["BTCUSDT", "ETHUSDT"]
 ctx.symbol        // "BTCUSDT" (string)
 ctx.symbolId      // 1 (numeric, for advanced use)
 ctx.position      // current position size
-ctx.avgEntryPrice // average entry price
+ctx.avgEntryPrice // average entry price, NaN when the position manager reports none
 ctx.book.bidPrice // best bid
 ctx.book.askPrice // best ask
 

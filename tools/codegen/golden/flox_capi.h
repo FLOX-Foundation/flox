@@ -168,6 +168,7 @@ extern "C"
   typedef struct
   {
     uint32_t symbol_id;
+    uint8_t has_avg_entry_price;
     int64_t position_raw;
     int64_t avg_entry_price_raw;
     int64_t last_trade_price_raw;

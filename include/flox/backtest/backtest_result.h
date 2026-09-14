@@ -147,6 +147,12 @@ class BacktestResult
   Volume _currentEquity{};
   Volume _peakEquity{};
   Volume _maxDrawdown{};
+  // Captured against the peak that was standing when the drawdown happened.
+  // Dividing the absolute maximum by the peak equity as it stands at the end
+  // of the run understates risk by however much the account grew afterwards:
+  // a 1M to 0.7M to 3M curve reported 10% against a true 30%, and the Calmar
+  // ratio built on the same denominator was inflated by the same factor.
+  double _maxDrawdownPct{0.0};
 };
 
 }  // namespace flox
