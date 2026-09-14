@@ -14036,6 +14036,11 @@
         },
         {
           "kind": "method",
+          "name": "publishBar",
+          "parent": "BarAggregator"
+        },
+        {
+          "kind": "method",
           "name": "start",
           "parent": "BarAggregator"
         },
@@ -23893,11 +23898,6 @@
           "kind": "method",
           "name": "begin",
           "parent": "SymbolStateMap"
-        },
-        {
-          "kind": "method",
-          "name": "publishBar",
-          "parent": "SymbolState"
         },
         {
           "kind": "method",
