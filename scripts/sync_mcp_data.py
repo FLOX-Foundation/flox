@@ -75,7 +75,7 @@ DST_GOTCHAS = DST_DATA / "gotchas.json"
 
 # Total bundle budget. The IR snapshot + binding manifest + examples
 # index are tiny (kBs); the FTS index dominates. 10 MB is a soft cap
-# from the W2-T014 task body — re-evaluate if the docs corpus grows.
+# choice — re-evaluate if the docs corpus grows.
 BUNDLE_BUDGET_BYTES = 10 * 1024 * 1024
 
 
@@ -93,6 +93,7 @@ ALLOWED_DOC_ROOTS = (
     "reference",
     "explanation",
     "errors",
+    "venue",
 )
 DENIED_NAMES = {"CLAUDE.md", "claude.md"}
 

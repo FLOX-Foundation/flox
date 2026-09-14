@@ -388,7 +388,7 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
       filledQty = std::abs(p.quantity);
     }
     const double signedFilled = (p.quantity > 0.0) ? filledQty : -filledQty;
-    // BT-03: the maintenance-margin check above (and the notional/uPnL used to
+    // The maintenance-margin check above (and the notional/uPnL used to
     // route the position here) scales by contractMultiplier; the realized loss
     // booked on close must scale the same way, or a multiplier > 1 (options
     // 100x, ES 50x) silently shrinks the deficit by that same factor and the
@@ -480,7 +480,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
   };
   std::vector<AdlCandidate> candidates;
 
-  // BT-05: leverage-based rankings (PnlRatio, Binance, Bybit) need the equity
+  // Leverage-based rankings (PnlRatio, Binance, Bybit) need the equity
   // actually backing the position. For an orphan or an isolated-mode leg that
   // is `p.equity` (the posted margin slice); for a cross-margin leg
   // `p.equity` is unconditionally 0.0 by construction (Account::openPosition:
@@ -595,7 +595,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     {
       auto& p = c.owner->positionsMut()[c.idx];
       // Credit the account's equity with the RETAINED PnL after the ADL
-      // haircut. BT-04: an isolated leg is about to be erased from the
+      // haircut. An isolated leg is about to be erased from the
       // account's position book a few lines below (acctClose), so writing
       // the retained gain onto `p.equity` -- as the old code did -- throws
       // it away along with the leg's own posted margin the moment it's
@@ -809,7 +809,7 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkIsolatedAccount(
       filledQty = std::abs(p.quantity);
     }
     const double signedFilled = (p.quantity > 0.0) ? filledQty : -filledQty;
-    // BT-03: same fix as the orphan path above -- the margin check that routed
+    // Same fix as the orphan path above -- the margin check that routed
     // this position here (upnl, a few lines up) already scales by
     // contractMultiplier, so the realized loss booked on close must too.
     const double realized = signedFilled * (closePrice - p.entryPrice) * p.contractMultiplier;

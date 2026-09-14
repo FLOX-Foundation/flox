@@ -89,7 +89,7 @@ class PortfolioGreeksAggregator
       const double t = static_cast<double>(expNs - nowNs) / kNsPerYear;
       if (t <= 0.0)
       {
-        continue;  // expired; settlement (W16-T018) handles it
+        continue;  // expired; settlement handles it
       }
 
       const double spot = static_cast<double>(spotFn(pos.symbol));

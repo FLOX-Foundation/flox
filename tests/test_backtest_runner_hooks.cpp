@@ -7,7 +7,7 @@
  * license information.
  */
 
-// Tests for W1-T036: BacktestRunner pre-trade gate parity with the
+// Tests for BacktestRunner pre-trade gate parity with the
 // live Runner. Each test exercises one of the four hooks
 // (RiskManager / KillSwitch / OrderValidator / PnLTracker) plus the
 // reduce-only bypass contract that the gotchas.json entry advertises.

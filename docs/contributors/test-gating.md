@@ -27,7 +27,7 @@ Implications: `FLOX_BUILD_CAPI` implies `FLOX_ENABLE_BACKTEST`,
 
 The error tells you which flag is missing for which test. Move
 `add_flox_test(test_name)` into the matching `if(...)` block in
-`tests/CMakeLists.txt`. Example fix from W15-T020:
+`tests/CMakeLists.txt`. Example fix:
 
 ```cmake
 # Wrong — test_live_queue_position needs FLOX_ENABLE_BACKTEST.

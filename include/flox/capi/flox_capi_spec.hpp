@@ -3937,7 +3937,7 @@ extern "C"
   uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h, uint32_t index);
 
   // ============================================================
-  // Streaming tape aggregators (W14-T019)
+  // Streaming tape aggregators
   //
   // Single-pass dispatch over a captured `.floxlog` via a panel of
   // streaming aggregators. Five concrete aggregators (event-type

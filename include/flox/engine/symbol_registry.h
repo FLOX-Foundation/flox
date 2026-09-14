@@ -50,7 +50,7 @@ struct SymbolInfo
   ExerciseStyle exerciseStyle{ExerciseStyle::European};
   std::optional<std::string> settlementCcy;
 
-  // Per-symbol fixed-point scale (W17-T001). Default 1e8 reproduces the
+  // Per-symbol fixed-point scale. Default 1e8 reproduces the
   // compile-time Price/Quantity scale exactly, so CEX symbols and existing
   // persisted registries are unchanged. A DEX token whose price (~1e-10) or
   // supply (~1e12) range does not fit 1e8 in int64 sets a different scale
@@ -59,8 +59,8 @@ struct SymbolInfo
   int64_t qtyScale{Quantity::Scale};
 };
 
-// Validate a symbol's per-symbol scale before registration (W17-T001 guardrail
-// 3d). A scale must be positive and small enough to leave usable integer
+// Validate a symbol's per-symbol scale before registration. A scale must
+// be positive and small enough to leave usable integer
 // headroom in int64. The default 1e8 always passes, so CEX symbols and old
 // registries are never rejected.
 inline std::expected<void, std::string> validateSymbolScale(const SymbolInfo& info)
@@ -138,7 +138,7 @@ class SymbolRegistry : public ISubsystem
 
   // The venue type of the symbol's exchange. Defaults to CentralizedExchange
   // when the symbol or its exchange is unknown. See venue_behavior.h to turn
-  // a venue type into routing decisions (W17-T006).
+  // a venue type into routing decisions.
   VenueType venueTypeForSymbol(SymbolId symbol) const;
 
   // Symbol equivalence (cross-exchange mapping)

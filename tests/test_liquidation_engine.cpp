@@ -601,9 +601,9 @@ TEST(LiquidationEngine, BookAnchoredImpactBlendsMarks)
   EXPECT_EQ(e.cascadeSizesPerTick().size(), 2u);
 }
 
-// === B09 audit: BT-03, BT-04, BT-05 ===
+// === liquidation engine: margin check ordering, ADL leg accounting, ADL ranking ===
 
-// BT-03: the maintenance-margin check (upnl, a few lines up in each walk)
+// The maintenance-margin check (upnl, a few lines up in each walk)
 // scales by contractMultiplier -- options 100x, ES 50x -- so a leveraged
 // position can be ruled underwater. The realized loss booked at close must
 // scale the same way, or the deficit that reaches insurance/ADL is silently
@@ -674,7 +674,7 @@ TEST(LiquidationEngine, ContractMultiplierAppliesToRealizedLossNotJustMarginChec
   }
 }
 
-// BT-04: an isolated-mode ADL winner must keep both its posted margin AND
+// An isolated-mode ADL winner must keep both its posted margin AND
 // the ADL-retained gain -- the position holding them is erased from the
 // account's book by the same runInsuranceAndAdlPhase call that credits it.
 // Before the fix, `p.equity += realized` wrote the retained gain into that
@@ -713,7 +713,7 @@ TEST(LiquidationEngine, IsolatedAdlWinnerKeepsMarginAndForgoneGain)
   EXPECT_DOUBLE_EQ(w.equity(), 5050.0);
 }
 
-// BT-05: leverage-based ADL rankings (Binance/Bybit) score a candidate by
+// Leverage-based ADL rankings (Binance/Bybit) score a candidate by
 // upnl * (notional / equity). `Account::openPosition` always leaves a
 // cross leg's own `p.equity` at 0 ("Cross mode ignores per-position
 // equity", account.cpp) -- scoring off `p.equity` collapsed every cross

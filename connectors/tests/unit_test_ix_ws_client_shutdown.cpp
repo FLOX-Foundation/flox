@@ -196,7 +196,7 @@ TEST(IxWebSocketClientShutdown, StopFromAnotherThreadWhileReconnecting)
 
     // The scenario here bounds shutdown at ix's own
     // kClosingMaximumWaitingDelayInMs (300ms) for the unanswered close frame,
-    // plus scheduling slack -- not the reconnect backoff CONN-11 fixes (that
+    // plus scheduling slack -- not the reconnect backoff fix (that
     // path is covered by unit_test_ix_ws_client_stop_latency.cpp). This test
     // used to carry zero assertions and end on a bare SUCCEED(); a duration
     // regression here (e.g. a shutdown wait that stops being interruptible)

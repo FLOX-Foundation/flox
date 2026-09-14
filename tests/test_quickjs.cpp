@@ -577,7 +577,7 @@ TEST(JsIntegrationTest, NoRegisterOk)
 }
 
 // ============================================================
-// Composite-condition DSL (W1-T028)
+// Composite-condition DSL
 //
 // `when(strategy, sym, barType, param).ema(50).gt(when(...).ema(200))`
 // builds a tree out of indicator nodes + comparison/logical wrappers.
@@ -737,7 +737,7 @@ TEST(JsIntegrationTest, CompositeDslLogicalOps)
 }
 
 // ============================================================
-// Multi-feed clock (W6-T021)
+// Multi-feed clock
 // ============================================================
 
 TEST(JsIntegrationTest, MultiFeedClockWaitForAll)
@@ -804,7 +804,7 @@ TEST(JsIntegrationTest, MultiFeedClockWaitForAll)
 }
 
 // ============================================================
-// Multi-leg order group (W15-T004)
+// Multi-leg order group
 // ============================================================
 
 TEST(JsIntegrationTest, OrderGroupRiskGateDeniesOversizedBasket)
@@ -1042,9 +1042,9 @@ TEST(JsIntegrationTest, IndicatorGridCrossProduct)
 }
 
 // ============================================================
-// Multi-TF alignment helpers (W1-T027)
+// Multi-TF alignment helpers
 //
-// Parity with the pybind11 + NAPI surface added in T026: a JS strategy
+// Parity with the pybind11 + NAPI surface added earlier: a JS strategy
 // can read its per-(symbol, type, param) bar ring via lastClosedBar and
 // lastNClosedBars without bookkeeping by hand.
 // ============================================================

@@ -6,14 +6,14 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Offline protocol test (CONN-06): Bybit option symbols with the "-USDT"
+ * Offline protocol test: Bybit option symbols with the "-USDT"
  * quote suffix must parse (the suffix is 5 characters, not 6), and the
  * parsed expiry must land in the wall-clock (unix) domain, not the
  * steady-clock one.
  *
  * parseOptionSymbol is a free function with external linkage defined in
  * bybit_exchange_connector.cpp and not declared in any header (the same
- * function the CONN-06 repro called directly); it is forward-declared here
+ * function the test calls directly); it is forward-declared here
  * exactly as the repro program did, and resolved from libflox-connectors.a
  * at link time.
  */

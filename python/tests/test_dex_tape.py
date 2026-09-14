@@ -1,5 +1,5 @@
 """
-python/tests/test_dex_tape.py -- the flox_py.dex tape/backtest layer (W24-T003).
+python/tests/test_dex_tape.py -- the flox_py.dex tape/backtest layer.
 
 A pool-state tape replays swaps through the exact curve into a table of price /
 reserves / LP value / impermanent loss / drift. These tests pin the replay to the raw

@@ -169,7 +169,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     init_p.add_argument(
         "--token",
         help="ControlServer token (sets FLOX_CONTROL_TOKEN). The "
-             "token is printed by `flox engine sim` (W2-T035).",
+             "token is printed by `flox engine sim`.",
     )
 
     sub.add_parser("serve", help="Start the MCP server over stdio.")

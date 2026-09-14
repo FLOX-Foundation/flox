@@ -56,3 +56,66 @@ def test_init_project_happy_path(tmp_path):
     assert 'docs_search("record tape")' in out
     # Project directory was actually created.
     assert (tmp_path / "smoke_proj").is_dir()
+
+
+def _write_fake_flox_cli(bin_dir: Path) -> None:
+    """A stand-in for `flox new <name> --template=<t>` that mirrors just
+    the one behaviour this file's comment makes a claim about: the real
+    CLI resolves `<name>` against its cwd (`Path.cwd() / project_name` in
+    `python/flox_py/cli.py::cmd_new`), so a `project_name` containing
+    `..` walks back out of wherever it was invoked. No real `flox`
+    install is required to pin this down -- only that one join.
+    """
+    script = bin_dir / "flox"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "name = sys.argv[2]\n"
+        "dest = Path.cwd() / name\n"
+        "dest.mkdir(parents=True, exist_ok=True)\n"
+        "(dest / 'flox.toml').write_text('# fake project\\n')\n"
+        "print(f'Created {dest}')\n"
+    )
+    script.chmod(0o755)
+
+
+def test_init_project_name_is_not_confined_to_target_dir(monkeypatch, tmp_path):
+    """Pins the behaviour the comment above `cmd` in init_project.py
+    describes: `project_name` is not restricted to a single path
+    component, so `target_dir` is not a containment boundary -- it is
+    where the agent points a normal, non-escaping name, same as running
+    `flox new` from a shell in that directory. This used to be described
+    (misleadingly) as the tool giving the agent "explicit control over
+    where output lands", which reads as containment; escaping target_dir
+    with `..` here is the same size of surprise as `cd some/dir && flox
+    new ../elsewhere` would be from a shell -- expected, not a boundary
+    break.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_fake_flox_cli(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+
+    target = tmp_path / "target"
+    target.mkdir()
+    escape_root = tmp_path / "escaped"
+    # `target/../escaped/out_here` == `escaped/out_here`, entirely
+    # outside `target`.
+    out = init_project_tool.init_project(
+        "../escaped/out_here", template="research", target_dir=str(target),
+    )
+    assert "exited" not in out.lower(), out
+    assert (escape_root / "out_here").is_dir(), (
+        "project_name with `..` did not escape target_dir the way the "
+        "underlying `flox new <name>` join does from a shell"
+    )
+    assert not (target / "escaped").exists(), (
+        "the escaped project landed inside target_dir instead of outside it "
+        "-- the fake CLI or the path arithmetic in this test is wrong"
+    )
+    # And a normal, non-escaping name still lands inside target_dir.
+    out2 = init_project_tool.init_project(
+        "plain_proj", template="research", target_dir=str(target),
+    )
+    assert (target / "plain_proj").is_dir(), out2

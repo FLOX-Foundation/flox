@@ -5,7 +5,13 @@
 // value() must equal compute().back().
 //
 // This is by-construction parity (compute is reused inside update via mixin),
-// so the test is really proving "the mixin wasn't accidentally short-circuited".
+// so the test is really proving "the mixin wasn't accidentally short-circuited"
+// -- a broken compute() itself is out of scope here (test_indicators.cpp owns
+// that) and this file cannot see it: the streaming side calls the exact same
+// compute() the batch side does, so both would return the same wrong answer.
+// `expectClose` only skips the numeric comparison on a genuine NaN/NaN pair
+// (both sides agree the window has not filled yet); any other non-finite
+// value fails the assertion instead of being silently folded into "NaN".
 
 #include "flox/indicator/atr.h"
 #include "flox/indicator/autocorrelation.h"
@@ -73,7 +79,15 @@ Hlc randomHlc(size_t n, uint32_t seed)
   return out;
 }
 
-double finiteOrNaN(double v) { return std::isfinite(v) ? v : std::nan(""); }
+// Only NaN passes through unmapped -- the legitimate "not enough history
+// yet" sentinel every indicator in this file uses. +-inf does NOT map to
+// NaN here (TD-01: it used to, via std::isfinite() catching both), because
+// inf is never a valid "insufficient window" result for any indicator
+// below; a wrapper bug that divides by an accumulator it forgot to
+// initialize is exactly the kind of thing this file exists to catch, and
+// collapsing it into the same silently-accepted NaN/NaN case as a real
+// warm-up period threw that signal away.
+double finiteOrNaN(double v) { return v; }
 
 void expectClose(double a, double b, const char* msg)
 {

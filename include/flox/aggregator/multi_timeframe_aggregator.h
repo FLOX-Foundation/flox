@@ -124,7 +124,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
     const VolumeBarPolicy policy = VolumeBarPolicy::fromDouble(volumeThreshold);
     new (&slot.storage.volume) VolumeBarPolicy(policy);
     // Derive the TimeframeId from the policy's own param() rather than
-    // recomputing it independently from volumeThreshold: BOOK-06 was
+    // recomputing it independently from volumeThreshold: that mismatch was
     // exactly this kind of drift (BarAggregator<VolumeBarPolicy> and
     // MultiTimeframeAggregator disagreeing on what param a given threshold
     // maps to, so a BarMatrix configured against one producer silently

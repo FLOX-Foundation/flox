@@ -99,6 +99,49 @@ live venue. The bare `SimulatedExecutor()` constructor stays
 available for unit tests of the executor itself, but research
 backtests always go through a venue factory.
 
+## Attach a VenueStack to BacktestRunner
+
+The examples above drive a `VenueStack` standalone: your own loop
+calls `acct.open_position`, `liq.on_mark`, `fees.record_fill`, and so
+on directly. `BacktestRunner` supports a second mode where it drives
+the stack for you:
+
+=== "Python"
+
+    ```python
+    stack = flox.VenueStack.binance_um_futures(
+        account_id=42, equity=10_000.0)
+
+    runner = flox.BacktestRunner(registry, fee_rate=0.0004,
+                                  initial_capital=10_000.0)
+    runner.set_strategy(my_strategy)
+    runner.set_venue_stack(stack)
+
+    stats = runner.run_csv("btcusdt.csv", "BTCUSDT")
+    ```
+
+Once `set_venue_stack` is called, `run_csv` / `run_bars` /
+`run_tape(s)` feed the stack's own executor instead of the
+built-in one, so fills come from the venue's fill mechanics — queue
+model and depth, iceberg refresh latency, venue availability, and
+rate limits — rather than an instant-fill assumption. Fees still
+come from `BacktestConfig` (a `Fill` carries no maker/taker flag),
+and funding and liquidation stay driven by explicit calls to `liq`
+and `funding`, not by the replay loop. Pass `None` to revert to the
+built-in executor.
+
+`BacktestRunner.set_executor(...)` refuses a bare venue executor
+(`flox.VenueExecutor`) with a pointer back to this page: the executor
+alone does not carry the clock the runner has to advance to make ack
+latency and queue timing progress, so `set_venue_stack(stack)` — which
+hands over the whole stack — is the only supported path.
+
+This attach path is currently Python-only: the C ABI exposes a
+single-argument `flox_backtest_runner_set_executor` without the
+clock the venue executor needs, so Codon and QuickJS strategies keep
+driving a `VenueStack` standalone, the same way as in every other
+section of this page.
+
 ## Custom venues / overrides
 
 The factory wires defaults. Each accessor returns the live

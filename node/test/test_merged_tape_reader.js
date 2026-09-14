@@ -1,6 +1,6 @@
 // node/test/test_merged_tape_reader.js
 //
-// W14-T016 — N-API binding for MergedTapeReader. Mirrors the Python
+// N-API binding for MergedTapeReader. Mirrors the Python
 // suite in python/tests/test_merged_tape_reader.py:
 //   * single tape ≡ DataReader on trade fields
 //   * two non-overlapping tapes → merged count + time-sorted

@@ -8,13 +8,14 @@ line, wrong struct sizes, orphan pages nobody could navigate to, and links
 to files that were renamed years ago. Every generated-doc gate was green the
 whole time — they simply do not read prose.
 
-The five gates below close that hole. All of them are plain `python3`
-scripts: no compiler, no network, no site build, a few seconds end to end.
+The six gates below close that hole. All of them are plain `python3`
+scripts, no network and no site build; one of them shells out to a C++
+compiler for `-fsyntax-only`, the rest run in a few seconds end to end.
 
 ## Run them locally
 
 ```bash
-for gate in symbols examples nav links conventions; do
+for gate in symbols cpp_examples examples nav links conventions; do
   python3 "scripts/check_doc_$gate.py" || break
 done
 ```
@@ -45,7 +46,32 @@ Prose is checked leniently — an inline-code reference only fails when the
 name exists in *no* binding surface.
 
 This gate is the one that catches an entire invented API: a page-length
-walkthrough of a function that was never bound.
+walkthrough of a function that was never bound. It does **not** catch a
+signature that changed underneath an existing, correctly-spelled name —
+see `check_doc_cpp_examples.py` below for the one place that gap is
+closed, and "The rule for new APIs" for what is still open everywhere
+else.
+
+### `check_doc_cpp_examples.py` — the C++ example must still compile
+
+Three reference pages once survived a real signature change (two fields
+and a method moved to `std::optional`) with every doc gate green,
+because nothing fed the docs' C++ prose to a compiler. This gate
+extracts every fenced ```cpp block that is a full, self-contained
+`class ... : public Strategy { ... }` definition — the "worked example"
+pattern used throughout `docs/reference/api/` and the tutorials — wraps
+it with the real project headers, and compiles it with
+`-fsyntax-only -std=gnu++2b`. A worked example calling a method whose
+signature moved fails here instead of shipping silently.
+
+Scope, stated plainly in the script's own docstring too: this is not
+full signature verification. Most `cpp` fenced blocks are fragments — a
+lone field, a single method signature next to a paragraph of prose —
+and compiling a fragment in isolation only proves the types it names
+exist, not that they match the real member (a fragment redeclaring
+`std::optional<Price> avgEntryPrice` compiles whether or not the real
+field still has that type). Only full compilable examples are covered;
+`check_doc_symbols.py` above is still all that touches everything else.
 
 ### `check_doc_examples.py` — the example must run
 
@@ -136,8 +162,11 @@ example, or it will not be checked.**
 A snippet pasted into Markdown is checked for *symbol existence* only. That
 catches a name that never existed; it cannot catch a wrong argument order, a
 renamed keyword, a changed return shape, or a struct whose size the page
-states in bytes. The only mechanism that catches those is a file under
-`docs/examples/` that CI runs, included in the page:
+states in bytes. `check_doc_cpp_examples.py` narrows that gap for one
+shape — a full, self-contained C++ `Strategy` subclass — by compiling it
+against the real headers; everything else, and every other language, is
+still symbol-existence-only. The only mechanism that catches all of it is
+a file under `docs/examples/` that CI runs, included in the page:
 
 ````markdown
 ```python
@@ -153,9 +182,11 @@ lints requires an allowlist entry in `docs/.snippet-allowlist.txt`.
 
 ## Where they run
 
-All five run in the `verify-docs-current` job in `.github/workflows/ci.yml`,
+All six run in the `verify-docs-current` job in `.github/workflows/ci.yml`,
 each as its own named step so a failure names itself in the PR checks. That
 job gates the build matrix, so a docs defect fails fast instead of after ten
 minutes of compilation. `check_doc_examples.py` runs a second time in
 `linux-gcc` with `--require-runtime`, where the bindings exist and the
-examples actually execute.
+examples actually execute. `check_doc_cpp_examples.py` needs only a C++
+compiler and the checked-out headers, so it runs the same way in both
+places without a full `cmake --build`.

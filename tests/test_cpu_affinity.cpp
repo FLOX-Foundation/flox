@@ -24,6 +24,68 @@
 using namespace flox;
 using namespace flox::performance;
 
+// A controllable ISystemInterface for TD-02: `setRealTimePriority`,
+// `disableCpuFrequencyScaling` and `enableCpuFrequencyScaling` were only
+// ever exercised against the real OS, where a raised or dropped
+// priority / governor write depends on the process's privileges. The
+// original tests could not assert on the result for that reason and
+// settled for `EXPECT_TRUE(result || !result)` -- true regardless of what
+// the call did, so a `setRealTimePriority` that always returned `false`,
+// or a `disableCpuFrequencyScaling` that wrote the wrong governor string,
+// would pass unnoticed. Injecting this fake in place of the real
+// interface makes the *contract* (which path gets written, with what
+// content, and whether a single failed write sinks the overall result)
+// testable independent of the run's actual privilege level.
+class FakeSystemInterface : public ISystemInterface
+{
+ public:
+  bool setThreadAffinity(pthread_t, const std::vector<int>&) override { return false; }
+  bool setCurrentThreadAffinity(const std::vector<int>&) override { return false; }
+  std::vector<int> getCurrentThreadAffinity() override { return {}; }
+
+  bool setThreadPriority(pthread_t, int priority) override
+  {
+    lastPriority = priority;
+    return priorityResult;
+  }
+  bool setCurrentThreadPriority(int priority) override
+  {
+    lastPriority = priority;
+    return priorityResult;
+  }
+
+  int getNumCores() override { return numCores; }
+  std::vector<int> getIsolatedCores() override { return {}; }
+
+  std::optional<std::string> readFile(const std::string&) override { return std::nullopt; }
+  bool writeFile(const std::string& path, const std::string& content) override
+  {
+    writtenPaths.push_back(path);
+    writtenContents.push_back(content);
+    if (failWritePathSubstring && path.find(*failWritePathSubstring) != std::string::npos)
+    {
+      return false;
+    }
+    return writeResult;
+  }
+
+  bool isNumaAvailable() override { return false; }
+  bool setMemoryPolicy(int) override { return false; }
+  int getNumaNodeForCore(int) override { return 0; }
+  std::vector<std::pair<int, std::vector<int>>> getNumaNodes() override { return {}; }
+
+  int numCores = 4;
+  bool priorityResult = true;
+  int lastPriority = -1;
+  bool writeResult = true;
+  // When set, any writeFile() call whose path contains this substring
+  // fails -- used to prove a single failed governor write sinks the
+  // overall disable/enable result rather than being silently ignored.
+  std::optional<std::string> failWritePathSubstring;
+  std::vector<std::string> writtenPaths;
+  std::vector<std::string> writtenContents;
+};
+
 class CpuAffinityTest : public ::testing::Test
 {
  protected:
@@ -497,10 +559,22 @@ TEST_F(CpuAffinityTest, SetupAndPinCriticalComponents)
   performance::CriticalComponentConfig config;
   config.preferIsolatedCores = true;
 
-  // This test doesn't assert on the result since it depends on permissions
-  // Just verify it doesn't crash
+  // pinToCore's own tests (PinToInvalidCore etc.) already prove it fails
+  // loudly on a bad core id, so `false` here does not need a permissive
+  // catch-all. What this test adds is the implication a tautology could
+  // not express: whichever way the pin comes back, the current thread's
+  // affinity must be *consistent* with that result -- a `true` claiming
+  // success while the affinity mask is untouched is exactly what a
+  // regression here would look like, and the old assertion could not
+  // have caught it.
   bool result = _cpuAffinity->setupAndPinCriticalComponents(config);
-  EXPECT_TRUE(result || !result);  // Always true, just to check it runs
+  auto affinityAfter = _cpuAffinity->getCurrentAffinity();
+  if (result)
+  {
+    EXPECT_FALSE(affinityAfter.empty())
+        << "setupAndPinCriticalComponents reported success but left the "
+           "thread's affinity mask untouched";
+  }
 }
 
 /**
@@ -764,31 +838,104 @@ TEST_F(CpuAffinityTest, PerformanceIsolatedCoreSimulation)
 }
 
 /**
- * @brief Test real-time priority setting
+ * @brief Test real-time priority setting against the real OS.
+ *
+ * The result depends on the run's privileges, so this stays a smoke
+ * test; RealTimePriorityForwardsToSystemInterface below is the
+ * deterministic one that actually exercises the contract.
  */
 TEST_F(CpuAffinityTest, RealTimePriority)
 {
-  // This test may fail if not running as root
-  bool result = _cpuAffinity->setRealTimePriority(50);
+  EXPECT_NO_THROW({ (void)_cpuAffinity->setRealTimePriority(50); });
+}
 
-  // Don't assert on the result since it depends on permissions
-  // Just verify it doesn't crash
-  EXPECT_TRUE(result || !result);  // Always true, just to check it runs
+// TD-02: setRealTimePriority forwards the exact priority value to the
+// system interface and returns exactly what it reports -- neither
+// silently clamped nor inverted. A FakeSystemInterface makes both
+// directions (success and failure) observable without needing
+// CAP_SYS_NICE / root.
+TEST(CpuAffinityDeterministicTest, RealTimePriorityForwardsToSystemInterface)
+{
+  auto fake = std::make_unique<FakeSystemInterface>();
+  fake->priorityResult = true;
+  auto* fakePtr = fake.get();
+  ThreadAffinity affinity(std::move(fake));
+
+  EXPECT_TRUE(affinity.setCurrentThreadPriority(37));
+  EXPECT_EQ(fakePtr->lastPriority, 37);
+}
+
+TEST(CpuAffinityDeterministicTest, RealTimePriorityPropagatesFailure)
+{
+  auto fake = std::make_unique<FakeSystemInterface>();
+  fake->priorityResult = false;
+  ThreadAffinity affinity(std::move(fake));
+
+  EXPECT_FALSE(affinity.setCurrentThreadPriority(80));
 }
 
 /**
- * @brief Test CPU frequency scaling control
+ * @brief Test CPU frequency scaling control against the real OS.
+ *
+ * Smoke test only, same reasoning as RealTimePriority above; see
+ * CpuFrequencyScalingWritesPerformanceGovernorToEveryCore and
+ * CpuFrequencyScalingFailsIfAnyCoreWriteFails for the deterministic
+ * contract tests.
  */
 TEST_F(CpuAffinityTest, CpuFrequencyScaling)
 {
-  // These tests may fail without proper permissions
-  bool disableResult = _cpuAffinity->disableCpuFrequencyScaling();
-  bool enableResult = _cpuAffinity->enableCpuFrequencyScaling();
+  EXPECT_NO_THROW({
+    (void)_cpuAffinity->disableCpuFrequencyScaling();
+    (void)_cpuAffinity->enableCpuFrequencyScaling();
+  });
+}
 
-  // Don't assert on the results since they depend on permissions
-  // Just verify they don't crash
-  EXPECT_TRUE(disableResult || !disableResult);
-  EXPECT_TRUE(enableResult || !enableResult);
+TEST(CpuAffinityDeterministicTest, CpuFrequencyScalingWritesPerformanceGovernorToEveryCore)
+{
+  auto fake = std::make_unique<FakeSystemInterface>();
+  fake->numCores = 3;
+  auto* fakePtr = fake.get();
+  ThreadAffinity affinity(std::move(fake));
+
+  EXPECT_TRUE(affinity.disableCpuFrequencyScaling());
+  ASSERT_EQ(fakePtr->writtenPaths.size(), 3u);
+  for (int core = 0; core < 3; ++core)
+  {
+    EXPECT_NE(fakePtr->writtenPaths[core].find("cpu" + std::to_string(core) + "/cpufreq"),
+              std::string::npos)
+        << "core " << core << " governor path not written";
+    EXPECT_EQ(fakePtr->writtenContents[core], "performance");
+  }
+}
+
+TEST(CpuAffinityDeterministicTest, CpuFrequencyScalingEnableWritesPowersave)
+{
+  auto fake = std::make_unique<FakeSystemInterface>();
+  fake->numCores = 1;
+  auto* fakePtr = fake.get();
+  ThreadAffinity affinity(std::move(fake));
+
+  EXPECT_TRUE(affinity.enableCpuFrequencyScaling());
+  ASSERT_EQ(fakePtr->writtenContents.size(), 1u);
+  EXPECT_EQ(fakePtr->writtenContents[0], "powersave");
+}
+
+TEST(CpuAffinityDeterministicTest, CpuFrequencyScalingFailsIfAnyCoreWriteFails)
+{
+  // A machine with, say, an offline or unwritable core must not report
+  // overall success while every *other* core silently got the write --
+  // that is a governor change the caller believes is uniform across the
+  // machine and is not.
+  auto fake = std::make_unique<FakeSystemInterface>();
+  fake->numCores = 4;
+  fake->failWritePathSubstring = "cpu2";
+  auto* fakePtr = fake.get();
+  ThreadAffinity affinity(std::move(fake));
+
+  EXPECT_FALSE(affinity.disableCpuFrequencyScaling());
+  // Every core is still attempted -- a partial failure does not short
+  // circuit the rest of the machine.
+  EXPECT_EQ(fakePtr->writtenPaths.size(), 4u);
 }
 
 /**
@@ -1588,9 +1735,14 @@ TEST_F(CpuAffinityTest, ConditionalNumaGuardUsage)
     {
       ThreadAffinityGuard cpuGuard(0);  // Pin to core 0
 
-      // Verify regular CPU pinning works
+      // Verify regular CPU pinning works. ASSERT, not EXPECT, on the size:
+      // pinning is a no-op on a platform without real affinity support
+      // (NullSystemInterface returns an empty vector), and affinity[0] on
+      // that empty vector below is unchecked indexing -- this crashed the
+      // whole binary on exactly that platform before the size check
+      // stopped the test here instead.
       auto affinity = _cpuAffinity->getCurrentAffinity();
-      EXPECT_EQ(affinity.size(), 1);
+      ASSERT_EQ(affinity.size(), 1);
       EXPECT_EQ(affinity[0], 0);
 
       // Simulate work without NUMA optimizations
@@ -1615,8 +1767,11 @@ TEST_F(CpuAffinityTest, MixedGuardUsage)
   {
     ThreadAffinityGuard cpuGuard(1);
 
+    // Same reasoning as ConditionalNumaGuardUsage above: ASSERT the size
+    // before indexing into what may be an empty vector on a platform
+    // that does not honour cpuGuard.
     auto affinity = _cpuAffinity->getCurrentAffinity();
-    EXPECT_EQ(affinity.size(), 1);
+    ASSERT_EQ(affinity.size(), 1);
     EXPECT_EQ(affinity[0], 1);
 
     // Conditionally add NUMA optimizations if available

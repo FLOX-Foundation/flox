@@ -106,7 +106,7 @@ groups:
       reason: "exposed via flox_py.report.heatmap_html / write_heatmap (pure-Python wrappers around the C ABI's flox_render_heatmap_html); also reachable via flox_py._flox_py._heatmap submodule. Submodule shape is not currently inspected by the parity gate."
     napi:
       status: allowlist
-      reason: "exposed via flox.report.heatmapHtml namespace, not as a class or top-level function. Cosmetic gap; tracked under W6-T004 follow-up if dts shape needs flattening."
+      reason: "exposed via flox.report.heatmapHtml namespace, not as a class or top-level function. Cosmetic gap; tracked as a follow-up if dts shape needs flattening."
     codon: { status: required }
 
   simulated_executor:
@@ -465,7 +465,7 @@ groups:
       reason: >
         QuickJS has no arbitrary-precision integer in the bound surface, so a 256-bit
         amount cannot round-trip through a JS number. Bind when the QuickJS layer
-        grows a BigInt path. Tracked in W1-T039.
+        grows a BigInt path.
 
   # AMM curves: price a DEX swap exactly from a binding. pybind11 exposes a class
   # (AmmCurve); napi exposes free functions over an opaque handle. Amounts are the
@@ -492,7 +492,7 @@ groups:
       status: allowlist
       reason: >
         Pricing needs 256-bit amounts, which the QuickJS bound surface has no BigInt
-        for yet (see dex_amount). Bind the curves once that lands. Tracked in W1-T040.
+        for yet (see dex_amount). Bind the curves once that lands.
 
   # Pool-state tape replay: backtest a DEX strategy on recorded pool data. pybind11
   # exposes PoolTape / PoolReplay classes; napi exposes free functions over opaque
@@ -519,7 +519,7 @@ groups:
       status: allowlist
       reason: >
         Replay returns 256-bit reserves, which the QuickJS bound surface has no BigInt
-        for yet (see dex_amount / amm_curve). Bind once that lands. Tracked in W1-T041.
+        for yet (see dex_amount / amm_curve). Bind once that lands.
 
   # ABI version and the thread's last error. Purely a C-level concern: every
   # other binding raises a native exception with the real message instead of

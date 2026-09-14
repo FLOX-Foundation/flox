@@ -113,7 +113,7 @@ class OptimizationStatistics
 
   // `seed` defaults to a fixed value (matching
   // `flox::stats::whitesRealityCheck`) so the same data always produces the
-  // same p-value. BT-07/TD-06: the previous implementation seeded from
+  // same p-value. The previous implementation seeded from
   // `std::random_device` on every call, so the same input could read
   // "significant" on one run and "not significant" on the next at a
   // parameter's decision threshold -- pass an explicit seed only when
@@ -200,7 +200,7 @@ class OptimizationStatistics
       return {0.0, 0.0, 0.0};
     }
 
-    // BT-07: confidenceLevel is only meaningful in (0, 1). At exactly 1.0 the
+    // confidenceLevel is only meaningful in (0, 1). At exactly 1.0 the
     // unclamped formula below computes upperIdx == numSamples, one past the
     // end of bootstrapMeans (a confirmed heap-buffer-overflow read); anything
     // outside [0, 1] is equally nonsensical. Clamp instead of trusting the
@@ -267,7 +267,7 @@ class OptimizationStatistics
                                   << " Params=" << best->parameters.toString());
   }
 
-  // TD-07: returns whether the report was actually written. Failure to open
+  // Returns whether the report was actually written. Failure to open
   // `outputPath` (e.g. a nonexistent directory) already logged an error, but
   // the old `void` return gave callers no way to tell success from a lost
   // report short of parsing the log stream.

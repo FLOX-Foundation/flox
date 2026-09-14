@@ -45,9 +45,9 @@ TEST(OrderTypeNames, SpaceAUpperNamesMatchTheEnum)
   EXPECT_STREQ(orderTypeNameUpper(3), "STOP_LIMIT");
   EXPECT_STREQ(orderTypeNameUpper(4), "TP_MARKET");
   EXPECT_STREQ(orderTypeNameUpper(5), "TP_LIMIT");
-  // NC-06: code 6 used to come back "ICEBERG" (off by one).
+  // Code 6 used to come back "ICEBERG" (off by one).
   EXPECT_STREQ(orderTypeNameUpper(6), "TRAILING_STOP");
-  // NC-06: code 7 used to fall into the default case and come back
+  // Code 7 used to fall into the default case and come back
   // "UNKNOWN".
   EXPECT_STREQ(orderTypeNameUpper(7), "ICEBERG");
   EXPECT_STREQ(orderTypeNameUpper(8), "UNKNOWN");

@@ -46,7 +46,7 @@ inline std::string_view category(InstrumentType type)
 // Bitget's account-level position mode. tradeSide (open/close) and posSide
 // (long/short) only mean what the venue's mix v2 API documents them to mean
 // once the caller's account mode is known; sending them unconditionally,
-// derived only from reduceOnly, is what CONN-08 flagged. This makes the mode
+// derived only from reduceOnly, is what caused a real bug. This makes the mode
 // an explicit input instead of an assumption baked into every request body.
 enum class PositionMode
 {

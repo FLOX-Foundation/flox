@@ -261,7 +261,7 @@ SymbolId SymbolRegistry::registerSymbol(const std::string& exchange, const std::
 
 SymbolId SymbolRegistry::registerSymbol(const SymbolInfo& info)
 {
-  // Reject an invalid per-symbol scale before any mutation (W17-T001 3d).
+  // Reject an invalid per-symbol scale before any mutation.
   // 0 is the invalid-symbol sentinel. The default 1e8 scale always passes.
   if (!validateSymbolScale(info))
   {

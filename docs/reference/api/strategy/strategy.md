@@ -260,6 +260,9 @@ std::optional<double> ratio(const SymbolContext& a, const SymbolContext& b);
 ### Single-Symbol Strategy
 
 ```cpp
+// Stand-in for your own entry logic, so the example below compiles as shown.
+bool shouldBuy(Price) { return false; }
+
 class MomentumStrategy : public Strategy
 {
 public:
@@ -307,6 +310,10 @@ private:
 ### Multi-Symbol Pairs Strategy
 
 ```cpp
+// Stand-in for a real z-score computed over your own rolling stats, so
+// the example below compiles as shown.
+double zscore(Price) { return 0.0; }
+
 class PairsStrategy : public Strategy
 {
 public:

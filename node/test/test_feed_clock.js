@@ -1,4 +1,4 @@
-// W6-T021 — multi-feed clock NAPI parity test.
+// Multi-feed clock NAPI parity test.
 
 const flox = require('..');
 const { FeedClockPolicy, MultiFeedClock } = flox;
@@ -75,7 +75,7 @@ const SECOND_NS = 1_000_000_000;
   check('unknown policy string throws', threw);
 }
 
-// --- BOOK-11: the WaitForAll timeout fallback must fire even though the
+// --- The WaitForAll timeout fallback must fire even though the
 // second feed never ticks at all (previously required one full fire first).
 {
   const c = new MultiFeedClock({
@@ -90,7 +90,7 @@ const SECOND_NS = 1_000_000_000;
   check('WaitForAll: timeout fallback fires before any full fire', fired > 0);
 }
 
-// --- BOOK-11: a first full fire landing exactly on ts=0 must not disable
+// --- A first full fire landing exactly on ts=0 must not disable
 // the timeout permanently.
 {
   const c = new MultiFeedClock({
@@ -108,7 +108,7 @@ const SECOND_NS = 1_000_000_000;
   check('WaitForAll: timeout still works after a ts=0 first fire', fired === 10);
 }
 
-// --- BOOK-11: an out-of-band symbol never fires and does not affect a
+// --- An out-of-band symbol never fires and does not affect a
 // registered symbol's last-seen timestamp.
 {
   const c = new MultiFeedClock({

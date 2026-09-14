@@ -13,7 +13,7 @@ echo "=== Format check ==="
 PY="${PYTHON:-python3}"
 
 # Mirror the linux-gcc job's configure. Two things were missing here and both
-# mattered: the FLOX_ENABLE_* names are deprecated aliases (W9-T002), and
+# mattered: the FLOX_ENABLE_* names are deprecated aliases, and
 # without CAPI / PYTHON / QUICKJS this script built 129 of the 144 test targets
 # and never compiled the Codon or QuickJS surface at all -- so "ci-local.sh is
 # green" did not mean CI would be.

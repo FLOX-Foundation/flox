@@ -1,6 +1,6 @@
 """Tests for `flox_py.MergedTapeReader` + `flox_py.tape.replay_tapes`.
 
-Covers the W14-T016 acceptance criteria (Python slice):
+Covers the following acceptance criteria (Python slice):
   - single tape ≡ DataReader read (after rekey)
   - two non-overlapping tapes: merged trade count + order
   - cross-exchange same-symbol → separate global_ids
@@ -230,7 +230,7 @@ class MergedTapeReaderTests(unittest.TestCase):
 
 
 class BacktestRunTapesTests(unittest.TestCase):
-    """Acceptance #8 from W14-T016: `run_tapes([t])` ≡ `run_tape(t)`.
+    """Acceptance: `run_tapes([t])` ≡ `run_tape(t)`.
 
     Both go through the same `BacktestRunner::run` pipeline; the
     multi-tape path is an adapter over `MergedTapeReader`. For a

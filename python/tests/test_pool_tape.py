@@ -1,5 +1,5 @@
 """
-python/tests/test_pool_tape.py — replay a recorded DEX pool history (W1-T041).
+python/tests/test_pool_tape.py — replay a recorded DEX pool history.
 
 A pool-state tape is a delta log; the pool state is derived by replaying the deltas
 through the exact curve. Build a tape, replay it, and the reconstruction matches the

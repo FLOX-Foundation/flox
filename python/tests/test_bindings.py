@@ -478,7 +478,7 @@ if os.path.exists(bt_csv):
 else:
     print(f"  skip BacktestRunner accessors (CSV not found: {bt_csv})")
 
-# ── LP instruction emit (W17-T002) ───────────────────────────────────
+# ── LP instruction emit ───────────────────────────────────
 
 
 class _LpStrat(flox.Strategy):

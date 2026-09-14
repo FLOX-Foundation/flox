@@ -1,4 +1,4 @@
-"""Tests for the live state inspection MCP tools (W2-T015 Phase 1)."""
+"""Tests for the live state inspection MCP tools."""
 from __future__ import annotations
 
 import json

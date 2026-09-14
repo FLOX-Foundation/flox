@@ -6,8 +6,8 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Offline order-serialization tests for the Bybit executor (CONN-02,
- * CONN-03, CONN-04, CONN-05). ITransport is a real interface the
+ * Offline order-serialization tests for the Bybit executor. ITransport
+ * is a real interface the
  * production AuthenticatedRestClient already takes by pointer, so a fake
  * implementation captures exactly the request bodies this executor
  * builds -- no network, no linker tricks needed for this exchange.
@@ -138,7 +138,7 @@ TEST(BybitOrderSerialization, MarketOrderOmitsPriceAndSendsReduceOnlyAndTif)
   EXPECT_NE(body.find(R"("timeInForce":"IOC")"), std::string::npos) << body;
 }
 
-// The sharpest CONN-02 case: before the fix, STOP_MARKET and TRAILING_STOP
+// The sharpest case: before the fix, STOP_MARKET and TRAILING_STOP
 // both serialized to a byte-identical "Limit" order at price 0 -- no
 // protective order existed on the exchange for either, though the
 // strategy believed a stop was resting. After the fix, STOP_MARKET

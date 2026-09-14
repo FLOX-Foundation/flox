@@ -27,9 +27,12 @@ def test_analytics_no_engine_message(monkeypatch):
 
 def test_control_no_engine_message(monkeypatch):
     monkeypatch.delenv("FLOX_CONTROL_TOKEN", raising=False)
-    out = control.place_order(
+    out, is_error = control.place_order(
         account="any", symbol=1, side="buy", qty=0.1, dry_run=True,
     )
     assert "No flox engine detected" in out
     # Mutating-tool variant lists the mutating tools, not the read-only ones.
     assert "place_order" in out
+    # The order was not placed -- the caller must be able to tell this
+    # apart from a real "the server processed your request" success.
+    assert is_error is True

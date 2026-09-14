@@ -1,4 +1,4 @@
-"""Unit tests for the W2-T012 runtime MCP tools.
+"""Unit tests for the runtime MCP tools.
 
 `compute_indicator` and `run_backtest` need ``flox_py`` available; if
 the binding isn't importable in the test environment, those cases
@@ -288,6 +288,33 @@ def test_run_backtest_oversized_code():
         dataset_path="/tmp/does-not-matter.csv",
     )
     assert "cap" in out.lower()
+
+
+def test_run_backtest_rejects_oversize_wall_timeout():
+    out = runtime.run_backtest(
+        strategy_code="x = 1\n",
+        dataset_path="/tmp/does-not-matter.csv",
+        wall_timeout_s=runtime.MAX_WALL_TIMEOUT_S + 1,
+    )
+    assert "cap" in out.lower()
+
+
+def test_run_backtest_rejects_non_positive_wall_timeout():
+    out = runtime.run_backtest(
+        strategy_code="x = 1\n",
+        dataset_path="/tmp/does-not-matter.csv",
+        wall_timeout_s=0,
+    )
+    assert "positive" in out.lower()
+
+
+def test_run_backtest_rejects_non_numeric_wall_timeout():
+    out = runtime.run_backtest(
+        strategy_code="x = 1\n",
+        dataset_path="/tmp/does-not-matter.csv",
+        wall_timeout_s="forever",
+    )
+    assert "integer" in out.lower()
 
 
 def test_run_backtest_missing_dataset(tmp_path):

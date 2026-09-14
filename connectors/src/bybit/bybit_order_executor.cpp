@@ -51,7 +51,7 @@ std::string_view bybitTifToken(NormalizedTif tif)
 // Standard stop/take-profit trigger-direction convention (rise=1, fall=2):
 // a stop is placed on the far side of the current price from a favourable
 // move, a take-profit on the near side. Independent of Bybit-account state,
-// unlike CONN-08's tradeSide/posMode question -- this is just "which way
+// unlike the tradeSide/posMode question elsewhere in this file -- this is just "which way
 // does the trigger price sit relative to the position being protected".
 int triggerDirectionFor(OrderType type, Side side)
 {
@@ -125,7 +125,7 @@ void BybitOrderExecutorT<Policies>::submitOrder(const Order& order)
     // wire shape here that would make this a real trailing stop rather
     // than a resting limit the strategy mistakes for one. Reject loudly
     // instead of sending something that looks accepted but protects
-    // nothing (see CONN-02).
+    // nothing.
     publishRejection(order, "Bybit trailing stop is not supported via order/create");
     return;
   }
@@ -191,7 +191,7 @@ void BybitOrderExecutorT<Policies>::submitOrder(const Order& order)
           // ordering, a rejected submit disarmed the timeout watchdog in
           // the same line that discovered the rejection, so the one
           // safety net meant to catch a hung exchange never had a chance
-          // to fire on a hung-then-erroring one either (CONN-03).
+          // to fire on a hung-then-erroring one either.
           publishRejection(order, std::string("Order submission failed: retCode=") +
                                       std::to_string(retCode) + " retMsg=" + std::string(retMsg));
           _policies.timeout.clearPending(order.id);
@@ -225,7 +225,7 @@ void BybitOrderExecutorT<Policies>::cancelOrder(OrderId orderId)
 
   // Resolved before the rate-limit check (rather than after, as submit/
   // replace check first) so a rejected cancel can still be reported against
-  // the order it was trying to cancel (CONN-05): a silently dropped cancel
+  // the order it was trying to cancel: a silently dropped cancel
   // is worse than a silently dropped submit, since the tracker keeps
   // reporting the order active with no hint that the cancel never left the
   // process.
@@ -358,7 +358,7 @@ void BybitOrderExecutorT<Policies>::replaceOrder(OrderId oldOrderId, const Order
         // here instead of reading it, so the tracker's new record had no
         // exchange id at all -- a subsequent cancelOrder() built
         // {"orderId":""}, the venue rejected it, and that rejection was
-        // itself swallowed (CONN-03), leaving the order live on the
+        // itself swallowed, leaving the order live on the
         // exchange and locally stuck "active" forever.
         std::string_view newExchangeId = exchangeOrderId;
         auto resultOrderId = doc["result"]["orderId"];

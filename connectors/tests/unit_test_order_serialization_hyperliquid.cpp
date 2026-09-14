@@ -6,8 +6,9 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Offline order-serialization tests for the Hyperliquid executor
- * (CONN-01, CONN-02). Two fakes are needed, for two different reasons:
+ * Offline order-serialization tests for the Hyperliquid executor,
+ * covering reduce-only and time-in-force serialization. Two fakes are
+ * needed, for two different reasons:
  *
  *  - The transport is injected through the (new, test-only) constructor
  *    overload that takes a std::unique_ptr<ITransport> directly -- the
@@ -109,8 +110,8 @@ std::shared_ptr<AtomicLogger> makeLogger(const char* name)
 
 }  // namespace
 
-// CONN-01: the reduce-only flag must reach the exchange. Scenario from the
-// finding: +1.0 BTC position, a stop already trimmed 0.6, the strategy
+// The reduce-only flag must reach the exchange. Scenario:
+// +1.0 BTC position, a stop already trimmed 0.6, the strategy
 // asks to close 1.0 reduce-only. If "r" is hardcoded false, HL executes
 // the full 1.0 against a +0.4 remaining position -> a 0.6 short opens
 // under full leverage instead of flattening.
@@ -180,7 +181,7 @@ TEST(HyperliquidOrderSerialization, ReduceOnlyFalseAlsoSerializesExplicitly)
   EXPECT_NE(raw->calls[0].body.find(R"("r":false)"), std::string::npos) << raw->calls[0].body;
 }
 
-// CONN-02: time-in-force must reach the exchange too, not a hardcoded Gtc
+// Time-in-force must reach the exchange too, not a hardcoded Gtc
 // regardless of what the order asked for.
 TEST(HyperliquidOrderSerialization, IocTimeInForceIsSerialized)
 {

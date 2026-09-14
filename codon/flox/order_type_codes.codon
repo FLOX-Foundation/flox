@@ -11,8 +11,8 @@
 #
 # Both `tools.SimulatedExecutor` and `backtest.SimulatedExecutor` call this
 # instead of keeping their own copy of the mapping -- a private copy in
-# `tools.codon` (raw int, default 0 = LIMIT) is what caused NC-06's Codon
-# half.
+# `tools.codon` (raw int, default 0 = LIMIT) is what caused the Codon
+# binding's order-type mismatch.
 
 
 def order_type_code_from_str(order_type: str) -> u8:

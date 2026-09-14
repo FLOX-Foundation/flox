@@ -96,7 +96,7 @@ Hooks attach after construction: `set_executor(executor)` (a subclass of `flox.E
 
 #### Venue physics
 
-`VenueStack` is a separate, self-contained venue simulation — it is not an argument to `BacktestRunner` and does not attach to one.
+`VenueStack` is a separate, self-contained venue simulation, built from one factory call:
 
 ```python
 stack = flox.VenueStack.binance_um_futures(account_id=42, equity=10_000.0)
@@ -110,7 +110,10 @@ exec_ = stack.executor()
 
 One call wires the cross-margin account, MM tiers and ADL, the VIP fee schedule (bound to the account, so realized notional moves the tier), funding settlement on the venue's interval, rate limits, and a venue-availability hook. Other factories: `bybit_linear`, `okx_swap`, `deribit`, plus `VenueStack.from_venue(name, account_id, equity)`. Non-canonical venues go through [`flox.assemble_custom_venue(...)`](../how-to/realistic-backtest.md#fully-custom-venue).
 
-You drive the returned subsystems directly — `acct.open_position(...)`, `liq.on_marks(...)`, `fees.record_fill(...)`, `funding.tick(...)`, `exec_.submit_order(...)`. See `docs/examples/python_realistic_backtest.py`.
+Two ways to use a `VenueStack`:
+
+- **Standalone.** Drive the returned subsystems directly — `acct.open_position(...)`, `liq.on_marks(...)`, `fees.record_fill(...)`, `funding.tick(...)`, `exec_.submit_order(...)`. See `docs/examples/python_realistic_backtest.py`.
+- **Attached to `BacktestRunner`.** Call `runner.set_venue_stack(stack)` before `run_csv`/`run_bars`/`run_tape(s)`. The runner then feeds the stack's executor market data and harvests its fills, so the run picks up the venue's fill mechanics — queue model and depth, iceberg refresh latency, venue availability, and rate limits — instead of the flat `fee_rate` fill model. Fees still come from `BacktestConfig` (a `Fill` carries no maker/taker flag), and funding and liquidation stay driven by explicit calls, not the replay loop. Pass `None` to revert to the built-in executor. Passing a bare `VenueExecutor` to `set_executor` is refused with a pointer back here, because the executor alone does not carry the clock the runner has to advance. Full walkthrough: [Realistic backtest in one call](../how-to/realistic-backtest.md#attach-a-venuestack-to-backtestrunner).
 
 Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-backtest.md), [Cross-margin accounts](../how-to/cross-margin.md), [Liquidation and ADL](../how-to/liquidation-and-adl.md).
 

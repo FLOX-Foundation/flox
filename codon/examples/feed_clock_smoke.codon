@@ -43,7 +43,7 @@ def run():
     sf3 = c3.tick(SECOND_NS + 500_000_000, BTC)
     check("LeaderFollower: stale follower blocks fire", not sf3.fired)
 
-    # BOOK-11: the WaitForAll timeout fallback must fire even though the
+    # The WaitForAll timeout fallback must fire even though the
     # second feed never ticks at all (previously required one full fire
     # first, since the old check was "last fire timestamp > 0").
     c4 = MultiFeedClock(symbols=[BTC, ETH], policy=WAIT_FOR_ALL, timeout_ms=200)
@@ -56,7 +56,7 @@ def run():
         i += 1
     check("WaitForAll: timeout fallback fires before any full fire", fired_count > 0)
 
-    # BOOK-11: a first full fire landing exactly on ts=0 must not disable
+    # A first full fire landing exactly on ts=0 must not disable
     # the timeout forever.
     c5 = MultiFeedClock(symbols=[BTC, ETH], policy=WAIT_FOR_ALL, timeout_ms=200)
     check("zero-ts fire: BTC alone does not fire", not c5.tick(0, BTC).fired)

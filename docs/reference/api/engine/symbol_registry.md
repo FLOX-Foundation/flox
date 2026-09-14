@@ -49,7 +49,7 @@ public:
   // Exchange management
   ExchangeId registerExchange(std::string_view name,
                               VenueType type = VenueType::CentralizedExchange);
-  const ExchangeInfo* getExchange(ExchangeId id) const;
+  std::optional<ExchangeInfo> getExchange(ExchangeId id) const;
   ExchangeId getExchangeId(std::string_view name) const;
   size_t exchangeCount() const;
 
@@ -67,7 +67,7 @@ public:
 
   // Symbol equivalence (cross-exchange mapping)
   void mapEquivalentSymbols(std::span<const SymbolId> equivalentSymbols);
-  std::span<const SymbolId> getEquivalentSymbols(SymbolId symbol) const;
+  EquivalentSymbols getEquivalentSymbols(SymbolId symbol) const;
   SymbolId getEquivalentOnExchange(SymbolId symbol, ExchangeId exchange) const;
 
   // Persistence

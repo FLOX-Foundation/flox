@@ -1,5 +1,5 @@
 """
-python/tests/test_amm_curve.py — price a DEX swap from Python (W1-T040).
+python/tests/test_amm_curve.py — price a DEX swap from Python.
 
 The exact AMM curves, bound as AmmCurve, price a swap to the wei with int amounts.
 Run from repo root:

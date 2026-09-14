@@ -1,5 +1,5 @@
 """
-python/tests/test_dex.py -- the flox_py.dex comfort layer (W24-T002).
+python/tests/test_dex.py -- the flox_py.dex comfort layer.
 
 Symbol- and decimals-aware pricing over the exact curves. Verifies every quote still
 matches the raw flox_py curve to the wei, that human construction works, that the
@@ -46,7 +46,7 @@ def test_uniswap_v3_readback_and_from_price():
     # token0=USDC(6), token1=WETH(18) -- the live 0.05% snapshot.
     v3 = dex.UniswapV3(USDC, WETH, 1959100328691929984878240664321702, 2580696918646962643, "0.05%")
     assert v3.quote("1000 USDC").exact_wei == 611128907033491490     # QuoterV2, to the wei
-    assert v3.sqrt_price == 1959100328691929984878240664321702        # read-back (W24-T001)
+    assert v3.sqrt_price == 1959100328691929984878240664321702        # read-back
     assert v3.liquidity == 2580696918646962643
     # from_price reconstructs a sqrtPriceX96 close to the real one (same human price).
     built = dex.UniswapV3.from_price(USDC, WETH, price=v3.spot_price, liquidity=2580696918646962643,
