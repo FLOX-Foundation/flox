@@ -21,18 +21,52 @@
 #include "flox/strategy/signal.h"
 #include "flox/strategy/symbol_context.h"
 #include "flox/strategy/symbol_state_map.h"
+#include "flox/util/performance/busy_backoff.h"
 
+#include <array>
 #include <atomic>
 #include <deque>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
 namespace flox
 {
 
+// Base class for every strategy, and the layer every binding sits on:
+// Python, Node, Codon and the JS engine all reach their user code through
+// the hooks below.
+//
+// OWNERSHIP OF THE PER-SYMBOL STATE
+//
+// A strategy subscribes to three buses -- trades, book updates, bars -- and
+// each bus runs its own consumer thread per subscriber. Two events for the
+// SAME symbol therefore arrive at the same instant on two different
+// threads, and everything they touch is shared: the symbol's context, the
+// order book inside it, the last trade price, the last update timestamp.
+// Nothing used to stand between those writers.
+//
+// The rule now is explicit. A symbol's state belongs to whoever holds that
+// symbol's lock. Every dispatch below takes the lock before it touches the
+// context and keeps it until the strategy hook has returned, because the
+// hook is handed a reference to that context and reads it -- releasing
+// earlier would hand user code a reference another thread is free to
+// rewrite underneath it.
+//
+// Per symbol rather than per strategy, so two symbols still dispatch in
+// parallel. Reentrant, because a hook may emit an order that an executor
+// fills synchronously, which re-enters this same strategy for the same
+// symbol on the same thread; a plain mutex would deadlock there.
+//
+// What the lock does NOT cover: the `ctx()` accessors hand out a bare
+// reference, so they are for use from inside a hook (where this thread
+// already holds the lock) or before the engine starts. Reading a context
+// from an unrelated thread while the engine runs is outside the contract.
 class Strategy : public IStrategy
 {
  public:
@@ -93,6 +127,7 @@ class Strategy : public IStrategy
       return;
     }
 
+    std::lock_guard<SymbolLock> owned(lockFor(sym));
     auto& c = _contexts[sym];
     c.lastTradePrice = ev.trade.price;
     c.lastUpdateNs = ev.trade.exchangeTsNs.raw();
@@ -109,6 +144,7 @@ class Strategy : public IStrategy
       return;
     }
 
+    std::lock_guard<SymbolLock> owned(lockFor(sym));
     auto& c = _contexts[sym];
     c.book.applyBookUpdate(ev);
     c.lastUpdateNs = ev.update.exchangeTsNs.raw();
@@ -125,6 +161,7 @@ class Strategy : public IStrategy
       return;
     }
 
+    std::lock_guard<SymbolLock> owned(lockFor(sym));
     auto& c = _contexts[sym];
     c.lastTradePrice = ev.bar.close;
     c.lastUpdateNs = ev.bar.endTime.time_since_epoch().count();
@@ -132,12 +169,20 @@ class Strategy : public IStrategy
 
     // Push into the per-(symbol, timeframe) ring so multi-TF strategies
     // can recall the last N closed bars without bookkeeping by hand.
-    auto& ring = _barRings[sym][BarTfKey{ev.barType, ev.barTypeParam}];
-    if (ring.size() >= _barRingCapacity)
+    //
+    // Its own lock, not the symbol's: inserting a new (symbol, timeframe)
+    // key rehashes the whole map, which moves buckets belonging to every
+    // other symbol, so per-symbol granularity would not be enough. Always
+    // taken while the symbol lock is held, never the other way round.
     {
-      ring.pop_front();
+      std::lock_guard<std::mutex> rings(_barRingMutex);
+      auto& ring = _barRings[sym][BarTfKey{ev.barType, ev.barTypeParam}];
+      if (ring.size() >= _barRingCapacity.load(std::memory_order_relaxed))
+      {
+        ring.pop_front();
+      }
+      ring.push_back(ev.bar);
     }
-    ring.push_back(ev.bar);
 
     onSymbolBar(c, ev);
   }
@@ -149,6 +194,7 @@ class Strategy : public IStrategy
     {
       return;
     }
+    std::lock_guard<SymbolLock> owned(lockFor(sym));
     auto& c = _contexts[sym];
     if (ev.status == OrderEventStatus::FILLED ||
         ev.status == OrderEventStatus::PARTIALLY_FILLED)
@@ -237,11 +283,18 @@ class Strategy : public IStrategy
   // `barRingCapacity()` bars per (symbol, tf) and evicts the oldest
   // when full. `lastNClosedBars` returns the most recent `n` in
   // chronological order (oldest first).
-  size_t barRingCapacity() const noexcept { return _barRingCapacity; }
-  void setBarRingCapacity(size_t n) noexcept { _barRingCapacity = std::max<size_t>(n, 1); }
+  size_t barRingCapacity() const noexcept
+  {
+    return _barRingCapacity.load(std::memory_order_relaxed);
+  }
+  void setBarRingCapacity(size_t n) noexcept
+  {
+    _barRingCapacity.store(std::max<size_t>(n, 1), std::memory_order_relaxed);
+  }
 
   std::optional<Bar> lastClosedBar(SymbolId sym, BarType type, uint64_t param) const
   {
+    std::lock_guard<std::mutex> rings(_barRingMutex);
     auto symIt = _barRings.find(sym);
     if (symIt == _barRings.end())
     {
@@ -258,6 +311,7 @@ class Strategy : public IStrategy
   std::vector<Bar> lastNClosedBars(SymbolId sym, BarType type, uint64_t param, size_t n) const
   {
     std::vector<Bar> out;
+    std::lock_guard<std::mutex> rings(_barRingMutex);
     auto symIt = _barRings.find(sym);
     if (symIt == _barRings.end())
     {
@@ -463,6 +517,108 @@ class Strategy : public IStrategy
     }
   }
 
+  // One lock per flat slot, padded to its own cache line so that locking
+  // one symbol does not bounce a neighbour's line between bus threads.
+  // Symbols past the flat table share a single lock, which also serialises
+  // the map's overflow vector -- that one is a std::vector and two threads
+  // appending different out-of-range symbols would corrupt it outright.
+  //
+  // Reentrant, because a hook can emit an order that an executor fills
+  // synchronously and re-enters this strategy for the same symbol on the
+  // same thread. A thread that already owns the slot skips the wait
+  // entirely, so reentrancy costs one relaxed load rather than a
+  // std::recursive_mutex, which is about twice a plain mutex uncontended.
+  //
+  // The wait is BusyBackoff, the same primitive the bus consumer loop
+  // uses. Measured against a std::mutex at every contention point that
+  // matters here: 1.6 ns against 5.0 uncontended, 1.8 against 7.6 with two
+  // threads on one slot, and 221 against 380 with a 200 ns section and
+  // three times more runnable threads than cores. A plain spin would be
+  // the wrong answer for a section this long -- the lock is held across
+  // the strategy hook, which is user code and may block -- but ADAPTIVE is
+  // not a plain spin: it pauses 128 times, then yields, then sleeps, so a
+  // waiter cedes the core instead of starving the holder it is waiting
+  // for. AGGRESSIVE, which spins 2048 times before yielding, measures
+  // three times worse under contention here, which is the degradation
+  // rt_spin_guard.h already warns about.
+  //
+  // The owner is a std::thread::id rather than the address of a
+  // function-local `thread_local`, which is what this used to be. The
+  // address was 0.8 ns cheaper, but a `thread_local` in a header compiled
+  // into a static archive gets a non-position-independent access model,
+  // and linking that archive into a shared object fails outright on ELF
+  // (`relocation R_X86_64_TPOFF32 against hidden symbol ... can not be
+  // used when making a shared object`). The Python extension module is
+  // exactly that link. Mach-O does not care, so the machine this was
+  // written on could not see it. Fixing it with -ftls-model on the one
+  // target that happened to fail would leave every future shared-object
+  // consumer of libflox to rediscover it, so the thread-local is gone
+  // instead.
+  class SymbolLock
+  {
+   public:
+    void lock()
+    {
+      const std::thread::id me = std::this_thread::get_id();
+      if (_owner.load(std::memory_order_relaxed) == me)
+      {
+        ++_depth;
+        return;
+      }
+      BusyBackoff backoff(BackoffMode::ADAPTIVE);
+      for (;;)
+      {
+        bool expected = false;
+        if (_held.compare_exchange_weak(expected, true, std::memory_order_acquire,
+                                        std::memory_order_relaxed))
+        {
+          break;
+        }
+        backoff.pause();
+      }
+      _owner.store(me, std::memory_order_relaxed);
+      _depth = 1;
+    }
+
+    void unlock()
+    {
+      if (--_depth != 0)
+      {
+        return;
+      }
+      _owner.store(std::thread::id{}, std::memory_order_relaxed);
+      _held.store(false, std::memory_order_release);
+    }
+
+   private:
+    // A non-lock-free atomic here would take a lock inside the fast path
+    // that exists to avoid one, so fail the build rather than get slower
+    // in silence.
+    static_assert(std::atomic<std::thread::id>::is_always_lock_free,
+                  "SymbolLock needs a lock-free atomic thread id");
+
+    // The alignment sits on the member rather than on the class, so a
+    // `SymbolLock` still occupies a whole cache line and the source-
+    // scanning codegen does not read `alignas` as a member name.
+    alignas(64) std::atomic<bool> _held{false};
+    // A default-constructed id is "no thread", which is the free state.
+    std::atomic<std::thread::id> _owner{};
+    uint32_t _depth{0};
+  };
+
+  static constexpr size_t kLockSlots = SymbolStateMap<SymbolContext>::kMaxSymbols;
+  using LockTable = std::array<SymbolLock, kLockSlots>;
+
+  SymbolLock& lockFor(SymbolId sym) const noexcept
+  {
+    return sym < kLockSlots ? (*_ctxLocks)[sym] : _overflowLock;
+  }
+
+  // On the heap for the same reason the context table is: a strategy has no
+  // business carrying a padded lock per symbol in its own footprint.
+  std::unique_ptr<LockTable> _ctxLocks{std::make_unique<LockTable>()};
+  mutable SymbolLock _overflowLock;
+
   std::atomic<OrderId> _nextOrderId{1};
 
   SubscriberId _id;
@@ -471,19 +627,18 @@ class Strategy : public IStrategy
   IPositionManager* _positionManager{nullptr};
   std::vector<SymbolId> _symbols;
   std::set<SymbolId> _symbolSet;
-  // Heap-allocate your Strategy. This map holds 256 SymbolContext slots by
-  // value and each one carries a full 512-level book: 8,384 bytes per slot in
-  // a release build, 16,640 with FLOX_SCALE_CHECKS on, which puts the strategy
-  // object at roughly 2 MB release and 4 MB checked. Two of them in one stack
-  // frame overrun a default 8 MB stack in a checked build, and the overflow
-  // lands in the constructor prologue before a single line of the strategy has
-  // run.
+  // 256 SymbolContext slots, each carrying a full 512-level book. The table
+  // lives in one heap block owned by the map (see symbol_state_map.h), so a
+  // strategy object is small enough to sit on a stack again: it used to be
+  // roughly 2 MB in a release build and 4 MB with FLOX_SCALE_CHECKS on, and
+  // two of them in one frame overran a default 8 MB stack.
   mutable SymbolStateMap<SymbolContext> _contexts;
 
   // Per-(symbol, timeframe) ring of the most recent closed bars.
   // Capacity is the same for every (symbol, tf) slot; tune with
   // `setBarRingCapacity` when a strategy needs deeper history.
-  size_t _barRingCapacity{64};
+  std::atomic<size_t> _barRingCapacity{64};
+  mutable std::mutex _barRingMutex;
   std::unordered_map<SymbolId,
                      std::unordered_map<BarTfKey, std::deque<Bar>, BarTfKeyHash>>
       _barRings;

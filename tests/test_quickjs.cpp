@@ -6,6 +6,7 @@
 #include "flox/capi/bridge_strategy.h"
 
 #include <gtest/gtest.h>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -1356,48 +1357,23 @@ TEST(JsExecutorThreadingTest, ManualProducerThreadsDoNotCorruptRuntime)
 // published from this thread while the live engine's three internal bus
 // threads dispatch them.
 //
-// NOTE on what this test does and does not prove, and why it skips
-// itself under ThreadSanitizer specifically:
-//
 // Driving a real flox_live_engine this hard exercises more than the JS
 // runtime -- it also exercises flox::Strategy's per-symbol state, which
 // every BridgeStrategy-based binding (Node, Python, Codon, QuickJS) reads
 // and writes from whatever bus thread happens to deliver an event for
-// that symbol. That state currently has no single owner: a trade and a
-// book update for the *same* symbol, delivered concurrently by two
-// different bus threads, both mutate it with no synchronization between
-// them. Under ThreadSanitizer that shows up as data races inside
-// SymbolStateMap::operator[], NLevelOrderBook::applyBookUpdate,
-// Strategy::onBookUpdate, and the price Decimal's own raw() accessor --
-// none of them in this engine's own code (src/quickjs/), all of them in
-// the shared strategy/book-keeping layer every binding sits on top of.
+// that symbol. That state now has one owner: a symbol's context belongs
+// to whoever holds that symbol's lock, and a dispatch keeps the lock until
+// its hook returns. Before that rule existed, a trade and a book update
+// for the *same* symbol arriving on two bus threads both wrote the
+// context with nothing between them, and ThreadSanitizer reported it as
+// races in SymbolStateMap::operator[], NLevelOrderBook::applyBookUpdate,
+// Strategy::onBookUpdate and Decimal::raw().
 //
-// This is not something a QuickJS-specific change can fix: the state in
-// question is not owned by this engine, and giving it a real owner is a
-// design decision about that shared layer, not about how JS strategies
-// talk to it. So rather than suppress the specific functions involved
-// (which would also hide any *future*, currently-unknown race in those
-// same functions) or weaken this one test's assertions further, the test
-// skips itself outright under a thread-sanitized build, where it can
-// only ever report a defect it does not own and cannot fix. It still
-// runs -- checking bounds rather than exact counts, since an update can
-// be dropped while this race is live -- in every other configuration:
-// plain release and debug, AddressSanitizer, UndefinedBehaviorSanitizer.
-// ManualProducerThreadsDoNotCorruptRuntime above is this engine's own
-// thread-safety proof and stays fully exercised, including under TSan,
-// in every configuration.
-//
-// This skip is temporary. It lifts on its own, with no change needed
-// here, once the per-symbol strategy state gets an explicit owner.
+// So this test runs under every configuration, ThreadSanitizer included,
+// and asserts exact counts rather than bounds -- an event could be
+// dropped only while the race was live.
 TEST(JsExecutorThreadingTest, LiveEngineThreeBusesDoNotCorruptRuntime)
 {
-#if defined(__SANITIZE_THREAD__) || (defined(__has_feature) && __has_feature(thread_sanitizer))
-  GTEST_SKIP() << "Live engine + real bus threads exercises flox::Strategy's "
-                  "unsynchronized per-symbol state, not this engine's own "
-                  "thread safety (see the comment above this test). Skipped "
-                  "only under ThreadSanitizer, which reports it as a race; "
-                  "runs normally everywhere else.";
-#endif
   constexpr int kEventsPerKind = 5000;  // 10,000 total, per the acceptance test
 
   TempJsFile script(kCounterStrategyScript);
@@ -1425,17 +1401,34 @@ TEST(JsExecutorThreadingTest, LiveEngineThreeBusesDoNotCorruptRuntime)
                                            1000000000LL + i);
   }
 
+  // Wait for the bus threads to finish delivering before stopping the
+  // engine. The buses throw away whatever is still in the ring at stop()
+  // unless drain-on-stop is switched on, so stopping first would count
+  // that truncation as a lost event and there would be no way to tell it
+  // apart from a real one.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(2);
+  int trades = 0;
+  int books = 0;
+  while (std::chrono::steady_clock::now() < deadline)
+  {
+    trades = executor.getGlobalInt32("tradeCount");
+    books = executor.getGlobalInt32("bookCount");
+    if (trades >= kEventsPerKind && books >= kEventsPerKind)
+    {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+
   flox_live_engine_stop(engine);
   executor.waitIdle();
 
   // Reaching here at all -- 10,000 events on 3 live bus threads -- is the
   // point of this test: pre-fix this crashed 3/3 times, usually inside
-  // the first ten events. Bounds rather than equality on the counts: see
-  // the note above the test.
-  EXPECT_GT(executor.getGlobalInt32("tradeCount"), 0);
-  EXPECT_LE(executor.getGlobalInt32("tradeCount"), kEventsPerKind);
-  EXPECT_GT(executor.getGlobalInt32("bookCount"), 0);
-  EXPECT_LE(executor.getGlobalInt32("bookCount"), kEventsPerKind);
+  // the first ten events. Exact counts, not bounds: every published event
+  // reaches the strategy exactly once.
+  EXPECT_EQ(executor.getGlobalInt32("tradeCount"), kEventsPerKind);
+  EXPECT_EQ(executor.getGlobalInt32("bookCount"), kEventsPerKind);
 
   flox_live_engine_destroy(engine);
   flox_strategy_destroy(strat);

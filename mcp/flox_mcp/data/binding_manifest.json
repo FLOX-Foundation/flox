@@ -23411,6 +23411,11 @@
         },
         {
           "kind": "method",
+          "name": "lockFor",
+          "parent": "Strategy"
+        },
+        {
+          "kind": "method",
           "name": "nextOrderId",
           "parent": "Strategy"
         },
