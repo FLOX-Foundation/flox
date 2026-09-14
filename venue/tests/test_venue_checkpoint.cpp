@@ -27,6 +27,7 @@
 
 #include <gtest/gtest.h>
 
+#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -124,6 +125,16 @@ bool ledgersEqual(const Ledger& a, const Ledger& b, int maxAcct)
   }
   return a.total(VENUE_ACCT, BASE) == b.total(VENUE_ACCT, BASE) &&
          a.total(VENUE_ACCT, QUOTE) == b.total(VENUE_ACCT, QUOTE);
+}
+
+// Every path built from this carries the PID: two invocations of this binary
+// racing on the same snapshot/journal files (a manual rerun alongside
+// `ctest -j`, or any future gtest sharding that launches the same executable
+// twice) corrupt each other's generations mid-test rather than failing
+// cleanly, which is what made this suite flaky under parallel/contended runs.
+std::string pidPath(const std::string& suffix)
+{
+  return "/tmp/flox_test_venue_" + suffix + "_" + std::to_string(::getpid());
 }
 
 // Remove the legacy file and every checkpoint generation of `base`.
@@ -316,7 +327,7 @@ InboundCommand randomCmd(Rng& rng, OrderId& nextId, int i, bool moneyFlow)
 // no shard machinery involved.
 TEST(VenueCheckpoint, EngineSnapshotRoundTrip)
 {
-  const std::string path = "/tmp/flox_test_venue_checkpoint_roundtrip.snap";
+  const std::string path = pidPath("checkpoint_roundtrip") + ".snap";
   std::remove(path.c_str());
 
   venue::SymbolConfig c = cfg();
@@ -379,7 +390,7 @@ TEST(VenueCheckpoint, EngineSnapshotRoundTrip)
 // of identical subsequent traffic equal.
 TEST(VenueCheckpoint, DifferentialRandomSessionCheckpointInvisible)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_diff.bin";
+  const std::string base = pidPath("checkpoint_diff") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -541,7 +552,7 @@ TEST(VenueCheckpoint, DifferentialRandomSessionCheckpointInvisible)
 // repricing), clientOrderId dedup, and the reserved invariant.
 TEST(VenueCheckpoint, CheckpointRestoresOpenStateAddressably)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_state.bin";
+  const std::string base = pidPath("checkpoint_state") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -729,7 +740,7 @@ TEST(VenueCheckpoint, CheckpointRestoresOpenStateAddressably)
 // and closing the position post-restart releases it -- conservation holds.
 TEST(VenueCheckpoint, PerpPositionAndMarginRestored)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_perp.bin";
+  const std::string base = pidPath("checkpoint_perp") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -794,7 +805,7 @@ TEST(VenueCheckpoint, PerpPositionAndMarginRestored)
 // segments reproduce the exact final state.
 TEST(VenueCheckpoint, TornSnapshotFallsBackToPreviousGeneration)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_torn.bin";
+  const std::string base = pidPath("checkpoint_torn") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -875,7 +886,7 @@ TEST(VenueCheckpoint, TornSnapshotFallsBackToPreviousGeneration)
 TEST(VenueCheckpoint, RotationRetainsConfiguredGenerations)
 {
   namespace fs = std::filesystem;
-  const std::string base = "/tmp/flox_test_venue_checkpoint_rotate.bin";
+  const std::string base = pidPath("checkpoint_rotate") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -949,7 +960,7 @@ TEST(VenueCheckpoint, LiveSubmitOfSnapshotRecordIsDropped)
 
   // Shard level: journaled or not, the record never materializes -- including
   // across a restart replay.
-  const std::string base = "/tmp/flox_test_venue_checkpoint_forged.bin";
+  const std::string base = pidPath("checkpoint_forged") + ".bin";
   cleanFiles(base);
   {
     auto t = clockState(1'000'000);
@@ -980,7 +991,7 @@ TEST(VenueCheckpoint, LiveSubmitOfSnapshotRecordIsDropped)
 // synchronous writeSnapshot pause, and the clone must be state-identical.
 TEST(VenueCheckpoint, SnapshotPauseMeasuredOn100kOrders)
 {
-  const std::string path = "/tmp/flox_test_venue_checkpoint_pause.snap";
+  const std::string path = pidPath("checkpoint_pause") + ".snap";
   std::remove(path.c_str());
 
   venue::SymbolConfig c = cfg();
@@ -1058,7 +1069,7 @@ TEST(VenueCheckpoint, SnapshotPauseMeasuredOn100kOrders)
 // zero reserved.
 TEST(VenueCheckpoint, ConservationHoldsAcrossPeriodicCheckpoints)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_fuzz.bin";
+  const std::string base = pidPath("checkpoint_fuzz") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -1148,7 +1159,7 @@ TEST(VenueCheckpoint, ConservationHoldsAcrossPeriodicCheckpoints)
 // sidecar written there restores into a fresh host + registry.
 TEST(VenueCheckpoint, BalanceUpdateRecoverySuppressionAndSidecarHook)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_balance.bin";
+  const std::string base = pidPath("checkpoint_balance") + ".bin";
   const std::string sidecar = FixSessionSidecar::pathFor(base);
   cleanFiles(base);
   std::remove(sidecar.c_str());
@@ -1239,7 +1250,7 @@ TEST(VenueCheckpoint, BalanceUpdateRecoverySuppressionAndSidecarHook)
 // via RestoreBalance -- no generation fallback, no hash mismatch.
 TEST(VenueCheckpoint, NegativeAvailableBalanceRestoredExactly)
 {
-  const std::string path = "/tmp/flox_test_venue_checkpoint_negbal.snap";
+  const std::string path = pidPath("checkpoint_negbal") + ".snap";
   std::remove(path.c_str());
 
   venue::SymbolConfig c = cfg();
@@ -1288,7 +1299,7 @@ TEST(VenueCheckpoint, NegativeAvailableBalanceRestoredExactly)
 // reserved side reconstitutes by re-reservation out of the deposited total.
 TEST(VenueCheckpoint, LegacyDepositSnapshotRecordsStillApply)
 {
-  const std::string path = "/tmp/flox_test_venue_checkpoint_legacy.snap";
+  const std::string path = pidPath("checkpoint_legacy") + ".snap";
   std::remove(path.c_str());
   const int64_t ts = 5000;
 
@@ -1343,7 +1354,7 @@ TEST(VenueCheckpoint, LegacyDepositSnapshotRecordsStillApply)
 // trips the breach precisely as it would have without the restart.
 TEST(VenueCheckpoint, MmpWindowRestoredExactly)
 {
-  const std::string path = "/tmp/flox_test_venue_checkpoint_mmpwin.snap";
+  const std::string path = pidPath("checkpoint_mmpwin") + ".snap";
   std::remove(path.c_str());
 
   venue::SymbolConfig c = cfg();
@@ -1409,7 +1420,7 @@ TEST(VenueCheckpoint, MmpWindowRestoredExactly)
 // STP keeps firing after recovery.
 TEST(VenueCheckpoint, StpGroupsJournaledSnapshottedAndRestored)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_stp.bin";
+  const std::string base = pidPath("checkpoint_stp") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -1490,7 +1501,7 @@ TEST(VenueCheckpoint, StpGroupsJournaledSnapshottedAndRestored)
 // of silently reinterpreting fixed-point state.
 TEST(VenueCheckpoint, ConfigHashMismatchRejectsSnapshot)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_cfghash.bin";
+  const std::string base = pidPath("checkpoint_cfghash") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -1542,7 +1553,7 @@ TEST(VenueCheckpoint, ConfigHashMismatchRejectsSnapshot)
 TEST(VenueCheckpoint, CrashBeforeSnapshotPublishRecoversViaPreviousGeneration)
 {
   namespace fs = std::filesystem;
-  const std::string base = "/tmp/flox_test_venue_checkpoint_crashpub.bin";
+  const std::string base = pidPath("checkpoint_crashpub") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -1620,7 +1631,7 @@ TEST(VenueCheckpoint, CrashBeforeSnapshotPublishRecoversViaPreviousGeneration)
 // runtime rather than merely unlikely.
 TEST(VenueCheckpoint, RefusesToStartWhenNoGenerationCanCoverHistory)
 {
-  const std::string base = "/tmp/flox_test_venue_checkpoint_exhausted.bin";
+  const std::string base = pidPath("checkpoint_exhausted") + ".bin";
   cleanFiles(base);
 
   venue::SymbolConfig c = cfg();
@@ -1678,7 +1689,7 @@ TEST(VenueCheckpoint, RefusesToStartWhenNoGenerationCanCoverHistory)
 // command.
 TEST(VenueCheckpoint, GroupCommitSyncsBeforeItPublishes)
 {
-  const std::string base = "/tmp/flox_test_venue_group_commit.bin";
+  const std::string base = pidPath("group_commit") + ".bin";
   cleanFiles(base);
 
   struct Watcher : IEngineEventListener
@@ -1763,7 +1774,7 @@ TEST(VenueCheckpoint, GroupCommitSyncsBeforeItPublishes)
 // acknowledgement never comes back.
 TEST(VenueCheckpoint, GroupCommitAcksEverythingItJournalsWhenStopped)
 {
-  const std::string base = "/tmp/flox_test_venue_group_drain.bin";
+  const std::string base = pidPath("group_drain") + ".bin";
 
   struct Counter : IEngineEventListener
   {

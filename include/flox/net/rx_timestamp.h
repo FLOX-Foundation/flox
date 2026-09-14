@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 
 #if defined(__linux__)
 #include <linux/net_tstamp.h>
@@ -96,8 +97,14 @@ inline int64_t extractRxTimestampNs(const msghdr& msg)
   {
     if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SO_TIMESTAMPING)
     {
+      // CMSG_DATA(c) is not guaranteed to be aligned for timespec (its
+      // offset is rounded to the platform's cmsg alignment, not to
+      // alignof(timespec)) -- casting and dereferencing in place is
+      // undefined behavior that UBSan catches on some ABIs. Copy the
+      // bytes into a properly-aligned local instead.
       // scm_timestamping: [0] software, [2] raw hardware.
-      const auto* ts = reinterpret_cast<const timespec*>(CMSG_DATA(c));
+      timespec ts[3];
+      std::memcpy(ts, CMSG_DATA(c), sizeof(ts));
       const timespec& hw = ts[2];
       const timespec& sw = ts[0];
       const timespec& pick = (hw.tv_sec != 0 || hw.tv_nsec != 0) ? hw : sw;
@@ -111,8 +118,14 @@ inline int64_t extractRxTimestampNs(const msghdr& msg)
   {
     if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_TIMESTAMP)
     {
-      const auto* tv = reinterpret_cast<const timeval*>(CMSG_DATA(c));
-      return int64_t(tv->tv_sec) * 1'000'000'000 + int64_t(tv->tv_usec) * 1'000;
+      // Same alignment hazard as the Linux branch above: on Darwin,
+      // CMSG_DATA rounds to 4-byte alignment regardless of how the
+      // enclosing buffer is declared, which is short of the 8-byte
+      // alignment timeval's time_t needs. Copy out instead of casting in
+      // place.
+      timeval tv;
+      std::memcpy(&tv, CMSG_DATA(c), sizeof(tv));
+      return int64_t(tv.tv_sec) * 1'000'000'000 + int64_t(tv.tv_usec) * 1'000;
     }
   }
   return 0;

@@ -243,6 +243,17 @@ def scan_cpp(headers: Dict[str, str]) -> Tuple[List[Tuple[str, str]], List[Tuple
     "Tried C-API, Python, Node, Codon" and missed the surface every other
     binding wraps -- `SimulatedExecutor` resolved to its Python and Node
     wrappers while the class itself was invisible.
+
+    A class/struct declared at column 0 is a top-level engine type and
+    becomes the method-attribution owner (matching `_CPP_METHOD`, which only
+    recognizes members indented exactly two spaces -- direct members of a
+    column-0 class). A class/struct declared with any leading indentation is
+    a private nested helper (RAII guards, hash functors, ...) living inside
+    the type whose body is already open; it must not become the new owner,
+    or every method the enclosing type declares afterwards -- textually,
+    not just the ones inside the helper -- gets attributed to the helper
+    instead. It is also not part of the public surface this manifest
+    indexes, so it is not recorded as its own type.
     """
     types: List[Tuple[str, str]] = []
     methods: List[Tuple[str, str]] = []
@@ -251,8 +262,9 @@ def scan_cpp(headers: Dict[str, str]) -> Tuple[List[Tuple[str, str]], List[Tuple
         for line in text.splitlines():
             m = _CPP_TYPE.match(line)
             if m:
-                current = m.group(1)
-                types.append((current, path))
+                if not line[:1].isspace():
+                    current = m.group(1)
+                    types.append((current, path))
                 continue
             if current:
                 m = _CPP_METHOD.match(line)
