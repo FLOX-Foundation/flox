@@ -12,6 +12,7 @@
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/workload.h"
 #include "flox/book/ladder_book.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -21,6 +22,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -128,7 +130,7 @@ TEST(Ha, EngineSuite)
     cmds.insert(cmds.end(), orders.begin(), orders.end());
   }
 
-  const std::string path = "/tmp/flox_test_venue_ha_ha_journal.bin";
+  const std::string path = tmpPath("venue_ha_journal", ".bin");
 
   // 1 + 2: live replication -- primary and standby fed the same stream.
   HashEng primary, standby;

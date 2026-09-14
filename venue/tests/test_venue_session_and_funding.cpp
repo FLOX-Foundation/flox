@@ -21,6 +21,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/sbe_md_codec.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -30,6 +31,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -270,7 +272,7 @@ void test_close_is_a_published_transition()
 void test_session_replays_through_the_journal()
 {
   std::printf("test_session_replays_through_the_journal\n");
-  const std::string path = "/tmp/flox_test_venue_session_replay.journal";
+  const std::string path = tmpPath("venue_session_replay", ".journal");
   std::remove(path.c_str());
 
   const std::vector<std::pair<int64_t, InboundCommand>> stream{
@@ -327,7 +329,7 @@ void test_session_survives_a_checkpoint()
   src.eng.submit(admin(AdminAction::CloseSession), 20);
 
   Eng dst;
-  const Restored r = roundTrip(src.eng, dst.eng, "/tmp/flox_test_venue_session_ckpt.snap");
+  const Restored r = roundTrip(src.eng, dst.eng, tmpPath("venue_session_ckpt", ".snap"));
   CHECK(r.allApplied);  // SnapshotEnd re-verified the state hash
   CHECK(dst.eng.stateHash() == src.eng.stateHash());
   CHECK(dst.eng.tradingStatus() == TradingStatus::Closed);
@@ -341,7 +343,7 @@ void test_session_survives_a_checkpoint()
   halted.eng.submit(admin(AdminAction::Halt), 10);
   halted.eng.submit(admin(AdminAction::CloseSession), 20);
   Eng back;
-  CHECK(roundTrip(halted.eng, back.eng, "/tmp/flox_test_venue_session_ckpt2.snap").allApplied);
+  CHECK(roundTrip(halted.eng, back.eng, tmpPath("venue_session_ckpt2", ".snap")).allApplied);
   CHECK(back.eng.stateHash() == halted.eng.stateHash());
   CHECK(back.eng.tradingStatus() == TradingStatus::Closed);
   back.eng.submit(admin(AdminAction::OpenSession), 30);
@@ -360,7 +362,7 @@ void test_funding_rate_survives_a_checkpoint()
   CHECK(src.eng.fundingRateRaw() == kFundingRateScale / 10'000);
 
   Eng dst(perpCfg());
-  const Restored r = roundTrip(src.eng, dst.eng, "/tmp/flox_test_venue_funding_ckpt.snap");
+  const Restored r = roundTrip(src.eng, dst.eng, tmpPath("venue_funding_ckpt", ".snap"));
   CHECK(r.allApplied);
   CHECK(carriesFunding(r));
   CHECK(dst.eng.stateHash() == src.eng.stateHash());
@@ -383,7 +385,7 @@ void test_snapshot_without_funding_record_still_loads()
   src.eng.submit(InboundCommand{limit(1, Side::SELL, 100, 5)}, 1 * SEC);
 
   Eng dst(perpCfg());
-  const Restored r = roundTrip(src.eng, dst.eng, "/tmp/flox_test_venue_funding_old.snap");
+  const Restored r = roundTrip(src.eng, dst.eng, tmpPath("venue_funding_old", ".snap"));
   CHECK(r.allApplied);
   CHECK(!carriesFunding(r));  // nothing to record -> the pre-record file shape
   CHECK(dst.eng.stateHash() == src.eng.stateHash());
@@ -457,7 +459,7 @@ void test_no_schedule_falls_back_to_config()
 void test_funding_schedule_replays_and_checkpoints()
 {
   std::printf("test_funding_schedule_replays_and_checkpoints\n");
-  const std::string path = "/tmp/flox_test_venue_funding_schedule.journal";
+  const std::string path = tmpPath("venue_funding_schedule", ".journal");
   std::remove(path.c_str());
 
   const std::vector<std::pair<int64_t, InboundCommand>> stream{
@@ -491,7 +493,7 @@ void test_funding_schedule_replays_and_checkpoints()
 
   Eng restored(perpCfg());
   const Restored r =
-      roundTrip(live.eng, restored.eng, "/tmp/flox_test_venue_funding_schedule.snap");
+      roundTrip(live.eng, restored.eng, tmpPath("venue_funding_schedule", ".snap"));
   CHECK(r.allApplied);
   CHECK(carriesFunding(r));
   CHECK(restored.eng.stateHash() == live.eng.stateHash());

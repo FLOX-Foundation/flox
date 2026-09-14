@@ -39,6 +39,7 @@
 #include "flox-venue/ws_gateway.h"
 #include "flox/util/transport.h"
 #include "flox/util/websocket.h"
+#include "support/tmp_path.h"
 
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
@@ -59,6 +60,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -585,7 +587,7 @@ void test_restart_requires_reset()
 void test_restart_with_sidecar()
 {
   std::printf("test_restart_with_sidecar\n");
-  const std::string sidecar = "/tmp/flox_test_fix_sidecar.fixsessions";
+  const std::string sidecar = tmpPath("venue_fix_sidecar", ".fixsessions");
   std::remove(sidecar.c_str());
 
   auto v1 = std::make_unique<Venue>();

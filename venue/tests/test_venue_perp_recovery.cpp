@@ -10,6 +10,7 @@
 #include "flox-venue/ledger.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -20,6 +21,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -114,7 +116,7 @@ Run drive(const std::vector<std::pair<int64_t, InboundCommand>>& cmds)
 void test_perp_recovery()
 {
   std::printf("test_perp_recovery\n");
-  const std::string path = "/tmp/flox_test_venue_perp_recovery_perp_recovery.bin";
+  const std::string path = tmpPath("venue_perp_recovery", ".bin");
   const auto cmds = session();
 
   // Live: journal every command (incl. SetMark / ApplyFunding).

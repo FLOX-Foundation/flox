@@ -583,7 +583,19 @@ class SequencedShard
   // snapshot can never pollute it.
   bool validateSnapshot(const std::string& path)
   {
-    const auto records = Journal::loadTimed(path);
+    std::vector<std::pair<int64_t, InboundCommand>> records;
+    try
+    {
+      records = Journal::loadTimed(path);
+    }
+    catch (const JournalFormatError& e)
+    {
+      // A snapshot in a format this build does not read is one more generation
+      // that does not validate. Falling back is already the designed answer to
+      // that; the reason is printed so the fallback is not read as bit rot.
+      std::fprintf(stderr, "flox-venue: WARN %s\n", e.what());
+      return false;
+    }
     if (records.size() < 2 || !std::holds_alternative<SnapshotBegin>(records.front().second) ||
         !std::holds_alternative<SnapshotEnd>(records.back().second))
     {

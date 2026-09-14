@@ -13,6 +13,7 @@
 #include "flox-venue/journal.h"
 #include "flox-venue/ledger.h"
 #include "flox-venue/matching_book.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -21,6 +22,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -107,7 +109,7 @@ TEST(VenueEngine, CancelReleasesReservation)
 // the event stream bit-for-bit and the same ledger state.
 TEST(VenueEngine, JournalReplayIsDeterministic)
 {
-  const std::string path = "/tmp/flox_venue_journal_test.bin";
+  const std::string path = tmpPath("venue_engine_journal", ".bin");
   // Deposits are commands in the stream, not out-of-band Ledger calls: the
   // journal alone must rebuild balances from an EMPTY ledger.
   std::vector<std::pair<int64_t, InboundCommand>> cmds{

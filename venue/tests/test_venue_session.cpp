@@ -13,6 +13,7 @@
 #include "flox-venue/resend_buffer.h"
 #include "flox-venue/sbe_order_entry_codec.h"
 #include "flox-venue/session_registry.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
@@ -26,6 +27,7 @@
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -195,7 +197,7 @@ uint64_t runTimed(const std::vector<std::pair<int64_t, InboundCommand>>& cmds)
 void test_timestamped_replay()
 {
   std::printf("test_timestamped_replay\n");
-  const std::string path = "/tmp/flox_test_venue_session_session_journal.bin";
+  const std::string path = tmpPath("venue_session_journal", ".bin");
   // A last-look maker + a taker hit; the hold times out at ts 5000 (window 1000).
   std::vector<std::pair<int64_t, InboundCommand>> live;
   NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
