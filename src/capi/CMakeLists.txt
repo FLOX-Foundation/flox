@@ -5,10 +5,15 @@ target_include_directories(flox_capi PUBLIC
   ${CMAKE_SOURCE_DIR}/include
 )
 
+# Without VERSION/SOVERSION the shared library carries compatibility version
+# 0.0.0, so neither the macOS nor the ELF loader can refuse a mismatched
+# build -- the one check that happens before any of our code runs.
 set_target_properties(flox_capi PROPERTIES
   C_VISIBILITY_PRESET default
   CXX_VISIBILITY_PRESET default
   POSITION_INDEPENDENT_CODE ON
+  VERSION ${PROJECT_VERSION}
+  SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
 )
 
 if(NOT MSVC)

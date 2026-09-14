@@ -135,6 +135,12 @@ from C import flox_binary_log_recorder_hook_add_symbol(cobj, u32, cobj, cobj, co
 from C import flox_binary_log_recorder_hook_flush(cobj)
 from C import flox_binary_log_recorder_hook_stats(cobj) -> cobj
 
+# ── capi_diagnostics ──
+from C import flox_capi_abi_version() -> u32
+from C import flox_last_error_code() -> int
+from C import flox_last_error_message() -> cobj
+from C import flox_clear_last_error()
+
 # ── composite_book ──
 from C import flox_composite_book_create() -> cobj
 from C import flox_composite_book_destroy(cobj)

@@ -2537,6 +2537,18 @@
       "return_type": "uint8_t"
     },
     {
+      "group": "capi_diagnostics",
+      "name": "flox_capi_abi_version",
+      "params": [],
+      "return_type": "uint32_t"
+    },
+    {
+      "group": "capi_diagnostics",
+      "name": "flox_clear_last_error",
+      "params": [],
+      "return_type": "void"
+    },
+    {
       "group": "composite_book",
       "name": "flox_composite_book_best_ask",
       "params": [
@@ -6529,6 +6541,18 @@
         }
       ],
       "return_type": "int32_t"
+    },
+    {
+      "group": "capi_diagnostics",
+      "name": "flox_last_error_code",
+      "params": [],
+      "return_type": "int"
+    },
+    {
+      "group": "capi_diagnostics",
+      "name": "flox_last_error_message",
+      "params": [],
+      "return_type": "const char *"
     },
     {
       "group": "context_queries",

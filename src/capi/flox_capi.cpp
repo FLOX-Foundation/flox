@@ -122,17 +122,263 @@
 #include <random>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <memory_resource>
+#include <mutex>
+#include <set>
 #include <span>
 #include <sstream>
+#include <string>
 #include <vector>
 
 using namespace flox;
+
+// ============================================================
+// C ABI entry contract
+// ============================================================
+//
+// Every exported function opens with FLOX_CAPI_ENTER (or one of its
+// variants) and closes with the matching FLOX_CAPI_LEAVE. The pair does two
+// things a C caller cannot do for itself. Both are written down for callers
+// in the "Calling contract" section at the top of flox_capi.h.
+//
+// A null handle returns the function's documented zero value. A foreign
+// runtime holds a handle as an opaque integer, so passing one that was never
+// created, or one a finaliser already zeroed, is a one-line mistake.
+// Dereferencing it is undefined behaviour; returning zero is not. Before the
+// contract was written down, 446 of the 523 handle-taking functions
+// dereferenced without looking while their neighbours in the same layer
+// quietly returned zero, and nothing said which did what.
+//
+// No exception leaves the boundary. Unwinding out of a frame with C linkage
+// is undefined behaviour, and the friendly outcome -- std::terminate --
+// takes down the host process with nothing the caller can do about it. One
+// unparsable number in a user's CSV was enough to do that through the
+// shipped Node binding. The firewall turns any exception into the same zero
+// return and records what happened, which flox_last_error_code and
+// flox_last_error_message hand back.
+//
+// `return {}` value-initialises whatever the function returns: zero for the
+// integer and floating-point returns, NULL for handles and strings, an
+// all-zero struct for the handful of by-value struct returns. Each of those
+// is the value the function already documents as its failure result, so the
+// guard adds a path callers already handle rather than a new one.
+
+namespace
+{
+
+// Mirrors the codes documented on flox_last_error_code in flox_capi.h.
+constexpr int kFloxCapiOk = 0;
+constexpr int kFloxCapiErrNullHandle = 1;
+constexpr int kFloxCapiErrException = 2;
+
+struct FloxCapiLastError
+{
+  int code{kFloxCapiOk};
+  std::string message;
+};
+
+FloxCapiLastError& floxCapiLastError() noexcept
+{
+  static thread_local FloxCapiLastError e;
+  return e;
+}
+
+// Recording an error must never itself throw out of the guard, hence the
+// swallow: a bad_alloc while building the message string would otherwise
+// escape the very frame the guard exists to protect.
+void floxCapiNoteNullHandle(const char* fn) noexcept
+{
+  try
+  {
+    auto& e = floxCapiLastError();
+    e.code = kFloxCapiErrNullHandle;
+    e.message = std::string(fn != nullptr ? fn : "?") + ": null handle";
+  }
+  catch (...)
+  {
+  }
+}
+
+void floxCapiNoteNullArgument(const char* fn, const char* argument) noexcept
+{
+  try
+  {
+    auto& e = floxCapiLastError();
+    e.code = kFloxCapiErrNullHandle;
+    e.message = std::string(fn != nullptr ? fn : "?") + ": argument '" +
+                (argument != nullptr ? argument : "?") + "' must not be NULL";
+  }
+  catch (...)
+  {
+  }
+}
+
+void floxCapiNoteException(const char* fn, const char* what) noexcept
+{
+  try
+  {
+    auto& e = floxCapiLastError();
+    e.code = kFloxCapiErrException;
+    e.message = std::string(fn != nullptr ? fn : "?") + ": " +
+                (what != nullptr ? what : "unknown exception");
+  }
+  catch (...)
+  {
+  }
+}
+
+// Accessors that reach inside a composite -- flox_venue_stack_account and its
+// siblings -- hand back a pointer the composite still owns. A consumer cannot
+// tell that apart from an owned handle, because both are void*, so a binding
+// that wraps every handle it receives in a finaliser deleted the stack's
+// member and the stack then deleted it again. The first delete looked healthy;
+// the abort landed later, inside flox_venue_stack_destroy.
+//
+// Registering the borrowed addresses lets _destroy recognise and ignore them.
+// Entries go in when the owning composite is created and come out when it is
+// destroyed, so a registered address always belongs to a live object -- the
+// address-reuse trap that made the portfolio risk scratch serve a dead
+// session's breach does not apply here.
+class FloxBorrowedHandles
+{
+ public:
+  static void add(const void* p)
+  {
+    if (p == nullptr)
+    {
+      return;
+    }
+    const std::lock_guard<std::mutex> lock(mutex());
+    registry().insert(p);
+  }
+
+  static void remove(const void* p)
+  {
+    if (p == nullptr)
+    {
+      return;
+    }
+    const std::lock_guard<std::mutex> lock(mutex());
+    registry().erase(p);
+  }
+
+  static bool contains(const void* p)
+  {
+    if (p == nullptr)
+    {
+      return false;
+    }
+    const std::lock_guard<std::mutex> lock(mutex());
+    return registry().find(p) != registry().end();
+  }
+
+ private:
+  static std::mutex& mutex()
+  {
+    static std::mutex m;
+    return m;
+  }
+
+  static std::set<const void*>& registry()
+  {
+    static std::set<const void*> r;
+    return r;
+  }
+};
+
+}  // namespace
+
+// Every _destroy opens with this. Destroying NULL has always been legal and
+// stays legal -- a binding's finaliser runs on a half-constructed object often
+// enough that making it an error would be a downgrade -- and it is not
+// recorded as an error. Destroying a borrowed handle is the same no-op: the
+// composite that owns the object frees it.
+//
+// A plain `delete` would need neither check, but several _destroy bodies
+// flush or close before deleting, and those do dereference.
+// clang-format off
+#define FLOX_CAPI_ENTER_DESTROY(handle)                                     \
+  if ((handle) == nullptr || FloxBorrowedHandles::contains(handle))         \
+  {                                                                         \
+    return;                                                                 \
+  }                                                                         \
+  try                                                                       \
+  {
+// clang-format on
+
+// clang-format off
+#define FLOX_CAPI_ENTER(handle)                                             \
+  if ((handle) == nullptr)                                                  \
+  {                                                                         \
+    floxCapiNoteNullHandle(__func__);                                       \
+    return {};                                                              \
+  }                                                                         \
+  try                                                                       \
+  {
+
+#define FLOX_CAPI_ENTER_VOID(handle)                                        \
+  if ((handle) == nullptr)                                                  \
+  {                                                                         \
+    floxCapiNoteNullHandle(__func__);                                       \
+    return;                                                                 \
+  }                                                                         \
+  try                                                                       \
+  {
+
+#define FLOX_CAPI_ENTER_NOHANDLE                                            \
+  try                                                                       \
+  {
+
+// A required non-handle argument: a path, a name, an output buffer. The entry
+// guard covers handles only, so these say so one by one. Reported through
+// flox_last_error_code the same way a null handle is.
+#define FLOX_CAPI_REQUIRE(argument)                                         \
+  if ((argument) == nullptr)                                                \
+  {                                                                         \
+    floxCapiNoteNullArgument(__func__, #argument);                          \
+    return {};                                                              \
+  }
+
+#define FLOX_CAPI_REQUIRE_VOID(argument)                                    \
+  if ((argument) == nullptr)                                                \
+  {                                                                         \
+    floxCapiNoteNullArgument(__func__, #argument);                          \
+    return;                                                                 \
+  }
+
+#define FLOX_CAPI_LEAVE                                                     \
+  }                                                                         \
+  catch (const std::exception& floxCapiEx)                                  \
+  {                                                                         \
+    floxCapiNoteException(__func__, floxCapiEx.what());                     \
+    return {};                                                              \
+  }                                                                         \
+  catch (...)                                                               \
+  {                                                                         \
+    floxCapiNoteException(__func__, nullptr);                               \
+    return {};                                                              \
+  }
+
+#define FLOX_CAPI_LEAVE_VOID                                                \
+  }                                                                         \
+  catch (const std::exception& floxCapiEx)                                  \
+  {                                                                         \
+    floxCapiNoteException(__func__, floxCapiEx.what());                     \
+    return;                                                                 \
+  }                                                                         \
+  catch (...)                                                               \
+  {                                                                         \
+    floxCapiNoteException(__func__, nullptr);                               \
+    return;                                                                 \
+  }
+// clang-format on
 
 // ============================================================
 // Internal helpers
@@ -154,28 +400,40 @@ static SymbolRegistry* toRegistry(FloxRegistryHandle h)
 
 FloxRegistryHandle flox_registry_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return static_cast<FloxRegistryHandle>(new SymbolRegistry());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_registry_destroy(FloxRegistryHandle registry)
 {
+  FLOX_CAPI_ENTER_DESTROY(registry);
   delete toRegistry(registry);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint32_t flox_registry_add_symbol(FloxRegistryHandle registry, const char* exchange,
                                   const char* name, double tick_size)
 {
+  FLOX_CAPI_ENTER(registry);
+  FLOX_CAPI_REQUIRE(exchange);
+  FLOX_CAPI_REQUIRE(name);
   auto* reg = toRegistry(registry);
   SymbolInfo info;
   info.exchange = exchange;
   info.symbol = name;
   info.tickSize = Price::fromDouble(tick_size);
   return reg->registerSymbol(info);
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_registry_get_symbol_id(FloxRegistryHandle registry, const char* exchange,
                                     const char* name, uint32_t* id_out)
 {
+  FLOX_CAPI_ENTER(registry);
+  FLOX_CAPI_REQUIRE(exchange);
+  FLOX_CAPI_REQUIRE(name);
+  FLOX_CAPI_REQUIRE(id_out);
   auto* reg = toRegistry(registry);
   auto result = reg->getSymbolId(exchange, name);
   if (result.has_value())
@@ -184,12 +442,25 @@ uint8_t flox_registry_get_symbol_id(FloxRegistryHandle registry, const char* exc
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_registry_get_symbol_name(FloxRegistryHandle registry, uint32_t symbol_id,
                                       char* exchange_out, size_t exchange_len, char* name_out,
                                       size_t name_len)
 {
+  FLOX_CAPI_ENTER(registry);
+  FLOX_CAPI_REQUIRE(exchange_out);
+  FLOX_CAPI_REQUIRE(name_out);
+  // A buffer the caller declared as holding nothing gets nothing written.
+  // `exchange_len - 1` is unsigned, so zero wrapped to SIZE_MAX: strncpy
+  // copied with no bound and the terminator landed at buf[SIZE_MAX], which
+  // wraps to buf[-1]. Measured 136 zeroed bytes from buf-65 to buf+70, and
+  // the call still reported success.
+  if (exchange_len == 0 || name_len == 0)
+  {
+    return 0;
+  }
   auto* reg = toRegistry(registry);
   auto info = reg->getSymbolInfo(symbol_id);
   if (!info.has_value())
@@ -201,11 +472,14 @@ uint8_t flox_registry_get_symbol_name(FloxRegistryHandle registry, uint32_t symb
   std::strncpy(name_out, info->symbol.c_str(), name_len - 1);
   name_out[name_len - 1] = '\0';
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_registry_symbol_count(FloxRegistryHandle registry)
 {
+  FLOX_CAPI_ENTER(registry);
   return static_cast<uint32_t>(toRegistry(registry)->size());
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -221,6 +495,7 @@ FloxStrategyHandle flox_strategy_create(uint32_t id, const uint32_t* symbols,
                                         uint32_t num_symbols, FloxRegistryHandle registry,
                                         FloxStrategyCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER(registry);
   try
   {
     auto* reg = toRegistry(registry);
@@ -237,35 +512,44 @@ FloxStrategyHandle flox_strategy_create(uint32_t id, const uint32_t* symbols,
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 FloxStrategyHandle flox_strategy_create_p(uint32_t id, const uint32_t* symbols,
                                           uint32_t num_symbols, FloxRegistryHandle registry,
                                           const FloxStrategyCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER(registry);
   FloxStrategyCallbacks cbs = callbacks ? *callbacks : FloxStrategyCallbacks{};
   return flox_strategy_create(id, symbols, num_symbols, registry, cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_strategy_destroy(FloxStrategyHandle strategy)
 {
+  FLOX_CAPI_ENTER_DESTROY(strategy);
   delete toStrategy(strategy);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_strategy_replace_callbacks(FloxStrategyHandle strategy, FloxStrategyCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_VOID(strategy);
   if (!strategy)
   {
     return;
   }
   toStrategy(strategy)->replaceCallbacks(callbacks);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_strategy_replace_callbacks_p(FloxStrategyHandle strategy,
                                        const FloxStrategyCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_VOID(strategy);
   FloxStrategyCallbacks cbs = callbacks ? *callbacks : FloxStrategyCallbacks{};
   flox_strategy_replace_callbacks(strategy, cbs);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -274,118 +558,152 @@ void flox_strategy_replace_callbacks_p(FloxStrategyHandle strategy,
 
 uint64_t flox_emit_market_buy(FloxStrategyHandle s, uint32_t symbol, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitMarketBuy(symbol, Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_market_sell(FloxStrategyHandle s, uint32_t symbol, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitMarketSell(symbol, Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_limit_buy(FloxStrategyHandle s, uint32_t symbol, int64_t price_raw,
                              int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitLimitBuy(symbol, Price::fromRaw(price_raw),
                                            Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_limit_sell(FloxStrategyHandle s, uint32_t symbol, int64_t price_raw,
                               int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitLimitSell(symbol, Price::fromRaw(price_raw),
                                             Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_emit_cancel(FloxStrategyHandle s, uint64_t order_id)
 {
+  FLOX_CAPI_ENTER_VOID(s);
   toStrategy(s)->publicEmitCancel(order_id);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_emit_cancel_all(FloxStrategyHandle s, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(s);
   toStrategy(s)->publicEmitCancelAll(symbol);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_emit_modify(FloxStrategyHandle s, uint64_t order_id, int64_t new_price_raw,
                       int64_t new_qty_raw)
 {
+  FLOX_CAPI_ENTER_VOID(s);
   toStrategy(s)->publicEmitModify(order_id, Price::fromRaw(new_price_raw),
                                   Quantity::fromRaw(new_qty_raw));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint64_t flox_emit_stop_market(FloxStrategyHandle s, uint32_t symbol, uint8_t side,
                                int64_t trigger_raw, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitStopMarket(symbol, side == 0 ? Side::BUY : Side::SELL,
                                              Price::fromRaw(trigger_raw),
                                              Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_stop_limit(FloxStrategyHandle s, uint32_t symbol, uint8_t side,
                               int64_t trigger_raw, int64_t limit_raw, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitStopLimit(symbol, side == 0 ? Side::BUY : Side::SELL,
                                             Price::fromRaw(trigger_raw),
                                             Price::fromRaw(limit_raw),
                                             Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_take_profit_market(FloxStrategyHandle s, uint32_t symbol, uint8_t side,
                                       int64_t trigger_raw, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitTakeProfitMarket(symbol, side == 0 ? Side::BUY : Side::SELL,
                                                    Price::fromRaw(trigger_raw),
                                                    Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_trailing_stop(FloxStrategyHandle s, uint32_t symbol, uint8_t side,
                                  int64_t offset_raw, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitTrailingStop(symbol, side == 0 ? Side::BUY : Side::SELL,
                                                Price::fromRaw(offset_raw),
                                                Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_trailing_stop_percent(FloxStrategyHandle s, uint32_t symbol, uint8_t side,
                                          int32_t callback_bps, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitTrailingStopPercent(
       symbol, side == 0 ? Side::BUY : Side::SELL, callback_bps, Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_take_profit_limit(FloxStrategyHandle s, uint32_t symbol, uint8_t side,
                                      int64_t trigger_raw, int64_t limit_raw, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitTakeProfitLimit(
       symbol, side == 0 ? Side::BUY : Side::SELL, Price::fromRaw(trigger_raw),
       Price::fromRaw(limit_raw), Quantity::fromRaw(qty_raw));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_limit_buy_tif(FloxStrategyHandle s, uint32_t symbol, int64_t price_raw,
                                  int64_t qty_raw, uint8_t time_in_force)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitLimitBuyTif(
       symbol, Price::fromRaw(price_raw), Quantity::fromRaw(qty_raw),
       static_cast<TimeInForce>(time_in_force));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_limit_sell_tif(FloxStrategyHandle s, uint32_t symbol, int64_t price_raw,
                                   int64_t qty_raw, uint8_t time_in_force)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitLimitSellTif(
       symbol, Price::fromRaw(price_raw), Quantity::fromRaw(qty_raw),
       static_cast<TimeInForce>(time_in_force));
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_emit_close_position(FloxStrategyHandle s, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->publicEmitClosePosition(symbol);
+  FLOX_CAPI_LEAVE;
 }
 
 int32_t flox_get_order_status(FloxStrategyHandle s, uint64_t order_id)
 {
+  FLOX_CAPI_ENTER(s);
   auto status = toStrategy(s)->getOrderStatus(order_id);
   return status ? static_cast<int32_t>(*status) : -1;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -394,34 +712,45 @@ int32_t flox_get_order_status(FloxStrategyHandle s, uint64_t order_id)
 
 int64_t flox_position_raw(FloxStrategyHandle s, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->position(symbol).raw();
+  FLOX_CAPI_LEAVE;
 }
 
 int64_t flox_last_trade_price_raw(FloxStrategyHandle s, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(s);
   return toStrategy(s)->ctx(symbol).lastTradePrice.raw();
+  FLOX_CAPI_LEAVE;
 }
 
 int64_t flox_best_bid_raw(FloxStrategyHandle s, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(s);
   auto bid = toStrategy(s)->ctx(symbol).book.bestBid();
   return bid ? bid->raw() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(s);
   auto ask = toStrategy(s)->ctx(symbol).book.bestAsk();
   return ask ? ask->raw() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(s);
   auto mid = toStrategy(s)->ctx(symbol).mid();
   return mid ? mid->raw() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext* out)
 {
+  FLOX_CAPI_ENTER_VOID(s);
   const auto& c = toStrategy(s)->ctx(symbol);
   out->symbol_id = c.symbolId;
   out->position_raw = c.position.raw();
@@ -440,6 +769,7 @@ void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolCo
   out->book.mid_raw = mid ? mid->raw() : 0;
   auto spread = c.bookSpread();
   out->book.spread_raw = spread ? spread->raw() : 0;
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -448,22 +778,30 @@ void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolCo
 
 int64_t flox_price_from_double(double value)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return Price::fromDouble(value).raw();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_price_to_double(int64_t raw)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return Price::fromRaw(raw).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 int64_t flox_quantity_from_double(double value)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return Quantity::fromDouble(value).raw();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_quantity_to_double(int64_t raw)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return Quantity::fromRaw(raw).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -472,203 +810,254 @@ double flox_quantity_to_double(int64_t raw)
 
 void flox_indicator_ema(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::EMA ema(period);
   ema.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_sma(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::SMA sma(period);
   sma.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_rsi(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::RSI rsi(period);
   rsi.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_atr(const double* high, const double* low, const double* close, size_t len,
                         size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::ATR atr(period);
   atr.compute(std::span<const double>(high, len), std::span<const double>(low, len),
               std::span<const double>(close, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_macd(const double* input, size_t len, size_t fast_period, size_t slow_period,
                          size_t signal_period, double* macd_out, double* signal_out,
                          double* hist_out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::MACD macd(fast_period, slow_period, signal_period);
   macd.compute(std::span<const double>(input, len), std::span<double>(macd_out, len),
                std::span<double>(signal_out, len), std::span<double>(hist_out, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_bollinger(const double* input, size_t len, size_t period, double multiplier,
                               double* upper, double* middle, double* lower)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::Bollinger bb(period, multiplier);
   bb.compute(std::span<const double>(input, len), std::span<double>(upper, len),
              std::span<double>(middle, len), std::span<double>(lower, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_rma(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::RMA rma(period);
   rma.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_dema(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::DEMA dema(period);
   auto result = dema.compute(std::span<const double>(input, len));
   std::copy(result.begin(), result.end(), output);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_tema(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::TEMA tema(period);
   auto result = tema.compute(std::span<const double>(input, len));
   std::copy(result.begin(), result.end(), output);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_kama(const double* input, size_t len, size_t period, size_t fast, size_t slow,
                          double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::KAMA kama(period, fast, slow);
   auto result = kama.compute(std::span<const double>(input, len));
   std::copy(result.begin(), result.end(), output);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_slope(const double* input, size_t len, size_t length, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::Slope slope(length);
   slope.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_adx(const double* high, const double* low, const double* close, size_t len,
                         size_t period, double* adx_out, double* plus_di_out, double* minus_di_out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::ADX adx(period);
   auto result = adx.compute(std::span<const double>(high, len), std::span<const double>(low, len),
                             std::span<const double>(close, len));
   std::copy(result.adx.begin(), result.adx.end(), adx_out);
   std::copy(result.plus_di.begin(), result.plus_di.end(), plus_di_out);
   std::copy(result.minus_di.begin(), result.minus_di.end(), minus_di_out);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_cci(const double* high, const double* low, const double* close, size_t len,
                         size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::CCI cci(period);
   auto result = cci.compute(std::span<const double>(high, len), std::span<const double>(low, len),
                             std::span<const double>(close, len));
   std::copy(result.begin(), result.end(), output);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_stochastic(const double* high, const double* low, const double* close,
                                size_t len, size_t k_period, size_t d_period, double* k_out,
                                double* d_out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::Stochastic stoch(k_period, d_period);
   auto result =
       stoch.compute(std::span<const double>(high, len), std::span<const double>(low, len),
                     std::span<const double>(close, len));
   std::copy(result.k.begin(), result.k.end(), k_out);
   std::copy(result.d.begin(), result.d.end(), d_out);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_chop(const double* high, const double* low, const double* close, size_t len,
                          size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::CHOP chop(period);
   auto result = chop.compute(std::span<const double>(high, len), std::span<const double>(low, len),
                              std::span<const double>(close, len));
   std::copy(result.begin(), result.end(), output);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_obv(const double* close, const double* volume, size_t len, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::OBV obv;
   obv.compute(std::span<const double>(close, len), std::span<const double>(volume, len),
               std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_vwap(const double* close, const double* volume, size_t len, size_t window,
                          double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::VWAP vwap(window);
   auto result =
       vwap.compute(std::span<const double>(close, len), std::span<const double>(volume, len));
   std::copy(result.begin(), result.end(), output);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_cvd(const double* open, const double* high, const double* low,
                         const double* close, const double* volume, size_t len, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::CVD cvd;
   auto result = cvd.compute(
       std::span<const double>(open, len), std::span<const double>(high, len),
       std::span<const double>(low, len), std::span<const double>(close, len),
       std::span<const double>(volume, len));
   std::copy(result.begin(), result.end(), output);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_skewness(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::Skewness ind(period);
   ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_kurtosis(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::Kurtosis ind(period);
   ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_parkinson_vol(const double* high, const double* low, size_t len, size_t period,
                                   double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::ParkinsonVol ind(period);
   ind.compute(std::span<const double>(high, len), std::span<const double>(low, len),
               std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_rogers_satchell_vol(const double* open, const double* high, const double* low,
                                         const double* close, size_t len, size_t period,
                                         double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::RogersSatchellVol ind(period);
   ind.compute(std::span<const double>(open, len), std::span<const double>(high, len),
               std::span<const double>(low, len), std::span<const double>(close, len),
               std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_rolling_zscore(const double* input, size_t len, size_t period, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::RollingZScore ind(period);
   ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_shannon_entropy(const double* input, size_t len, size_t period, size_t bins,
                                     double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::ShannonEntropy ind(period, bins);
   ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_correlation(const double* x, const double* y, size_t len, size_t period,
                                 double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::Correlation ind(period);
   ind.compute(std::span<const double>(x, len), std::span<const double>(y, len),
               std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_adf(const double* input, size_t len, size_t max_lag, const char* regression,
                         double* test_stat_out, double* p_value_out, size_t* used_lag_out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   std::string reg = regression ? regression : "c";
   auto r = indicator::adf(std::span<const double>(input, len), max_lag, reg);
   if (test_stat_out)
@@ -683,13 +1072,16 @@ void flox_indicator_adf(const double* input, size_t len, size_t max_lag, const c
   {
     *used_lag_out = r.used_lag;
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_autocorrelation(const double* input, size_t len, size_t window, size_t lag,
                                     double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   indicator::AutoCorrelation ind(window, lag);
   ind.compute(std::span<const double>(input, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -698,22 +1090,28 @@ void flox_indicator_autocorrelation(const double* input, size_t len, size_t wind
 
 void flox_target_future_return(const double* close, size_t len, size_t horizon, double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   target::FutureReturn t(horizon);
   t.compute(std::span<const double>(close, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_target_future_ctc_volatility(const double* close, size_t len, size_t horizon,
                                        double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   target::FutureCTCVolatility t(horizon);
   t.compute(std::span<const double>(close, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_target_future_linear_slope(const double* close, size_t len, size_t horizon,
                                      double* output)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   target::FutureLinearSlope t(horizon);
   t.compute(std::span<const double>(close, len), std::span<double>(output, len));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -733,18 +1131,23 @@ struct FloxGraphImpl
 
 FloxIndicatorGraphHandle flox_indicator_graph_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new FloxGraphImpl();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_indicator_graph_destroy(FloxIndicatorGraphHandle g)
 {
+  FLOX_CAPI_ENTER_DESTROY(g);
   delete static_cast<FloxGraphImpl*>(g);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_graph_set_bars(FloxIndicatorGraphHandle g, uint32_t symbol,
                                    const double* close, const double* high, const double* low,
                                    const double* volume, size_t len)
 {
+  FLOX_CAPI_ENTER_VOID(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   std::vector<Bar> bars(len);
   for (size_t i = 0; i < len; ++i)
@@ -758,12 +1161,14 @@ void flox_indicator_graph_set_bars(FloxIndicatorGraphHandle g, uint32_t symbol,
   impl->barStorage[symbol] = std::move(bars);
   impl->graph.setBars(static_cast<SymbolId>(symbol),
                       std::span<const Bar>(impl->barStorage[symbol]));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_graph_add_node(FloxIndicatorGraphHandle g, const char* name,
                                    const char* const* deps, size_t num_deps,
                                    FloxGraphNodeFn fn, void* user_data)
 {
+  FLOX_CAPI_ENTER_VOID(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   std::vector<std::string> depList;
   depList.reserve(num_deps);
@@ -782,11 +1187,13 @@ void flox_indicator_graph_add_node(FloxIndicatorGraphHandle g, const char* name,
                         }
                         return std::vector<double>(p, p + outLen);
                       });
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 const double* flox_indicator_graph_require(FloxIndicatorGraphHandle g, uint32_t symbol,
                                            const char* name, size_t* len_out)
 {
+  FLOX_CAPI_ENTER(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   try
   {
@@ -805,11 +1212,13 @@ const double* flox_indicator_graph_require(FloxIndicatorGraphHandle g, uint32_t 
     }
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 const double* flox_indicator_graph_get(FloxIndicatorGraphHandle g, uint32_t symbol,
                                        const char* name, size_t* len_out)
 {
+  FLOX_CAPI_ENTER(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   const auto* v = impl->graph.get(static_cast<SymbolId>(symbol), name);
   if (!v)
@@ -825,11 +1234,13 @@ const double* flox_indicator_graph_get(FloxIndicatorGraphHandle g, uint32_t symb
     *len_out = v->size();
   }
   return v->data();
+  FLOX_CAPI_LEAVE;
 }
 
 const double* flox_indicator_graph_close(FloxIndicatorGraphHandle g, uint32_t symbol,
                                          size_t* len_out)
 {
+  FLOX_CAPI_ENTER(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   const auto& v = impl->graph.close(static_cast<SymbolId>(symbol));
   if (len_out)
@@ -837,11 +1248,13 @@ const double* flox_indicator_graph_close(FloxIndicatorGraphHandle g, uint32_t sy
     *len_out = v.size();
   }
   return v.data();
+  FLOX_CAPI_LEAVE;
 }
 
 const double* flox_indicator_graph_high(FloxIndicatorGraphHandle g, uint32_t symbol,
                                         size_t* len_out)
 {
+  FLOX_CAPI_ENTER(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   const auto& v = impl->graph.high(static_cast<SymbolId>(symbol));
   if (len_out)
@@ -849,11 +1262,13 @@ const double* flox_indicator_graph_high(FloxIndicatorGraphHandle g, uint32_t sym
     *len_out = v.size();
   }
   return v.data();
+  FLOX_CAPI_LEAVE;
 }
 
 const double* flox_indicator_graph_low(FloxIndicatorGraphHandle g, uint32_t symbol,
                                        size_t* len_out)
 {
+  FLOX_CAPI_ENTER(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   const auto& v = impl->graph.low(static_cast<SymbolId>(symbol));
   if (len_out)
@@ -861,11 +1276,13 @@ const double* flox_indicator_graph_low(FloxIndicatorGraphHandle g, uint32_t symb
     *len_out = v.size();
   }
   return v.data();
+  FLOX_CAPI_LEAVE;
 }
 
 const double* flox_indicator_graph_volume(FloxIndicatorGraphHandle g, uint32_t symbol,
                                           size_t* len_out)
 {
+  FLOX_CAPI_ENTER(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   const auto& v = impl->graph.volume(static_cast<SymbolId>(symbol));
   if (len_out)
@@ -873,16 +1290,21 @@ const double* flox_indicator_graph_volume(FloxIndicatorGraphHandle g, uint32_t s
     *len_out = v.size();
   }
   return v.data();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_indicator_graph_invalidate(FloxIndicatorGraphHandle g, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(g);
   static_cast<FloxGraphImpl*>(g)->graph.invalidate(static_cast<SymbolId>(symbol));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_graph_invalidate_all(FloxIndicatorGraphHandle g)
 {
+  FLOX_CAPI_ENTER_VOID(g);
   static_cast<FloxGraphImpl*>(g)->graph.invalidateAll();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -892,6 +1314,7 @@ void flox_indicator_graph_invalidate_all(FloxIndicatorGraphHandle g)
 void flox_indicator_graph_step(FloxIndicatorGraphHandle g, uint32_t symbol, double open,
                                double high, double low, double close, double volume)
 {
+  FLOX_CAPI_ENTER_VOID(g);
   auto* impl = static_cast<FloxGraphImpl*>(g);
   Bar bar;
   bar.open = Price::fromDouble(open);
@@ -900,90 +1323,126 @@ void flox_indicator_graph_step(FloxIndicatorGraphHandle g, uint32_t symbol, doub
   bar.close = Price::fromDouble(close);
   bar.volume = Volume::fromDouble(volume);
   impl->graph.step(static_cast<SymbolId>(symbol), bar);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 double flox_indicator_graph_current(FloxIndicatorGraphHandle g, uint32_t symbol, const char* name)
 {
+  FLOX_CAPI_ENTER(g);
   return static_cast<FloxGraphImpl*>(g)->graph.current(static_cast<SymbolId>(symbol), name);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_indicator_graph_bar_count(FloxIndicatorGraphHandle g, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(g);
   return static_cast<uint32_t>(
       static_cast<FloxGraphImpl*>(g)->graph.barCount(static_cast<SymbolId>(symbol)));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_indicator_graph_reset(FloxIndicatorGraphHandle g, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(g);
   static_cast<FloxGraphImpl*>(g)->graph.reset(static_cast<SymbolId>(symbol));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_indicator_graph_reset_all(FloxIndicatorGraphHandle g)
 {
+  FLOX_CAPI_ENTER_VOID(g);
   static_cast<FloxGraphImpl*>(g)->graph.resetAll();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ── Deprecated streaming-graph shim — forwards to the unified API ──
 
-FloxStreamingGraphHandle flox_streaming_graph_create(void) { return flox_indicator_graph_create(); }
+FloxStreamingGraphHandle flox_streaming_graph_create(void)
+{
+  FLOX_CAPI_ENTER_NOHANDLE;
+  return flox_indicator_graph_create();
+  FLOX_CAPI_LEAVE;
+}
 
 void flox_streaming_graph_destroy(FloxStreamingGraphHandle sg)
 {
+  FLOX_CAPI_ENTER_DESTROY(sg);
   flox_indicator_graph_destroy(sg);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_streaming_graph_add_node(FloxStreamingGraphHandle sg, const char* name,
                                    const char* const* deps, size_t num_deps, FloxGraphNodeFn fn,
                                    void* user_data)
 {
+  FLOX_CAPI_ENTER_VOID(sg);
   flox_indicator_graph_add_node(sg, name, deps, num_deps, fn, user_data);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_streaming_graph_step(FloxStreamingGraphHandle sg, uint32_t symbol, double open,
                                double high, double low, double close, double volume)
 {
+  FLOX_CAPI_ENTER_VOID(sg);
   flox_indicator_graph_step(sg, symbol, open, high, low, close, volume);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 double flox_streaming_graph_current(FloxStreamingGraphHandle sg, uint32_t symbol, const char* name)
 {
+  FLOX_CAPI_ENTER(sg);
   return flox_indicator_graph_current(sg, symbol, name);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_streaming_graph_bar_count(FloxStreamingGraphHandle sg, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(sg);
   return flox_indicator_graph_bar_count(sg, symbol);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_streaming_graph_reset(FloxStreamingGraphHandle sg, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(sg);
   flox_indicator_graph_reset(sg, symbol);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_streaming_graph_reset_all(FloxStreamingGraphHandle sg)
 {
+  FLOX_CAPI_ENTER_VOID(sg);
   flox_indicator_graph_reset_all(sg);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 const double* flox_streaming_graph_close(FloxStreamingGraphHandle sg, uint32_t symbol,
                                          size_t* len_out)
 {
+  FLOX_CAPI_ENTER(sg);
   return flox_indicator_graph_close(sg, symbol, len_out);
+  FLOX_CAPI_LEAVE;
 }
 const double* flox_streaming_graph_high(FloxStreamingGraphHandle sg, uint32_t symbol,
                                         size_t* len_out)
 {
+  FLOX_CAPI_ENTER(sg);
   return flox_indicator_graph_high(sg, symbol, len_out);
+  FLOX_CAPI_LEAVE;
 }
 const double* flox_streaming_graph_low(FloxStreamingGraphHandle sg, uint32_t symbol,
                                        size_t* len_out)
 {
+  FLOX_CAPI_ENTER(sg);
   return flox_indicator_graph_low(sg, symbol, len_out);
+  FLOX_CAPI_LEAVE;
 }
 const double* flox_streaming_graph_volume(FloxStreamingGraphHandle sg, uint32_t symbol,
                                           size_t* len_out)
 {
+  FLOX_CAPI_ENTER(sg);
   return flox_indicator_graph_volume(sg, symbol, len_out);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -1018,6 +1477,7 @@ struct FloxBookImpl
 
 FloxBookHandle flox_book_create(double tick_size)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new FloxBookImpl(tick_size);
@@ -1029,27 +1489,35 @@ FloxBookHandle flox_book_create(double tick_size)
     // the exception cross back into C.
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_book_destroy(FloxBookHandle book)
 {
+  FLOX_CAPI_ENTER_DESTROY(book);
   delete static_cast<FloxBookImpl*>(book);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_book_apply_snapshot(FloxBookHandle h, const double* bp, const double* bq, size_t bl,
                               const double* ap, const double* aq, size_t al)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxBookImpl*>(h)->applyUpdate(bp, bq, bl, ap, aq, al, BookUpdateType::SNAPSHOT);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_book_apply_delta(FloxBookHandle h, const double* bp, const double* bq, size_t bl,
                            const double* ap, const double* aq, size_t al)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxBookImpl*>(h)->applyUpdate(bp, bq, bl, ap, aq, al, BookUpdateType::DELTA);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint8_t flox_book_best_bid(FloxBookHandle h, double* price_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto bid = static_cast<FloxBookImpl*>(h)->book.bestBid();
   if (bid)
   {
@@ -1057,10 +1525,12 @@ uint8_t flox_book_best_bid(FloxBookHandle h, double* price_out)
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_book_best_ask(FloxBookHandle h, double* price_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto ask = static_cast<FloxBookImpl*>(h)->book.bestAsk();
   if (ask)
   {
@@ -1068,10 +1538,12 @@ uint8_t flox_book_best_ask(FloxBookHandle h, double* price_out)
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_book_mid(FloxBookHandle h, double* price_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto& book = static_cast<FloxBookImpl*>(h)->book;
   auto mid = book.mid();
   if (mid)
@@ -1080,10 +1552,12 @@ uint8_t flox_book_mid(FloxBookHandle h, double* price_out)
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_book_spread(FloxBookHandle h, double* spread_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto& book = static_cast<FloxBookImpl*>(h)->book;
   auto sp = book.spread();
   if (sp)
@@ -1092,52 +1566,93 @@ uint8_t flox_book_spread(FloxBookHandle h, double* spread_out)
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_book_bid_at_price(FloxBookHandle h, double price)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<FloxBookImpl*>(h)->book.bidAtPrice(Price::fromDouble(price)).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_book_ask_at_price(FloxBookHandle h, double price)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<FloxBookImpl*>(h)->book.askAtPrice(Price::fromDouble(price)).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_book_is_crossed(FloxBookHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<FloxBookImpl*>(h)->book.isCrossed() ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_book_clear(FloxBookHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxBookImpl*>(h)->book.clear();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
 // Simulated executor
 // ============================================================
 
+// A FloxSimulatedExecutorHandle points at this wrapper, never at the
+// SimulatedExecutor itself: every flox_simulated_executor_* function reaches
+// `executor` through it, and the engine object sits at a non-zero offset
+// inside. Handing out the engine object instead read every field sixteen
+// bytes off -- fill counts came back as billions, advancing the clock
+// overwrote the executor's own header, and submitting an order crashed.
+//
+// The members are references so a wrapper can either own the pair or borrow
+// one that a VenueStack owns, without every call site having to know which.
 struct FloxSimulatedExecutorImpl
 {
-  SimulatedClock clock;
-  SimulatedExecutor executor;
-  FloxSimulatedExecutorImpl() : executor(clock) {}
+ private:
+  // Declared first so they are constructed before the references bind.
+  std::unique_ptr<SimulatedClock> _ownedClock;
+  std::unique_ptr<SimulatedExecutor> _ownedExecutor;
+
+ public:
+  SimulatedClock& clock;
+  SimulatedExecutor& executor;
+
+  FloxSimulatedExecutorImpl()
+      : _ownedClock(std::make_unique<SimulatedClock>()),
+        _ownedExecutor(std::make_unique<SimulatedExecutor>(*_ownedClock)),
+        clock(*_ownedClock),
+        executor(*_ownedExecutor)
+  {
+  }
+
+  FloxSimulatedExecutorImpl(SimulatedClock& borrowedClock, SimulatedExecutor& borrowedExecutor)
+      : clock(borrowedClock), executor(borrowedExecutor)
+  {
+  }
 };
 
 FloxSimulatedExecutorHandle flox_simulated_executor_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new FloxSimulatedExecutorImpl();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_simulated_executor_destroy(FloxSimulatedExecutorHandle executor)
 {
+  FLOX_CAPI_ENTER_DESTROY(executor);
   delete static_cast<FloxSimulatedExecutorImpl*>(executor);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle h, uint64_t id, uint8_t side, double price,
                                           double quantity, uint8_t order_type, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   auto* impl = static_cast<FloxSimulatedExecutorImpl*>(h);
   Order order{};
   order.id = id;
@@ -1147,6 +1662,7 @@ void flox_simulated_executor_submit_order(FloxSimulatedExecutorHandle h, uint64_
   order.type = static_cast<OrderType>(order_type);
   order.symbol = symbol;
   impl->executor.submitOrder(order);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_submit_order_ex(FloxSimulatedExecutorHandle h, uint64_t id,
@@ -1155,6 +1671,7 @@ void flox_simulated_executor_submit_order_ex(FloxSimulatedExecutorHandle h, uint
                                              uint8_t tif, uint8_t reduce_only,
                                              int64_t expires_at_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   auto* impl = static_cast<FloxSimulatedExecutorImpl*>(h);
   Order order{};
   order.id = id;
@@ -1170,6 +1687,7 @@ void flox_simulated_executor_submit_order_ex(FloxSimulatedExecutorHandle h, uint
     order.expiresAfter = TimePoint(std::chrono::nanoseconds(expires_at_ns));
   }
   impl->executor.submitOrder(order);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_submit_bracket(FloxSimulatedExecutorHandle h, uint64_t bracket_id,
@@ -1179,6 +1697,7 @@ void flox_simulated_executor_submit_bracket(FloxSimulatedExecutorHandle h, uint6
                                             double tp_price, uint8_t stop_side,
                                             uint8_t stop_type, double stop_trigger_price)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   BracketOrder b;
   b.bracketId = bracket_id;
   b.symbol = symbol;
@@ -1195,25 +1714,32 @@ void flox_simulated_executor_submit_bracket(FloxSimulatedExecutorHandle h, uint6
   b.stop.triggerPrice = Price::fromDouble(stop_trigger_price);
   b.stop.quantity = Quantity::fromDouble(quantity);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.submitBracket(b);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_cancel_bracket(FloxSimulatedExecutorHandle h, uint64_t bracket_id)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelBracket(bracket_id);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle h, uint64_t bracket_id)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint8_t>(
       static_cast<FloxSimulatedExecutorImpl*>(h)->executor.bracketStatus(bracket_id).state);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_simulated_executor_set_bracket_child_arm_mode(FloxSimulatedExecutorHandle h,
                                                         uint8_t mode)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setBracketChildArmMode(
       mode == 1 ? SimulatedExecutor::BracketArmMode::OnPartialFill
                 : SimulatedExecutor::BracketArmMode::OnFullFill);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_submit_iceberg(FloxSimulatedExecutorHandle h, uint64_t id,
@@ -1221,6 +1747,7 @@ void flox_simulated_executor_submit_iceberg(FloxSimulatedExecutorHandle h, uint6
                                             double total_quantity, double visible_quantity,
                                             uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   Order order{};
   order.id = id;
   order.side = side == 0 ? Side::BUY : Side::SELL;
@@ -1230,69 +1757,92 @@ void flox_simulated_executor_submit_iceberg(FloxSimulatedExecutorHandle h, uint6
   order.type = OrderType::ICEBERG;
   order.symbol = symbol;
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.submitOrder(order);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_iceberg_refresh_latency(FloxSimulatedExecutorHandle h,
                                                          int64_t latency_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setIcebergRefreshLatency(latency_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 int64_t flox_simulated_executor_iceberg_hidden_remaining_raw(FloxSimulatedExecutorHandle h,
                                                              uint64_t id)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<FloxSimulatedExecutorImpl*>(h)->executor.icebergHiddenRemainingRaw(id);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_simulated_executor_set_iceberg_size_randomisation_pct(
     FloxSimulatedExecutorHandle h, double pct)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setIcebergSizeRandomisationPct(pct);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_iceberg_priority_mode(FloxSimulatedExecutorHandle h,
                                                        uint8_t mode)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setIcebergPriorityMode(
       mode == 1 ? SimulatedExecutor::IcebergPriorityMode::Retain
                 : SimulatedExecutor::IcebergPriorityMode::Back);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_iceberg_jitter_seed(FloxSimulatedExecutorHandle h,
                                                      uint64_t seed)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setIcebergJitterSeed(seed);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_cancel_order(FloxSimulatedExecutorHandle h, uint64_t order_id)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelOrder(order_id);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.cancelAllOrders(symbol);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle h, uint32_t symbol, double close_price)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(symbol, Price::fromDouble(close_price));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle h, uint32_t symbol, double price, uint8_t is_buy)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onTrade(symbol, Price::fromDouble(price),
                                                                is_buy != 0);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle h, int64_t timestamp_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->clock.advanceTo(UnixNanos::fromRaw(timestamp_ns));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint32_t flox_simulated_executor_fill_count(FloxSimulatedExecutorHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(static_cast<FloxSimulatedExecutorImpl*>(h)->executor.fills().size());
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -1352,25 +1902,31 @@ uint32_t flox_aggregate_time_bars(const int64_t* ts, const double* px, const dou
                                   const uint8_t* ib, size_t len, double interval_seconds,
                                   FloxBar* bars_out, uint32_t max_bars)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   TimeBarPolicy policy(std::chrono::nanoseconds(
       static_cast<int64_t>(interval_seconds * 1'000'000'000.0)));
   return doAggregateC(policy, ts, px, qty, ib, len, bars_out, max_bars);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_aggregate_tick_bars(const int64_t* ts, const double* px, const double* qty,
                                   const uint8_t* ib, size_t len, uint32_t tick_count,
                                   FloxBar* bars_out, uint32_t max_bars)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   TickBarPolicy policy(tick_count);
   return doAggregateC(policy, ts, px, qty, ib, len, bars_out, max_bars);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_aggregate_volume_bars(const int64_t* ts, const double* px, const double* qty,
                                     const uint8_t* ib, size_t len, double volume_threshold,
                                     FloxBar* bars_out, uint32_t max_bars)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto policy = VolumeBarPolicy::fromDouble(volume_threshold);
   return doAggregateC(policy, ts, px, qty, ib, len, bars_out, max_bars);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -1393,6 +1949,7 @@ static void writeFloxBar(const Bar& bar, FloxBar* out)
 uint8_t flox_strategy_last_closed_bar(FloxStrategyHandle s, uint32_t symbol,
                                       uint8_t bar_type, uint64_t param, FloxBar* out)
 {
+  FLOX_CAPI_ENTER(s);
   auto bar = toStrategy(s)->lastClosedBar(symbol, static_cast<BarType>(bar_type), param);
   if (!bar || !out)
   {
@@ -1400,12 +1957,14 @@ uint8_t flox_strategy_last_closed_bar(FloxStrategyHandle s, uint32_t symbol,
   }
   writeFloxBar(*bar, out);
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_strategy_last_n_closed_bars(FloxStrategyHandle s, uint32_t symbol,
                                           uint8_t bar_type, uint64_t param,
                                           FloxBar* bars_out, uint32_t max_bars)
 {
+  FLOX_CAPI_ENTER(s);
   if (!bars_out || max_bars == 0)
   {
     return 0;
@@ -1418,16 +1977,21 @@ uint32_t flox_strategy_last_n_closed_bars(FloxStrategyHandle s, uint32_t symbol,
     writeFloxBar(bars[i], &bars_out[i]);
   }
   return count;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_strategy_get_bar_ring_capacity(FloxStrategyHandle s)
 {
+  FLOX_CAPI_ENTER(s);
   return static_cast<uint32_t>(toStrategy(s)->barRingCapacity());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_strategy_set_bar_ring_capacity(FloxStrategyHandle s, uint32_t capacity)
 {
+  FLOX_CAPI_ENTER_VOID(s);
   toStrategy(s)->setBarRingCapacity(static_cast<size_t>(capacity));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -1440,112 +2004,148 @@ static OrderGroup* toOrderGroup(FloxOrderGroupHandle h) { return static_cast<Ord
 
 FloxOrderGroupHandle flox_order_group_create(uint64_t parent_signal_id, uint8_t policy)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new OrderGroup(parent_signal_id, static_cast<OrderGroupPolicy>(policy));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_group_destroy(FloxOrderGroupHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toOrderGroup(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint32_t flox_order_group_add_market_leg(FloxOrderGroupHandle h, uint32_t symbol,
                                          uint8_t side, int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(
       toOrderGroup(h)->addMarketLeg(symbol, side, Quantity::fromRaw(qty_raw)));
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_order_group_add_limit_leg(FloxOrderGroupHandle h, uint32_t symbol,
                                         uint8_t side, int64_t price_raw,
                                         int64_t qty_raw)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toOrderGroup(h)->addLimitLeg(
       symbol, side, Price::fromRaw(price_raw), Quantity::fromRaw(qty_raw)));
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_order_group_leg_count(FloxOrderGroupHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toOrderGroup(h)->legCount());
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_order_group_leg_state(FloxOrderGroupHandle h, uint32_t leg_index)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint8_t>(toOrderGroup(h)->leg(leg_index).state);
+  FLOX_CAPI_LEAVE;
 }
 
 int64_t flox_order_group_leg_filled_raw(FloxOrderGroupHandle h, uint32_t leg_index)
 {
+  FLOX_CAPI_ENTER(h);
   return toOrderGroup(h)->leg(leg_index).filledQty.raw();
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_order_group_leg_order_id(FloxOrderGroupHandle h, uint32_t leg_index)
 {
+  FLOX_CAPI_ENTER(h);
   return toOrderGroup(h)->leg(leg_index).orderId;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_group_record_submit(FloxOrderGroupHandle h, uint32_t leg_index,
                                     uint64_t order_id)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toOrderGroup(h)->recordSubmit(leg_index, order_id);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_order_group_record_fill(FloxOrderGroupHandle h, uint32_t leg_index,
                                   int64_t cumulative_qty_raw)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toOrderGroup(h)->recordFill(leg_index, Quantity::fromRaw(cumulative_qty_raw));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_order_group_record_cancel(FloxOrderGroupHandle h, uint32_t leg_index)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toOrderGroup(h)->recordCancel(leg_index);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_order_group_record_failure(FloxOrderGroupHandle h, uint32_t leg_index)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toOrderGroup(h)->recordFailure(leg_index);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_order_group_record_replace_accepted(FloxOrderGroupHandle h, uint32_t leg_index,
                                               uint64_t new_order_id)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toOrderGroup(h)->recordReplaceAccepted(leg_index, new_order_id);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_order_group_record_replace_rejected(FloxOrderGroupHandle h, uint32_t leg_index)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toOrderGroup(h)->recordReplaceRejected(leg_index);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint32_t flox_order_group_find_leg_by_order_id(FloxOrderGroupHandle h, uint64_t order_id)
 {
+  FLOX_CAPI_ENTER(h);
   auto idx = toOrderGroup(h)->findLegByOrderId(order_id);
   if (idx.has_value())
   {
     return static_cast<uint32_t>(*idx);
   }
   return UINT32_MAX;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_order_group_state(FloxOrderGroupHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint8_t>(toOrderGroup(h)->state());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_group_mark_action_dispatched(FloxOrderGroupHandle h, uint32_t leg_index,
                                              uint8_t kind)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toOrderGroup(h)->markActionDispatched(leg_index,
                                         static_cast<OrderGroupAction::Kind>(kind));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_order_group_set_risk_limits(FloxOrderGroupHandle h, int64_t max_gross_notional_raw,
                                       double max_concentration_pct, int64_t max_leg_qty_raw)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   GroupRiskLimits limits;
   limits.maxGrossNotional = Quantity::fromRaw(max_gross_notional_raw);
   limits.maxConcentrationPct = max_concentration_pct;
   limits.maxLegQty = Quantity::fromRaw(max_leg_qty_raw);
   toOrderGroup(h)->setRiskLimits(limits);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 namespace
@@ -1568,6 +2168,7 @@ uint8_t flox_order_group_precheck_submission(FloxOrderGroupHandle h, double equi
                                              size_t rule_capacity, char* detail_out,
                                              size_t detail_capacity)
 {
+  FLOX_CAPI_ENTER(h);
   std::vector<Price> prices;
   prices.reserve(market_ref_prices_len);
   for (uint32_t i = 0; i < market_ref_prices_len; ++i)
@@ -1590,11 +2191,14 @@ uint8_t flox_order_group_precheck_submission(FloxOrderGroupHandle h, double equi
   copy_truncated(breach.rule, rule_out, rule_capacity);
   copy_truncated(breach.detail, detail_out, detail_capacity);
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_group_set_pair_latency_budget_ns(FloxOrderGroupHandle h, int64_t budget_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toOrderGroup(h)->setPairLatencyBudgetNs(budget_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint8_t flox_order_group_pair_latency_decision(FloxOrderGroupHandle h,
@@ -1602,14 +2206,17 @@ uint8_t flox_order_group_pair_latency_decision(FloxOrderGroupHandle h,
                                                int64_t leader_ack_ts_ns,
                                                uint8_t ack_received)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint8_t>(toOrderGroup(h)->pairLatencyDecision(
       leader_submit_ts_ns, leader_ack_ts_ns, ack_received != 0));
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
                                               int64_t* actions_out,
                                               uint32_t max_actions)
 {
+  FLOX_CAPI_ENTER(h);
   if (!actions_out || max_actions == 0)
   {
     return 0;
@@ -1636,6 +2243,7 @@ uint32_t flox_order_group_recommended_actions(FloxOrderGroupHandle h,
     }
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -1671,6 +2279,7 @@ FloxFeedClockHandle flox_feed_clock_create(const uint32_t* symbols, uint32_t sym
                                            uint32_t leader_symbol,
                                            int64_t staleness_budget_ms)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   std::vector<SymbolId> sv;
   sv.reserve(symbol_count);
   for (uint32_t i = 0; i < symbol_count; ++i)
@@ -1679,20 +2288,26 @@ FloxFeedClockHandle flox_feed_clock_create(const uint32_t* symbols, uint32_t sym
   }
   return new FeedClockState(std::move(sv), static_cast<FeedClockPolicy>(policy), timeout_ms,
                             static_cast<SymbolId>(leader_symbol), staleness_budget_ms);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_feed_clock_destroy(FloxFeedClockHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toFeedClock(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint32_t flox_feed_clock_symbol_count(FloxFeedClockHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toFeedClock(h)->clock.symbolCount());
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_feed_clock_symbol_at(FloxFeedClockHandle h, uint32_t index)
 {
+  FLOX_CAPI_ENTER(h);
   auto& last = toFeedClock(h)->last;
   if (last.symbols.empty())
   {
@@ -1705,49 +2320,62 @@ uint32_t flox_feed_clock_symbol_at(FloxFeedClockHandle h, uint32_t index)
     return 0;
   }
   return toFeedClock(h)->last.symbols[index];
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_feed_clock_tick(FloxFeedClockHandle h, int64_t ts_ns, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   auto* st = toFeedClock(h);
   st->last = st->clock.tick(ts_ns, static_cast<SymbolId>(symbol));
   return st->last.fired ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_feed_clock_last_fired(FloxFeedClockHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toFeedClock(h)->last.fired ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_feed_clock_last_triggered_by(FloxFeedClockHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toFeedClock(h)->last.triggeredBy);
+  FLOX_CAPI_LEAVE;
 }
 
 int64_t flox_feed_clock_last_seen_at(FloxFeedClockHandle h, uint32_t index)
 {
+  FLOX_CAPI_ENTER(h);
   auto& last = toFeedClock(h)->last;
   if (index >= last.lastTsNs.size())
   {
     return 0;
   }
   return last.lastTsNs[index];
+  FLOX_CAPI_LEAVE;
 }
 
 int64_t flox_feed_clock_staleness_at(FloxFeedClockHandle h, uint32_t index)
 {
+  FLOX_CAPI_ENTER(h);
   auto& last = toFeedClock(h)->last;
   if (index >= last.stalenessNs.size())
   {
     return 0;
   }
   return last.stalenessNs[index];
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_feed_clock_reset(FloxFeedClockHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toFeedClock(h)->clock.reset();
   toFeedClock(h)->last = FeedClockSnapshot{};
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -1756,18 +2384,23 @@ void flox_feed_clock_reset(FloxFeedClockHandle h)
 
 FloxPositionTrackerHandle flox_position_tracker_create(uint8_t cost_basis)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto method = static_cast<CostBasisMethod>(cost_basis);
   return new PositionTracker(0, method);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_position_tracker_destroy(FloxPositionTrackerHandle tracker)
 {
+  FLOX_CAPI_ENTER_DESTROY(tracker);
   delete static_cast<PositionTracker*>(tracker);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_position_tracker_on_fill(FloxPositionTrackerHandle h, uint32_t symbol, uint8_t side,
                                    double price, double quantity)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   auto* tracker = static_cast<PositionTracker*>(h);
   Order order{};
   order.symbol = symbol;
@@ -1776,26 +2409,35 @@ void flox_position_tracker_on_fill(FloxPositionTrackerHandle h, uint32_t symbol,
   order.quantity = Quantity::fromDouble(quantity);
   order.id = 0;
   tracker->onOrderFilled(order);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 double flox_position_tracker_position(FloxPositionTrackerHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<PositionTracker*>(h)->getPosition(symbol).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_position_tracker_avg_entry(FloxPositionTrackerHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<PositionTracker*>(h)->getAvgEntryPrice(symbol).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_position_tracker_realized_pnl(FloxPositionTrackerHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<PositionTracker*>(h)->getRealizedPnl(symbol).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_position_tracker_total_pnl(FloxPositionTrackerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<PositionTracker*>(h)->getTotalRealizedPnl().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -1804,59 +2446,79 @@ double flox_position_tracker_total_pnl(FloxPositionTrackerHandle h)
 
 FloxVolumeProfileHandle flox_volume_profile_create(double tick_size)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* vp = new VolumeProfile<>();
   vp->setTickSize(Price::fromDouble(tick_size));
   return vp;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_volume_profile_destroy(FloxVolumeProfileHandle profile)
 {
+  FLOX_CAPI_ENTER_DESTROY(profile);
   delete static_cast<VolumeProfile<>*>(profile);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_volume_profile_add_trade(FloxVolumeProfileHandle h, double price, double quantity,
                                    uint8_t is_buy)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   TradeEvent te;
   te.trade.price = Price::fromDouble(price);
   te.trade.quantity = Quantity::fromDouble(quantity);
   te.trade.isBuy = (is_buy != 0);
   static_cast<VolumeProfile<>*>(h)->addTrade(te);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 double flox_volume_profile_poc(FloxVolumeProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VolumeProfile<>*>(h)->poc().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_volume_profile_vah(FloxVolumeProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VolumeProfile<>*>(h)->valueAreaHigh().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_volume_profile_val(FloxVolumeProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VolumeProfile<>*>(h)->valueAreaLow().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_volume_profile_total_volume(FloxVolumeProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VolumeProfile<>*>(h)->totalVolume().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_volume_profile_total_delta(FloxVolumeProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VolumeProfile<>*>(h)->totalDelta().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_volume_profile_num_levels(FloxVolumeProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(static_cast<VolumeProfile<>*>(h)->numLevels());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_volume_profile_clear(FloxVolumeProfileHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<VolumeProfile<>*>(h)->clear();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -1865,44 +2527,58 @@ void flox_volume_profile_clear(FloxVolumeProfileHandle h)
 
 FloxFootprintHandle flox_footprint_create(double tick_size)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* fp = new FootprintBar<>();
   fp->setTickSize(Price::fromDouble(tick_size));
   return fp;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_footprint_destroy(FloxFootprintHandle footprint)
 {
+  FLOX_CAPI_ENTER_DESTROY(footprint);
   delete static_cast<FootprintBar<>*>(footprint);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_footprint_add_trade(FloxFootprintHandle h, double price, double quantity,
                               uint8_t is_buy)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   TradeEvent te;
   te.trade.price = Price::fromDouble(price);
   te.trade.quantity = Quantity::fromDouble(quantity);
   te.trade.isBuy = (is_buy != 0);
   static_cast<FootprintBar<>*>(h)->addTrade(te);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 double flox_footprint_total_delta(FloxFootprintHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<FootprintBar<>*>(h)->totalDelta().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_footprint_total_volume(FloxFootprintHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<FootprintBar<>*>(h)->totalVolume().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_footprint_num_levels(FloxFootprintHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(static_cast<FootprintBar<>*>(h)->numLevels());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_footprint_clear(FloxFootprintHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FootprintBar<>*>(h)->clear();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -1911,6 +2587,7 @@ void flox_footprint_clear(FloxFootprintHandle h)
 
 double flox_stat_correlation(const double* x, const double* y, size_t len)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
   for (size_t i = 0; i < len; i++)
   {
@@ -1924,10 +2601,12 @@ double flox_stat_correlation(const double* x, const double* y, size_t len)
   double num = n * sumXY - sumX * sumY;
   double den = std::sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
   return den != 0 ? num / den : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_stat_profit_factor(const double* pnl, size_t len)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   double gross_profit = 0, gross_loss = 0;
   for (size_t i = 0; i < len; i++)
   {
@@ -1941,10 +2620,12 @@ double flox_stat_profit_factor(const double* pnl, size_t len)
     }
   }
   return gross_loss > 0 ? gross_profit / gross_loss : (gross_profit > 0 ? 1e9 : 0);
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_stat_win_rate(const double* pnl, size_t len)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (len == 0)
   {
     return 0;
@@ -1958,6 +2639,7 @@ double flox_stat_win_rate(const double* pnl, size_t len)
     }
   }
   return static_cast<double>(wins) / static_cast<double>(len);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -1999,53 +2681,70 @@ FloxOrderJourneyTracerHandle flox_order_journey_tracer_create(
     uint64_t max_orders, uint64_t max_records_per_order, double sample_rate,
     uint64_t sample_salt)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   flox::OrderJourneyTracer::Config cfg{};
   cfg.maxOrders = max_orders;
   cfg.maxRecordsPerOrder = max_records_per_order;
   cfg.sampleRate = sample_rate;
   cfg.sampleSalt = sample_salt;
   return new flox::OrderJourneyTracer(cfg);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_journey_tracer_destroy(FloxOrderJourneyTracerHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete asTracer(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint64_t flox_order_journey_tracer_order_count(FloxOrderJourneyTracerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return asTracer(h) ? asTracer(h)->orderCount() : 0u;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_order_journey_tracer_record_count(FloxOrderJourneyTracerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return asTracer(h) ? asTracer(h)->recordCount() : 0u;
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_order_journey_tracer_median_ack_latency_ns(FloxOrderJourneyTracerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return asTracer(h) ? asTracer(h)->medianAckLatencyNs() : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_order_journey_tracer_median_time_to_first_fill_ns(
     FloxOrderJourneyTracerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return asTracer(h) ? asTracer(h)->medianTimeToFirstFillNs() : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_order_journey_tracer_maker_fill_ratio(FloxOrderJourneyTracerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return asTracer(h) ? asTracer(h)->makerFillRatio() : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_order_journey_tracer_cancel_race_loss_rate(FloxOrderJourneyTracerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return asTracer(h) ? asTracer(h)->cancelRaceLossRate() : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_order_journey_tracer_result(FloxOrderJourneyTracerHandle h,
                                           FloxOrderTraceRow* out, uint64_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* tracer = asTracer(h);
   if (!tracer)
   {
@@ -2062,12 +2761,14 @@ uint64_t flox_order_journey_tracer_result(FloxOrderJourneyTracerHandle h,
     out[i] = toCapiRow(rows[i]);
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_order_journey_tracer_journey(FloxOrderJourneyTracerHandle h,
                                            uint64_t order_id, FloxOrderTraceRow* out,
                                            uint64_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* tracer = asTracer(h);
   if (!tracer)
   {
@@ -2084,14 +2785,17 @@ uint64_t flox_order_journey_tracer_journey(FloxOrderJourneyTracerHandle h,
     out[i] = toCapiRow(rows[i]);
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_journey_tracer_clear(FloxOrderJourneyTracerHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   if (auto* tracer = asTracer(h))
   {
     tracer->clear();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -2100,17 +2804,22 @@ void flox_order_journey_tracer_clear(FloxOrderJourneyTracerHandle h)
 
 FloxOrderTrackerHandle flox_order_tracker_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new OrderTracker();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_tracker_destroy(FloxOrderTrackerHandle tracker)
 {
+  FLOX_CAPI_ENTER_DESTROY(tracker);
   delete static_cast<OrderTracker*>(tracker);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint8_t flox_order_tracker_on_submitted(FloxOrderTrackerHandle h, uint64_t order_id,
                                         uint32_t symbol, uint8_t side, double price, double qty)
 {
+  FLOX_CAPI_ENTER(h);
   Order order{};
   order.id = order_id;
   order.symbol = symbol;
@@ -2118,37 +2827,50 @@ uint8_t flox_order_tracker_on_submitted(FloxOrderTrackerHandle h, uint64_t order
   order.price = Price::fromDouble(price);
   order.quantity = Quantity::fromDouble(qty);
   return static_cast<OrderTracker*>(h)->onSubmitted(order, "", "") ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_order_tracker_on_filled(FloxOrderTrackerHandle h, uint64_t order_id, double fill_qty)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<OrderTracker*>(h)->onFilled(order_id, Quantity::fromDouble(fill_qty)) ? 1
                                                                                            : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_order_tracker_on_canceled(FloxOrderTrackerHandle h, uint64_t order_id)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<OrderTracker*>(h)->onCanceled(order_id) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_order_tracker_is_active(FloxOrderTrackerHandle h, uint64_t order_id)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<OrderTracker*>(h)->isActive(order_id) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_order_tracker_active_count(FloxOrderTrackerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(static_cast<OrderTracker*>(h)->activeOrderCount());
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_order_tracker_total_count(FloxOrderTrackerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(static_cast<OrderTracker*>(h)->totalOrderCount());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_tracker_prune(FloxOrderTrackerHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<OrderTracker*>(h)->pruneTerminal();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -2157,59 +2879,79 @@ void flox_order_tracker_prune(FloxOrderTrackerHandle h)
 
 FloxPositionGroupHandle flox_position_group_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new PositionGroupTracker();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_position_group_destroy(FloxPositionGroupHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<PositionGroupTracker*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint64_t flox_position_group_open(FloxPositionGroupHandle h, uint64_t order_id, uint32_t symbol,
                                   uint8_t side, double price, double qty)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<PositionGroupTracker*>(h)->openPosition(
       order_id, symbol, side == 0 ? Side::BUY : Side::SELL, Price::fromDouble(price),
       Quantity::fromDouble(qty));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_position_group_close(FloxPositionGroupHandle h, uint64_t position_id, double exit_price)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<PositionGroupTracker*>(h)->closePosition(position_id,
                                                        Price::fromDouble(exit_price));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_position_group_partial_close(FloxPositionGroupHandle h, uint64_t position_id, double qty,
                                        double exit_price)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<PositionGroupTracker*>(h)->partialClose(position_id, Quantity::fromDouble(qty),
                                                       Price::fromDouble(exit_price));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 double flox_position_group_net_position(FloxPositionGroupHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<PositionGroupTracker*>(h)->netPosition(symbol).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_position_group_realized_pnl(FloxPositionGroupHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<PositionGroupTracker*>(h)->realizedPnl(symbol).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_position_group_total_pnl(FloxPositionGroupHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<PositionGroupTracker*>(h)->totalRealizedPnl().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_position_group_open_count(FloxPositionGroupHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(
       static_cast<PositionGroupTracker*>(h)->openPositionCount(symbol));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_position_group_prune(FloxPositionGroupHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<PositionGroupTracker*>(h)->pruneClosedPositions();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -2219,72 +2961,96 @@ void flox_position_group_prune(FloxPositionGroupHandle h)
 FloxMarketProfileHandle flox_market_profile_create(double tick_size, uint32_t period_minutes,
                                                    int64_t session_start_ns)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* mp = new MarketProfile<>();
   mp->setTickSize(Price::fromDouble(tick_size));
   mp->setPeriodDuration(std::chrono::minutes(period_minutes));
   mp->setSessionStart(static_cast<uint64_t>(session_start_ns));
   return mp;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_market_profile_destroy(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<MarketProfile<>*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_market_profile_add_trade(FloxMarketProfileHandle h, int64_t timestamp_ns, double price,
                                    double qty, uint8_t is_buy)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   TradeEvent te;
   te.trade.price = Price::fromDouble(price);
   te.trade.quantity = Quantity::fromDouble(qty);
   te.trade.isBuy = (is_buy != 0);
   te.trade.exchangeTsNs = UnixNanos::fromRaw(timestamp_ns);
   static_cast<MarketProfile<>*>(h)->addTrade(te);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 double flox_market_profile_poc(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<MarketProfile<>*>(h)->poc().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_market_profile_vah(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<MarketProfile<>*>(h)->valueAreaHigh().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_market_profile_val(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<MarketProfile<>*>(h)->valueAreaLow().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_market_profile_ib_high(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<MarketProfile<>*>(h)->initialBalanceHigh().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_market_profile_ib_low(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<MarketProfile<>*>(h)->initialBalanceLow().toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_market_profile_is_poor_high(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<MarketProfile<>*>(h)->isPoorHigh() ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_market_profile_is_poor_low(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<MarketProfile<>*>(h)->isPoorLow() ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_market_profile_num_levels(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(static_cast<MarketProfile<>*>(h)->numLevels());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_market_profile_clear(FloxMarketProfileHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<MarketProfile<>*>(h)->clear();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -2293,17 +3059,22 @@ void flox_market_profile_clear(FloxMarketProfileHandle h)
 
 FloxCompositeBookHandle flox_composite_book_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new CompositeBookMatrix<>();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_composite_book_destroy(FloxCompositeBookHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<CompositeBookMatrix<>*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint8_t flox_composite_book_best_bid(FloxCompositeBookHandle h, uint32_t symbol, double* price_out,
                                      double* qty_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto q = static_cast<CompositeBookMatrix<>*>(h)->bestBid(symbol);
   if (q.valid)
   {
@@ -2312,11 +3083,13 @@ uint8_t flox_composite_book_best_bid(FloxCompositeBookHandle h, uint32_t symbol,
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_composite_book_best_ask(FloxCompositeBookHandle h, uint32_t symbol, double* price_out,
                                      double* qty_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto q = static_cast<CompositeBookMatrix<>*>(h)->bestAsk(symbol);
   if (q.valid)
   {
@@ -2325,22 +3098,29 @@ uint8_t flox_composite_book_best_ask(FloxCompositeBookHandle h, uint32_t symbol,
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_composite_book_has_arb(FloxCompositeBookHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<CompositeBookMatrix<>*>(h)->hasArbitrageOpportunity(symbol) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_composite_book_mark_stale(FloxCompositeBookHandle h, uint32_t exchange, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<CompositeBookMatrix<>*>(h)->markStale(exchange, symbol);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_composite_book_check_staleness(FloxCompositeBookHandle h, int64_t now_ns,
                                          int64_t threshold_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<CompositeBookMatrix<>*>(h)->checkStaleness(now_ns, threshold_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -2349,6 +3129,7 @@ void flox_composite_book_check_staleness(FloxCompositeBookHandle h, int64_t now_
 
 uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle h, FloxFill* fills_out, uint32_t max_fills)
 {
+  FLOX_CAPI_ENTER(h);
   auto& fills = static_cast<FloxSimulatedExecutorImpl*>(h)->executor.fills();
   uint32_t count = static_cast<uint32_t>(std::min(fills.size(), static_cast<size_t>(max_fills)));
   for (uint32_t i = 0; i < count; i++)
@@ -2361,6 +3142,7 @@ uint32_t flox_simulated_executor_get_fills(FloxSimulatedExecutorHandle h, FloxFi
     fills_out[i].timestamp_ns = fills[i].timestampNs.raw();
   }
   return count;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -2371,16 +3153,20 @@ uint32_t flox_aggregate_range_bars(const int64_t* ts, const double* px, const do
                                    const uint8_t* ib, size_t len, double range_size,
                                    FloxBar* bars_out, uint32_t max_bars)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto policy = RangeBarPolicy::fromDouble(range_size);
   return doAggregateC(policy, ts, px, qty, ib, len, bars_out, max_bars);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_aggregate_renko_bars(const int64_t* ts, const double* px, const double* qty,
                                    const uint8_t* ib, size_t len, double brick_size,
                                    FloxBar* bars_out, uint32_t max_bars)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto policy = RenkoBarPolicy::fromDouble(brick_size);
   return doAggregateC(policy, ts, px, qty, ib, len, bars_out, max_bars);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -2389,38 +3175,49 @@ uint32_t flox_aggregate_renko_bars(const int64_t* ts, const double* px, const do
 
 FloxL3BookHandle flox_l3_book_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new L3OrderBook<>();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_l3_book_destroy(FloxL3BookHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<L3OrderBook<>*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 int32_t flox_l3_book_add_order(FloxL3BookHandle h, uint64_t order_id, double price, double quantity,
                                uint8_t side)
 {
+  FLOX_CAPI_ENTER(h);
   auto status = static_cast<L3OrderBook<>*>(h)->addOrder(
       order_id, Price::fromDouble(price), Quantity::fromDouble(quantity),
       side == 0 ? Side::BUY : Side::SELL);
   return static_cast<int32_t>(status);
+  FLOX_CAPI_LEAVE;
 }
 
 int32_t flox_l3_book_remove_order(FloxL3BookHandle h, uint64_t order_id)
 {
+  FLOX_CAPI_ENTER(h);
   auto status = static_cast<L3OrderBook<>*>(h)->removeOrder(order_id);
   return static_cast<int32_t>(status);
+  FLOX_CAPI_LEAVE;
 }
 
 int32_t flox_l3_book_modify_order(FloxL3BookHandle h, uint64_t order_id, double new_qty)
 {
+  FLOX_CAPI_ENTER(h);
   auto status =
       static_cast<L3OrderBook<>*>(h)->modifyOrder(order_id, Quantity::fromDouble(new_qty));
   return static_cast<int32_t>(status);
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_l3_book_best_bid(FloxL3BookHandle h, double* price_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto bid = static_cast<L3OrderBook<>*>(h)->bestBid();
   if (bid)
   {
@@ -2428,10 +3225,12 @@ uint8_t flox_l3_book_best_bid(FloxL3BookHandle h, double* price_out)
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_l3_book_best_ask(FloxL3BookHandle h, double* price_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto ask = static_cast<L3OrderBook<>*>(h)->bestAsk();
   if (ask)
   {
@@ -2439,16 +3238,21 @@ uint8_t flox_l3_book_best_ask(FloxL3BookHandle h, double* price_out)
     return 1;
   }
   return 0;
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_l3_book_bid_at_price(FloxL3BookHandle h, double price)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<L3OrderBook<>*>(h)->bidAtPrice(Price::fromDouble(price)).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 double flox_l3_book_ask_at_price(FloxL3BookHandle h, double price)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<L3OrderBook<>*>(h)->askAtPrice(Price::fromDouble(price)).toDouble();
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -2458,24 +3262,30 @@ double flox_l3_book_ask_at_price(FloxL3BookHandle h, double price)
 FloxDataWriterHandle flox_data_writer_create(const char* output_dir, uint64_t max_segment_mb,
                                              uint8_t exchange_id)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(output_dir);
   replay::WriterConfig cfg;
   cfg.output_dir = output_dir;
   cfg.max_segment_bytes = max_segment_mb * 1024 * 1024;
   cfg.exchange_id = exchange_id;
   return new replay::BinaryLogWriter(cfg);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_data_writer_destroy(FloxDataWriterHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   auto* w = static_cast<replay::BinaryLogWriter*>(h);
   w->close();
   delete w;
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint8_t flox_data_writer_write_trade(FloxDataWriterHandle h, int64_t exchange_ts_ns,
                                      int64_t recv_ts_ns, double price, double qty,
                                      uint64_t trade_id, uint32_t symbol_id, uint8_t side)
 {
+  FLOX_CAPI_ENTER(h);
   replay::TradeRecord tr{};
   tr.exchange_ts_ns = exchange_ts_ns;
   tr.recv_ts_ns = recv_ts_ns;
@@ -2485,6 +3295,7 @@ uint8_t flox_data_writer_write_trade(FloxDataWriterHandle h, int64_t exchange_ts
   tr.symbol_id = symbol_id;
   tr.side = side;
   return static_cast<replay::BinaryLogWriter*>(h)->writeTrade(tr) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_data_writer_write_book(FloxDataWriterHandle h,
@@ -2496,6 +3307,7 @@ uint8_t flox_data_writer_write_book(FloxDataWriterHandle h,
                                     const FloxBookLevel* bids, uint32_t n_bids,
                                     const FloxBookLevel* asks, uint32_t n_asks)
 {
+  FLOX_CAPI_ENTER(h);
   replay::BookRecordHeader header{};
   header.exchange_ts_ns = exchange_ts_ns;
   header.recv_ts_ns = recv_ts_ns;
@@ -2513,6 +3325,7 @@ uint8_t flox_data_writer_write_book(FloxDataWriterHandle h,
   std::span<const replay::BookLevel> ask_span(ask_levels, n_asks);
 
   return static_cast<replay::BinaryLogWriter*>(h)->writeBook(header, bid_span, ask_span) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_data_writer_write_books(FloxDataWriterHandle h,
@@ -2521,6 +3334,7 @@ uint64_t flox_data_writer_write_books(FloxDataWriterHandle h,
                                       const FloxLevel* levels,
                                       uint64_t /*total_levels*/)
 {
+  FLOX_CAPI_ENTER(h);
   auto* writer = static_cast<replay::BinaryLogWriter*>(h);
   if (!writer || !headers)
   {
@@ -2560,16 +3374,21 @@ uint64_t flox_data_writer_write_books(FloxDataWriterHandle h,
     }
   }
   return written;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_data_writer_flush(FloxDataWriterHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<replay::BinaryLogWriter*>(h)->flush();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_data_writer_close(FloxDataWriterHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<replay::BinaryLogWriter*>(h)->close();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -2578,19 +3397,26 @@ void flox_data_writer_close(FloxDataWriterHandle h)
 
 FloxDataReaderHandle flox_data_reader_create(const char* data_dir)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(data_dir);
   replay::ReaderConfig cfg;
   cfg.data_dir = data_dir;
   return new replay::BinaryLogReader(cfg);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_data_reader_destroy(FloxDataReaderHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<replay::BinaryLogReader*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint64_t flox_data_reader_count(FloxDataReaderHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<replay::BinaryLogReader*>(h)->count();
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -2600,6 +3426,7 @@ uint64_t flox_data_reader_count(FloxDataReaderHandle h)
 uint32_t flox_book_get_bids(FloxBookHandle h, double* prices_out, double* qtys_out,
                             uint32_t max_levels)
 {
+  FLOX_CAPI_ENTER(h);
   auto levels = static_cast<FloxBookImpl*>(h)->book.getBidLevels(max_levels);
   uint32_t count = static_cast<uint32_t>(levels.size());
   for (uint32_t i = 0; i < count; i++)
@@ -2608,11 +3435,13 @@ uint32_t flox_book_get_bids(FloxBookHandle h, double* prices_out, double* qtys_o
     qtys_out[i] = levels[i].quantity.toDouble();
   }
   return count;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_book_get_asks(FloxBookHandle h, double* prices_out, double* qtys_out,
                             uint32_t max_levels)
 {
+  FLOX_CAPI_ENTER(h);
   auto levels = static_cast<FloxBookImpl*>(h)->book.getAskLevels(max_levels);
   uint32_t count = static_cast<uint32_t>(levels.size());
   for (uint32_t i = 0; i < count; i++)
@@ -2621,6 +3450,7 @@ uint32_t flox_book_get_asks(FloxBookHandle h, double* prices_out, double* qtys_o
     qtys_out[i] = levels[i].quantity.toDouble();
   }
   return count;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -2631,9 +3461,11 @@ uint32_t flox_aggregate_heikin_ashi_bars(const int64_t* ts, const double* px, co
                                          const uint8_t* ib, size_t len, double interval_seconds,
                                          FloxBar* bars_out, uint32_t max_bars)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   HeikinAshiBarPolicy policy(
       std::chrono::nanoseconds(static_cast<int64_t>(interval_seconds * 1e9)));
   return doAggregateC(policy, ts, px, qty, ib, len, bars_out, max_bars);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -2643,6 +3475,7 @@ uint32_t flox_aggregate_heikin_ashi_bars(const int64_t* ts, const double* px, co
 double flox_stat_permutation_test(const double* group1, size_t len1, const double* group2,
                                   size_t len2, uint32_t num_permutations)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto mean = [](const double* d, size_t n)
   {
     double s = 0;
@@ -2671,12 +3504,14 @@ double flox_stat_permutation_test(const double* group1, size_t len1, const doubl
     }
   }
   return static_cast<double>(count) / static_cast<double>(num_permutations);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_stat_bootstrap_ci(const double* data, size_t len, double confidence,
                             uint32_t num_samples, double* lower_out, double* median_out,
                             double* upper_out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   std::mt19937 rng(42);
   std::uniform_int_distribution<size_t> dist(0, len - 1);
 
@@ -2700,6 +3535,7 @@ void flox_stat_bootstrap_ci(const double* data, size_t len, double confidence,
   *lower_out = means[lo];
   *median_out = means[mid];
   *upper_out = means[std::min(hi, static_cast<size_t>(num_samples - 1))];
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_stat_whites_reality_check(const double* returns, size_t num_strategies,
@@ -2707,6 +3543,7 @@ void flox_stat_whites_reality_check(const double* returns, size_t num_strategies
                                     double avg_block_size, double* p_value_out,
                                     double* best_stat_out, int32_t* best_index_out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto result = flox::stats::whitesRealityCheck(
       returns, num_strategies, num_periods, num_bootstrap, avg_block_size);
   if (p_value_out)
@@ -2721,6 +3558,7 @@ void flox_stat_whites_reality_check(const double* returns, size_t num_strategies
   {
     *best_index_out = result.bestIndex;
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -2729,17 +3567,24 @@ void flox_stat_whites_reality_check(const double* returns, size_t num_strategies
 
 uint8_t flox_segment_validate(const char* path)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(path);
   replay::SegmentValidator validator;
   auto result = validator.validate(path);
   return result.valid ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_segment_merge(const char* input_dir, const char* output_path)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(input_dir);
+  FLOX_CAPI_REQUIRE(output_path);
   replay::MergeConfig cfg;
   cfg.output_dir = output_path;
   auto result = replay::SegmentOps::mergeDirectory(input_dir, cfg);
   return result.segments_merged > 0 ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -2764,38 +3609,49 @@ SlippageProfile makeSlippageProfile(int32_t model, int32_t ticks, double tick_si
 void flox_simulated_executor_set_default_slippage(FloxSimulatedExecutorHandle h, int32_t model, int32_t ticks,
                                                   double tick_size, double bps, double impact_coeff)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setDefaultSlippage(
       makeSlippageProfile(model, ticks, tick_size, bps, impact_coeff));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_symbol_slippage(FloxSimulatedExecutorHandle h, uint32_t symbol, int32_t model,
                                                  int32_t ticks, double tick_size, double bps,
                                                  double impact_coeff)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSymbolSlippage(
       symbol, makeSlippageProfile(model, ticks, tick_size, bps, impact_coeff));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_queue_model(FloxSimulatedExecutorHandle h, int32_t model, uint32_t depth)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setQueueModel(
       static_cast<QueueModel>(model), depth);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_queue_fifo_top_n(FloxSimulatedExecutorHandle h, uint32_t top_n)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setQueueFifoTopN(top_n);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_top_priority_share(FloxSimulatedExecutorHandle h,
                                                     double share)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setTopPriorityShare(share);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_lmm_orders(FloxSimulatedExecutorHandle h,
                                             const uint64_t* ids, uint32_t n_ids)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   std::vector<OrderId> v;
   v.reserve(n_ids);
   for (uint32_t i = 0; i < n_ids; ++i)
@@ -2803,81 +3659,104 @@ void flox_simulated_executor_set_lmm_orders(FloxSimulatedExecutorHandle h,
     v.push_back(static_cast<OrderId>(ids ? ids[i] : 0));
   }
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setLmmOrders(v);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_lmm_bonus_multiplier(FloxSimulatedExecutorHandle h,
                                                       double multiplier)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setLmmBonusMultiplier(multiplier);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_order_priority_multiplier(FloxSimulatedExecutorHandle h,
                                                            uint64_t order_id,
                                                            double multiplier)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setOrderPriorityMultiplier(
       static_cast<OrderId>(order_id), multiplier);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_submit_ack_latency(FloxSimulatedExecutorHandle h,
                                                     int64_t latency_ns, int64_t jitter_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSubmitAckLatency(latency_ns, jitter_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_cancel_ack_latency(FloxSimulatedExecutorHandle h,
                                                     int64_t latency_ns, int64_t jitter_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setCancelAckLatency(latency_ns, jitter_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_replace_ack_latency(FloxSimulatedExecutorHandle h,
                                                      int64_t latency_ns, int64_t jitter_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setReplaceAckLatency(latency_ns, jitter_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 int flox_simulated_executor_apply_latency_profile(FloxSimulatedExecutorHandle h,
                                                   const char* profile_name)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<FloxSimulatedExecutorImpl*>(h)->executor.applyLatencyProfile(
              profile_name)
              ? 1
              : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_simulated_executor_set_stp_mode(FloxSimulatedExecutorHandle h, uint8_t mode)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSTPMode(
       static_cast<STPMode>(mode));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_fok_mode(FloxSimulatedExecutorHandle h, uint8_t mode)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   const SimulatedExecutor::FokMode m =
       (mode == 1) ? SimulatedExecutor::FokMode::SinglePrice
                   : SimulatedExecutor::FokMode::AnyPrice;
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setFokMode(m);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint8_t flox_simulated_executor_fok_mode(FloxSimulatedExecutorHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint8_t>(
       static_cast<FloxSimulatedExecutorImpl*>(h)->executor.fokMode());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_simulated_executor_set_stp_group_membership(FloxSimulatedExecutorHandle h,
                                                       uint64_t account_id,
                                                       uint64_t group_id)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSTPGroupMembership(
       account_id, group_id);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint64_t flox_simulated_executor_stp_group_for(FloxSimulatedExecutorHandle h,
                                                uint64_t account_id)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<FloxSimulatedExecutorImpl*>(h)->executor.stpGroupFor(account_id);
+  FLOX_CAPI_LEAVE;
 }
 
 // Latency distribution handle bridging.
@@ -2892,40 +3771,51 @@ inline LatencyDistribution* toDist(FloxLatencyDistributionHandle h)
 
 FloxLatencyDistributionHandle flox_latency_distribution_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new LatencyDistribution();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_latency_distribution_destroy(FloxLatencyDistributionHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toDist(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_latency_distribution_set_constant(FloxLatencyDistributionHandle h, int64_t ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   const double rho = toDist(h)->burstCorrelation();
   *toDist(h) = LatencyDistribution::constant(ns);
   toDist(h)->setBurstCorrelation(rho);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_latency_distribution_set_uniform(FloxLatencyDistributionHandle h, int64_t lo_ns,
                                            int64_t hi_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   const double rho = toDist(h)->burstCorrelation();
   *toDist(h) = LatencyDistribution::uniform(lo_ns, hi_ns);
   toDist(h)->setBurstCorrelation(rho);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_latency_distribution_set_lognormal(FloxLatencyDistributionHandle h,
                                              int64_t median_ns, double sigma)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   const double rho = toDist(h)->burstCorrelation();
   *toDist(h) = LatencyDistribution::lognormal(median_ns, sigma);
   toDist(h)->setBurstCorrelation(rho);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_latency_distribution_set_empirical(FloxLatencyDistributionHandle h,
                                              const int64_t* samples_ns, uint32_t n_samples)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   const double rho = toDist(h)->burstCorrelation();
   std::vector<int64_t> samples;
   samples.reserve(n_samples);
@@ -2935,37 +3825,48 @@ void flox_latency_distribution_set_empirical(FloxLatencyDistributionHandle h,
   }
   *toDist(h) = LatencyDistribution::empirical(samples);
   toDist(h)->setBurstCorrelation(rho);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_latency_distribution_set_burst_correlation(FloxLatencyDistributionHandle h, double rho)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toDist(h)->setBurstCorrelation(rho);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 int64_t flox_latency_distribution_median_ns(FloxLatencyDistributionHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toDist(h)->medianNs();
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_simulated_executor_set_submit_ack_latency_distribution(
     FloxSimulatedExecutorHandle h, FloxLatencyDistributionHandle dist)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setSubmitAckLatencyDistribution(
       *toDist(dist));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_cancel_ack_latency_distribution(
     FloxSimulatedExecutorHandle h, FloxLatencyDistributionHandle dist)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setCancelAckLatencyDistribution(
       *toDist(dist));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_set_replace_ack_latency_distribution(
     FloxSimulatedExecutorHandle h, FloxLatencyDistributionHandle dist)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.setReplaceAckLatencyDistribution(
       *toDist(dist));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ====== Rate-limit policy bridging ======
@@ -2983,12 +3884,16 @@ inline flox::RateLimitPolicy* toRateLimit(FloxRateLimitPolicyHandle h)
 
 extern "C" FloxRateLimitPolicyHandle flox_rate_limit_policy_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new flox::RateLimitPolicy();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_rate_limit_policy_destroy(FloxRateLimitPolicyHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toRateLimit(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_rate_limit_policy_add_bucket(FloxRateLimitPolicyHandle h,
@@ -2996,8 +3901,10 @@ extern "C" void flox_rate_limit_policy_add_bucket(FloxRateLimitPolicyHandle h,
                                                   uint32_t capacity, uint32_t submit_w,
                                                   uint32_t cancel_w, uint32_t replace_w)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toRateLimit(h)->addBucket(name ? std::string(name) : std::string("bucket"), window_ns,
                             capacity, submit_w, cancel_w, replace_w);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_rate_limit_policy_add_bucket_family(
@@ -3005,6 +3912,7 @@ extern "C" void flox_rate_limit_policy_add_bucket_family(
     uint32_t capacity, uint32_t submit_w, uint32_t cancel_w, uint32_t replace_w,
     uint8_t family, uint32_t query_w)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   RateLimitPolicy::EndpointFamily f = RateLimitPolicy::EndpointFamily::Trading;
   switch (family)
   {
@@ -3020,18 +3928,22 @@ extern "C" void flox_rate_limit_policy_add_bucket_family(
   }
   toRateLimit(h)->addBucket(name ? std::string(name) : std::string("bucket"), window_ns,
                             capacity, submit_w, cancel_w, replace_w, f, query_w);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_rate_limit_policy_set_ban(FloxRateLimitPolicyHandle h,
                                                uint32_t after_consecutive_rejects,
                                                int64_t ban_duration_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toRateLimit(h)->setBan(after_consecutive_rejects, ban_duration_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" int flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
                                                    const char* name)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h || !name)
   {
     return 0;
@@ -3058,22 +3970,28 @@ extern "C" int flox_rate_limit_policy_load_profile(FloxRateLimitPolicyHandle h,
     return 0;
   }
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" int64_t flox_rate_limit_policy_ban_until_ns(FloxRateLimitPolicyHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toRateLimit(h)->banUntilNs();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_rate_limit_policy_consecutive_rejects(FloxRateLimitPolicyHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toRateLimit(h)->consecutiveRejects();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_rate_limit_policy_bucket_state(FloxRateLimitPolicyHandle h,
                                                         int64_t now_ns, int64_t* out_buf,
                                                         uint32_t max_buckets)
 {
+  FLOX_CAPI_ENTER(h);
   auto states = toRateLimit(h)->bucketStates(now_ns);
   if (out_buf == nullptr || max_buckets == 0)
   {
@@ -3088,38 +4006,49 @@ extern "C" uint32_t flox_rate_limit_policy_bucket_state(FloxRateLimitPolicyHandl
     out_buf[i * 4 + 3] = 0;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_simulated_executor_set_rate_limit_policy(
     FloxSimulatedExecutorHandle exec_h, FloxRateLimitPolicyHandle policy_h)
 {
+  FLOX_CAPI_ENTER_VOID(exec_h);
   static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor.setRateLimitPolicy(
       *toRateLimit(policy_h));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_simulated_executor_clear_rate_limit_policy(
     FloxSimulatedExecutorHandle exec_h)
 {
+  FLOX_CAPI_ENTER_VOID(exec_h);
   static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor.clearRateLimitPolicy();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" FloxVenueAvailabilityHandle flox_venue_availability_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new VenueAvailability();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_venue_availability_destroy(FloxVenueAvailabilityHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<VenueAvailability*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_venue_availability_schedule_outage(FloxVenueAvailabilityHandle h,
                                                         int64_t start_ns, int64_t duration_ns,
                                                         uint8_t policy, int64_t gtc_ttl_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<VenueAvailability*>(h)->scheduleOutage(start_ns, duration_ns,
                                                      static_cast<OnOutage>(policy),
                                                      gtc_ttl_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_venue_availability_auto_random_outages(FloxVenueAvailabilityHandle h,
@@ -3127,14 +4056,18 @@ extern "C" void flox_venue_availability_auto_random_outages(FloxVenueAvailabilit
                                                             int64_t mean_duration_ns,
                                                             uint8_t policy, uint64_t seed)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<VenueAvailability*>(h)->autoRandomOutages(per_day, mean_duration_ns,
                                                         static_cast<OnOutage>(policy),
                                                         seed);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint8_t flox_venue_availability_is_up(FloxVenueAvailabilityHandle h, int64_t now_ns)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VenueAvailability*>(h)->isUp(now_ns) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_venue_availability_schedule_outage_ex(
@@ -3142,71 +4075,91 @@ extern "C" void flox_venue_availability_schedule_outage_ex(
     uint8_t outage_type, uint8_t policy, int64_t gtc_ttl_ns,
     double degradation_latency_multiplier, double wrong_side_recovery_bps)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<VenueAvailability*>(h)->scheduleOutageEx(
       start_ns, duration_ns, static_cast<OutageType>(outage_type),
       static_cast<OnOutage>(policy), gtc_ttl_ns,
       degradation_latency_multiplier, wrong_side_recovery_bps);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint8_t flox_venue_availability_submits_allowed(FloxVenueAvailabilityHandle h,
                                                            int64_t now_ns)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VenueAvailability*>(h)->submitsAllowed(now_ns) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_venue_availability_cancels_allowed(FloxVenueAvailabilityHandle h,
                                                            int64_t now_ns)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VenueAvailability*>(h)->cancelsAllowed(now_ns) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_venue_availability_book_updates_allowed(
     FloxVenueAvailabilityHandle h, int64_t now_ns)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VenueAvailability*>(h)->bookUpdatesAllowed(now_ns) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_venue_availability_trades_allowed(FloxVenueAvailabilityHandle h,
                                                           int64_t now_ns)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VenueAvailability*>(h)->tradesAllowed(now_ns) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_venue_availability_latency_multiplier(
     FloxVenueAvailabilityHandle h, int64_t now_ns)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VenueAvailability*>(h)->latencyMultiplier(now_ns);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_venue_availability_consume_wrong_side_recovery_bps(
     FloxVenueAvailabilityHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<VenueAvailability*>(h)->consumeWrongSideRecoveryBps();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_simulated_executor_set_venue_availability(
     FloxSimulatedExecutorHandle exec_h, FloxVenueAvailabilityHandle va_h)
 {
+  FLOX_CAPI_ENTER_VOID(exec_h);
   static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor.setVenueAvailability(
       static_cast<VenueAvailability*>(va_h));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_on_trade_qty(FloxSimulatedExecutorHandle h, uint32_t symbol, double price,
                                           double quantity, uint8_t is_buy)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onTrade(
       symbol, Price::fromDouble(price), Quantity::fromDouble(quantity), is_buy != 0);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_on_best_levels(FloxSimulatedExecutorHandle h, uint32_t symbol, double bid_price,
                                             double bid_qty, double ask_price, double ask_qty)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   std::pmr::monotonic_buffer_resource pool(512);
   std::pmr::vector<BookLevel> bids(&pool);
   std::pmr::vector<BookLevel> asks(&pool);
   bids.emplace_back(Price::fromDouble(bid_price), Quantity::fromDouble(bid_qty));
   asks.emplace_back(Price::fromDouble(ask_price), Quantity::fromDouble(ask_qty));
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle h, uint32_t symbol,
@@ -3214,6 +4167,7 @@ void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle h, uin
                                               uint32_t n_bids, const double* ask_prices,
                                               const double* ask_qtys, uint32_t n_asks)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   std::pmr::monotonic_buffer_resource pool(1024);
   std::pmr::vector<BookLevel> bids(&pool);
   std::pmr::vector<BookLevel> asks(&pool);
@@ -3228,6 +4182,7 @@ void flox_simulated_executor_on_book_snapshot(FloxSimulatedExecutorHandle h, uin
     asks.emplace_back(Price::fromDouble(ask_prices[i]), Quantity::fromDouble(ask_qtys[i]));
   }
   static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBookUpdate(symbol, bids, asks);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 struct FloxBacktestResultImpl
@@ -3242,6 +4197,7 @@ FloxBacktestResultHandle flox_backtest_result_create(double initial_capital, dou
                                                      double risk_free_rate,
                                                      double annualization_factor)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* impl = new FloxBacktestResultImpl();
   impl->config.initialCapital = initial_capital;
   impl->config.feeRate = fee_rate;
@@ -3252,17 +4208,21 @@ FloxBacktestResultHandle flox_backtest_result_create(double initial_capital, dou
       (annualization_factor > 0.0) ? annualization_factor : 252.0;
   impl->result = std::make_unique<BacktestResult>(impl->config);
   return impl;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_backtest_result_destroy(FloxBacktestResultHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<FloxBacktestResultImpl*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_result_record_fill(FloxBacktestResultHandle h, uint64_t order_id,
                                       uint32_t symbol, uint8_t side, double price,
                                       double quantity, int64_t timestamp_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   Fill fill{};
   fill.orderId = order_id;
   fill.symbol = symbol;
@@ -3271,19 +4231,23 @@ void flox_backtest_result_record_fill(FloxBacktestResultHandle h, uint64_t order
   fill.quantity = Quantity::fromDouble(quantity);
   fill.timestampNs = UnixNanos::fromRaw(timestamp_ns);
   static_cast<FloxBacktestResultImpl*>(h)->result->recordFill(fill);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_result_ingest_executor(FloxBacktestResultHandle h, FloxSimulatedExecutorHandle eh)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   auto* impl = static_cast<FloxBacktestResultImpl*>(h);
   for (const auto& fill : static_cast<FloxSimulatedExecutorImpl*>(eh)->executor.fills())
   {
     impl->result->recordFill(fill);
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_result_stats(FloxBacktestResultHandle h, FloxBacktestStats* out)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   if (!out)
   {
     return;
@@ -3318,11 +4282,13 @@ void flox_backtest_result_stats(FloxBacktestResultHandle h, FloxBacktestStats* o
   out->returnPct = stats.returnPct;
   out->startTimeNs = stats.startTimeNs.raw();
   out->endTimeNs = stats.endTimeNs.raw();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle h, FloxEquityPoint* out,
                                            uint32_t max_points)
 {
+  FLOX_CAPI_ENTER(h);
   const auto& curve = static_cast<FloxBacktestResultImpl*>(h)->result->equityCurve();
   const uint32_t total = static_cast<uint32_t>(curve.size());
   if (!out)
@@ -3337,20 +4303,24 @@ uint32_t flox_backtest_result_equity_curve(FloxBacktestResultHandle h, FloxEquit
     out[i].drawdown_pct = curve[i].drawdownPct;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_backtest_result_write_equity_curve_csv(FloxBacktestResultHandle h, const char* path)
 {
+  FLOX_CAPI_ENTER(h);
   if (!path)
   {
     return 0;
   }
   return static_cast<FloxBacktestResultImpl*>(h)->result->writeEquityCurveCsv(path) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_backtest_result_trades(FloxBacktestResultHandle h, FloxBacktestTrade* out,
                                      uint32_t max_trades)
 {
+  FLOX_CAPI_ENTER(h);
   const auto& trades = static_cast<FloxBacktestResultImpl*>(h)->result->trades();
   const uint32_t total = static_cast<uint32_t>(trades.size());
   if (!out)
@@ -3372,6 +4342,7 @@ uint32_t flox_backtest_result_trades(FloxBacktestResultHandle h, FloxBacktestTra
     out[i].fee = t.fee.toDouble();
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -3387,6 +4358,9 @@ FloxMergeResult flox_segment_merge_full(const char* input_paths, size_t num_path
                                         const char* output_dir, const char* output_name,
                                         uint8_t sort)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(input_paths);
+  FLOX_CAPI_REQUIRE(output_dir);
   std::vector<std::filesystem::path> paths;
   const char* p = input_paths;
   for (size_t i = 0; i < num_paths; ++i)
@@ -3401,18 +4375,26 @@ FloxMergeResult flox_segment_merge_full(const char* input_paths, size_t num_path
   auto r = replay::SegmentOps::merge(paths, cfg);
   return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_merged, r.events_written,
           r.bytes_written};
+  FLOX_CAPI_LEAVE;
 }
 
 FloxMergeResult flox_segment_merge_dir(const char* input_dir, const char* output_dir)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(input_dir);
+  FLOX_CAPI_REQUIRE(output_dir);
   auto r = replay::quickMerge(input_dir, output_dir);
   return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_merged, r.events_written,
           r.bytes_written};
+  FLOX_CAPI_LEAVE;
 }
 
 FloxSplitResult flox_segment_split(const char* input_path, const char* output_dir, uint8_t mode,
                                    int64_t time_interval_ns, uint64_t events_per_file)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(input_path);
+  FLOX_CAPI_REQUIRE(output_dir);
   replay::SplitConfig cfg;
   cfg.output_dir = output_dir;
   cfg.mode = static_cast<replay::SplitMode>(mode);
@@ -3420,12 +4402,16 @@ FloxSplitResult flox_segment_split(const char* input_path, const char* output_di
   cfg.events_per_file = events_per_file;
   auto r = replay::SegmentOps::split(input_path, cfg);
   return {r.success ? (uint8_t)1 : (uint8_t)0, r.segments_created, r.events_written};
+  FLOX_CAPI_LEAVE;
 }
 
 FloxExportResult flox_segment_export(const char* input_path, const char* output_path,
                                      uint8_t format, int64_t from_ns, int64_t to_ns,
                                      const uint32_t* symbols, uint32_t num_symbols)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(input_path);
+  FLOX_CAPI_REQUIRE(output_path);
   replay::ExportConfig cfg;
   cfg.output_path = output_path;
   cfg.format = static_cast<replay::ExportFormat>(format);
@@ -3443,34 +4429,47 @@ FloxExportResult flox_segment_export(const char* input_path, const char* output_
   }
   auto r = replay::SegmentOps::exportData(input_path, cfg);
   return {r.success ? (uint8_t)1 : (uint8_t)0, r.events_exported, r.bytes_written};
+  FLOX_CAPI_LEAVE;
 }
 
 uint8_t flox_segment_recompress(const char* input_path, const char* output_path,
                                 uint8_t compression)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(input_path);
+  FLOX_CAPI_REQUIRE(output_path);
   return replay::SegmentOps::recompress(input_path, output_path, toCompression(compression)) ? 1
                                                                                              : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_segment_extract_symbols(const char* input_path, const char* output_path,
                                       const uint32_t* symbols, uint32_t num_symbols)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(input_path);
+  FLOX_CAPI_REQUIRE(output_path);
   std::set<uint32_t> symSet(symbols, symbols + num_symbols);
   replay::WriterConfig wc;
   auto out = std::filesystem::path(output_path);
   wc.output_dir = out.parent_path();
   wc.output_filename = out.filename().string();
   return replay::SegmentOps::extractSymbols(input_path, output_path, symSet, wc);
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_segment_extract_time_range(const char* input_path, const char* output_path,
                                          int64_t from_ns, int64_t to_ns)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(input_path);
+  FLOX_CAPI_REQUIRE(output_path);
   replay::WriterConfig wc;
   auto out = std::filesystem::path(output_path);
   wc.output_dir = out.parent_path();
   wc.output_filename = out.filename().string();
   return replay::SegmentOps::extractTimeRange(input_path, output_path, from_ns, to_ns, wc);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -3480,6 +4479,8 @@ uint64_t flox_segment_extract_time_range(const char* input_path, const char* out
 FloxSegmentValidation flox_segment_validate_full(const char* path, uint8_t verify_crc,
                                                  uint8_t verify_timestamps)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(path);
   replay::ValidatorConfig cfg;
   cfg.verify_crc = verify_crc != 0;
   cfg.verify_timestamps = verify_timestamps != 0;
@@ -3495,15 +4496,19 @@ FloxSegmentValidation flox_segment_validate_full(const char* path, uint8_t verif
           r.book_updates_found,
           r.crc_errors,
           r.timestamp_anomalies};
+  FLOX_CAPI_LEAVE;
 }
 
 FloxDatasetValidation flox_dataset_validate(const char* data_dir)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(data_dir);
   replay::DatasetValidator validator;
   auto r = validator.validate(data_dir);
   return {r.valid ? (uint8_t)1 : (uint8_t)0, r.total_segments, r.valid_segments,
           r.corrupted_segments, r.total_events, r.total_bytes,
           r.first_timestamp, r.last_timestamp};
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -3514,6 +4519,8 @@ FloxDataReaderHandle flox_data_reader_create_filtered(const char* data_dir, int6
                                                       int64_t to_ns, const uint32_t* symbols,
                                                       uint32_t num_symbols)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(data_dir);
   replay::ReaderConfig cfg;
   cfg.data_dir = data_dir;
   if (from_ns > 0)
@@ -3529,6 +4536,7 @@ FloxDataReaderHandle flox_data_reader_create_filtered(const char* data_dir, int6
     cfg.symbols.insert(symbols, symbols + num_symbols);
   }
   return new replay::BinaryLogReader(cfg);
+  FLOX_CAPI_LEAVE;
 }
 
 FloxDataReaderHandle flox_data_reader_create_ordered(const char* data_dir, int64_t from_ns,
@@ -3537,6 +4545,8 @@ FloxDataReaderHandle flox_data_reader_create_ordered(const char* data_dir, int64
                                                      int64_t reorder_window_ns,
                                                      int32_t strict_ordering)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
+  FLOX_CAPI_REQUIRE(data_dir);
   replay::ReaderConfig cfg;
   cfg.data_dir = data_dir;
   if (from_ns > 0)
@@ -3557,27 +4567,33 @@ FloxDataReaderHandle flox_data_reader_create_ordered(const char* data_dir, int64
   }
   cfg.strict_ordering = strict_ordering != 0;
   return new replay::BinaryLogReader(cfg);
+  FLOX_CAPI_LEAVE;
 }
 
 FloxDatasetSummary flox_data_reader_summary(FloxDataReaderHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   auto s = reader->summary();
   return {s.first_event_ns, s.last_event_ns, s.total_events, s.segment_count, s.total_bytes,
           s.durationSeconds()};
+  FLOX_CAPI_LEAVE;
 }
 
 FloxReaderStats flox_data_reader_stats(FloxDataReaderHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   auto s = reader->stats();
   return {s.files_read, s.events_read, s.trades_read, s.book_updates_read,
           s.bytes_read, s.crc_errors, s.late_dropped, s.unknown_frames_skipped};
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_data_reader_read_trades(FloxDataReaderHandle h, FloxTradeRecord* trades_out,
                                       uint64_t max_trades)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   uint64_t count = 0;
   reader->forEach(
@@ -3596,6 +4612,7 @@ uint64_t flox_data_reader_read_trades(FloxDataReaderHandle h, FloxTradeRecord* t
         return !trades_out || count < max_trades;
       });
   return count;
+  FLOX_CAPI_LEAVE;
 }
 
 // Layout invariants — language bindings (Codon, QuickJS) parse these structs
@@ -3607,6 +4624,7 @@ static_assert(sizeof(FloxLevel) == 24, "FloxLevel must be 24 bytes");
 uint64_t flox_data_reader_read_bbo(FloxDataReaderHandle h, FloxBBO* bbos_out,
                                    uint64_t max_events)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   uint64_t count = 0;
   reader->forEach(
@@ -3642,10 +4660,12 @@ uint64_t flox_data_reader_read_bbo(FloxDataReaderHandle h, FloxBBO* bbos_out,
         return !bbos_out || count < max_events;
       });
   return count;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_data_reader_count_book_updates(FloxDataReaderHandle h, uint64_t* total_levels_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   uint64_t events = 0;
   uint64_t levels = 0;
@@ -3665,6 +4685,7 @@ uint64_t flox_data_reader_count_book_updates(FloxDataReaderHandle h, uint64_t* t
     *total_levels_out = levels;
   }
   return events;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_data_reader_read_book_updates(FloxDataReaderHandle h,
@@ -3673,6 +4694,7 @@ uint64_t flox_data_reader_read_book_updates(FloxDataReaderHandle h,
                                             FloxLevel* levels_out,
                                             uint64_t max_levels)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   uint64_t events = 0;
   uint64_t levels_written = 0;
@@ -3719,6 +4741,7 @@ uint64_t flox_data_reader_read_book_updates(FloxDataReaderHandle h,
         return false;
       });
   return events;
+  FLOX_CAPI_LEAVE;
 }
 
 // ── _from variants ─────────────────────────────────────────────
@@ -3729,6 +4752,7 @@ uint64_t flox_data_reader_read_book_updates(FloxDataReaderHandle h,
 uint64_t flox_data_reader_read_trades_from(FloxDataReaderHandle h, int64_t start_ts_ns,
                                            FloxTradeRecord* trades_out, uint64_t max_trades)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   uint64_t count = 0;
   reader->forEachFrom(start_ts_ns,
@@ -3748,11 +4772,13 @@ uint64_t flox_data_reader_read_trades_from(FloxDataReaderHandle h, int64_t start
                         return !trades_out || count < max_trades;
                       });
   return count;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_data_reader_read_bbo_from(FloxDataReaderHandle h, int64_t start_ts_ns,
                                         FloxBBO* bbos_out, uint64_t max_events)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   uint64_t count = 0;
   reader->forEachFrom(start_ts_ns,
@@ -3788,11 +4814,13 @@ uint64_t flox_data_reader_read_bbo_from(FloxDataReaderHandle h, int64_t start_ts
                         return !bbos_out || count < max_events;
                       });
   return count;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_data_reader_count_book_updates_from(FloxDataReaderHandle h, int64_t start_ts_ns,
                                                   uint64_t* total_levels_out)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   uint64_t events = 0;
   uint64_t levels = 0;
@@ -3812,6 +4840,7 @@ uint64_t flox_data_reader_count_book_updates_from(FloxDataReaderHandle h, int64_
     *total_levels_out = levels;
   }
   return events;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_data_reader_read_book_updates_from(FloxDataReaderHandle h, int64_t start_ts_ns,
@@ -3819,6 +4848,7 @@ uint64_t flox_data_reader_read_book_updates_from(FloxDataReaderHandle h, int64_t
                                                  uint64_t max_events, FloxLevel* levels_out,
                                                  uint64_t max_levels)
 {
+  FLOX_CAPI_ENTER(h);
   auto* reader = static_cast<replay::BinaryLogReader*>(h);
   uint64_t events = 0;
   uint64_t levels_written = 0;
@@ -3868,6 +4898,7 @@ uint64_t flox_data_reader_read_book_updates_from(FloxDataReaderHandle h, int64_t
                         return false;
                       });
   return events;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -3876,9 +4907,11 @@ uint64_t flox_data_reader_read_book_updates_from(FloxDataReaderHandle h, int64_t
 
 FloxWriterStats flox_data_writer_stats(FloxDataWriterHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   auto* w = static_cast<replay::BinaryLogWriter*>(h);
   auto s = w->stats();
   return {s.bytes_written, s.events_written, s.segments_created, s.trades_written};
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -3910,6 +4943,7 @@ flox_merged_tape_reader_create(const char* const* paths, uint32_t n_paths,
                                const uint32_t* symbol_filter,
                                uint32_t n_filter)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (!paths || n_paths == 0)
   {
     return nullptr;
@@ -3956,27 +4990,33 @@ flox_merged_tape_reader_create(const char* const* paths, uint32_t n_paths,
     // surface as a NULL handle, leaving caller to decide.
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_merged_tape_reader_destroy(FloxMergedTapeReaderHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint32_t flox_merged_tape_reader_symbol_count(FloxMergedTapeReaderHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return 0;
   }
   auto* impl = static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h);
   return static_cast<uint32_t>(impl->reader->symbols().size());
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_merged_tape_reader_get_symbols(FloxMergedTapeReaderHandle h,
                                              FloxMergedSymbol* out,
                                              uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return 0;
@@ -3998,10 +5038,12 @@ uint32_t flox_merged_tape_reader_get_symbols(FloxMergedTapeReaderHandle h,
     out[i].name = impl->sym_names[i].c_str();
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_merged_tape_reader_tape_count(FloxMergedTapeReaderHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return 0;
@@ -4010,12 +5052,14 @@ uint32_t flox_merged_tape_reader_tape_count(FloxMergedTapeReaderHandle h)
       static_cast<capi_impl::FloxMergedTapeReaderImpl*>(h)
           ->reader->perTapeStats()
           .size());
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_merged_tape_reader_get_tape_stats(FloxMergedTapeReaderHandle h,
                                                 FloxMergedTapeStats* out,
                                                 uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return 0;
@@ -4036,12 +5080,14 @@ uint32_t flox_merged_tape_reader_get_tape_stats(FloxMergedTapeReaderHandle h,
     out[i].path = impl->tape_paths[i].c_str();
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_merged_tape_reader_time_range(FloxMergedTapeReaderHandle h,
                                         int64_t* min_first_ns_out,
                                         int64_t* max_last_ns_out)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   if (!h)
   {
     if (min_first_ns_out)
@@ -4064,10 +5110,12 @@ void flox_merged_tape_reader_time_range(FloxMergedTapeReaderHandle h,
   {
     *max_last_ns_out = b;
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint64_t flox_merged_tape_reader_count_trades(FloxMergedTapeReaderHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return 0;
@@ -4078,12 +5126,14 @@ uint64_t flox_merged_tape_reader_count_trades(FloxMergedTapeReaderHandle h)
     impl->cached_trades = impl->reader->readTrades();
   }
   return impl->cached_trades->size();
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_merged_tape_reader_read_trades(FloxMergedTapeReaderHandle h,
                                              FloxTradeRecord* trades_out,
                                              uint64_t max_trades)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return 0;
@@ -4110,11 +5160,13 @@ uint64_t flox_merged_tape_reader_read_trades(FloxMergedTapeReaderHandle h,
     trades_out[i].side = src[i].side;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_merged_tape_reader_count_books(FloxMergedTapeReaderHandle h,
                                              uint64_t* total_levels_out)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     if (total_levels_out)
@@ -4133,6 +5185,7 @@ uint64_t flox_merged_tape_reader_count_books(FloxMergedTapeReaderHandle h,
     *total_levels_out = impl->cached_books->second.size();
   }
   return impl->cached_books->first.size();
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_merged_tape_reader_read_books(FloxMergedTapeReaderHandle h,
@@ -4141,6 +5194,7 @@ uint64_t flox_merged_tape_reader_read_books(FloxMergedTapeReaderHandle h,
                                             FloxLevel* levels_out,
                                             uint64_t max_levels)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return 0;
@@ -4192,6 +5246,7 @@ uint64_t flox_merged_tape_reader_read_books(FloxMergedTapeReaderHandle h,
     }
   }
   return n_ev;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -4200,12 +5255,16 @@ uint64_t flox_merged_tape_reader_read_books(FloxMergedTapeReaderHandle h,
 
 FloxPartitionerHandle flox_partitioner_create(const char* data_dir)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new replay::Partitioner(std::filesystem::path(data_dir));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_partitioner_destroy(FloxPartitionerHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete static_cast<replay::Partitioner*>(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 static uint32_t copyPartitions(const std::vector<replay::Partition>& parts,
@@ -4228,43 +5287,55 @@ static uint32_t copyPartitions(const std::vector<replay::Partition>& parts,
 uint32_t flox_partitioner_by_time(FloxPartitionerHandle h, uint32_t num_partitions,
                                   int64_t warmup_ns, FloxPartition* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyPartitions(
       static_cast<replay::Partitioner*>(h)->partitionByTime(num_partitions, warmup_ns), out, max);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_partitioner_by_duration(FloxPartitionerHandle h, int64_t duration_ns,
                                       int64_t warmup_ns, FloxPartition* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyPartitions(
       static_cast<replay::Partitioner*>(h)->partitionByDuration(duration_ns, warmup_ns), out, max);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_partitioner_by_calendar(FloxPartitionerHandle h, uint8_t unit, int64_t warmup_ns,
                                       FloxPartition* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyPartitions(
       static_cast<replay::Partitioner*>(h)->partitionByCalendar(
           static_cast<replay::Partitioner::CalendarUnit>(unit), warmup_ns),
       out, max);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_partitioner_by_symbol(FloxPartitionerHandle h, uint32_t num_partitions,
                                     FloxPartition* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyPartitions(
       static_cast<replay::Partitioner*>(h)->partitionBySymbol(num_partitions), out, max);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_partitioner_per_symbol(FloxPartitionerHandle h, FloxPartition* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyPartitions(static_cast<replay::Partitioner*>(h)->partitionPerSymbol(), out, max);
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_partitioner_by_event_count(FloxPartitionerHandle h, uint32_t num_partitions,
                                          FloxPartition* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyPartitions(
       static_cast<replay::Partitioner*>(h)->partitionByEventCount(num_partitions), out, max);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -4273,63 +5344,81 @@ uint32_t flox_partitioner_by_event_count(FloxPartitionerHandle h, uint32_t num_p
 
 void flox_data_reader_summary_p(FloxDataReaderHandle h, void* out)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   auto s = flox_data_reader_summary(h);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_data_reader_stats_p(FloxDataReaderHandle h, void* out)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   auto s = flox_data_reader_stats(h);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_data_writer_stats_p(FloxDataWriterHandle h, void* out)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   auto s = flox_data_writer_stats(h);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_segment_merge_full_p(const char* input_paths, size_t num_paths,
                                const char* output_dir, const char* output_name,
                                uint8_t sort, void* out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto s = flox_segment_merge_full(input_paths, num_paths, output_dir, output_name, sort);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_segment_merge_dir_p(const char* input_dir, const char* output_dir, void* out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto s = flox_segment_merge_dir(input_dir, output_dir);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_segment_split_p(const char* input_path, const char* output_dir, uint8_t mode,
                           int64_t time_interval_ns, uint64_t events_per_file, void* out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto s = flox_segment_split(input_path, output_dir, mode, time_interval_ns, events_per_file);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_segment_export_p(const char* input_path, const char* output_path, uint8_t format,
                            int64_t from_ns, int64_t to_ns,
                            const uint32_t* symbols, uint32_t num_symbols, void* out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto s = flox_segment_export(input_path, output_path, format, from_ns, to_ns,
                                symbols, num_symbols);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_segment_validate_full_p(const char* path, uint8_t verify_crc,
                                   uint8_t verify_timestamps, void* out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto s = flox_segment_validate_full(path, verify_crc, verify_timestamps);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_dataset_validate_p(const char* data_dir, void* out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto s = flox_dataset_validate(data_dir);
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -4928,13 +6017,20 @@ class RunnerSignalHandler : public ISignalHandler
         case SignalType::TakeProfitMarket:
         case SignalType::TakeProfitLimit:
         case SignalType::TrailingStop:
+        case SignalType::OCO:
           view.flags = static_cast<uint32_t>(flox::run::SignalFlags::Enter);
           break;
         case SignalType::Cancel:
         case SignalType::CancelAll:
           view.flags = static_cast<uint32_t>(flox::run::SignalFlags::Exit);
           break;
-        default:
+        case SignalType::Modify:
+        case SignalType::ProvideLiquidity:
+        case SignalType::WithdrawLiquidity:
+          // Neither an entry nor an exit: a modify keeps the position it
+          // already has, and the liquidity pair acts on a pool, not a
+          // position. Listed rather than left to a default so the next
+          // SignalType added does not silently join them.
           break;
       }
       view.strength_raw = 0;
@@ -4972,7 +6068,14 @@ class RunnerSignalHandler : public ISignalHandler
         case SignalType::TrailingStop:
           name = "trailing_stop";
           break;
-        default:
+        case SignalType::OCO:
+          name = "oco";
+          break;
+        case SignalType::ProvideLiquidity:
+          name = "provide_liquidity";
+          break;
+        case SignalType::WithdrawLiquidity:
+          name = "withdraw_liquidity";
           break;
       }
       view.name = name;
@@ -4998,37 +6101,43 @@ class RunnerSignalHandler : public ISignalHandler
     switch (sig.type)
     {
       case SignalType::Market:
-        fs.order_type = 0;
+        fs.order_type = FLOX_SIGNAL_TYPE_MARKET;
         break;
       case SignalType::Limit:
-        fs.order_type = 1;
+        fs.order_type = FLOX_SIGNAL_TYPE_LIMIT;
         break;
       case SignalType::StopMarket:
-        fs.order_type = 2;
+        fs.order_type = FLOX_SIGNAL_TYPE_STOP_MARKET;
         break;
       case SignalType::StopLimit:
-        fs.order_type = 3;
+        fs.order_type = FLOX_SIGNAL_TYPE_STOP_LIMIT;
         break;
       case SignalType::TakeProfitMarket:
-        fs.order_type = 4;
+        fs.order_type = FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET;
         break;
       case SignalType::TakeProfitLimit:
-        fs.order_type = 5;
+        fs.order_type = FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT;
         break;
       case SignalType::TrailingStop:
-        fs.order_type = 6;
+        fs.order_type = FLOX_SIGNAL_TYPE_TRAILING_STOP;
         break;
       case SignalType::Cancel:
-        fs.order_type = 7;
+        fs.order_type = FLOX_SIGNAL_TYPE_CANCEL;
         break;
       case SignalType::CancelAll:
-        fs.order_type = 8;
+        fs.order_type = FLOX_SIGNAL_TYPE_CANCEL_ALL;
         break;
       case SignalType::Modify:
-        fs.order_type = 9;
+        fs.order_type = FLOX_SIGNAL_TYPE_MODIFY;
         break;
-      default:
-        fs.order_type = 0;
+      case SignalType::OCO:
+        fs.order_type = FLOX_SIGNAL_TYPE_OCO;
+        break;
+      case SignalType::ProvideLiquidity:
+        fs.order_type = FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY;
+        break;
+      case SignalType::WithdrawLiquidity:
+        fs.order_type = FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY;
         break;
     }
 
@@ -6299,104 +7408,140 @@ using namespace capi_impl;
 
 FloxRiskManagerHandle flox_risk_manager_create(FloxRiskManagerCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* rm = new FloxRiskManagerImpl{callbacks};
   return static_cast<FloxRiskManagerHandle>(rm);
+  FLOX_CAPI_LEAVE;
 }
 
 FloxRiskManagerHandle flox_risk_manager_create_p(const FloxRiskManagerCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxRiskManagerCallbacks cbs = callbacks ? *callbacks : FloxRiskManagerCallbacks{};
   return flox_risk_manager_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_risk_manager_destroy(FloxRiskManagerHandle rm)
 {
+  FLOX_CAPI_ENTER_DESTROY(rm);
   delete static_cast<FloxRiskManagerImpl*>(rm);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxKillSwitchHandle flox_kill_switch_create(FloxKillSwitchCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* ks = new FloxKillSwitchImpl{callbacks};
   return static_cast<FloxKillSwitchHandle>(ks);
+  FLOX_CAPI_LEAVE;
 }
 
 FloxKillSwitchHandle flox_kill_switch_create_p(const FloxKillSwitchCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxKillSwitchCallbacks cbs = callbacks ? *callbacks : FloxKillSwitchCallbacks{};
   return flox_kill_switch_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_kill_switch_destroy(FloxKillSwitchHandle ks)
 {
+  FLOX_CAPI_ENTER_DESTROY(ks);
   delete static_cast<FloxKillSwitchImpl*>(ks);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxOrderValidatorHandle flox_order_validator_create(FloxOrderValidatorCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* ov = new FloxOrderValidatorImpl{callbacks};
   return static_cast<FloxOrderValidatorHandle>(ov);
+  FLOX_CAPI_LEAVE;
 }
 
 FloxOrderValidatorHandle flox_order_validator_create_p(const FloxOrderValidatorCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxOrderValidatorCallbacks cbs = callbacks ? *callbacks : FloxOrderValidatorCallbacks{};
   return flox_order_validator_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_order_validator_destroy(FloxOrderValidatorHandle ov)
 {
+  FLOX_CAPI_ENTER_DESTROY(ov);
   delete static_cast<FloxOrderValidatorImpl*>(ov);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxPnLTrackerHandle flox_pnl_tracker_create(FloxPnLTrackerCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return static_cast<FloxPnLTrackerHandle>(new FloxPnLTrackerImpl{callbacks});
+  FLOX_CAPI_LEAVE;
 }
 
 FloxPnLTrackerHandle flox_pnl_tracker_create_p(const FloxPnLTrackerCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxPnLTrackerCallbacks cbs = callbacks ? *callbacks : FloxPnLTrackerCallbacks{};
   return flox_pnl_tracker_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_pnl_tracker_destroy(FloxPnLTrackerHandle tracker)
 {
+  FLOX_CAPI_ENTER_DESTROY(tracker);
   delete static_cast<FloxPnLTrackerImpl*>(tracker);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxStorageSinkHandle flox_storage_sink_create(FloxStorageSinkCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return static_cast<FloxStorageSinkHandle>(new FloxStorageSinkImpl{callbacks});
+  FLOX_CAPI_LEAVE;
 }
 
 FloxStorageSinkHandle flox_storage_sink_create_p(const FloxStorageSinkCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxStorageSinkCallbacks cbs = callbacks ? *callbacks : FloxStorageSinkCallbacks{};
   return flox_storage_sink_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_storage_sink_destroy(FloxStorageSinkHandle sink)
 {
+  FLOX_CAPI_ENTER_DESTROY(sink);
   delete static_cast<FloxStorageSinkImpl*>(sink);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxMarketDataRecorderHandle flox_market_data_recorder_create(
     FloxMarketDataRecorderCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return static_cast<FloxMarketDataRecorderHandle>(
       new FloxMarketDataRecorderImpl{callbacks});
+  FLOX_CAPI_LEAVE;
 }
 
 FloxMarketDataRecorderHandle flox_market_data_recorder_create_p(
     const FloxMarketDataRecorderCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxMarketDataRecorderCallbacks cbs = callbacks ? *callbacks : FloxMarketDataRecorderCallbacks{};
   return flox_market_data_recorder_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_market_data_recorder_destroy(FloxMarketDataRecorderHandle recorder)
 {
+  FLOX_CAPI_ENTER_DESTROY(recorder);
   delete static_cast<FloxMarketDataRecorderImpl*>(recorder);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ── Binary-log recorder hook ──────────────────────────────────────────
@@ -6457,9 +7602,11 @@ flox_binary_log_recorder_hook_create(const char* output_dir,
                                      uint8_t exchange_id,
                                      uint8_t compression)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return flox_binary_log_recorder_hook_create_ex(output_dir, max_segment_mb,
                                                  exchange_id, compression,
                                                  nullptr, nullptr);
+  FLOX_CAPI_LEAVE;
 }
 
 FloxBinaryLogRecorderHookHandle
@@ -6470,6 +7617,7 @@ flox_binary_log_recorder_hook_create_ex(const char* output_dir,
                                         const char* exchange_name,
                                         const char* instrument_type)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   flox::replay::BinaryLogRecorderHookConfig cfg{};
   cfg.output_dir = output_dir ? output_dir : "";
   cfg.max_segment_bytes = max_segment_mb * 1024ull * 1024ull;
@@ -6498,23 +7646,36 @@ flox_binary_log_recorder_hook_create_ex(const char* output_dir,
   impl->recorder_view.cb.on_start = &capi_impl::blrhOnStart;
   impl->recorder_view.cb.on_stop = &capi_impl::blrhOnStop;
   impl->recorder_view.cb.user_data = impl;
+  // Borrowed: the recorder handle callers get from
+  // flox_binary_log_recorder_hook_as_recorder points at this member, so
+  // flox_market_data_recorder_destroy on it would free part of the hook.
+  // The header has always said not to; registering it means a caller that
+  // does anyway gets a no-op instead of a corrupted heap.
+  FloxBorrowedHandles::add(&impl->recorder_view);
   return static_cast<FloxBinaryLogRecorderHookHandle>(impl);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle h)
 {
-  delete static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h);
+  FLOX_CAPI_ENTER_DESTROY(h);
+  auto* impl = static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h);
+  FloxBorrowedHandles::remove(&impl->recorder_view);
+  delete impl;
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxMarketDataRecorderHandle
 flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return nullptr;
   }
   return static_cast<FloxMarketDataRecorderHandle>(
       &static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h)->recorder_view);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle h,
@@ -6525,6 +7686,7 @@ void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle h,
                                               int8_t price_precision,
                                               int8_t qty_precision)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   if (!h)
   {
     return;
@@ -6537,18 +7699,22 @@ void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle h,
   info.price_precision = price_precision;
   info.qty_precision = qty_precision;
   static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h)->hook.addSymbol(info);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_binary_log_recorder_hook_flush(FloxBinaryLogRecorderHookHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   if (h)
   {
     static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h)->hook.flush();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxWriterStats flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h)
   {
     return {};
@@ -6556,79 +7722,103 @@ FloxWriterStats flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHan
   auto s = static_cast<capi_impl::FloxBinaryLogRecorderHookImpl*>(h)->hook.stats();
   return {s.bytes_written, s.trades_written + s.book_updates_written,
           s.segments_created, s.trades_written};
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_binary_log_recorder_hook_stats_p(void* h, void* out)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto s = flox_binary_log_recorder_hook_stats(static_cast<FloxBinaryLogRecorderHookHandle>(h));
   memcpy(out, &s, sizeof(s));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxReplaySourceHandle flox_replay_source_create(FloxReplaySourceCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return static_cast<FloxReplaySourceHandle>(
       new FloxReplaySourceImpl{callbacks});
+  FLOX_CAPI_LEAVE;
 }
 
 FloxReplaySourceHandle flox_replay_source_create_p(const FloxReplaySourceCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxReplaySourceCallbacks cbs = callbacks ? *callbacks : FloxReplaySourceCallbacks{};
   return flox_replay_source_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_replay_source_destroy(FloxReplaySourceHandle source)
 {
+  FLOX_CAPI_ENTER_DESTROY(source);
   delete static_cast<FloxReplaySourceImpl*>(source);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint8_t flox_replay_source_seek_to(FloxReplaySourceHandle source, int64_t timestamp_ns)
 {
+  FLOX_CAPI_ENTER(source);
   auto* s = static_cast<FloxReplaySourceImpl*>(source);
   if (s == nullptr || s->cb.seek_to == nullptr)
   {
     return 0;
   }
   return s->cb.seek_to(s->cb.user_data, timestamp_ns);
+  FLOX_CAPI_LEAVE;
 }
 
 FloxExecutionListenerHandle
 flox_execution_listener_create(FloxExecutionListenerCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return static_cast<FloxExecutionListenerHandle>(
       new FloxExecutionListenerImpl{callbacks});
+  FLOX_CAPI_LEAVE;
 }
 
 FloxExecutionListenerHandle
 flox_execution_listener_create_p(const FloxExecutionListenerCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxExecutionListenerCallbacks cbs = callbacks ? *callbacks : FloxExecutionListenerCallbacks{};
   return flox_execution_listener_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_execution_listener_destroy(FloxExecutionListenerHandle listener)
 {
+  FLOX_CAPI_ENTER_DESTROY(listener);
   delete static_cast<FloxExecutionListenerImpl*>(listener);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxExecutorHandle flox_executor_create(FloxExecutorCallbacks callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return static_cast<FloxExecutorHandle>(new FloxExecutorImpl{callbacks});
+  FLOX_CAPI_LEAVE;
 }
 
 FloxExecutorHandle flox_executor_create_p(const FloxExecutorCallbacks* callbacks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   FloxExecutorCallbacks cbs = callbacks ? *callbacks : FloxExecutorCallbacks{};
   return flox_executor_create(cbs);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_executor_destroy(FloxExecutorHandle executor)
 {
+  FLOX_CAPI_ENTER_DESTROY(executor);
   delete static_cast<FloxExecutorImpl*>(executor);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_executor_get_capabilities(FloxExecutorHandle executor,
                                     FloxExchangeCapabilities* caps_out)
 {
+  FLOX_CAPI_ENTER_VOID(executor);
   if (caps_out == nullptr)
   {
     return;
@@ -6640,6 +7830,7 @@ void flox_executor_get_capabilities(FloxExecutorHandle executor,
     return;
   }
   impl->cb.capabilities(impl->cb.user_data, caps_out);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -6679,6 +7870,7 @@ std::unique_ptr<CapiCallbackLogger> g_capiLogger;
 
 void flox_set_log_callback(FloxLogCallback callback, void* user_data)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (callback == nullptr)
   {
     flox::setGlobalLogger(nullptr);
@@ -6691,77 +7883,102 @@ void flox_set_log_callback(FloxLogCallback callback, void* user_data)
   // a dangling adapter. If two flox_set_log_callback calls race, the loser
   // simply destroys its adapter without ever being installed.
   g_capiLogger = std::move(next);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 FloxRunnerHandle flox_runner_create(FloxRegistryHandle registry,
                                     FloxOnSignalCallback on_signal,
                                     void* user_data)
 {
+  FLOX_CAPI_ENTER(registry);
   return static_cast<FloxRunnerHandle>(
       new FloxRunnerImpl(toRegistry(registry), on_signal, user_data));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_runner_destroy(FloxRunnerHandle runner)
 {
+  FLOX_CAPI_ENTER_DESTROY(runner);
   delete toRunner(runner);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_add_strategy(FloxRunnerHandle runner, FloxStrategyHandle strategy)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->addStrategy(toStrategy(strategy));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_set_risk_manager(FloxRunnerHandle runner, FloxRiskManagerHandle rm)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->setRiskManager(static_cast<capi_impl::FloxRiskManagerImpl*>(rm));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_set_kill_switch(FloxRunnerHandle runner, FloxKillSwitchHandle ks)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->setKillSwitch(static_cast<capi_impl::FloxKillSwitchImpl*>(ks));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_set_order_validator(FloxRunnerHandle runner, FloxOrderValidatorHandle ov)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->setOrderValidator(
       static_cast<capi_impl::FloxOrderValidatorImpl*>(ov));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_set_pnl_tracker(FloxRunnerHandle runner, FloxPnLTrackerHandle tracker)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->setPnLTracker(
       static_cast<capi_impl::FloxPnLTrackerImpl*>(tracker));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_set_storage_sink(FloxRunnerHandle runner, FloxStorageSinkHandle sink)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->setStorageSink(
       static_cast<capi_impl::FloxStorageSinkImpl*>(sink));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_set_executor(FloxRunnerHandle runner, FloxExecutorHandle executor)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->setExecutor(
       static_cast<capi_impl::FloxExecutorImpl*>(executor));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_set_market_data_recorder(FloxRunnerHandle runner,
                                           FloxMarketDataRecorderHandle recorder)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->setMarketDataRecorder(
       static_cast<capi_impl::FloxMarketDataRecorderImpl*>(recorder));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_attach_trace_recorder(FloxRunnerHandle runner, FloxRunRecorderHandle recorder)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   // recorder is a `flox::run::TraceRecorder*` (from
   // `flox_run_recorder_create`) or NULL to detach.
   toRunner(runner)->attachTraceRecorder(static_cast<void*>(recorder));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_set_trace_feed_ts_ns(FloxRunnerHandle runner, int64_t feed_ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->setTraceFeedTsNs(feed_ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_trace_order_event(FloxRunnerHandle runner, uint64_t order_id,
@@ -6769,6 +7986,7 @@ void flox_runner_trace_order_event(FloxRunnerHandle runner, uint64_t order_id,
                                    uint8_t event_kind, uint8_t side, uint8_t order_type,
                                    int64_t price_raw, int64_t qty_raw, uint32_t flags)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   auto* rec = toRunner(runner)->traceRecorder();
   if (!rec)
   {
@@ -6789,12 +8007,14 @@ void flox_runner_trace_order_event(FloxRunnerHandle runner, uint64_t order_id,
   e.qty_raw = qty_raw;
   e.flags = flags;
   rec->writeOrderEvent(e);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_trace_fill(FloxRunnerHandle runner, uint64_t order_id, uint64_t fill_id,
                             int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
                             uint32_t symbol_id, uint8_t side, uint8_t liquidity)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   auto* rec = toRunner(runner)->traceRecorder();
   if (!rec)
   {
@@ -6814,23 +8034,30 @@ void flox_runner_trace_fill(FloxRunnerHandle runner, uint64_t order_id, uint64_t
   f.side = side;
   f.liquidity = static_cast<flox::run::FillLiquidity>(liquidity);
   rec->writeFill(f);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_start(FloxRunnerHandle runner)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->start();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_stop(FloxRunnerHandle runner)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->stop();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_on_trade(FloxRunnerHandle runner, uint32_t symbol,
                           double price, double qty, uint8_t is_buy,
                           int64_t exchange_ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->onTrade(symbol, price, qty, is_buy != 0, exchange_ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_on_book_snapshot(FloxRunnerHandle runner, uint32_t symbol,
@@ -6840,10 +8067,12 @@ void flox_runner_on_book_snapshot(FloxRunnerHandle runner, uint32_t symbol,
                                   uint32_t n_asks,
                                   int64_t exchange_ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->onBookSnapshot(symbol,
                                    bid_prices, bid_qtys, n_bids,
                                    ask_prices, ask_qtys, n_asks,
                                    exchange_ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_runner_on_bar(FloxRunnerHandle runner, uint32_t symbol,
@@ -6853,9 +8082,11 @@ void flox_runner_on_bar(FloxRunnerHandle runner, uint32_t symbol,
                         int64_t start_time_ns, int64_t end_time_ns,
                         uint8_t close_reason)
 {
+  FLOX_CAPI_ENTER_VOID(runner);
   toRunner(runner)->onBar(symbol, bar_type, bar_type_param,
                           open, high, low, close, volume, buy_volume,
                           start_time_ns, end_time_ns, close_reason);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -6864,12 +8095,16 @@ void flox_runner_on_bar(FloxRunnerHandle runner, uint32_t symbol,
 
 FloxLiveEngineHandle flox_live_engine_create(FloxRegistryHandle registry)
 {
+  FLOX_CAPI_ENTER(registry);
   return static_cast<FloxLiveEngineHandle>(new FloxLiveEngineImpl(toRegistry(registry)));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_live_engine_destroy(FloxLiveEngineHandle engine)
 {
+  FLOX_CAPI_ENTER_DESTROY(engine);
   delete toLiveEngine(engine);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_add_strategy(FloxLiveEngineHandle engine,
@@ -6877,64 +8112,84 @@ void flox_live_engine_add_strategy(FloxLiveEngineHandle engine,
                                    FloxOnSignalCallback on_signal,
                                    void* user_data)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->addStrategy(toStrategy(strategy), on_signal, user_data);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_set_risk_manager(FloxLiveEngineHandle engine, FloxRiskManagerHandle rm)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->setRiskManager(
       static_cast<capi_impl::FloxRiskManagerImpl*>(rm));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_set_kill_switch(FloxLiveEngineHandle engine, FloxKillSwitchHandle ks)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->setKillSwitch(
       static_cast<capi_impl::FloxKillSwitchImpl*>(ks));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_set_order_validator(FloxLiveEngineHandle engine,
                                           FloxOrderValidatorHandle ov)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->setOrderValidator(
       static_cast<capi_impl::FloxOrderValidatorImpl*>(ov));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_set_pnl_tracker(FloxLiveEngineHandle engine,
                                       FloxPnLTrackerHandle tracker)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->setPnLTracker(
       static_cast<capi_impl::FloxPnLTrackerImpl*>(tracker));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_set_storage_sink(FloxLiveEngineHandle engine,
                                        FloxStorageSinkHandle sink)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->setStorageSink(
       static_cast<capi_impl::FloxStorageSinkImpl*>(sink));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_set_market_data_recorder(FloxLiveEngineHandle engine,
                                                FloxMarketDataRecorderHandle recorder)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->setMarketDataRecorder(
       static_cast<capi_impl::FloxMarketDataRecorderImpl*>(recorder));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_set_executor(FloxLiveEngineHandle engine,
                                    FloxExecutorHandle executor)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->setExecutor(
       static_cast<capi_impl::FloxExecutorImpl*>(executor));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_start(FloxLiveEngineHandle engine)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->start();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_stop(FloxLiveEngineHandle engine)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->stop();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_publish_trade(FloxLiveEngineHandle engine,
@@ -6942,7 +8197,9 @@ void flox_live_engine_publish_trade(FloxLiveEngineHandle engine,
                                     double price, double qty, uint8_t is_buy,
                                     int64_t exchange_ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->publishTrade(symbol, price, qty, is_buy != 0, exchange_ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_publish_book_snapshot(FloxLiveEngineHandle engine,
@@ -6955,10 +8212,12 @@ void flox_live_engine_publish_book_snapshot(FloxLiveEngineHandle engine,
                                             uint32_t n_asks,
                                             int64_t exchange_ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->publishBookSnapshot(symbol,
                                             bid_prices, bid_qtys, n_bids,
                                             ask_prices, ask_qtys, n_asks,
                                             exchange_ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_live_engine_publish_bar(FloxLiveEngineHandle engine,
@@ -6969,9 +8228,11 @@ void flox_live_engine_publish_bar(FloxLiveEngineHandle engine,
                                   int64_t start_time_ns, int64_t end_time_ns,
                                   uint8_t close_reason)
 {
+  FLOX_CAPI_ENTER_VOID(engine);
   toLiveEngine(engine)->publishBar(symbol, bar_type, bar_type_param,
                                    open, high, low, close, volume, buy_volume,
                                    start_time_ns, end_time_ns, close_reason);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -6982,19 +8243,25 @@ FloxBacktestRunnerHandle flox_backtest_runner_create(FloxRegistryHandle registry
                                                      double fee_rate,
                                                      double initial_capital)
 {
+  FLOX_CAPI_ENTER(registry);
   return static_cast<FloxBacktestRunnerHandle>(
       new FloxBacktestRunnerImpl(toRegistry(registry), fee_rate, initial_capital));
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_backtest_runner_destroy(FloxBacktestRunnerHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toBacktestRunner(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_runner_set_strategy(FloxBacktestRunnerHandle h,
                                        FloxStrategyHandle strategy)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBacktestRunner(h)->setStrategy(toStrategy(strategy));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle h,
@@ -7002,14 +8269,18 @@ int flox_backtest_runner_run_csv(FloxBacktestRunnerHandle h,
                                  const char* symbol,
                                  FloxBacktestStats* out)
 {
+  FLOX_CAPI_ENTER(h);
   return toBacktestRunner(h)->runCsv(path, symbol, out);
+  FLOX_CAPI_LEAVE;
 }
 
 int flox_backtest_runner_run_tape(FloxBacktestRunnerHandle h,
                                   const char* tape_dir,
                                   FloxBacktestStats* out)
 {
+  FLOX_CAPI_ENTER(h);
   return toBacktestRunner(h)->runTape(tape_dir, out);
+  FLOX_CAPI_LEAVE;
 }
 
 int flox_backtest_runner_run_tapes(FloxBacktestRunnerHandle h,
@@ -7017,7 +8288,9 @@ int flox_backtest_runner_run_tapes(FloxBacktestRunnerHandle h,
                                    uint32_t n_dirs,
                                    FloxBacktestStats* out)
 {
+  FLOX_CAPI_ENTER(h);
   return toBacktestRunner(h)->runTapes(tape_dirs, n_dirs, out);
+  FLOX_CAPI_LEAVE;
 }
 
 int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle h,
@@ -7027,7 +8300,9 @@ int flox_backtest_runner_run_ohlcv(FloxBacktestRunnerHandle h,
                                    const char* symbol,
                                    FloxBacktestStats* out)
 {
+  FLOX_CAPI_ENTER(h);
   return toBacktestRunner(h)->runOhlcv(ts, close, n, symbol, out);
+  FLOX_CAPI_LEAVE;
 }
 
 int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle h,
@@ -7044,21 +8319,26 @@ int flox_backtest_runner_run_bars(FloxBacktestRunnerHandle h,
                                   uint64_t bar_type_param,
                                   FloxBacktestStats* out)
 {
+  FLOX_CAPI_ENTER(h);
   return toBacktestRunner(h)->runFullBars(start_time_ns, end_time_ns,
                                           open, high, low, close, volume,
                                           n, symbol, bar_type, bar_type_param, out);
+  FLOX_CAPI_LEAVE;
 }
 
 int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle h,
                                            FloxReplaySourceHandle source,
                                            FloxBacktestStats* out)
 {
+  FLOX_CAPI_ENTER(h);
   return toBacktestRunner(h)->runReplaySource(
       static_cast<capi_impl::FloxReplaySourceImpl*>(source), out);
+  FLOX_CAPI_LEAVE;
 }
 
 FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   auto* impl = toBacktestRunner(h);
   if (!impl->lastResult.has_value())
   {
@@ -7068,31 +8348,38 @@ FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHand
   out->config = impl->lastResult->config();
   out->result = std::make_unique<BacktestResult>(*impl->lastResult);
   return static_cast<FloxBacktestResultHandle>(out);
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_backtest_runner_add_execution_listener(FloxBacktestRunnerHandle h,
                                                  FloxExecutionListenerHandle listener)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBacktestRunner(h)->addExecutionListener(
       static_cast<capi_impl::FloxExecutionListenerImpl*>(listener));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_runner_add_journey_tracer(FloxBacktestRunnerHandle h,
                                              FloxOrderJourneyTracerHandle tracer)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   if (h == nullptr || tracer == nullptr)
   {
     return;
   }
   auto* runner = toBacktestRunner(h)->runner.get();
   runner->addExecutionListener(static_cast<flox::OrderJourneyTracer*>(tracer));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle h,
                                        FloxExecutorHandle executor)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBacktestRunner(h)->setExecutor(
       static_cast<capi_impl::FloxExecutorImpl*>(executor));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // Pre-trade gate parity with the live runner. The Impl wrappers
@@ -7102,29 +8389,37 @@ void flox_backtest_runner_set_executor(FloxBacktestRunnerHandle h,
 void flox_backtest_runner_set_risk_manager(FloxBacktestRunnerHandle h,
                                            FloxRiskManagerHandle rm)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBacktestRunner(h)->setRiskManager(
       static_cast<capi_impl::FloxRiskManagerImpl*>(rm));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_runner_set_kill_switch(FloxBacktestRunnerHandle h,
                                           FloxKillSwitchHandle ks)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBacktestRunner(h)->setKillSwitch(
       static_cast<capi_impl::FloxKillSwitchImpl*>(ks));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_runner_set_order_validator(FloxBacktestRunnerHandle h,
                                               FloxOrderValidatorHandle ov)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBacktestRunner(h)->setOrderValidator(
       static_cast<capi_impl::FloxOrderValidatorImpl*>(ov));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_backtest_runner_set_pnl_tracker(FloxBacktestRunnerHandle h,
                                           FloxPnLTrackerHandle tracker)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBacktestRunner(h)->setPnLTracker(
       static_cast<capi_impl::FloxPnLTrackerImpl*>(tracker));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -7261,6 +8556,7 @@ uint32_t flox_walk_forward_run_csv(FloxRegistryHandle reg_handle,
                                    FloxWalkForwardFold* folds_out,
                                    uint32_t max_folds)
 {
+  FLOX_CAPI_ENTER(reg_handle);
   if (!cfg || !csv_path || !factory)
   {
     return 0;
@@ -7341,6 +8637,7 @@ uint32_t flox_walk_forward_run_csv(FloxRegistryHandle reg_handle,
     fillStatsStruct(f.testStats, &folds_out[i].test_stats);
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -7354,28 +8651,36 @@ struct FloxGridSearchImpl
 
 FloxGridSearchHandle flox_grid_search_create()
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return static_cast<FloxGridSearchHandle>(new FloxGridSearchImpl());
+  FLOX_CAPI_LEAVE;
 }
 
 void flox_grid_search_destroy(FloxGridSearchHandle gs)
 {
+  FLOX_CAPI_ENTER_DESTROY(gs);
   delete static_cast<FloxGridSearchImpl*>(gs);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 void flox_grid_search_add_axis(FloxGridSearchHandle gs,
                                const double* values, uint32_t num_values)
 {
+  FLOX_CAPI_ENTER_VOID(gs);
   if (!gs || !values)
   {
     return;
   }
   std::vector<double> v(values, values + num_values);
   static_cast<FloxGridSearchImpl*>(gs)->core.addAxis(std::move(v));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 uint64_t flox_grid_search_total(FloxGridSearchHandle gs)
 {
+  FLOX_CAPI_ENTER(gs);
   return gs ? static_cast<FloxGridSearchImpl*>(gs)->core.totalCombinations() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs,
@@ -7383,6 +8688,7 @@ uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs,
                                            double* params_out,
                                            uint32_t max_params)
 {
+  FLOX_CAPI_ENTER(gs);
   if (!gs)
   {
     return 0;
@@ -7398,6 +8704,7 @@ uint32_t flox_grid_search_params_for_index(FloxGridSearchHandle gs,
     params_out[i] = p[i];
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
@@ -7406,6 +8713,7 @@ uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
                               FloxBacktestStats* stats_out,
                               uint32_t max_results)
 {
+  FLOX_CAPI_ENTER(gs);
   if (!gs || !factory)
   {
     return 0;
@@ -7429,6 +8737,7 @@ uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
     stats_out[i] = s;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -7438,6 +8747,7 @@ uint64_t flox_grid_search_run(FloxGridSearchHandle gs,
 uint64_t flox_render_heatmap_html(const FloxHeatmapData* data,
                                   char* out_buf, uint64_t max_size)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (!data || data->z == nullptr || data->rows == 0 || data->cols == 0)
   {
     return 0;
@@ -7489,6 +8799,7 @@ uint64_t flox_render_heatmap_html(const FloxHeatmapData* data,
   const uint64_t to_copy = (total < max_size) ? total : max_size;
   std::memcpy(out_buf, html.data(), to_copy);
   return total;
+  FLOX_CAPI_LEAVE;
 }
 
 // ── Latency models ────────────────────────────────────────────────
@@ -7505,6 +8816,7 @@ extern "C" FloxLatencyModelHandle flox_latency_constant_create(int64_t feed_ns,
                                                                int64_t order_ns,
                                                                int64_t fill_ns)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::ConstantLatency(feed_ns, order_ns, fill_ns);
@@ -7513,6 +8825,7 @@ extern "C" FloxLatencyModelHandle flox_latency_constant_create(int64_t feed_ns,
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxLatencyModelHandle flox_latency_gaussian_create(double feed_mean_ns,
@@ -7523,6 +8836,7 @@ extern "C" FloxLatencyModelHandle flox_latency_gaussian_create(double feed_mean_
                                                                double fill_stddev_ns,
                                                                uint64_t seed)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::GaussianLatency(feed_mean_ns, feed_stddev_ns,
@@ -7533,6 +8847,7 @@ extern "C" FloxLatencyModelHandle flox_latency_gaussian_create(double feed_mean_
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxLatencyModelHandle flox_latency_exponential_create(double feed_mean_ns,
@@ -7540,6 +8855,7 @@ extern "C" FloxLatencyModelHandle flox_latency_exponential_create(double feed_me
                                                                   double fill_mean_ns,
                                                                   uint64_t seed)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::ExponentialLatency(feed_mean_ns, order_mean_ns, fill_mean_ns, seed);
@@ -7548,6 +8864,7 @@ extern "C" FloxLatencyModelHandle flox_latency_exponential_create(double feed_me
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxLatencyModelHandle flox_latency_empirical_create(const int64_t* feed_samples,
@@ -7558,6 +8875,7 @@ extern "C" FloxLatencyModelHandle flox_latency_empirical_create(const int64_t* f
                                                                 size_t fill_count,
                                                                 uint64_t seed)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     std::vector<int64_t> feed(feed_samples, feed_samples + feed_count);
@@ -7570,30 +8888,40 @@ extern "C" FloxLatencyModelHandle flox_latency_empirical_create(const int64_t* f
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_latency_destroy(FloxLatencyModelHandle model)
 {
+  FLOX_CAPI_ENTER_DESTROY(model);
   delete asLatency(model);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" int64_t flox_latency_feed_delay(FloxLatencyModelHandle model)
 {
+  FLOX_CAPI_ENTER(model);
   return model ? asLatency(model)->feedDelay() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" int64_t flox_latency_order_delay(FloxLatencyModelHandle model)
 {
+  FLOX_CAPI_ENTER(model);
   return model ? asLatency(model)->orderDelay() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" int64_t flox_latency_fill_delay(FloxLatencyModelHandle model)
 {
+  FLOX_CAPI_ENTER(model);
   return model ? asLatency(model)->fillDelay() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySample* out)
 {
+  FLOX_CAPI_ENTER_VOID(model);
   if (!model || !out)
   {
     return;
@@ -7602,14 +8930,17 @@ extern "C" void flox_latency_sample(FloxLatencyModelHandle model, FloxLatencySam
   out->feed_ns = s.feed_ns;
   out->order_ns = s.order_ns;
   out->fill_ns = s.fill_ns;
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_latency_reset(FloxLatencyModelHandle model, uint64_t seed)
 {
+  FLOX_CAPI_ENTER_VOID(model);
   if (model)
   {
     asLatency(model)->reset(seed);
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ── Tape diff ─────────────────────────────────────────────────────
@@ -7627,6 +8958,7 @@ extern "C" FloxTapeDiffHandle flox_tape_diff_create(const char* left_path,
                                                     uint32_t max_mismatches,
                                                     int64_t field_tolerance_ns)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (!left_path || !right_path)
   {
     return nullptr;
@@ -7649,26 +8981,34 @@ extern "C" FloxTapeDiffHandle flox_tape_diff_create(const char* left_path,
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_tape_diff_destroy(FloxTapeDiffHandle handle)
 {
+  FLOX_CAPI_ENTER_DESTROY(handle);
   delete asDiff(handle);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint64_t flox_tape_diff_left_count(FloxTapeDiffHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asDiff(handle)->left_count : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_tape_diff_right_count(FloxTapeDiffHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asDiff(handle)->right_count : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_tape_diff_first_divergence(FloxTapeDiffHandle handle,
                                                    uint64_t* out_index)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle)
   {
     return 0;
@@ -7683,22 +9023,28 @@ extern "C" uint8_t flox_tape_diff_first_divergence(FloxTapeDiffHandle handle,
     *out_index = *r.first_divergence_index;
   }
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_tape_diff_equal(FloxTapeDiffHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return (handle && asDiff(handle)->equal) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_tape_diff_mismatch_count(FloxTapeDiffHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asDiff(handle)->mismatches.size() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_tape_diff_copy_mismatches(FloxTapeDiffHandle handle,
                                                    FloxTapeDiffMismatch* out,
                                                    uint64_t max_entries)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle)
   {
     return 0;
@@ -7726,6 +9072,7 @@ extern "C" uint64_t flox_tape_diff_copy_mismatches(FloxTapeDiffHandle handle,
     out[i].right.side = m.right.side;
   }
   return to_copy;
+  FLOX_CAPI_LEAVE;
 }
 
 // ── Portfolio risk aggregator ─────────────────────────────────────
@@ -7736,6 +9083,10 @@ flox::risk::PortfolioRiskAggregator* asPortfolio(FloxPortfolioRiskHandle h)
 {
   return static_cast<flox::risk::PortfolioRiskAggregator*>(h);
 }
+
+// Defined alongside the breach scratch table further down; declared here
+// because _destroy has to drop the entry before the address is recycled.
+void eraseBreachScratch(FloxPortfolioRiskHandle handle) noexcept;
 
 flox::risk::RiskRules unpackRules(const FloxPortfolioRiskRules* r)
 {
@@ -7767,6 +9118,7 @@ flox::risk::RiskRules unpackRules(const FloxPortfolioRiskRules* r)
 extern "C" FloxPortfolioRiskHandle flox_portfolio_risk_create(
     const FloxPortfolioRiskRules* rules, double initial_equity)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::risk::PortfolioRiskAggregator(unpackRules(rules), initial_equity);
@@ -7775,11 +9127,15 @@ extern "C" FloxPortfolioRiskHandle flox_portfolio_risk_create(
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_portfolio_risk_destroy(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER_DESTROY(handle);
+  eraseBreachScratch(handle);
   delete asPortfolio(handle);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_portfolio_risk_update(FloxPortfolioRiskHandle handle,
@@ -7787,6 +9143,7 @@ extern "C" void flox_portfolio_risk_update(FloxPortfolioRiskHandle handle,
                                            const FloxStrategyAccountFields* fields,
                                            uint8_t field_mask)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (!handle || !name || !fields)
   {
     return;
@@ -7800,36 +9157,64 @@ extern "C" void flox_portfolio_risk_update(FloxPortfolioRiskHandle handle,
   row.net_exposure = fields->net_exposure;
   row.trade_count = fields->trade_count;
   asPortfolio(handle)->update(name, row, field_mask);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_portfolio_risk_remove(FloxPortfolioRiskHandle handle, const char* name)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (!handle || !name)
   {
     return;
   }
   asPortfolio(handle)->remove(name);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_portfolio_risk_reset_kill_switch(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (handle)
   {
     asPortfolio(handle)->resetKillSwitch();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 namespace
 {
-// Per-handle scratch storage for FloxBreach string lifetime. Held by
-// the C ABI shim; re-populated on every call that surfaces a Breach
-// to the caller. Matches the documented invalidation contract.
+// Scratch storage behind the count-then-read pair, holding the strings a
+// FloxBreach points into.
+//
+// It used to be a thread_local map keyed by the handle address, which failed
+// twice over. Splitting the pair across threads -- the one reason a C layer
+// exists at all -- left the reader with nothing and a zero return, which
+// reads exactly like "no breaches". And the entry outlived the handle, so
+// when the allocator handed the same address to a new object, a freshly
+// created, clean risk handle answered breach_at with the destroyed session's
+// max_daily_loss breach and reported success.
+//
+// One process-wide table under a mutex closes both: every thread sees the
+// same entry, and _destroy erases it, so a reused address starts empty.
 struct PortfolioBreachScratch
 {
   std::vector<flox::risk::Breach> breaches;
 };
 
-thread_local std::map<FloxPortfolioRiskHandle, PortfolioBreachScratch> g_breach_scratch;
+std::mutex g_breach_scratch_mutex;
+std::map<FloxPortfolioRiskHandle, PortfolioBreachScratch> g_breach_scratch;
+
+void eraseBreachScratch(FloxPortfolioRiskHandle handle) noexcept
+{
+  try
+  {
+    const std::lock_guard<std::mutex> lock(g_breach_scratch_mutex);
+    g_breach_scratch.erase(handle);
+  }
+  catch (...)
+  {
+  }
+}
 
 void writeBreach(FloxBreach* out, const flox::risk::Breach& b)
 {
@@ -7848,6 +9233,7 @@ extern "C" uint8_t flox_portfolio_risk_check_order(FloxPortfolioRiskHandle handl
                                                    const char* strategy, double notional,
                                                    const char* side, FloxBreach* out_breach)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle)
   {
     return 0;
@@ -7858,56 +9244,73 @@ extern "C" uint8_t flox_portfolio_risk_check_order(FloxPortfolioRiskHandle handl
   {
     return 0;
   }
+  const std::lock_guard<std::mutex> lock(g_breach_scratch_mutex);
   auto& scratch = g_breach_scratch[handle];
   scratch.breaches = {*opt};
   writeBreach(out_breach, scratch.breaches.front());
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_portfolio_risk_total_daily_pnl(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asPortfolio(handle)->snapshot().total_daily_pnl : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_portfolio_risk_total_gross_exposure(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asPortfolio(handle)->snapshot().total_gross_exposure : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_portfolio_risk_current_equity(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asPortfolio(handle)->snapshot().current_equity : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_portfolio_risk_drawdown_pct(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asPortfolio(handle)->snapshot().drawdown_pct : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_portfolio_risk_kill_switch_active(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return (handle && asPortfolio(handle)->snapshot().kill_switch_active) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_portfolio_risk_breach_count(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle)
   {
     return 0;
   }
   auto snap = asPortfolio(handle)->snapshot();
+  const std::lock_guard<std::mutex> lock(g_breach_scratch_mutex);
   auto& scratch = g_breach_scratch[handle];
   scratch.breaches = std::move(snap.active_breaches);
   return scratch.breaches.size();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_portfolio_risk_breach_at(FloxPortfolioRiskHandle handle,
                                                  uint64_t index, FloxBreach* out)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle || !out)
   {
     return 0;
   }
+  const std::lock_guard<std::mutex> lock(g_breach_scratch_mutex);
   auto it = g_breach_scratch.find(handle);
   if (it == g_breach_scratch.end())
   {
@@ -7919,11 +9322,14 @@ extern "C" uint8_t flox_portfolio_risk_breach_at(FloxPortfolioRiskHandle handle,
   }
   writeBreach(out, it->second.breaches[index]);
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_portfolio_risk_account_count(FloxPortfolioRiskHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asPortfolio(handle)->snapshot().accounts.size() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 // ── Execution algorithms ──────────────────────────────────────────
@@ -7943,6 +9349,7 @@ extern "C" FloxExecAlgoHandle flox_exec_twap_create(double target_qty, uint8_t s
                                                     uint32_t slice_count,
                                                     int64_t start_time_ns)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::execution::TWAPExecutor(
@@ -7957,6 +9364,7 @@ extern "C" FloxExecAlgoHandle flox_exec_twap_create(double target_qty, uint8_t s
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxExecAlgoHandle flox_exec_vwap_create(double target_qty, uint8_t side,
@@ -7966,6 +9374,7 @@ extern "C" FloxExecAlgoHandle flox_exec_vwap_create(double target_qty, uint8_t s
                                                     const double* volume_curve_vol,
                                                     size_t n)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     std::vector<std::pair<int64_t, double>> curve;
@@ -7986,6 +9395,7 @@ extern "C" FloxExecAlgoHandle flox_exec_vwap_create(double target_qty, uint8_t s
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxExecAlgoHandle flox_exec_iceberg_create(double target_qty, uint8_t side,
@@ -7993,6 +9403,7 @@ extern "C" FloxExecAlgoHandle flox_exec_iceberg_create(double target_qty, uint8_
                                                        double limit_price,
                                                        double visible_qty)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::execution::IcebergExecutor(
@@ -8006,6 +9417,7 @@ extern "C" FloxExecAlgoHandle flox_exec_iceberg_create(double target_qty, uint8_
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxExecAlgoHandle flox_exec_pov_create(double target_qty, uint8_t side,
@@ -8014,6 +9426,7 @@ extern "C" FloxExecAlgoHandle flox_exec_pov_create(double target_qty, uint8_t si
                                                    double participation_rate,
                                                    double min_slice_qty)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::execution::POVExecutor(
@@ -8027,42 +9440,57 @@ extern "C" FloxExecAlgoHandle flox_exec_pov_create(double target_qty, uint8_t si
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
-extern "C" void flox_exec_destroy(FloxExecAlgoHandle handle) { delete asAlgo(handle); }
+extern "C" void flox_exec_destroy(FloxExecAlgoHandle handle)
+{
+  FLOX_CAPI_ENTER_DESTROY(handle);
+  delete asAlgo(handle);
+  FLOX_CAPI_LEAVE_VOID;
+}
 
 extern "C" void flox_exec_step(FloxExecAlgoHandle handle, int64_t now_ns)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (handle)
   {
     asAlgo(handle)->step(now_ns);
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_exec_report_fill(FloxExecAlgoHandle handle, double qty)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (handle)
   {
     asAlgo(handle)->reportFill(qty);
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_exec_observe_volume(FloxExecAlgoHandle handle, double qty)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (handle)
   {
     asAlgo(handle)->observeVolume(qty);
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" size_t flox_exec_pending_count(FloxExecAlgoHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asAlgo(handle)->pending().size() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_exec_pending_at(FloxExecAlgoHandle handle, size_t index,
                                         FloxExecChildOrder* out)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle || !out)
   {
     return 0;
@@ -8079,39 +9507,52 @@ extern "C" uint8_t flox_exec_pending_at(FloxExecAlgoHandle handle, size_t index,
   out->price = c.price;
   out->type = static_cast<uint8_t>(c.type);
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_exec_clear_pending(FloxExecAlgoHandle handle)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (handle)
   {
     asAlgo(handle)->clearPending();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" double flox_exec_target_qty(FloxExecAlgoHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asAlgo(handle)->targetQty() : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_exec_submitted_qty(FloxExecAlgoHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asAlgo(handle)->submittedQty() : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_exec_filled_qty(FloxExecAlgoHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asAlgo(handle)->filledQty() : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" double flox_exec_remaining_qty(FloxExecAlgoHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return handle ? asAlgo(handle)->remainingQty() : 0.0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_exec_is_done(FloxExecAlgoHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   return (handle && asAlgo(handle)->isDone()) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 // ── Delta book compression ────────────────────────────────────────
@@ -8159,12 +9600,17 @@ struct EncoderScratch
   std::vector<flox::replay::BookLevel> asks;
 };
 
-thread_local std::map<FloxDeltaBookEncoderHandle, EncoderScratch> g_encoder_scratch;
-thread_local std::map<FloxDeltaBookReplayerHandle, EncoderScratch> g_replayer_scratch;
+// Same reasoning as the portfolio risk scratch above: process-wide under a
+// mutex, erased by _destroy, so the encode/copy pair works across threads and
+// a reused address cannot serve a dead handle's levels.
+std::mutex g_encoder_scratch_mutex;
+std::map<FloxDeltaBookEncoderHandle, EncoderScratch> g_encoder_scratch;
+std::map<FloxDeltaBookReplayerHandle, EncoderScratch> g_replayer_scratch;
 }  // namespace
 
 extern "C" FloxDeltaBookEncoderHandle flox_delta_book_encoder_create(uint32_t anchor_every)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::replay::DeltaBookEncoder(anchor_every);
@@ -8173,28 +9619,38 @@ extern "C" FloxDeltaBookEncoderHandle flox_delta_book_encoder_create(uint32_t an
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_delta_book_encoder_destroy(FloxDeltaBookEncoderHandle handle)
 {
-  g_encoder_scratch.erase(handle);
+  FLOX_CAPI_ENTER_DESTROY(handle);
+  {
+    const std::lock_guard<std::mutex> lock(g_encoder_scratch_mutex);
+    g_encoder_scratch.erase(handle);
+  }
   delete asEncoder(handle);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_delta_book_encoder_reset(FloxDeltaBookEncoderHandle handle, uint32_t symbol_id)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (handle)
   {
     asEncoder(handle)->reset(symbol_id);
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_delta_book_encoder_reset_all(FloxDeltaBookEncoderHandle handle)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (handle)
   {
     asEncoder(handle)->resetAll();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle,
@@ -8205,6 +9661,7 @@ extern "C" void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle
                                                uint64_t* out_bid_count,
                                                uint64_t* out_ask_count)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (!handle)
   {
     return;
@@ -8212,6 +9669,7 @@ extern "C" void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle
   auto bids_in = toLevels(bids, bid_count);
   auto asks_in = toLevels(asks, ask_count);
   auto result = asEncoder(handle)->encode(symbol_id, bids_in, asks_in);
+  const std::lock_guard<std::mutex> lock(g_encoder_scratch_mutex);
   auto& scratch = g_encoder_scratch[handle];
   scratch.bids = std::move(result.bids);
   scratch.asks = std::move(result.asks);
@@ -8227,40 +9685,48 @@ extern "C" void flox_delta_book_encoder_encode(FloxDeltaBookEncoderHandle handle
   {
     *out_ask_count = scratch.asks.size();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint64_t flox_delta_book_encoder_copy_bids(FloxDeltaBookEncoderHandle handle,
                                                       FloxBookLevel* out, uint64_t max_entries)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle || !out)
   {
     return 0;
   }
+  const std::lock_guard<std::mutex> lock(g_encoder_scratch_mutex);
   auto it = g_encoder_scratch.find(handle);
   if (it == g_encoder_scratch.end())
   {
     return 0;
   }
   return copyLevelsTo(it->second.bids, out, max_entries);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_delta_book_encoder_copy_asks(FloxDeltaBookEncoderHandle handle,
                                                       FloxBookLevel* out, uint64_t max_entries)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle || !out)
   {
     return 0;
   }
+  const std::lock_guard<std::mutex> lock(g_encoder_scratch_mutex);
   auto it = g_encoder_scratch.find(handle);
   if (it == g_encoder_scratch.end())
   {
     return 0;
   }
   return copyLevelsTo(it->second.asks, out, max_entries);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxDeltaBookReplayerHandle flox_delta_book_replayer_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   try
   {
     return new flox::replay::DeltaBookReplayer();
@@ -8269,20 +9735,28 @@ extern "C" FloxDeltaBookReplayerHandle flox_delta_book_replayer_create(void)
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_delta_book_replayer_destroy(FloxDeltaBookReplayerHandle handle)
 {
-  g_replayer_scratch.erase(handle);
+  FLOX_CAPI_ENTER_DESTROY(handle);
+  {
+    const std::lock_guard<std::mutex> lock(g_encoder_scratch_mutex);
+    g_replayer_scratch.erase(handle);
+  }
   delete asReplayer(handle);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_delta_book_replayer_reset(FloxDeltaBookReplayerHandle handle, uint32_t symbol_id)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (handle)
   {
     asReplayer(handle)->reset(symbol_id);
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handle,
@@ -8292,6 +9766,7 @@ extern "C" void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handl
                                                uint64_t* out_bid_count,
                                                uint64_t* out_ask_count)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (!handle)
   {
     return;
@@ -8299,6 +9774,7 @@ extern "C" void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handl
   auto bids_in = toLevels(bids, bid_count);
   auto asks_in = toLevels(asks, ask_count);
   auto snap = asReplayer(handle)->apply(type, symbol_id, bids_in, asks_in);
+  const std::lock_guard<std::mutex> lock(g_encoder_scratch_mutex);
   auto& scratch = g_replayer_scratch[handle];
   scratch.bids = std::move(snap.bids);
   scratch.asks = std::move(snap.asks);
@@ -8310,36 +9786,43 @@ extern "C" void flox_delta_book_replayer_apply(FloxDeltaBookReplayerHandle handl
   {
     *out_ask_count = scratch.asks.size();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint64_t flox_delta_book_replayer_copy_bids(FloxDeltaBookReplayerHandle handle,
                                                        FloxBookLevel* out, uint64_t max_entries)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle || !out)
   {
     return 0;
   }
+  const std::lock_guard<std::mutex> lock(g_encoder_scratch_mutex);
   auto it = g_replayer_scratch.find(handle);
   if (it == g_replayer_scratch.end())
   {
     return 0;
   }
   return copyLevelsTo(it->second.bids, out, max_entries);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_delta_book_replayer_copy_asks(FloxDeltaBookReplayerHandle handle,
                                                        FloxBookLevel* out, uint64_t max_entries)
 {
+  FLOX_CAPI_ENTER(handle);
   if (!handle || !out)
   {
     return 0;
   }
+  const std::lock_guard<std::mutex> lock(g_encoder_scratch_mutex);
   auto it = g_replayer_scratch.find(handle);
   if (it == g_replayer_scratch.end())
   {
     return 0;
   }
   return copyLevelsTo(it->second.asks, out, max_entries);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -8385,6 +9868,7 @@ extern "C" FloxRunRecorderHandle flox_run_recorder_create(const char* path,
                                                           const char* strategy_hash,
                                                           int64_t run_started_ns)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (path == nullptr)
   {
     return nullptr;
@@ -8401,11 +9885,14 @@ extern "C" FloxRunRecorderHandle flox_run_recorder_create(const char* path,
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_run_recorder_destroy(FloxRunRecorderHandle handle)
 {
+  FLOX_CAPI_ENTER_DESTROY(handle);
   delete asRecorder(handle);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_run_recorder_add_tape_ref(FloxRunRecorderHandle handle,
@@ -8414,6 +9901,7 @@ extern "C" void flox_run_recorder_add_tape_ref(FloxRunRecorderHandle handle,
                                                int64_t first_event_ns,
                                                int64_t last_event_ns)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   auto* rec = asRecorder(handle);
   if (rec == nullptr || path == nullptr)
   {
@@ -8425,14 +9913,17 @@ extern "C" void flox_run_recorder_add_tape_ref(FloxRunRecorderHandle handle,
   ref.first_event_ns = first_event_ns;
   ref.last_event_ns = last_event_ns;
   rec->addTapeRef(std::move(ref));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_run_recorder_set_run_ended_ns(FloxRunRecorderHandle handle, int64_t ns)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (auto* rec = asRecorder(handle))
   {
     rec->setRunEndedNs(ns);
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_run_recorder_write_signal(FloxRunRecorderHandle handle,
@@ -8443,6 +9934,7 @@ extern "C" void flox_run_recorder_write_signal(FloxRunRecorderHandle handle,
                                                const uint32_t* symbol_ids, size_t symbol_count,
                                                const uint8_t* payload, size_t payload_len)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   auto* rec = asRecorder(handle);
   if (rec == nullptr)
   {
@@ -8467,6 +9959,7 @@ extern "C" void flox_run_recorder_write_signal(FloxRunRecorderHandle handle,
     s.payload = std::string_view(reinterpret_cast<const char*>(payload), payload_len);
   }
   rec->writeSignal(s);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_run_recorder_write_order_event(FloxRunRecorderHandle handle,
@@ -8478,6 +9971,7 @@ extern "C" void flox_run_recorder_write_order_event(FloxRunRecorderHandle handle
                                                     uint32_t flags,
                                                     const char* reason, size_t reason_len)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   auto* rec = asRecorder(handle);
   if (rec == nullptr)
   {
@@ -8500,6 +9994,7 @@ extern "C" void flox_run_recorder_write_order_event(FloxRunRecorderHandle handle
     e.reason = std::string_view(reason, reason_len);
   }
   rec->writeOrderEvent(e);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_run_recorder_write_fill(FloxRunRecorderHandle handle,
@@ -8508,6 +10003,7 @@ extern "C" void flox_run_recorder_write_fill(FloxRunRecorderHandle handle,
                                              int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
                                              uint32_t symbol_id, uint8_t side, uint8_t liquidity)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   auto* rec = asRecorder(handle);
   if (rec == nullptr)
   {
@@ -8525,18 +10021,22 @@ extern "C" void flox_run_recorder_write_fill(FloxRunRecorderHandle handle,
   f.side = side;
   f.liquidity = static_cast<flox::run::FillLiquidity>(liquidity);
   rec->writeFill(f);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_run_recorder_close(FloxRunRecorderHandle handle)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   if (auto* rec = asRecorder(handle))
   {
     rec->close();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" FloxRunReaderHandle flox_run_reader_open(const char* path)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (path == nullptr)
   {
     return nullptr;
@@ -8554,53 +10054,67 @@ extern "C" FloxRunReaderHandle flox_run_reader_open(const char* path)
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_run_reader_close(FloxRunReaderHandle handle)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   delete asReader(handle);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint64_t flox_run_reader_strategy_id(FloxRunReaderHandle handle, char* out, uint64_t max_bytes)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   if (state == nullptr)
   {
     return 0;
   }
   return copyStringTo(state->reader->manifest().strategy_id, out, max_bytes);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_run_reader_strategy_hash(FloxRunReaderHandle handle, char* out, uint64_t max_bytes)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   if (state == nullptr)
   {
     return 0;
   }
   return copyStringTo(state->reader->manifest().strategy_hash, out, max_bytes);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" int64_t flox_run_reader_run_started_ns(FloxRunReaderHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   return state ? state->reader->manifest().run_started_ns : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" int64_t flox_run_reader_run_ended_ns(FloxRunReaderHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   return state ? state->reader->manifest().run_ended_ns : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_run_reader_tape_ref_count(FloxRunReaderHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   return state ? state->reader->manifest().tape_refs.size() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_run_reader_tape_ref_path(FloxRunReaderHandle handle, uint64_t index, char* out, uint64_t max_bytes)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   if (state == nullptr)
   {
@@ -8612,24 +10126,31 @@ extern "C" uint64_t flox_run_reader_tape_ref_path(FloxRunReaderHandle handle, ui
     return 0;
   }
   return copyStringTo(refs[index].path, out, max_bytes);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_run_reader_signal_count(FloxRunReaderHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   return state ? state->signals.size() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_run_reader_order_event_count(FloxRunReaderHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   return state ? state->orders.size() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_run_reader_fill_count(FloxRunReaderHandle handle)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   return state ? state->fills.size() : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_run_reader_signal_header(FloxRunReaderHandle handle, uint64_t index,
@@ -8639,6 +10160,7 @@ extern "C" void flox_run_reader_signal_header(FloxRunReaderHandle handle, uint64
                                               uint64_t* out_name_len, uint64_t* out_symbol_count,
                                               uint64_t* out_payload_len)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   auto* state = asReader(handle);
   if (state == nullptr || index >= state->signals.size())
   {
@@ -8677,20 +10199,24 @@ extern "C" void flox_run_reader_signal_header(FloxRunReaderHandle handle, uint64
   {
     *out_payload_len = s.payload.size();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint64_t flox_run_reader_signal_name(FloxRunReaderHandle handle, uint64_t index, char* out, uint64_t max_bytes)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   if (state == nullptr || index >= state->signals.size())
   {
     return 0;
   }
   return copyStringTo(state->signals[index].name, out, max_bytes);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_run_reader_signal_symbol_ids(FloxRunReaderHandle handle, uint64_t index, uint32_t* out, uint64_t max_entries)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   if (state == nullptr || index >= state->signals.size())
   {
@@ -8707,10 +10233,12 @@ extern "C" uint64_t flox_run_reader_signal_symbol_ids(FloxRunReaderHandle handle
     out[i] = ids[i];
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_run_reader_signal_payload(FloxRunReaderHandle handle, uint64_t index, uint8_t* out, uint64_t max_bytes)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   if (state == nullptr || index >= state->signals.size())
   {
@@ -8724,6 +10252,7 @@ extern "C" uint64_t flox_run_reader_signal_payload(FloxRunReaderHandle handle, u
   uint64_t n = std::min(static_cast<uint64_t>(p.size()), max_bytes);
   std::memcpy(out, p.data(), n);
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_run_reader_order_event_header(FloxRunReaderHandle handle, uint64_t index,
@@ -8734,6 +10263,7 @@ extern "C" void flox_run_reader_order_event_header(FloxRunReaderHandle handle, u
                                                    uint8_t* out_side, uint8_t* out_order_type,
                                                    uint32_t* out_flags, uint64_t* out_reason_len)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   auto* state = asReader(handle);
   if (state == nullptr || index >= state->orders.size())
   {
@@ -8788,16 +10318,19 @@ extern "C" void flox_run_reader_order_event_header(FloxRunReaderHandle handle, u
   {
     *out_reason_len = e.reason.size();
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint64_t flox_run_reader_order_event_reason(FloxRunReaderHandle handle, uint64_t index, char* out, uint64_t max_bytes)
 {
+  FLOX_CAPI_ENTER(handle);
   auto* state = asReader(handle);
   if (state == nullptr || index >= state->orders.size())
   {
     return 0;
   }
   return copyStringTo(state->orders[index].reason, out, max_bytes);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_run_reader_fill(FloxRunReaderHandle handle, uint64_t index,
@@ -8806,6 +10339,7 @@ extern "C" void flox_run_reader_fill(FloxRunReaderHandle handle, uint64_t index,
                                      int64_t* out_price_raw, int64_t* out_qty_raw, int64_t* out_fee_raw,
                                      uint32_t* out_symbol_id, uint8_t* out_side, uint8_t* out_liquidity)
 {
+  FLOX_CAPI_ENTER_VOID(handle);
   auto* state = asReader(handle);
   if (state == nullptr || index >= state->fills.size())
   {
@@ -8852,6 +10386,7 @@ extern "C" void flox_run_reader_fill(FloxRunReaderHandle handle, uint64_t index,
   {
     *out_liquidity = f.liquidity;
   }
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 namespace
@@ -8864,47 +10399,63 @@ inline flox::testing::BarDispatchRecorder* toBarDispatchRecorder(FloxBarDispatch
 
 extern "C" FloxBarDispatchRecorderHandle flox_bar_dispatch_recorder_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new flox::testing::BarDispatchRecorder();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_bar_dispatch_recorder_destroy(FloxBarDispatchRecorderHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toBarDispatchRecorder(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint32_t flox_bar_dispatch_recorder_add_time_seconds(FloxBarDispatchRecorderHandle h,
                                                                 uint32_t seconds)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toBarDispatchRecorder(h)->addTimeIntervalSeconds(seconds));
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_bar_dispatch_recorder_on_trade(FloxBarDispatchRecorderHandle h,
                                                     uint32_t symbol, double price, double qty,
                                                     int64_t ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBarDispatchRecorder(h)->onTrade(symbol, price, qty, ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_bar_dispatch_recorder_finalize(FloxBarDispatchRecorderHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toBarDispatchRecorder(h)->finalize();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint32_t flox_bar_dispatch_recorder_count(FloxBarDispatchRecorderHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toBarDispatchRecorder(h)->count());
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_bar_dispatch_recorder_type_at(FloxBarDispatchRecorderHandle h,
                                                       uint32_t index)
 {
+  FLOX_CAPI_ENTER(h);
   return toBarDispatchRecorder(h)->typeAt(index);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_bar_dispatch_recorder_param_at(FloxBarDispatchRecorderHandle h,
                                                         uint32_t index)
 {
+  FLOX_CAPI_ENTER(h);
   return toBarDispatchRecorder(h)->paramAt(index);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -8979,12 +10530,14 @@ extern "C" FloxAggregatorHandle flox_event_type_stats_aggregator_create(
     FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
     uint32_t symbol_filter_count)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* holder = new AggregatorHolder{
       AggregatorHolder::KIND_EVENT_TYPE_STATS,
       std::make_unique<replay::EventTypeStatsAggregator>(
           toAggFilter(event_filter),
           copySymbolFilter(symbol_filter, symbol_filter_count))};
   return holder;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxAggregatorHandle flox_bin_count_aggregator_create(
@@ -8992,12 +10545,14 @@ extern "C" FloxAggregatorHandle flox_bin_count_aggregator_create(
     FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
     uint32_t symbol_filter_count)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* holder = new AggregatorHolder{
       AggregatorHolder::KIND_BIN_COUNT,
       std::make_unique<replay::BinCountAggregator>(
           bucket_ns, by_side != 0, by_symbol != 0, toAggFilter(event_filter),
           copySymbolFilter(symbol_filter, symbol_filter_count))};
   return holder;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxAggregatorHandle flox_volume_bin_aggregator_create(
@@ -9005,12 +10560,14 @@ extern "C" FloxAggregatorHandle flox_volume_bin_aggregator_create(
     FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
     uint32_t symbol_filter_count)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* holder = new AggregatorHolder{
       AggregatorHolder::KIND_VOLUME_BIN,
       std::make_unique<replay::VolumeBinAggregator>(
           bucket_ns, by_side != 0, by_symbol != 0, toAggFilter(event_filter),
           copySymbolFilter(symbol_filter, symbol_filter_count))};
   return holder;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxAggregatorHandle flox_ohlc_bin_aggregator_create(
@@ -9018,12 +10575,14 @@ extern "C" FloxAggregatorHandle flox_ohlc_bin_aggregator_create(
     FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
     uint32_t symbol_filter_count)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* holder = new AggregatorHolder{
       AggregatorHolder::KIND_OHLC_BIN,
       std::make_unique<replay::OHLCBinAggregator>(
           bucket_ns, by_symbol != 0, toAggFilter(event_filter),
           copySymbolFilter(symbol_filter, symbol_filter_count))};
   return holder;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxAggregatorHandle flox_peak_aggregator_create(
@@ -9031,6 +10590,7 @@ extern "C" FloxAggregatorHandle flox_peak_aggregator_create(
     uint32_t oversample_factor, FloxAggregatorEventFilter event_filter,
     const uint32_t* symbol_filter, uint32_t symbol_filter_count)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   std::vector<int64_t> windows;
   if (window_ns_list != nullptr && window_count > 0)
   {
@@ -9047,6 +10607,7 @@ extern "C" FloxAggregatorHandle flox_peak_aggregator_create(
           std::move(windows), top_n, oversample, toAggFilter(event_filter),
           copySymbolFilter(symbol_filter, symbol_filter_count))};
   return holder;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxAggregatorHandle flox_quantile_aggregator_create(
@@ -9055,6 +10616,7 @@ extern "C" FloxAggregatorHandle flox_quantile_aggregator_create(
     FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
     uint32_t symbol_filter_count)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   std::vector<int64_t> windows;
   if (window_ns_list != nullptr && window_count > 0)
   {
@@ -9071,6 +10633,7 @@ extern "C" FloxAggregatorHandle flox_quantile_aggregator_create(
           std::move(windows), std::move(qs), toAggFilter(event_filter),
           copySymbolFilter(symbol_filter, symbol_filter_count))};
   return holder;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxAggregatorHandle flox_book_snapshot_bin_aggregator_create(
@@ -9078,23 +10641,28 @@ extern "C" FloxAggregatorHandle flox_book_snapshot_bin_aggregator_create(
     FloxAggregatorEventFilter event_filter, const uint32_t* symbol_filter,
     uint32_t symbol_filter_count)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   auto* holder = new AggregatorHolder{
       AggregatorHolder::KIND_BOOK_SNAPSHOT_BIN,
       std::make_unique<replay::BookSnapshotBinAggregator>(
           bucket_ns, levels, toAggFilter(event_filter),
           copySymbolFilter(symbol_filter, symbol_filter_count))};
   return holder;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_aggregator_destroy(FloxAggregatorHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toAgg(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_data_reader_set_progress_callback(
     FloxDataReaderHandle reader, FloxProgressCallback cb, void* user_data,
     uint32_t interval_ms)
 {
+  FLOX_CAPI_ENTER_VOID(reader);
   if (reader == nullptr)
   {
     return;
@@ -9110,16 +10678,19 @@ extern "C" void flox_data_reader_set_progress_callback(
       [cb, user_data](double pct, int64_t cursor_ts_ns) -> bool
       { return cb(user_data, pct, cursor_ts_ns) != 0; },
       interval);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_data_reader_clear_progress_callback(
     FloxDataReaderHandle reader)
 {
+  FLOX_CAPI_ENTER_VOID(reader);
   if (reader == nullptr)
   {
     return;
   }
   static_cast<replay::BinaryLogReader*>(reader)->clearProgressCallback();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
@@ -9127,6 +10698,7 @@ extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
                                         uint32_t aggregator_count,
                                         uint32_t n_threads)
 {
+  FLOX_CAPI_ENTER(reader);
   if (reader == nullptr)
   {
     return 0;
@@ -9154,6 +10726,7 @@ extern "C" uint8_t flox_data_reader_run(FloxDataReaderHandle reader,
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader,
@@ -9161,6 +10734,7 @@ extern "C" uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader
                                                uint32_t aggregator_count,
                                                uint32_t /*n_threads*/)
 {
+  FLOX_CAPI_ENTER(reader);
   // n_threads reserved for future; MergedTapeReader::run is single-
   // threaded for now (per-instance symbol rekey would not align
   // across worker partitions).
@@ -9184,12 +10758,14 @@ extern "C" uint8_t flox_merged_tape_reader_run(FloxMergedTapeReaderHandle reader
     return 0;
   }
   return impl->reader->run(raw) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_event_type_stats_read_result(FloxAggregatorHandle h,
                                                       FloxEventTypeStatsRow* rows_out,
                                                       uint32_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* holder = toAgg(h);
   if (holder == nullptr)
   {
@@ -9215,12 +10791,14 @@ extern "C" uint32_t flox_event_type_stats_read_result(FloxAggregatorHandle h,
     rows_out[i].book_deltas = rows[i].book_deltas;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_bin_count_read_result(FloxAggregatorHandle h,
                                                FloxBinCountRow* rows_out,
                                                uint32_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* holder = toAgg(h);
   if (holder == nullptr)
   {
@@ -9245,12 +10823,14 @@ extern "C" uint32_t flox_bin_count_read_result(FloxAggregatorHandle h,
     rows_out[i].count = rows[i].count;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h,
                                                 FloxVolumeBinRow* rows_out,
                                                 uint32_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* holder = toAgg(h);
   if (holder == nullptr)
   {
@@ -9275,12 +10855,14 @@ extern "C" uint32_t flox_volume_bin_read_result(FloxAggregatorHandle h,
     rows_out[i].qty_raw = rows[i].qty_raw;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_ohlc_bin_read_result(FloxAggregatorHandle h,
                                               FloxOHLCBinRow* rows_out,
                                               uint32_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* holder = toAgg(h);
   if (holder == nullptr)
   {
@@ -9307,11 +10889,13 @@ extern "C" uint32_t flox_ohlc_bin_read_result(FloxAggregatorHandle h,
     rows_out[i].close_raw = rows[i].close_raw;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_peak_read_result(FloxAggregatorHandle h,
                                           FloxPeakRow* rows_out, uint32_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* holder = toAgg(h);
   if (holder == nullptr)
   {
@@ -9335,12 +10919,14 @@ extern "C" uint32_t flox_peak_read_result(FloxAggregatorHandle h,
     rows_out[i].start_ns = rows[i].start_ns;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
                                               FloxQuantileRow* rows_out,
                                               uint32_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* holder = toAgg(h);
   if (holder == nullptr)
   {
@@ -9364,11 +10950,13 @@ extern "C" uint32_t flox_quantile_read_result(FloxAggregatorHandle h,
     rows_out[i].count = rows[i].count;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_book_snapshot_bin_read_result(
     FloxAggregatorHandle h, FloxBookSnapshotBinRow* rows_out, uint32_t max_rows)
 {
+  FLOX_CAPI_ENTER(h);
   auto* holder = toAgg(h);
   if (holder == nullptr)
   {
@@ -9398,6 +10986,7 @@ extern "C" uint32_t flox_book_snapshot_bin_read_result(
     rows_out[i].ask_qty_raw = rows[i].ask_qty_raw;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -9432,20 +11021,27 @@ inline flox::Account* toAccount(FloxAccountHandle h)
 
 extern "C" FloxFeeScheduleHandle flox_fee_schedule_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new flox::FeeSchedule();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_fee_schedule_destroy(FloxFeeScheduleHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toFee(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_fee_schedule_add_tier(FloxFeeScheduleHandle h,
                                            double min_notional_30d, double maker_bps,
                                            double taker_bps)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toFee(h)->addTier(min_notional_30d, maker_bps, taker_bps);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" int flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const char* name)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h || !name)
   {
     return 0;
@@ -9472,29 +11068,39 @@ extern "C" int flox_fee_schedule_load_profile(FloxFeeScheduleHandle h, const cha
     return 0;
   }
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_fee_schedule_record_fill(FloxFeeScheduleHandle h, int64_t ts_ns,
                                               double notional)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toFee(h)->recordFill(ts_ns, notional);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" double flox_fee_schedule_fee_for(FloxFeeScheduleHandle h, int64_t ts_ns,
                                             double notional, uint8_t is_maker)
 {
+  FLOX_CAPI_ENTER(h);
   return toFee(h)->feeFor(ts_ns, notional, is_maker != 0);
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_fee_schedule_current_tier(FloxFeeScheduleHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toFee(h)->currentTierIndex());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" double flox_fee_schedule_rolling_notional(FloxFeeScheduleHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toFee(h)->rollingNotional30d();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_fee_schedule_tier_transitions(FloxFeeScheduleHandle h,
                                                        int64_t* out_buf,
                                                        uint32_t max_events)
 {
+  FLOX_CAPI_ENTER(h);
   const auto& v = toFee(h)->tierTransitionTsNs();
   if (out_buf == nullptr || max_events == 0)
   {
@@ -9506,29 +11112,39 @@ extern "C" uint32_t flox_fee_schedule_tier_transitions(FloxFeeScheduleHandle h,
     out_buf[i] = v[i];
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_fee_schedule_reset_rolling(FloxFeeScheduleHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toFee(h)->resetRolling();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" FloxFundingScheduleHandle flox_funding_schedule_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new flox::FundingSchedule();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_funding_schedule_destroy(FloxFundingScheduleHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toFunding(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_funding_schedule_set_constant(FloxFundingScheduleHandle h,
                                                    int64_t interval_ns, double rate)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   *toFunding(h) = flox::FundingSchedule::constant(interval_ns, rate);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_funding_schedule_set_tape(FloxFundingScheduleHandle h,
                                                const int64_t* timestamps_ns,
                                                const double* rates, uint32_t n)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   std::vector<std::pair<int64_t, double>> events;
   events.reserve(n);
   for (uint32_t i = 0; i < n; ++i)
@@ -9536,11 +11152,13 @@ extern "C" void flox_funding_schedule_set_tape(FloxFundingScheduleHandle h,
     events.emplace_back(timestamps_ns ? timestamps_ns[i] : 0, rates ? rates[i] : 0.0);
   }
   *toFunding(h) = flox::FundingSchedule::tape(std::move(events));
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_funding_schedule_set_tape_by_symbol(
     FloxFundingScheduleHandle h, const int64_t* timestamps_ns,
     const uint32_t* symbols, const double* rates, uint32_t n)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   std::vector<flox::FundingTapeEntry> entries;
   entries.reserve(n);
   for (uint32_t i = 0; i < n; ++i)
@@ -9553,19 +11171,23 @@ extern "C" void flox_funding_schedule_set_tape_by_symbol(
     entries.push_back(e);
   }
   *toFunding(h) = flox::FundingSchedule::tapeBySymbol(std::move(entries));
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" uint8_t flox_funding_schedule_load_tape(FloxFundingScheduleHandle h,
                                                    const char* path)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h || !path)
   {
     return 0;
   }
   return toFunding(h)->loadTape(std::string(path)) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 extern "C" int flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
                                                   const char* name)
 {
+  FLOX_CAPI_ENTER(h);
   if (!h || !name)
   {
     return 0;
@@ -9592,15 +11214,20 @@ extern "C" int flox_funding_schedule_load_profile(FloxFundingScheduleHandle h,
     return 0;
   }
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_funding_schedule_set_constant_rate(FloxFundingScheduleHandle h,
                                                         double rate)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toFunding(h)->setConstantRate(rate);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_funding_schedule_reset(FloxFundingScheduleHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toFunding(h)->reset();
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" uint32_t flox_funding_schedule_tick(FloxFundingScheduleHandle h, int64_t now_ns,
                                                const uint32_t* symbols,
@@ -9609,6 +11236,7 @@ extern "C" uint32_t flox_funding_schedule_tick(FloxFundingScheduleHandle h, int6
                                                uint32_t n_symbols, double* out_buf,
                                                uint32_t max_events)
 {
+  FLOX_CAPI_ENTER(h);
   std::vector<flox::SymbolId> syms(n_symbols);
   std::vector<double> pos(n_symbols);
   std::vector<double> mark(n_symbols);
@@ -9634,88 +11262,112 @@ extern "C" uint32_t flox_funding_schedule_tick(FloxFundingScheduleHandle h, int6
     out_buf[i * 6 + 5] = events[i].amount;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxLiveQueuePositionHandle flox_live_queue_position_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new flox::LiveQueuePositionEstimator();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_live_queue_position_destroy(FloxLiveQueuePositionHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toLiveQ(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_set_confidence_half_life_ns(
     FloxLiveQueuePositionHandle h, int64_t half_life_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->setConfidenceHalfLifeNs(half_life_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_set_shrink_factor(
     FloxLiveQueuePositionHandle h, double factor)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->setShrinkAttributionFactor(factor);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_on_order_placed(
     FloxLiveQueuePositionHandle h, uint32_t symbol, uint8_t side, int64_t price_raw,
     uint64_t order_id, int64_t order_qty_raw, int64_t level_qty_raw, int64_t ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->onOrderPlaced(symbol, static_cast<flox::Side>(side),
                             flox::Price::fromRaw(price_raw), order_id,
                             flox::Quantity::fromRaw(order_qty_raw),
                             flox::Quantity::fromRaw(level_qty_raw), ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_on_order_cancelled(
     FloxLiveQueuePositionHandle h, uint64_t order_id, int64_t ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->onOrderCancelled(order_id, ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_on_order_filled(
     FloxLiveQueuePositionHandle h, uint64_t order_id, int64_t cumulative_fill_raw,
     int64_t ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->onOrderFilled(order_id, flox::Quantity::fromRaw(cumulative_fill_raw), ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_on_trade(FloxLiveQueuePositionHandle h,
                                                   uint32_t symbol, int64_t price_raw,
                                                   int64_t qty_raw, int64_t ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->onTrade(symbol, flox::Price::fromRaw(price_raw),
                       flox::Quantity::fromRaw(qty_raw), ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_on_trade_with_flag(
     FloxLiveQueuePositionHandle h, uint32_t symbol, int64_t price_raw, int64_t qty_raw,
     int64_t ts_ns, uint8_t is_hidden)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->onTradeWithFlag(symbol, flox::Price::fromRaw(price_raw),
                               flox::Quantity::fromRaw(qty_raw), ts_ns, is_hidden != 0);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_set_hidden_order_policy(
     FloxLiveQueuePositionHandle h, uint8_t policy)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->setHiddenOrderPolicy(static_cast<flox::HiddenOrderPolicy>(policy));
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_live_queue_position_on_level_update(
     FloxLiveQueuePositionHandle h, uint32_t symbol, uint8_t side, int64_t price_raw,
     int64_t new_qty_raw, int64_t ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiveQ(h)->onLevelUpdate(symbol, static_cast<flox::Side>(side),
                             flox::Price::fromRaw(price_raw),
                             flox::Quantity::fromRaw(new_qty_raw), ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle h,
                                                      uint64_t order_id, int64_t now_ns,
                                                      int64_t* out_slots)
 {
+  FLOX_CAPI_ENTER(h);
   auto snap = toLiveQ(h)->snapshot(order_id, now_ns);
   if (!snap.has_value() || out_slots == nullptr)
   {
@@ -9729,11 +11381,14 @@ extern "C" uint8_t flox_live_queue_position_snapshot(FloxLiveQueuePositionHandle
   std::memcpy(&out_slots[4], &conf, sizeof(double));
   out_slots[5] = snap->hiddenVolumeSeen.raw();
   return 1;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_live_queue_position_tracked_count(FloxLiveQueuePositionHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toLiveQ(h)->trackedOrderCount());
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -9750,40 +11405,53 @@ LiquidationEngine* toLiqEngine(FloxLiquidationEngineHandle h)
 
 extern "C" FloxLiquidationEngineHandle flox_liquidation_engine_create(void)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new LiquidationEngine();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_liquidation_engine_destroy(FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toLiqEngine(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_liquidation_engine_add_tier(FloxLiquidationEngineHandle h,
                                                  double min_notional, double mm_fraction)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->addTier(min_notional, mm_fraction);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_liquidation_engine_set_insurance_fund_capital(
     FloxLiquidationEngineHandle h, double capital)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->setInsuranceFundCapital(capital);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" double flox_liquidation_engine_insurance_fund_balance(FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toLiqEngine(h)->insuranceFundBalance();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_liquidation_engine_set_adl_enabled(FloxLiquidationEngineHandle h,
                                                         uint8_t enabled)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->setAdlEnabled(enabled != 0);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_liquidation_engine_set_adl_ranking(FloxLiquidationEngineHandle h,
                                                         uint8_t ranking)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   AdlRanking r = AdlRanking::PnlRatio;
   switch (ranking)
   {
@@ -9801,17 +11469,22 @@ extern "C" void flox_liquidation_engine_set_adl_ranking(FloxLiquidationEngineHan
       break;
   }
   toLiqEngine(h)->setAdlRanking(r);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint8_t flox_liquidation_engine_adl_ranking(FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint8_t>(toLiqEngine(h)->adlRanking());
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_liquidation_engine_set_liquidation_slippage_bps(
     FloxLiquidationEngineHandle h, double bps)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->setLiquidationSlippageBps(bps);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_liquidation_engine_open_position(FloxLiquidationEngineHandle h,
@@ -9819,20 +11492,26 @@ extern "C" void flox_liquidation_engine_open_position(FloxLiquidationEngineHandl
                                                       double quantity, double entry_price,
                                                       double equity)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->openPosition(LeveragedPosition{
       .accountId = account_id, .symbol = symbol, .quantity = quantity, .entryPrice = entry_price, .equity = equity});
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_liquidation_engine_close_position(FloxLiquidationEngineHandle h,
                                                        uint64_t account_id, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->closePosition(account_id, symbol);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h,
                                                     uint32_t symbol, double mark_price)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toLiqEngine(h)->onMark(symbol, mark_price).liquidationsCount);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint32_t flox_liquidation_engine_on_marks(FloxLiquidationEngineHandle h,
@@ -9841,6 +11520,7 @@ extern "C" uint32_t flox_liquidation_engine_on_marks(FloxLiquidationEngineHandle
                                                      const double* prices,
                                                      int64_t ts_ns)
 {
+  FLOX_CAPI_ENTER(h);
   std::vector<std::pair<flox::SymbolId, double>> marks;
   marks.reserve(n);
   for (uint32_t i = 0; i < n; ++i)
@@ -9849,25 +11529,33 @@ extern "C" uint32_t flox_liquidation_engine_on_marks(FloxLiquidationEngineHandle
   }
   return static_cast<uint32_t>(
       toLiqEngine(h)->onMarks(marks, ts_ns).liquidationsCount);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint64_t flox_liquidation_engine_liquidations_count(FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toLiqEngine(h)->liquidationsCount();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint64_t flox_liquidation_engine_insurance_payments_count(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toLiqEngine(h)->insurancePaymentsCount();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint64_t flox_liquidation_engine_adl_closeouts_count(FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toLiqEngine(h)->adlCloseoutsCount();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle h,
                                                      uint8_t profile)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   auto* eng = toLiqEngine(h);
   LiquidationEngine canned;
   switch (profile)
@@ -9885,17 +11573,20 @@ extern "C" void flox_liquidation_engine_load_profile(FloxLiquidationEngineHandle
       return;
   }
   *eng = canned;
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h,
                                                      FloxSimulatedExecutorHandle exec_h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   SimulatedExecutor* ex = nullptr;
   if (exec_h != nullptr)
   {
     ex = &static_cast<FloxSimulatedExecutorImpl*>(exec_h)->executor;
   }
   toLiqEngine(h)->setExecutor(ex);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // T039: cascade statistics.
@@ -9917,55 +11608,76 @@ uint32_t copyVec(const std::vector<T>& src, T* out, uint32_t max)
 extern "C" uint32_t flox_liquidation_engine_deficits_paid_by_fund_size(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toLiqEngine(h)->deficitsPaidByFund().size());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_liquidation_engine_deficits_paid_by_fund_copy(
     FloxLiquidationEngineHandle h, double* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyVec(toLiqEngine(h)->deficitsPaidByFund(), out, max);
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_liquidation_engine_deficits_paid_by_adl_size(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toLiqEngine(h)->deficitsPaidByAdl().size());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_liquidation_engine_deficits_paid_by_adl_copy(
     FloxLiquidationEngineHandle h, double* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyVec(toLiqEngine(h)->deficitsPaidByAdl(), out, max);
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_liquidation_engine_cascade_sizes_size(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toLiqEngine(h)->cascadeSizesPerTick().size());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_liquidation_engine_cascade_sizes_copy(
     FloxLiquidationEngineHandle h, uint32_t* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyVec(toLiqEngine(h)->cascadeSizesPerTick(), out, max);
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_liquidation_engine_fund_balance_history_size(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toLiqEngine(h)->fundBalanceHistory().size());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_liquidation_engine_fund_balance_history_copy(
     FloxLiquidationEngineHandle h, double* out, uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   return copyVec(toLiqEngine(h)->fundBalanceHistory(), out, max);
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint64_t flox_liquidation_engine_ticks_to_first_adl(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toLiqEngine(h)->ticksToFirstAdl();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_liquidation_engine_reset_stats(FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->resetStats();
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_liquidation_engine_set_mark_impact_model(
     FloxLiquidationEngineHandle h, uint8_t model, double weight)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   using M = flox::LiquidationEngine::MarkImpactModel;
   M m = M::None;
   if (model == 1)
@@ -9977,26 +11689,35 @@ extern "C" void flox_liquidation_engine_set_mark_impact_model(
     m = M::BookOnly;
   }
   toLiqEngine(h)->setMarkImpactModel(m, weight);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" uint8_t flox_liquidation_engine_mark_impact_model(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint8_t>(toLiqEngine(h)->markImpactModel());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" double flox_liquidation_engine_mark_impact_weight(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toLiqEngine(h)->markImpactWeight();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_liquidation_engine_set_max_cascade_depth(
     FloxLiquidationEngineHandle h, uint32_t depth)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->setMaxCascadeDepth(depth);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" uint32_t flox_liquidation_engine_max_cascade_depth(
     FloxLiquidationEngineHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toLiqEngine(h)->maxCascadeDepth();
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -10005,41 +11726,59 @@ extern "C" uint32_t flox_liquidation_engine_max_cascade_depth(
 
 extern "C" FloxAccountHandle flox_account_create(uint64_t account_id, double equity)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   return new flox::Account(account_id, equity);
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_destroy(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER_DESTROY(h);
   delete toAccount(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" uint64_t flox_account_id(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toAccount(h)->accountId();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" double flox_account_equity(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toAccount(h)->equity();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_set_equity(FloxAccountHandle h, double equity)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->setEquity(equity);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_account_add_equity(FloxAccountHandle h, double delta)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->addEquity(delta);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" uint8_t flox_account_margin_mode(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint8_t>(toAccount(h)->marginMode());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_set_margin_mode(FloxAccountHandle h, uint8_t mode)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   using M = flox::MarginMode;
   toAccount(h)->setMarginMode(mode == 1 ? M::Isolated : M::Cross);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_account_open_position(FloxAccountHandle h, uint32_t symbol,
                                            double quantity, double entry_price)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->openPosition(symbol, quantity, entry_price);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_account_open_position_isolated(FloxAccountHandle h,
                                                     uint32_t symbol,
@@ -10047,60 +11786,85 @@ extern "C" void flox_account_open_position_isolated(FloxAccountHandle h,
                                                     double entry_price,
                                                     double isolated_equity)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->openPosition(symbol, quantity, entry_price, isolated_equity);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_account_close_position(FloxAccountHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->closePosition(symbol);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" uint32_t flox_account_position_count(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toAccount(h)->positionCount());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->setMark(symbol, price);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_account_set_mark_at(FloxAccountHandle h, uint32_t symbol,
                                          double price, int64_t ts_ns)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->setMark(symbol, price, ts_ns);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" int64_t flox_account_mark_ts(FloxAccountHandle h, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER(h);
   return toAccount(h)->markTsFor(symbol);
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint8_t flox_account_has_stale_marks(FloxAccountHandle h,
                                                 int64_t now_ns, int64_t budget_ns)
 {
+  FLOX_CAPI_ENTER(h);
   return toAccount(h)->hasStaleMarks(now_ns, budget_ns) ? 1 : 0;
+  FLOX_CAPI_LEAVE;
 }
 extern "C" double flox_account_total_notional(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toAccount(h)->totalNotional();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" double flox_account_total_unrealised_pnl(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toAccount(h)->totalUnrealisedPnl();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns,
                                          double notional)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->recordFill(ts_ns, notional);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_account_record_fill_ex(FloxAccountHandle h, int64_t ts_ns,
                                             double notional, uint32_t symbol)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->recordFill(ts_ns, notional, symbol);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" uint32_t flox_account_rolling_notional_by_symbol_size(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return static_cast<uint32_t>(toAccount(h)->rollingNotionalBySymbol30d().size());
+  FLOX_CAPI_LEAVE;
 }
 extern "C" uint32_t flox_account_rolling_notional_by_symbol_copy(
     FloxAccountHandle h, uint32_t* symbols_out, double* notionals_out,
     uint32_t max)
 {
+  FLOX_CAPI_ENTER(h);
   const auto pairs = toAccount(h)->rollingNotionalBySymbol30d();
   const uint32_t n = static_cast<uint32_t>(
       std::min<size_t>(pairs.size(), static_cast<size_t>(max)));
@@ -10110,34 +11874,47 @@ extern "C" uint32_t flox_account_rolling_notional_by_symbol_copy(
     notionals_out[i] = pairs[i].second;
   }
   return n;
+  FLOX_CAPI_LEAVE;
 }
 extern "C" double flox_account_rolling_notional_30d(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toAccount(h)->rollingNotional30d();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_reset_rolling(FloxAccountHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toAccount(h)->resetRolling();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_liquidation_engine_attach_account(
     FloxLiquidationEngineHandle h, FloxAccountHandle account)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->attachAccount(toAccount(account));
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_liquidation_engine_detach_account(
     FloxLiquidationEngineHandle h, uint64_t account_id)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toLiqEngine(h)->detachAccount(account_id);
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_fee_schedule_bind_account(FloxFeeScheduleHandle h,
                                                FloxAccountHandle account)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toFee(h)->bindAccount(toAccount(account));
+  FLOX_CAPI_LEAVE_VOID;
 }
 extern "C" void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h)
 {
+  FLOX_CAPI_ENTER_VOID(h);
   toFee(h)->clearAccountBinding();
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -10148,65 +11925,129 @@ extern "C" void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h)
 
 namespace
 {
+
+// The handle points at this wrapper, not at the VenueStack: the executor
+// accessor has to hand back a FloxSimulatedExecutorImpl, and that wrapper
+// needs an owner with the same lifetime as the stack. Registering the six
+// borrowed addresses here, once, is also what lets _destroy recognise them.
+struct FloxVenueStackImpl
+{
+  flox::VenueStack stack;
+  FloxSimulatedExecutorImpl executorView;
+
+  explicit FloxVenueStackImpl(flox::VenueStack&& s)
+      : stack(std::move(s)), executorView(stack.clock(), stack.executor())
+  {
+    for (const void* p : borrowed())
+    {
+      FloxBorrowedHandles::add(p);
+    }
+  }
+
+  ~FloxVenueStackImpl()
+  {
+    for (const void* p : borrowed())
+    {
+      FloxBorrowedHandles::remove(p);
+    }
+  }
+
+  FloxVenueStackImpl(const FloxVenueStackImpl&) = delete;
+  FloxVenueStackImpl& operator=(const FloxVenueStackImpl&) = delete;
+
+ private:
+  std::array<const void*, 6> borrowed()
+  {
+    return {&executorView, &stack.account(), &stack.liquidation(),
+            &stack.fees(), &stack.funding(), &stack.venue()};
+  }
+};
+
+inline FloxVenueStackImpl* toVenueStackImpl(FloxVenueStackHandle h)
+{
+  return static_cast<FloxVenueStackImpl*>(h);
+}
+
 inline flox::VenueStack* toVenueStack(FloxVenueStackHandle h)
 {
-  return static_cast<flox::VenueStack*>(h);
+  return &toVenueStackImpl(h)->stack;
 }
+
 }  // namespace
 
 extern "C" FloxVenueStackHandle flox_venue_stack_create(uint8_t venue,
                                                         uint64_t account_id,
                                                         double equity)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   using flox::VenueStack;
   switch (venue)
   {
     case 1:
-      return new VenueStack(VenueStack::bybit_linear(account_id, equity));
+      return new FloxVenueStackImpl(VenueStack::bybit_linear(account_id, equity));
     case 2:
-      return new VenueStack(VenueStack::okx_swap(account_id, equity));
+      return new FloxVenueStackImpl(VenueStack::okx_swap(account_id, equity));
     case 3:
-      return new VenueStack(VenueStack::deribit(account_id, equity));
+      return new FloxVenueStackImpl(VenueStack::deribit(account_id, equity));
     case 0:
     default:
-      return new VenueStack(VenueStack::binance_um_futures(account_id, equity));
+      return new FloxVenueStackImpl(VenueStack::binance_um_futures(account_id, equity));
   }
+  FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_venue_stack_destroy(FloxVenueStackHandle h)
 {
-  delete toVenueStack(h);
+  FLOX_CAPI_ENTER_DESTROY(h);
+  delete toVenueStackImpl(h);
+  FLOX_CAPI_LEAVE_VOID;
 }
+// Borrowed: valid while the stack lives, and flox_simulated_executor_destroy
+// on it does nothing. See the ownership paragraph in flox_capi.h.
 extern "C" FloxSimulatedExecutorHandle flox_venue_stack_executor(
     FloxVenueStackHandle h)
 {
-  return &toVenueStack(h)->executor();
+  FLOX_CAPI_ENTER(h);
+  return &toVenueStackImpl(h)->executorView;
+  FLOX_CAPI_LEAVE;
 }
 extern "C" FloxAccountHandle flox_venue_stack_account(FloxVenueStackHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return &toVenueStack(h)->account();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" FloxLiquidationEngineHandle flox_venue_stack_liquidation(
     FloxVenueStackHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return &toVenueStack(h)->liquidation();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" FloxFeeScheduleHandle flox_venue_stack_fees(FloxVenueStackHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return &toVenueStack(h)->fees();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" FloxFundingScheduleHandle flox_venue_stack_funding(
     FloxVenueStackHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return &toVenueStack(h)->funding();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" FloxVenueAvailabilityHandle flox_venue_stack_venue(
     FloxVenueStackHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return &toVenueStack(h)->venue();
+  FLOX_CAPI_LEAVE;
 }
 extern "C" const char* flox_venue_stack_venue_name(FloxVenueStackHandle h)
 {
+  FLOX_CAPI_ENTER(h);
   return toVenueStack(h)->venueName().c_str();
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -10229,6 +12070,7 @@ inline uint8_t writeOut(const std::string& s, char* out, size_t out_len)
 
 extern "C" uint8_t flox_u256_roundtrip(const char* dec, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (dec == nullptr)
   {
     return 0;
@@ -10241,10 +12083,12 @@ extern "C" uint8_t flox_u256_roundtrip(const char* dec, char* out, size_t out_le
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_i256_roundtrip(const char* dec, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (dec == nullptr)
   {
     return 0;
@@ -10260,10 +12104,12 @@ extern "C" uint8_t flox_i256_roundtrip(const char* dec, char* out, size_t out_le
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_u256_from_hex(const char* hex, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (hex == nullptr)
   {
     return 0;
@@ -10276,10 +12122,12 @@ extern "C" uint8_t flox_u256_from_hex(const char* hex, char* out, size_t out_len
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_u256_to_words(const char* dec, uint64_t* words)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (dec == nullptr || words == nullptr)
   {
     return 0;
@@ -10297,10 +12145,12 @@ extern "C" uint8_t flox_u256_to_words(const char* dec, uint64_t* words)
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_u256_from_words(const uint64_t* words, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (words == nullptr)
   {
     return 0;
@@ -10311,6 +12161,7 @@ extern "C" uint8_t flox_u256_from_words(const uint64_t* words, char* out, size_t
     v.w[static_cast<std::size_t>(i)] = words[i];
   }
   return writeOut(v.toDec(), out, out_len);
+  FLOX_CAPI_LEAVE;
 }
 
 // ============================================================
@@ -10328,6 +12179,7 @@ inline flox::INTokenCurve* toCurve(FloxCurveHandle h)
 extern "C" FloxCurveHandle flox_curve_constant_product(const char* reserve0, const char* reserve1,
                                                        uint64_t fee_num, uint64_t fee_den)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (reserve0 == nullptr || reserve1 == nullptr)
   {
     return nullptr;
@@ -10341,12 +12193,14 @@ extern "C" FloxCurveHandle flox_curve_constant_product(const char* reserve0, con
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxCurveHandle flox_curve_raydium_cp(const char* reserve0, const char* reserve1,
                                                  uint64_t trade_fee_rate, uint64_t creator_fee_rate,
                                                  uint8_t creator_fee_on_input)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (reserve0 == nullptr || reserve1 == nullptr)
   {
     return nullptr;
@@ -10360,6 +12214,7 @@ extern "C" FloxCurveHandle flox_curve_raydium_cp(const char* reserve0, const cha
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxCurveHandle flox_curve_uniswap_v3(const char* sqrt_price_x96, const char* liquidity,
@@ -10368,6 +12223,7 @@ extern "C" FloxCurveHandle flox_curve_uniswap_v3(const char* sqrt_price_x96, con
                                                  const char* const* tick_liquidity_net,
                                                  size_t n_ticks)
 {
+  FLOX_CAPI_ENTER_NOHANDLE;
   if (sqrt_price_x96 == nullptr || liquidity == nullptr)
   {
     return nullptr;
@@ -10389,16 +12245,20 @@ extern "C" FloxCurveHandle flox_curve_uniswap_v3(const char* sqrt_price_x96, con
   {
     return nullptr;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" size_t flox_curve_token_count(FloxCurveHandle curve)
 {
+  FLOX_CAPI_ENTER(curve);
   return curve == nullptr ? 0 : toCurve(curve)->tokenCount();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_curve_amount_out(FloxCurveHandle curve, size_t i, size_t j,
                                          const char* amount_in, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER(curve);
   if (curve == nullptr || amount_in == nullptr)
   {
     return 0;
@@ -10412,11 +12272,13 @@ extern "C" uint8_t flox_curve_amount_out(FloxCurveHandle curve, size_t i, size_t
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_curve_apply_swap(FloxCurveHandle curve, size_t i, size_t j,
                                          const char* amount_in, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER(curve);
   if (curve == nullptr || amount_in == nullptr)
   {
     return 0;
@@ -10430,10 +12292,12 @@ extern "C" uint8_t flox_curve_apply_swap(FloxCurveHandle curve, size_t i, size_t
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER(curve);
   if (curve == nullptr)
   {
     return 0;
@@ -10451,10 +12315,12 @@ extern "C" uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_curve_sqrt_price(FloxCurveHandle curve, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER(curve);
   const auto* cl = curve == nullptr
                        ? nullptr
                        : dynamic_cast<const flox::ConcentratedLiquidityCurve*>(toCurve(curve));
@@ -10464,10 +12330,12 @@ extern "C" uint8_t flox_curve_sqrt_price(FloxCurveHandle curve, char* out, size_
     return 0;
   }
   return writeOut(cl->sqrtPrice().toDec(), out, out_len);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_curve_liquidity(FloxCurveHandle curve, char* out, size_t out_len)
 {
+  FLOX_CAPI_ENTER(curve);
   const auto* cl = curve == nullptr
                        ? nullptr
                        : dynamic_cast<const flox::ConcentratedLiquidityCurve*>(toCurve(curve));
@@ -10477,16 +12345,21 @@ extern "C" uint8_t flox_curve_liquidity(FloxCurveHandle curve, char* out, size_t
     return 0;
   }
   return writeOut(cl->liquidity().toDec(), out, out_len);
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxCurveHandle flox_curve_clone(FloxCurveHandle curve)
 {
+  FLOX_CAPI_ENTER(curve);
   return curve == nullptr ? nullptr : toCurve(curve)->clone().release();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" void flox_curve_destroy(FloxCurveHandle curve)
 {
+  FLOX_CAPI_ENTER_DESTROY(curve);
   delete toCurve(curve);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 // ============================================================
@@ -10515,15 +12388,27 @@ inline PoolReplayResult* toReplay(FloxPoolReplayHandle h)
 }
 }  // namespace
 
-extern "C" FloxPoolTapeHandle flox_pool_tape_create(void) { return new PoolTapeBuilder(); }
-extern "C" void flox_pool_tape_destroy(FloxPoolTapeHandle tape) { delete toTape(tape); }
+extern "C" FloxPoolTapeHandle flox_pool_tape_create(void)
+{
+  FLOX_CAPI_ENTER_NOHANDLE;
+  return new PoolTapeBuilder();
+  FLOX_CAPI_LEAVE;
+}
+extern "C" void flox_pool_tape_destroy(FloxPoolTapeHandle tape)
+{
+  FLOX_CAPI_ENTER_DESTROY(tape);
+  delete toTape(tape);
+  FLOX_CAPI_LEAVE_VOID;
+}
 
 extern "C" void flox_pool_tape_descriptor_constant_product(FloxPoolTapeHandle tape,
                                                            uint64_t fee_num, uint64_t fee_den,
                                                            uint8_t base_dec, uint8_t quote_dec)
 {
+  FLOX_CAPI_ENTER_VOID(tape);
   flox::PoolStateWriter(toTape(tape)->bytes)
       .descriptorConstantProduct(fee_num, fee_den, base_dec, quote_dec);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_pool_tape_descriptor_raydium_cp(FloxPoolTapeHandle tape,
@@ -10532,22 +12417,27 @@ extern "C" void flox_pool_tape_descriptor_raydium_cp(FloxPoolTapeHandle tape,
                                                      uint8_t creator_fee_on_input, uint8_t base_dec,
                                                      uint8_t quote_dec)
 {
+  FLOX_CAPI_ENTER_VOID(tape);
   flox::PoolStateWriter(toTape(tape)->bytes)
       .descriptorRaydiumCp(trade_fee_rate, creator_fee_rate, creator_fee_on_input != 0, base_dec,
                            quote_dec);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" void flox_pool_tape_descriptor_clmm(FloxPoolTapeHandle tape, uint8_t venue,
                                                uint32_t fee_pips, uint8_t base_dec,
                                                uint8_t quote_dec)
 {
+  FLOX_CAPI_ENTER_VOID(tape);
   flox::PoolStateWriter(toTape(tape)->bytes)
       .descriptorClmm(static_cast<flox::PoolVenue>(venue), fee_pips, base_dec, quote_dec);
+  FLOX_CAPI_LEAVE_VOID;
 }
 
 extern "C" uint8_t flox_pool_tape_checkpoint(FloxPoolTapeHandle tape, int64_t ts_ns,
                                              const char* reserve0, const char* reserve1)
 {
+  FLOX_CAPI_ENTER(tape);
   if (reserve0 == nullptr || reserve1 == nullptr)
   {
     return 0;
@@ -10562,6 +12452,7 @@ extern "C" uint8_t flox_pool_tape_checkpoint(FloxPoolTapeHandle tape, int64_t ts
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_pool_tape_checkpoint_clmm(FloxPoolTapeHandle tape, int64_t ts_ns,
@@ -10570,6 +12461,7 @@ extern "C" uint8_t flox_pool_tape_checkpoint_clmm(FloxPoolTapeHandle tape, int64
                                                   const char* const* tick_liquidity_net,
                                                   size_t n_ticks)
 {
+  FLOX_CAPI_ENTER(tape);
   if (sqrt_price == nullptr || liquidity == nullptr)
   {
     return 0;
@@ -10592,11 +12484,13 @@ extern "C" uint8_t flox_pool_tape_checkpoint_clmm(FloxPoolTapeHandle tape, int64
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" uint8_t flox_pool_tape_swap(FloxPoolTapeHandle tape, int64_t ts_ns,
                                        uint8_t base_for_quote, const char* amount_in)
 {
+  FLOX_CAPI_ENTER(tape);
   if (amount_in == nullptr)
   {
     return 0;
@@ -10611,12 +12505,14 @@ extern "C" uint8_t flox_pool_tape_swap(FloxPoolTapeHandle tape, int64_t ts_ns,
   {
     return 0;
   }
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxPoolReplayHandle flox_pool_tape_replay(FloxPoolTapeHandle tape, size_t base_idx,
                                                       size_t quote_idx, uint8_t base_dec,
                                                       uint8_t quote_dec)
 {
+  FLOX_CAPI_ENTER(tape);
   auto* r = new PoolReplayResult();
   // A throwaway seed for the connector ctor; the replay re-points it at the curve it
   // rebuilds from the tape's first Checkpoint.
@@ -10630,25 +12526,100 @@ extern "C" FloxPoolReplayHandle flox_pool_tape_replay(FloxPoolTapeHandle tape, s
   r->replay = std::make_unique<flox::PoolStateReplay>(*r->conn);
   r->replay->run(toTape(tape)->bytes);
   return r;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" size_t flox_pool_replay_drift_count(FloxPoolReplayHandle replay)
 {
+  FLOX_CAPI_ENTER(replay);
   return replay == nullptr ? 0 : toReplay(replay)->replay->driftCount();
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" size_t flox_pool_replay_trade_count(FloxPoolReplayHandle replay)
 {
+  FLOX_CAPI_ENTER(replay);
   return replay == nullptr ? 0 : toReplay(replay)->trades;
+  FLOX_CAPI_LEAVE;
 }
 
 extern "C" FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay)
 {
-  if (replay == nullptr)
-  {
-    return nullptr;
-  }
-  return const_cast<flox::INTokenCurve*>(toReplay(replay)->replay->curve());
+  FLOX_CAPI_ENTER(replay);
+  // Borrowed: the replay owns this curve. Registered on the way out rather
+  // than at construction because the replay only has a curve once the tape
+  // carried a checkpoint, and a caller cannot hold the pointer without
+  // having come through here first.
+  auto* curve = const_cast<flox::INTokenCurve*>(toReplay(replay)->replay->curve());
+  FloxBorrowedHandles::add(curve);
+  return curve;
+  FLOX_CAPI_LEAVE;
 }
 
-extern "C" void flox_pool_replay_destroy(FloxPoolReplayHandle replay) { delete toReplay(replay); }
+extern "C" void flox_pool_replay_destroy(FloxPoolReplayHandle replay)
+{
+  FLOX_CAPI_ENTER_DESTROY(replay);
+  auto* impl = toReplay(replay);
+  FloxBorrowedHandles::remove(const_cast<flox::INTokenCurve*>(impl->replay->curve()));
+  delete impl;
+  FLOX_CAPI_LEAVE_VOID;
+}
+
+// ============================================================
+// Diagnostics: ABI version and the last error on this thread
+// ============================================================
+
+// The shared library exported 729 symbols and not one of them said which ABI
+// they belonged to, so a consumer loading it through dlopen or ctypes -- the
+// way docs/bindings/capi.md suggests -- had no way to notice a mismatch. The
+// structs on this boundary are solid, with no reserved tail, so a version
+// skew shows up as silently wrong numbers rather than a failed load.
+extern "C" uint32_t flox_capi_abi_version(void)
+{
+  FLOX_CAPI_ENTER_NOHANDLE;
+  return FLOX_CAPI_ABI_VERSION;
+  FLOX_CAPI_LEAVE;
+}
+
+// These three are the only exported functions without the FLOX_CAPI_ENTER /
+// FLOX_CAPI_LEAVE pair, because the pair reports through them: catching here
+// and returning {} would hand back a NULL message pointer and lose the very
+// error the caller is asking about. They take no handle and touch nothing
+// that throws once the thread-local slot exists, so each carries its own
+// narrow catch instead.
+extern "C" int flox_last_error_code(void)
+{
+  try
+  {
+    return floxCapiLastError().code;
+  }
+  catch (...)
+  {
+    return kFloxCapiErrException;
+  }
+}
+
+extern "C" const char* flox_last_error_message(void)
+{
+  try
+  {
+    return floxCapiLastError().message.c_str();
+  }
+  catch (...)
+  {
+    return "";
+  }
+}
+
+extern "C" void flox_clear_last_error(void)
+{
+  try
+  {
+    auto& e = floxCapiLastError();
+    e.code = kFloxCapiOk;
+    e.message.clear();
+  }
+  catch (...)
+  {
+  }
+}

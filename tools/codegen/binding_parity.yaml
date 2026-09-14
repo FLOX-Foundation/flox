@@ -520,3 +520,14 @@ groups:
       reason: >
         Replay returns 256-bit reserves, which the QuickJS bound surface has no BigInt
         for yet (see dex_amount / amm_curve). Bind once that lands. Tracked in W1-T041.
+
+  # ABI version and the thread's last error. Purely a C-level concern: every
+  # other binding raises a native exception with the real message instead of
+  # returning a failure value the caller then has to ask about, so surfacing
+  # these would give a Python or JS user a second, weaker error channel next
+  # to the one their language already has.
+  capi_diagnostics:
+    pybind11: { status: not_applicable }
+    napi: { status: not_applicable }
+    codon: { status: required }
+    quickjs: { status: not_applicable }

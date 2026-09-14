@@ -12,8 +12,9 @@
 //
 // Every binding that turns an order-type code into a string, or a string
 // into a code, must go through this header instead of keeping its own
-// private copy. CAPI-01, CAPI-09 and NC-06 were all downstream of hand-kept
-// tables that drifted from each other and from the two spaces below.
+// private copy. The order-type defects the binding audit turned up were all
+// downstream of hand-kept tables that drifted from each other and from the
+// two spaces below.
 //
 // Space A — flox::OrderType (include/flox/common.h). Governs
 // FloxOrder.type, FloxOrderEventData.order_type, and the order_type
@@ -25,7 +26,7 @@
 // FloxSignal.order_type only:
 //   MARKET=0, LIMIT=1, STOP_MARKET=2, STOP_LIMIT=3, TAKE_PROFIT_MARKET=4,
 //   TAKE_PROFIT_LIMIT=5, TRAILING_STOP=6, CANCEL=7, CANCEL_ALL=8, MODIFY=9,
-//   ICEBERG=10.
+//   ICEBERG=10, OCO=11, PROVIDE_LIQUIDITY=12, WITHDRAW_LIQUIDITY=13.
 //
 // LIMIT and MARKET are swapped between the two spaces on purpose — see
 // signalTypeCodeFromOrderType in src/capi/flox_capi.cpp. Never hand a code
@@ -107,6 +108,9 @@ inline constexpr const char* kSignalTypeNames[] = {
     "cancel_all",
     "modify",
     "iceberg",
+    "oco",
+    "provide_liquidity",
+    "withdraw_liquidity",
 };
 
 inline constexpr std::size_t kSignalTypeNameCount =

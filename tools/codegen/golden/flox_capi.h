@@ -1096,6 +1096,15 @@ extern "C"
   FloxWriterStats flox_binary_log_recorder_hook_stats(FloxBinaryLogRecorderHookHandle hook);
 
   // ============================================================
+  // Capi Diagnostics
+  // ============================================================
+
+  uint32_t flox_capi_abi_version(void);
+  int flox_last_error_code(void);
+  const char* flox_last_error_message(void);
+  void flox_clear_last_error(void);
+
+  // ============================================================
   // Composite Book
   // ============================================================
 

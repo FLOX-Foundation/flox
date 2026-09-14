@@ -129,10 +129,15 @@ class Signal:
     new_quantity:    float
 
 
+# FLOX_SIGNAL_TYPE_* codes, in order. Mirrors kSignalTypeNames in
+# include/flox/capi/order_type_names.hpp -- the table that every binding
+# reads FloxSignal.order_type through. The list stopped at "modify", so
+# code 10 came back as "unknown" and anything past it did too.
 _ORDER_TYPE_NAMES = [
     "market", "limit", "stop_market", "stop_limit",
     "tp_market", "tp_limit", "trailing_stop",
-    "cancel", "cancel_all", "modify"
+    "cancel", "cancel_all", "modify", "iceberg",
+    "oco", "provide_liquidity", "withdraw_liquidity"
 ]
 
 
