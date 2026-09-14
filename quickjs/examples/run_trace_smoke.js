@@ -14,17 +14,17 @@ var rec = new flox.TraceRecorder({
   path: path,
   strategyId: 'qjs-smoke',
   strategyHash: 'sha256:test',
-  runStartedNs: 1700000000000000000,
+  runStartedNs: 1700000000000000000n,
 });
 rec.addTapeRef({
   path: 'BTCUSDT.floxlog',
   contentHash: 'sha256:abc',
-  firstEventNs: 1700000000000000000,
-  lastEventNs: 1700000000500000000,
+  firstEventNs: 1700000000000000000n,
+  lastEventNs: 1700000000500000000n,
 });
 rec.writeSignal({
-  runTsNs: 1700000000100000000,
-  feedTsNs: 1700000000099000000,
+  runTsNs: 1700000000100000000n,
+  feedTsNs: 1700000000099000000n,
   signalId: 42,
   flags: 1,
   strengthRaw: 75000000,
@@ -33,8 +33,8 @@ rec.writeSignal({
   payload: '{"src":"ETH","dst":"BTC"}',
 });
 rec.writeOrderEvent({
-  runTsNs: 1700000000200000000,
-  feedTsNs: 1700000000099000000,
+  runTsNs: 1700000000200000000n,
+  feedTsNs: 1700000000099000000n,
   orderId: 7,
   parentSignalId: 42,
   priceRaw: 5000000000000,
@@ -47,8 +47,8 @@ rec.writeOrderEvent({
   reason: '',
 });
 rec.writeFill({
-  runTsNs: 1700000000300000000,
-  feedTsNs: 1700000000250000000,
+  runTsNs: 1700000000300000000n,
+  feedTsNs: 1700000000250000000n,
   orderId: 7,
   fillId: 12345,
   priceRaw: 5000000000000,
@@ -58,12 +58,12 @@ rec.writeFill({
   side: 0,
   liquidity: 1,
 });
-rec.setRunEndedNs(1700000000400000000);
+rec.setRunEndedNs(1700000000400000000n);
 rec.close();
 
 var reader = new flox.TraceReader(path);
 check('strategy id', reader.strategyId() === 'qjs-smoke');
-check('run ended', reader.runEndedNs() === 1700000000400000000);
+check('run ended', reader.runEndedNs() === 1700000000400000000n);
 
 var sigs = reader.readAllSignals();
 check('signal count', sigs.length === 1);

@@ -96,9 +96,12 @@ for (var i = 1; i < merged.length; i++) {
 check(sortedAsc, 'readTrades: output is time-sorted ascending');
 
 // Sequence of timestamps should be 1000, 2000, 3000, 4000 — interleaved.
+// Nanosecond timestamps arrive as BigInt, so the literals carry an n suffix
+// and the diagnostic joins them instead of going through JSON.stringify,
+// which refuses a BigInt outright.
 var ts = merged.map(function(t) { return t.exchangeTsNs; });
-check(ts[0] === 1000 && ts[1] === 2000 && ts[2] === 3000 && ts[3] === 4000,
-      'readTrades: timestamps interleaved 1000/2000/3000/4000 (got ' + JSON.stringify(ts) + ')');
+check(ts[0] === 1000n && ts[1] === 2000n && ts[2] === 3000n && ts[3] === 4000n,
+      'readTrades: timestamps interleaved 1000/2000/3000/4000 (got ' + ts.join(',') + ')');
 
 mtr.destroy();
 
