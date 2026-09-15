@@ -16,6 +16,16 @@
 ## Codon coverage is asserted via the auto-generated golden file — every
 ## group that emits exports ends up there, so codon defaults to `required`
 ## with no class/function listing.
+##
+## QuickJS is checked against the addGlobalFunc registration table in
+## src/quickjs/js_bindings.cpp, so a `quickjs: required` entry lists the global
+## names a strategy calls (`__flox_*`), not classes. The names are written out
+## because they are not derivable: the `__` + C-API-name convention has real
+## exceptions, e.g. __flox_vprofile_create wraps flox_volume_profile_create.
+##
+## Most groups still carry no `quickjs` entry. The gate counts and names those
+## instead of passing them silently; run it with --require-quickjs to make an
+## undeclared group a failure once this file is complete.
 
 groups:
   # ── Existing user-facing classes ──────────────────────────────────────
@@ -64,6 +74,22 @@ groups:
     pybind11: { status: required, classes: [VenueAvailability, SimulatedExecutor] }
     napi: { status: required, classes: [VenueAvailability, SimulatedExecutor] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_simulated_executor_set_venue_availability
+        - __flox_venue_availability_auto_random_outages
+        - __flox_venue_availability_book_updates_allowed
+        - __flox_venue_availability_cancels_allowed
+        - __flox_venue_availability_consume_wrong_side_recovery_bps
+        - __flox_venue_availability_create
+        - __flox_venue_availability_destroy
+        - __flox_venue_availability_is_up
+        - __flox_venue_availability_latency_multiplier
+        - __flox_venue_availability_schedule_outage
+        - __flox_venue_availability_schedule_outage_ex
+        - __flox_venue_availability_submits_allowed
+        - __flox_venue_availability_trades_allowed
 
   liquidation_engine:
     pybind11: { status: required, classes: [LiquidationEngine] }
@@ -89,6 +115,18 @@ groups:
     pybind11: { status: required, classes: [VenueStack] }
     napi: { status: required, classes: [VenueStack] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_venue_stack_account
+        - __flox_venue_stack_create
+        - __flox_venue_stack_destroy
+        - __flox_venue_stack_executor
+        - __flox_venue_stack_fees
+        - __flox_venue_stack_funding
+        - __flox_venue_stack_liquidation
+        - __flox_venue_stack_venue
+        - __flox_venue_stack_venue_name
 
   walk_forward:
     pybind11: { status: required, classes: [WalkForwardRunner] }
@@ -256,6 +294,12 @@ groups:
       status: allowlist
       reason: "stats fns currently on Stats class (has tradePnl / winRate / profitFactor methods)."
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_stat_correlation
+        - __flox_stat_profit_factor
+        - __flox_stat_win_rate
 
   indicator_functions:
     pybind11:
@@ -265,6 +309,36 @@ groups:
       status: required
       functions: [sma, ema, rsi, macd, atr]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_indicator_adf
+        - __flox_indicator_adx
+        - __flox_indicator_atr
+        - __flox_indicator_autocorrelation
+        - __flox_indicator_bollinger
+        - __flox_indicator_cci
+        - __flox_indicator_chop
+        - __flox_indicator_correlation
+        - __flox_indicator_cvd
+        - __flox_indicator_dema
+        - __flox_indicator_ema
+        - __flox_indicator_kama
+        - __flox_indicator_kurtosis
+        - __flox_indicator_macd
+        - __flox_indicator_obv
+        - __flox_indicator_parkinson_vol
+        - __flox_indicator_rma
+        - __flox_indicator_rogers_satchell_vol
+        - __flox_indicator_rolling_zscore
+        - __flox_indicator_rsi
+        - __flox_indicator_shannon_entropy
+        - __flox_indicator_skewness
+        - __flox_indicator_slope
+        - __flox_indicator_sma
+        - __flox_indicator_stochastic
+        - __flox_indicator_tema
+        - __flox_indicator_vwap
 
   targets:
     pybind11:
@@ -274,6 +348,12 @@ groups:
       status: allowlist
       reason: "targets surfaced via Stats / Engine helpers; submodule shape differs from python."
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_target_future_ctc_volatility
+        - __flox_target_future_linear_slope
+        - __flox_target_future_return
 
   # ── New hooks (added in this & previous sessions, NOT yet in pybind11/napi) ──
   # Followup tracked in trackers; gate forces explicit acknowledgement.
@@ -345,6 +425,13 @@ groups:
     pybind11: { status: not_applicable }  # surfaced via Strategy class methods
     napi: { status: not_applicable }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_strategy_get_bar_ring_capacity
+        - __flox_strategy_last_closed_bar
+        - __flox_strategy_last_n_closed_bars
+        - __flox_strategy_set_bar_ring_capacity
 
   order_group:
     pybind11: { status: required, classes: [OrderGroup] }
@@ -355,16 +442,56 @@ groups:
     pybind11: { status: required, classes: [LiveQueuePositionEstimator] }
     napi: { status: required, classes: [LiveQueuePositionEstimator] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_live_queue_position_create
+        - __flox_live_queue_position_destroy
+        - __flox_live_queue_position_on_level_update
+        - __flox_live_queue_position_on_order_cancelled
+        - __flox_live_queue_position_on_order_filled
+        - __flox_live_queue_position_on_order_placed
+        - __flox_live_queue_position_on_trade
+        - __flox_live_queue_position_on_trade_with_flag
+        - __flox_live_queue_position_set_confidence_half_life_ns
+        - __flox_live_queue_position_set_hidden_order_policy
+        - __flox_live_queue_position_set_shrink_factor
+        - __flox_live_queue_position_snapshot
+        - __flox_live_queue_position_tracked_count
 
   bar_dispatch:
     pybind11: { status: required, classes: [BarDispatchRecorder] }
     napi: { status: required, classes: [BarDispatchRecorder] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_bar_dispatch_recorder_add_time_seconds
+        - __flox_bar_dispatch_recorder_count
+        - __flox_bar_dispatch_recorder_create
+        - __flox_bar_dispatch_recorder_destroy
+        - __flox_bar_dispatch_recorder_finalize
+        - __flox_bar_dispatch_recorder_on_trade
+        - __flox_bar_dispatch_recorder_param_at
+        - __flox_bar_dispatch_recorder_type_at
 
   feed_clock:
     pybind11: { status: required, classes: [MultiFeedClock] }
     napi: { status: required, classes: [MultiFeedClock] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_feed_clock_create
+        - __flox_feed_clock_destroy
+        - __flox_feed_clock_last_fired
+        - __flox_feed_clock_last_seen_at
+        - __flox_feed_clock_last_triggered_by
+        - __flox_feed_clock_reset
+        - __flox_feed_clock_staleness_at
+        - __flox_feed_clock_symbol_at
+        - __flox_feed_clock_symbol_count
+        - __flox_feed_clock_tick
 
   trace_attach:
     pybind11: { status: not_applicable }  # surfaced as Runner class methods
