@@ -64,7 +64,13 @@ jobs:
       run: python3 scripts/check_dts_exports.py
     - name: Verify node/index.d.ts class members cover every NAPI wrap method
       run: python3 scripts/check_dts_class_members.py
-    - name: Verify cross-binding parity (pybind11/napi/codon)
+    - name: Verify cross-binding parity (pybind11/napi/codon/quickjs)
+      # The step used to name three bindings and the script read three keys,
+      # while the project has four: `quickjs` was in the manifest and in
+      # nobody's code path, so a group with no QuickJS implementation passed.
+      # It is read now. Most groups still carry no `quickjs` entry, and the
+      # script prints that count rather than implying it checked them; turn on
+      # --require-quickjs here once the manifest is complete.
       run: |
         pip install pyyaml
         python3 scripts/check_binding_parity.py
@@ -129,11 +135,23 @@ jobs:
       # CI was green on 1.x and users got the 2.0 SDK, which crashes on start.
       run: python3 scripts/check_dep_pins.py
 
+    - name: Verify the sanitizer transcript scan is wired into every job that needs it
+      # `ctest --output-on-failure` prints the output of the tests it decided
+      # had failed, so a sanitizer report inside a test whose assertions
+      # passed never reaches the log. Twice in the 2026-09 audit a real defect
+      # was found that way. This keeps the scan wired in: a job that builds
+      # with -fsanitize= has to run its tests and binaries through
+      # scripts/run-with-sanitizer-scan.sh.
+      run: |
+        python3 scripts/scan_sanitizer_reports.py --self-test
+        python3 scripts/check_sanitizer_scan.py
+
     - name: Build flox_py (needed by mcp/tests)
       # flox_mcp's bundled-data-reader and runtime-tool tests import
-      # flox_py; without a build on PYTHONPATH, ~20 of ~194 mcp/tests cases
-      # hit importorskip and silently skip -- the job's own "N passed, 1
-      # skipped" summary reads identical to fully healthy either way.
+      # flox_py; without a build on PYTHONPATH, 19 mcp/tests cases skip and
+      # the job's own "N passed, M skipped" summary reads identical to fully
+      # healthy either way. The suite refuses to pass in that state now (see
+      # mcp/tests/conftest.py), so a failure of this step surfaces there.
       # Mirrors linux-gcc's configure/build, minus the bindings this job
       # doesn't need.
       run: |
@@ -151,6 +169,15 @@ jobs:
       # `mcp` was never installed, so flox_mcp.server was unimportable and
       # nothing tested the 38 tool schemas or the dispatch chain that has to
       # match them. test_tool_dispatch.py needs it.
+      #
+      # FLOX_MCP_REQUIRE_DEPS makes a missing dependency fail the step instead
+      # of shrinking the run: without the binding the suite drops 19 cases and
+      # still reports a green summary, so the step above could stop producing
+      # an importable module and nothing here would say so. mcp/tests/
+      # conftest.py already infers this from CI=true; naming it here keeps the
+      # requirement greppable from the workflow.
+      env:
+        FLOX_MCP_REQUIRE_DEPS: '1'
       run: |
         # Keep this range identical to mcp/pyproject.toml; check_dep_pins.py
         # enforces that.
@@ -250,7 +277,7 @@ jobs:
       run: npm run typecheck
 
     - name: Run tests
-      run: ctest --output-on-failure --test-dir build
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
 
     - name: Verify C API
       run: |
@@ -469,7 +496,7 @@ jobs:
       run: node docs/examples/node_threaded_runner_lifetime.js
 
     - name: Run demo
-      run: ./build/demo/flox_demo
+      run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
     - name: Run benchmarks
       run: ./scripts/run-benchmarks.sh build/benchmarks
@@ -535,10 +562,10 @@ jobs:
       run: cmake --build build -j$(nproc)
 
     - name: Run tests
-      run: ctest --output-on-failure --test-dir build
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
 
     - name: Run demo
-      run: ./build/demo/flox_demo
+      run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
     - name: Run benchmarks
       run: ./scripts/run-benchmarks.sh build/benchmarks
@@ -591,16 +618,22 @@ jobs:
       run: cmake --build build -j$(nproc)
 
     - name: Run tests with sanitizer
+      # ThreadSanitizer had no options of its own here and ran on its
+      # defaults. They are spelled out now: keep going after a race so one
+      # run reports every race rather than the first, and keep the nonzero
+      # exit as a second line of defence behind the transcript scan.
       env:
         ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
         UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-      run: ctest --output-on-failure --test-dir build
+        TSAN_OPTIONS: halt_on_error=0:exitcode=66:second_deadlock_stack=1
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
 
     - name: Run demo with sanitizer
       env:
         ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
         UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-      run: ./build/demo/flox_demo
+        TSAN_OPTIONS: halt_on_error=0:exitcode=66:second_deadlock_stack=1
+      run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
   macos:
     needs: [format-check, verify-docs-current]
@@ -661,12 +694,12 @@ jobs:
     - name: Run tests with undefined-behavior sanitizer
       env:
         UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-      run: ctest --output-on-failure --test-dir build
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
 
     - name: Run demo with undefined-behavior sanitizer
       env:
         UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-      run: ./build/demo/flox_demo
+      run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
   windows-msvc:
     needs: [format-check, verify-docs-current]
@@ -884,10 +917,10 @@ jobs:
       run: cmake --build build -j$(nproc)
 
     - name: Run all tests including affinity
-      run: ctest --output-on-failure --test-dir build
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
 
     - name: Run demo
-      run: ./build/demo/flox_demo
+      run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
     - name: Run benchmarks
       run: ./scripts/run-benchmarks.sh build/benchmarks
@@ -942,7 +975,7 @@ jobs:
       run: test -f build/connectors/libflox-connectors.a
 
     - name: Run connector unit tests
-      run: ctest --output-on-failure --test-dir build
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
 
   # The venue module must stay genuinely optional: a build with it OFF has to
   # configure, compile and pass its suite with no venue code involved. Cheap
@@ -1013,7 +1046,7 @@ jobs:
       run: cmake --build build -j$(nproc)
 
     - name: Test
-      run: ctest --output-on-failure --test-dir build
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
 
     - name: Verify nothing venue-side was built
       run: |

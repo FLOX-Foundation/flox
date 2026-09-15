@@ -42,8 +42,12 @@ cmake -B "$BUILD_DIR" \
 echo "=== Build ==="
 cmake --build "$BUILD_DIR" -j$(nproc)
 
+# Through the wrapper, same as CI: `ctest --output-on-failure` only prints the
+# output of the tests ctest decided had failed, so a sanitizer report inside a
+# test whose assertions passed never reaches the screen. The wrapper reads the
+# per-test transcript and goes red on a report regardless of the exit code.
 echo "=== C++ tests ==="
-ctest --output-on-failure --test-dir "$BUILD_DIR"
+./scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir "$BUILD_DIR"
 
 # Run the binding suites exactly the way CI does. This script used to run none
 # of them, which is how a test that spawns a subprocess with a *relative*
@@ -52,8 +56,11 @@ ctest --output-on-failure --test-dir "$BUILD_DIR"
 echo "=== Python test suite ==="
 PYTHONPATH="$BUILD_DIR/python" "$PY" -m pytest python/tests -q
 
+# This script builds the binding, so a skip for a missing one means the build
+# it just did is not importable. FLOX_MCP_REQUIRE_DEPS turns that into a
+# failure instead of a summary line that reads the same as a healthy run.
 echo "=== flox-mcp test suite ==="
-PYTHONPATH="$BUILD_DIR/python" "$PY" -m pytest mcp/tests -q
+FLOX_MCP_REQUIRE_DEPS=1 PYTHONPATH="$BUILD_DIR/python" "$PY" -m pytest mcp/tests -q
 
 echo "=== Node.js addon + test suite ==="
 if command -v npm >/dev/null 2>&1; then
@@ -70,7 +77,7 @@ else
 fi
 
 echo "=== Demo ==="
-"$BUILD_DIR/demo/flox_demo"
+./scripts/run-with-sanitizer-scan.sh "$BUILD_DIR/demo/flox_demo"
 
 echo "=== Benchmarks ==="
 ./scripts/run-benchmarks.sh "$BUILD_DIR/benchmarks"
@@ -94,6 +101,8 @@ git diff --exit-code -- docs/ >/dev/null || {
 "$PY" scripts/check_suite_discovery.py
 "$PY" scripts/check_binding_smoke.py
 "$PY" scripts/check_quickjs_registration.py
+"$PY" scripts/scan_sanitizer_reports.py --self-test
+"$PY" scripts/check_sanitizer_scan.py
 "$PY" scripts/check_doc_snippets.py --min-includes 24
 "$PY" scripts/check_doc_symbols.py
 "$PY" scripts/check_doc_nav.py

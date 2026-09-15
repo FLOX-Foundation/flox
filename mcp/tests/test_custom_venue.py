@@ -6,20 +6,22 @@ liquidation, executor routed for liquidation orders).
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-BUILD_PY = REPO_ROOT / "build" / "python"
-if BUILD_PY.exists():
-    sys.path.insert(0, str(BUILD_PY))
 
 # The compiled flox_py module isn't installed in MCP-only CI jobs
 # (e.g. verify-docs-current). Skip rather than ImportError when the
-# build artifact isn't on the path.
-flox = pytest.importorskip("flox_py")
+# build artifact isn't on the path. The import is guarded here instead of
+# going through pytest.importorskip at module scope so that the cases stay
+# collectable and each one is reported as a skip of its own: a module skipped
+# at import time counts as one line in the summary no matter how many tests it
+# holds, which understates what a run without the binding actually missed.
+# conftest.py puts build/python on sys.path.
+try:
+    import flox_py as flox
+except ImportError:
+    flox = None
+
+pytestmark = pytest.mark.skipif(flox is None, reason="flox_py not importable")
 
 
 def _build_custom():
