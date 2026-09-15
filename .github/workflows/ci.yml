@@ -1,11 +1,20 @@
 name: Build and Test
 
 on:
-  # Only main on push: a branch with an open PR would otherwise run the whole
-  # matrix twice (once for push, once for pull_request) -- 32 checks where 16
-  # is the real coverage.
+  # main, plus audit-* integration branches (e.g. audit-2026-09): pushes
+  # straight to one of these are PR merges into a branch nothing else opens
+  # a PR against, so they never got a CI run of their own -- each merged PR
+  # was only ever checked against the base it was tested on, never against
+  # what the merge before it just changed. Two branches can each be green
+  # in isolation and still break the integration branch when combined; nothing
+  # ran to notice.
+  #
+  # audit/* and followup/* feature branches are deliberately left out: they
+  # do have an open PR, so adding them here would run the whole matrix twice
+  # (once for push, once for pull_request) -- 32 checks where 16 is the real
+  # coverage. audit-* has no open PR against itself, so it doesn't double up.
   push:
-    branches: [main]
+    branches: [main, 'audit-*']
   pull_request:
   schedule:
     # Weekly affinity tests - Sunday at 3:00 UTC
