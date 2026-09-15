@@ -107,6 +107,89 @@ def test_groups_partition(tmp_path):
     assert [fn.name for fn in grouped["a"]] == ["f1", "f3"]
 
 
+def test_extracts_marked_macro_constant(tmp_path):
+    spec = _write_spec(
+        tmp_path,
+        '''
+        // flox::export_macro(group="thing")
+        #define FLOX_THING_A 0
+        // flox::export_macro(group="thing")
+        #define FLOX_THING_B 1
+        ''',
+    )
+    mod = extractor.parse_spec(spec, include_dirs=[_INCLUDE_DIR])
+    assert [(m.name, m.value, m.group) for m in mod.macros] == [
+        ("FLOX_THING_A", "0", "thing"),
+        ("FLOX_THING_B", "1", "thing"),
+    ]
+
+
+def test_unmarked_macro_is_dropped(tmp_path):
+    # A #define with no flox::export_macro(...) marker directly above it is
+    # invisible to codegen, exactly like a function with no FLOX_EXPORT(...).
+    # This is the case a dropped marker regresses to -- it must never come
+    # back as a silent pass.
+    spec = _write_spec(
+        tmp_path,
+        '''
+        #define FLOX_INTERNAL_DETAIL 7
+
+        // flox::export_macro(group="thing")
+        #define FLOX_THING_A 0
+        ''',
+    )
+    mod = extractor.parse_spec(spec, include_dirs=[_INCLUDE_DIR])
+    assert [m.name for m in mod.macros] == ["FLOX_THING_A"]
+
+
+def test_macro_groups_partition(tmp_path):
+    spec = _write_spec(
+        tmp_path,
+        '''
+        // flox::export_macro(group="a")
+        #define FLOX_A_ONE 0
+        // flox::export_macro(group="b")
+        #define FLOX_B_ONE 0
+        // flox::export_macro(group="a")
+        #define FLOX_A_TWO 1
+        ''',
+    )
+    mod = extractor.parse_spec(spec, include_dirs=[_INCLUDE_DIR])
+    grouped = mod.macros_by_group()
+    assert sorted(grouped) == ["a", "b"]
+    assert [m.name for m in grouped["a"]] == ["FLOX_A_ONE", "FLOX_A_TWO"]
+
+
+def test_macro_marker_with_no_following_define_raises(tmp_path):
+    spec = _write_spec(
+        tmp_path,
+        '''
+        // flox::export_macro(group="thing")
+        typedef struct { int32_t x; } FloxNotAMacro;
+        ''',
+    )
+    try:
+        extractor.parse_spec(spec, include_dirs=[_INCLUDE_DIR])
+        assert False, "expected ValueError for a dangling macro marker"
+    except ValueError as e:
+        assert "not followed by a #define" in str(e)
+
+
+def test_macro_marker_missing_group_key_raises(tmp_path):
+    spec = _write_spec(
+        tmp_path,
+        '''
+        // flox::export_macro()
+        #define FLOX_THING_A 0
+        ''',
+    )
+    try:
+        extractor.parse_spec(spec, include_dirs=[_INCLUDE_DIR])
+        assert False, "expected ValueError for a marker missing group="
+    except ValueError as e:
+        assert "missing group=" in str(e)
+
+
 def test_picks_up_handles_structs_and_fnptrs(tmp_path):
     spec = _write_spec(
         tmp_path,

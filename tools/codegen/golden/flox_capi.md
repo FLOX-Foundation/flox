@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 734 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 73 groups.
+**Surface:** 736 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 15 macro constants, 73 groups.
 
 ## Opaque handles
 
@@ -89,6 +89,29 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `FLOX_AGG_FILTER_TRADES` = `1`
 - `FLOX_AGG_FILTER_BOOKS_ONLY` = `2`
 - `FLOX_AGG_FILTER_BOTH` = `3`
+
+## Macro constants
+
+### abi_version
+
+- `FLOX_CAPI_ABI_VERSION` = `1`
+
+### signal_type
+
+- `FLOX_SIGNAL_TYPE_MARKET` = `0`
+- `FLOX_SIGNAL_TYPE_LIMIT` = `1`
+- `FLOX_SIGNAL_TYPE_STOP_MARKET` = `2`
+- `FLOX_SIGNAL_TYPE_STOP_LIMIT` = `3`
+- `FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET` = `4`
+- `FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT` = `5`
+- `FLOX_SIGNAL_TYPE_TRAILING_STOP` = `6`
+- `FLOX_SIGNAL_TYPE_CANCEL` = `7`
+- `FLOX_SIGNAL_TYPE_CANCEL_ALL` = `8`
+- `FLOX_SIGNAL_TYPE_MODIFY` = `9`
+- `FLOX_SIGNAL_TYPE_ICEBERG` = `10`
+- `FLOX_SIGNAL_TYPE_OCO` = `11`
+- `FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY` = `12`
+- `FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY` = `13`
 
 ## Callback typedefs
 
@@ -1020,6 +1043,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `uint8_t flox_composite_book_has_arb(FloxCompositeBookHandle book, uint32_t symbol)`
 - `void flox_composite_book_mark_stale(FloxCompositeBookHandle book, uint32_t exchange, uint32_t symbol)`
 - `void flox_composite_book_check_staleness(FloxCompositeBookHandle book, int64_t now_ns, int64_t threshold_ns)`
+- `void flox_composite_book_apply_snapshot(FloxCompositeBookHandle book, uint32_t exchange, uint32_t symbol, const double * bid_prices, const double * bid_qtys, size_t bid_len, const double * ask_prices, const double * ask_qtys, size_t ask_len, int64_t recv_ns)`
+- `void flox_composite_book_apply_delta(FloxCompositeBookHandle book, uint32_t exchange, uint32_t symbol, const double * bid_prices, const double * bid_qtys, size_t bid_len, const double * ask_prices, const double * ask_qtys, size_t ask_len, int64_t recv_ns)`
 
 ### context_queries
 

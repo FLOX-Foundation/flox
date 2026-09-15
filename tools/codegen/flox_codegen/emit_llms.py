@@ -47,7 +47,7 @@ def emit(module: ir.Module) -> str:
     out.write(f"**Surface:** {len(module.functions)} functions, "
               f"{len(module.handles)} handles, {len(module.structs)} structs, "
               f"{len(module.function_pointers)} callback typedefs, "
-              f"{len(module.enums)} enums, "
+              f"{len(module.enums)} enums, {len(module.macros)} macro constants, "
               f"{len(grouped)} groups.\n\n")
 
     if module.handles:
@@ -71,6 +71,14 @@ def emit(module: ir.Module) -> str:
                     out.write(f"- `{v.name}` = `{v.value}`\n")
                 else:
                     out.write(f"- `{v.name}`\n")
+            out.write("\n")
+
+    if module.macros:
+        out.write("## Macro constants\n\n")
+        for group_name, macros in sorted(module.macros_by_group().items()):
+            out.write(f"### {group_name}\n\n")
+            for m in macros:
+                out.write(f"- `{m.name}` = `{m.value}`\n")
             out.write("\n")
 
     if module.function_pointers:

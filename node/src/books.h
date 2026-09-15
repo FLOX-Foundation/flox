@@ -169,7 +169,9 @@ class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
   static Napi::Function Init(Napi::Env env)
   {
     return DefineClass(env, "CompositeBookMatrix",
-                       {InstanceMethod("bestBid", &CompositeBookMatrixWrap::BestBid),
+                       {InstanceMethod("applySnapshot", &CompositeBookMatrixWrap::ApplySnapshot),
+                        InstanceMethod("applyDelta", &CompositeBookMatrixWrap::ApplyDelta),
+                        InstanceMethod("bestBid", &CompositeBookMatrixWrap::BestBid),
                         InstanceMethod("bestAsk", &CompositeBookMatrixWrap::BestAsk),
                         InstanceMethod("hasArbitrage", &CompositeBookMatrixWrap::HasArb),
                         InstanceMethod("markStale", &CompositeBookMatrixWrap::MarkStale),
@@ -185,6 +187,33 @@ class CompositeBookMatrixWrap : public Napi::ObjectWrap<CompositeBookMatrixWrap>
   }
 
  private:
+  // exchange, symbol, bidPx, bidQty, askPx, askQty, recvNs.
+  void applyUpdate(const Napi::CallbackInfo& info,
+                   void (*fn)(FloxCompositeBookHandle, uint32_t, uint32_t, const double*, const double*,
+                              size_t, const double*, const double*, size_t, int64_t))
+  {
+    uint32_t exchange = info[0].As<Napi::Number>().Uint32Value();
+    uint32_t symbol = info[1].As<Napi::Number>().Uint32Value();
+    auto bp = info[2].As<Napi::Float64Array>();
+    auto bq = info[3].As<Napi::Float64Array>();
+    auto ap = info[4].As<Napi::Float64Array>();
+    auto aq = info[5].As<Napi::Float64Array>();
+    // Same guard as OrderBookWrap::applyUpdate: the C ABI takes one length
+    // per side and trusts price/qty to already match.
+    if (bp.ElementLength() != bq.ElementLength() || ap.ElementLength() != aq.ElementLength())
+    {
+      Napi::RangeError::New(info.Env(),
+                            "CompositeBookMatrix: bid price/qty and ask price/qty arrays must each have the same length")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+    int64_t recvNs = info.Length() > 6 ? toInt64Ns(info[6]) : 0;
+    fn(_h, exchange, symbol, bp.Data(), bq.Data(), bp.ElementLength(), ap.Data(), aq.Data(),
+       ap.ElementLength(), recvNs);
+  }
+  void ApplySnapshot(const Napi::CallbackInfo& info) { applyUpdate(info, flox_composite_book_apply_snapshot); }
+  void ApplyDelta(const Napi::CallbackInfo& info) { applyUpdate(info, flox_composite_book_apply_delta); }
+
   Napi::Value BestBid(const Napi::CallbackInfo& info)
   {
     double p = 0, q = 0;

@@ -37,6 +37,14 @@ def test_lookup_symbol_known_struct():
     assert "struct" in out
 
 
+def test_lookup_symbol_known_macro():
+    out = lookup.lookup_symbol("FLOX_SIGNAL_TYPE_MARKET")
+    assert "FLOX_SIGNAL_TYPE_MARKET" in out
+    assert "capi" in out
+    assert "macro" in out
+    assert "#define FLOX_SIGNAL_TYPE_MARKET 0" in out
+
+
 def test_lookup_symbol_indicator_short_name():
     """`ema` → finds flox_indicator_ema in C, plus exposed forms across
     bindings (the function `ema` is exported by both pybind11 and NAPI;
