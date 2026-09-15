@@ -30,6 +30,30 @@ that window as a delta feed walks the price away from the last snapshot. See
 
 ---
 
+## Composite book
+
+Aggregates books across multiple exchanges per symbol.
+
+```javascript
+const matrix = new CompositeBook();
+matrix.applySnapshot(exchangeId, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
+matrix.applyDelta(exchangeId, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
+matrix.bestBid(symbol);      // { price, qty } | null
+matrix.bestAsk(symbol);      // { price, qty } | null
+matrix.hasArbitrage(symbol);
+matrix.markStale(exchangeId, symbol);
+matrix.checkStaleness(nowNs, thresholdNs);
+```
+
+`applySnapshot` replaces both sides of that exchange's top-of-book wholesale,
+including clearing a side that arrives as an empty array. `applyDelta` only
+touches the side(s) actually present in the call -- a side passed as an empty
+array is left exactly as it was, not zeroed. `recvNs` feeds `checkStaleness`'s
+staleness clock; pass the actual receive timestamp if you use staleness
+eviction.
+
+---
+
 ## Position tracking
 
 ```javascript

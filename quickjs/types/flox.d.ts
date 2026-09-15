@@ -528,9 +528,15 @@ declare class MarketProfile {
 declare class CompositeBook {
     constructor();
     destroy(): void;
+    applySnapshot(exchange: number, symbol: number, bidPrices: number[], bidQtys: number[],
+                  askPrices: number[], askQtys: number[], recvNs: bigint | number): void;
+    applyDelta(exchange: number, symbol: number, bidPrices: number[], bidQtys: number[],
+               askPrices: number[], askQtys: number[], recvNs: bigint | number): void;
     bestBid(symbol: number): { price: number; quantity: number } | null;
     bestAsk(symbol: number): { price: number; quantity: number } | null;
     hasArbitrage(symbol: number): boolean;
+    markStale(exchange: number, symbol: number): void;
+    checkStaleness(nowNs: bigint | number, thresholdNs: bigint | number): void;
 }
 
 interface WriterStats {
