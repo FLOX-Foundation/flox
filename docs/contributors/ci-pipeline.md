@@ -74,7 +74,8 @@ Runs eight checks in sequence (each takes <5s):
 | `gen_api_index.py --check` | `docs/reference/python/_api_index.md` matches `.pyi` | Run `python3 scripts/gen_api_index.py` |
 | `check_doc_snippets.py` | Doc snippets follow `--8<--` include pattern | Refactor inline snippets into includes |
 | `sync_mcp_data.py --check` | `mcp/flox_mcp/data/` matches source | Run `python3 scripts/sync_mcp_data.py` |
-| flox-mcp pytest | MCP server unit tests | Fix the broken test |
+| `check_sanitizer_scan.py` | Every job that builds with `-fsanitize=` runs its tests through the transcript scan | Wrap the step in `scripts/run-with-sanitizer-scan.sh` |
+| flox-mcp pytest | MCP server unit tests, with the compiled binding required | Fix the broken test, or build `_flox_py` if the step reports a missing dependency |
 
 ### `linux-gcc` — the binding suites
 
@@ -100,6 +101,61 @@ Re-runs the IDL→header/codon/markdown emitters and verifies the output matches
 ### OS build matrix
 
 Builds the full project (engine + C ABI + tests + benchmarks + Python + Node + Codon + QuickJS), runs `ctest`, runs all the integration tests, runs cross-binding parity tests (Python ↔ Node, same C++ math), and exercises example programs.
+
+## Green does not mean checked
+
+Two steps in this pipeline used to report success while checking less than
+their names implied. Both are fixed. The shapes are worth knowing because they
+recur.
+
+### A sanitizer report inside a passing test
+
+`ctest --output-on-failure` prints the output of the tests ctest decided had
+failed. A test whose assertions all pass, but which printed a sanitizer report
+on the way, is recorded as `Passed` and its output never reaches the log. The
+undefined-behavior sanitizer does that by default: it prints
+`runtime error: ...`, carries on, and the process exits 0.
+
+That is the case sanitizers are run for. Twice during the 2026-09 audit a real
+defect in production code turned up exactly that way, under fully green
+assertions: a data race on the logger's file descriptor, and an out-of-bounds
+vector read in the execution simulator. Both were found by hand, by re-running
+with full output and grepping a few thousand lines of transcript.
+
+The run reads its own transcript now. Every sanitizer job calls the suite
+through [`scripts/run-with-sanitizer-scan.sh`](../../scripts/run-with-sanitizer-scan.sh).
+It runs the command, keeps its exit code, and also scans ctest's per-test log —
+`build/Testing/Temporary/LastTest.log`, which holds every test's output
+whatever its verdict — for Address, Leak, Thread, Memory and
+UndefinedBehavior report banners. A report fails the step even when the command
+returned 0, and the failure names the test and the verdict ctest gave it.
+
+Locally, same call:
+
+```bash
+scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
+```
+
+`scripts/check_sanitizer_scan.py` keeps the wiring in place: a job that
+compiles with `-fsanitize=` and does not wrap its test step fails the docs
+gate. The matcher has a `--self-test` that feeds it every report shape it
+claims to catch, plus text it must not match — an unwatched detector is not a
+detector.
+
+### A test suite that quietly shrank
+
+`pytest mcp/tests/` reports `229 passed, 20 skipped` without the compiled
+`flox_py` binding and `248 passed, 1 skipped` with it. Both exit 0, and the 19
+cases that drop out are the ones that touch real code rather than fixtures.
+Nothing separated the two runs but the numbers.
+
+[`mcp/tests/conftest.py`](../../mcp/tests/conftest.py) probes the dependencies
+that shrink the suite — the binding and the `mcp` SDK — and closes the run with
+a banner naming each missing one and how many cases it cost. Where the run is
+meant to be complete, a missing dependency fails it instead of reducing it:
+that is the default under `CI`, and `FLOX_MCP_REQUIRE_DEPS=1` / `=0` forces it
+either way. A contributor who has not built the C++ side still gets the
+pure-Python half, and the count of what did not run.
 
 ## The docs sync chain (eight scripts, in order)
 
