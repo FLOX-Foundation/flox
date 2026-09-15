@@ -312,9 +312,20 @@ void FloxJsStrategy::loadStdlib()
     class CompositeBook {
       constructor() { this._h = __flox_cb_create(); }
       destroy() { __flox_cb_destroy(this._h); }
+      // is_delta=false (applySnapshot) replaces both sides of that
+      // exchange's top-of-book wholesale; applyDelta updates only the
+      // side(s) present here and leaves the other side untouched.
+      applySnapshot(exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs) {
+        __flox_cb_apply_snapshot(this._h, exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
+      }
+      applyDelta(exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs) {
+        __flox_cb_apply_delta(this._h, exchange, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
+      }
       bestBid(symbol) { return __flox_cb_best_bid(this._h, symbol); }
       bestAsk(symbol) { return __flox_cb_best_ask(this._h, symbol); }
       hasArbitrage(symbol) { return __flox_cb_has_arb(this._h, symbol); }
+      markStale(exchange, symbol) { __flox_cb_mark_stale(this._h, exchange, symbol); }
+      checkStaleness(nowNs, thresholdNs) { __flox_cb_check_staleness(this._h, nowNs, thresholdNs); }
     }
 
     class OrderTracker {

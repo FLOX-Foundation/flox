@@ -14918,10 +14918,9 @@ touches the side(s) actually present in the call -- a side passed as an empty
 array is left exactly as it was, not zeroed. `recvNs` defaults to `0` and
 feeds `checkStaleness`'s staleness clock; pass the actual receive timestamp
 if you use staleness eviction. Codon (`CompositeBook.apply_snapshot` /
-`apply_delta`) has the same two methods. QuickJS does not yet -- see
-[the C API reference](../api/capi/flox_capi.md) for the underlying
-`flox_composite_book_apply_snapshot` / `_apply_delta` functions if you need
-to drive one from there in the meantime.
+`apply_delta`) and the embedded QuickJS `CompositeBook` class (see the
+[QuickJS reference](../quickjs/tools.md#composite-book)) have the same
+two methods.
 
 ------------------------------------------------------------------------------
 # Source: docs/reference/node/positions.md
@@ -17045,6 +17044,30 @@ representable tick is `1e-8`, since prices are fixed-point with a scale of 1e8.
 The book covers 8192 consecutive ticks centred on the market and re-anchors
 that window as a delta feed walks the price away from the last snapshot. See
 [The order book's tick window](../../explanation/order-book-tick-window.md).
+
+---
+
+## Composite book
+
+Aggregates books across multiple exchanges per symbol.
+
+```javascript
+const matrix = new CompositeBook();
+matrix.applySnapshot(exchangeId, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
+matrix.applyDelta(exchangeId, symbol, bidPrices, bidQtys, askPrices, askQtys, recvNs);
+matrix.bestBid(symbol);      // { price, qty } | null
+matrix.bestAsk(symbol);      // { price, qty } | null
+matrix.hasArbitrage(symbol);
+matrix.markStale(exchangeId, symbol);
+matrix.checkStaleness(nowNs, thresholdNs);
+```
+
+`applySnapshot` replaces both sides of that exchange's top-of-book wholesale,
+including clearing a side that arrives as an empty array. `applyDelta` only
+touches the side(s) actually present in the call -- a side passed as an empty
+array is left exactly as it was, not zeroed. `recvNs` feeds `checkStaleness`'s
+staleness clock; pass the actual receive timestamp if you use staleness
+eviction.
 
 ---
 

@@ -79,7 +79,6 @@ touches the side(s) actually present in the call -- a side passed as an empty
 array is left exactly as it was, not zeroed. `recvNs` defaults to `0` and
 feeds `checkStaleness`'s staleness clock; pass the actual receive timestamp
 if you use staleness eviction. Codon (`CompositeBook.apply_snapshot` /
-`apply_delta`) has the same two methods. QuickJS does not yet -- see
-[the C API reference](../api/capi/flox_capi.md) for the underlying
-`flox_composite_book_apply_snapshot` / `_apply_delta` functions if you need
-to drive one from there in the meantime.
+`apply_delta`) and the embedded QuickJS `CompositeBook` class (see the
+[QuickJS reference](../quickjs/tools.md#composite-book)) have the same
+two methods.

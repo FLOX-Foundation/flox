@@ -5388,6 +5388,42 @@ static JSValue js_cb_destroy(JSContext* c, JSValueConst, int, JSValueConst* a)
   return js_generic_handle_destroy(c, a[0]);
 }
 
+// Same shape as js_book_apply_snapshot/js_book_apply_delta above, plus the
+// exchange/symbol slot and the receive timestamp the composite matrix keys
+// staleness off of. is_delta=false (apply_snapshot) replaces both sides of
+// that exchange's top-of-book wholesale; apply_delta updates only the
+// side(s) present here and leaves the other side untouched -- see
+// flox_composite_book_apply_snapshot/_apply_delta in flox_capi.h.
+static JSValue js_cb_apply_snapshot(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto h = static_cast<FloxCompositeBookHandle>(getHandle(c, a[0]));
+  uint32_t exchange = toUint32(c, a[1]);
+  uint32_t symbol = toUint32(c, a[2]);
+  auto bp = jsArrayToDoubles(c, a[3]);
+  auto bq = jsArrayToDoubles(c, a[4]);
+  auto ap = jsArrayToDoubles(c, a[5]);
+  auto aq = jsArrayToDoubles(c, a[6]);
+  int64_t recvNs = toInt64(c, a[7]);
+  flox_composite_book_apply_snapshot(h, exchange, symbol, bp.data(), bq.data(), bp.size(),
+                                     ap.data(), aq.data(), ap.size(), recvNs);
+  return JS_UNDEFINED;
+}
+
+static JSValue js_cb_apply_delta(JSContext* c, JSValueConst, int, JSValueConst* a)
+{
+  auto h = static_cast<FloxCompositeBookHandle>(getHandle(c, a[0]));
+  uint32_t exchange = toUint32(c, a[1]);
+  uint32_t symbol = toUint32(c, a[2]);
+  auto bp = jsArrayToDoubles(c, a[3]);
+  auto bq = jsArrayToDoubles(c, a[4]);
+  auto ap = jsArrayToDoubles(c, a[5]);
+  auto aq = jsArrayToDoubles(c, a[6]);
+  int64_t recvNs = toInt64(c, a[7]);
+  flox_composite_book_apply_delta(h, exchange, symbol, bp.data(), bq.data(), bp.size(),
+                                  ap.data(), aq.data(), ap.size(), recvNs);
+  return JS_UNDEFINED;
+}
+
 static JSValue js_cb_best_bid(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
   double p = 0, q = 0;
@@ -7642,6 +7678,8 @@ void registerFloxBindings(JSContext* ctx)
   // CompositeBook
   addGlobalFunc(ctx, "__flox_cb_create", js_cb_create, 0);
   addGlobalFunc(ctx, "__flox_cb_destroy", js_cb_destroy, 1);
+  addGlobalFunc(ctx, "__flox_cb_apply_snapshot", js_cb_apply_snapshot, 8);
+  addGlobalFunc(ctx, "__flox_cb_apply_delta", js_cb_apply_delta, 8);
   addGlobalFunc(ctx, "__flox_cb_best_bid", js_cb_best_bid, 2);
   addGlobalFunc(ctx, "__flox_cb_best_ask", js_cb_best_ask, 2);
   addGlobalFunc(ctx, "__flox_cb_has_arb", js_cb_has_arb, 2);
