@@ -622,16 +622,24 @@ jobs:
       # defaults. They are spelled out now: keep going after a race so one
       # run reports every race rather than the first, and keep the nonzero
       # exit as a second line of defence behind the transcript scan.
+      #
+      # UBSAN_OPTIONS carries abort_on_error=1 now, matching ASAN_OPTIONS.
+      # Without it, halt_on_error=1 on Linux calls a plain _exit(), which
+      # skips every signal handler -- including the one Python's own
+      # faulthandler installs to print a diagnosable crash report. The
+      # process would just vanish with exit code 1 and nothing in the
+      # transcript to scan. abort_on_error=1 raises SIGABRT instead, so a
+      # halt is diagnosable the same way a memory-safety abort already is.
       env:
         ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
-        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:abort_on_error=1
         TSAN_OPTIONS: halt_on_error=0:exitcode=66:second_deadlock_stack=1
       run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
 
     - name: Run demo with sanitizer
       env:
         ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
-        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:abort_on_error=1
         TSAN_OPTIONS: halt_on_error=0:exitcode=66:second_deadlock_stack=1
       run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
