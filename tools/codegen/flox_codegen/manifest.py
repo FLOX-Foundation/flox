@@ -370,6 +370,7 @@ def build_binding_manifest(
                 "present": grp_name in codon_groups,
                 **({"reason": codon_entry["reason"]} if "reason" in codon_entry else {}),
             },
+            "quickjs": _binding("quickjs"),
         }
 
     # Reverse-index: per-binding symbol enumeration.

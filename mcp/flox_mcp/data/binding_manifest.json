@@ -39402,6 +39402,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "additional_bar": {
@@ -39428,6 +39433,11 @@
           "aggregate_renko_bars"
         ],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "additional_stats": {
@@ -39457,6 +39467,11 @@
           "whites_reality_check"
         ],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "amm_curve": {
@@ -39499,6 +39514,12 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "reason": "Pricing needs 256-bit amounts, which the QuickJS bound surface has no BigInt for yet (see dex_amount). Bind the curves once that lands.\n",
+        "status": "allowlist"
       }
     },
     "backtest_slippage": {
@@ -39564,6 +39585,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "backtestrunner_replay": {
@@ -39600,6 +39626,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "bar_aggregation": {
@@ -39629,6 +39660,11 @@
           "aggregate_volume_bars"
         ],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "bar_dispatch": {
@@ -39659,6 +39695,20 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_bar_dispatch_recorder_add_time_seconds",
+          "__flox_bar_dispatch_recorder_count",
+          "__flox_bar_dispatch_recorder_create",
+          "__flox_bar_dispatch_recorder_destroy",
+          "__flox_bar_dispatch_recorder_finalize",
+          "__flox_bar_dispatch_recorder_on_trade",
+          "__flox_bar_dispatch_recorder_param_at",
+          "__flox_bar_dispatch_recorder_type_at"
+        ],
+        "status": "required"
       }
     },
     "binary_log_recorder_hook": {
@@ -39688,6 +39738,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "capi_diagnostics": {
@@ -39707,6 +39762,11 @@
         "status": "not_applicable"
       },
       "pybind11": {
+        "classes": [],
+        "functions": [],
+        "status": "not_applicable"
+      },
+      "quickjs": {
         "classes": [],
         "functions": [],
         "status": "not_applicable"
@@ -39741,6 +39801,21 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_cb_create",
+          "__flox_cb_destroy",
+          "__flox_cb_apply_snapshot",
+          "__flox_cb_apply_delta",
+          "__flox_cb_best_bid",
+          "__flox_cb_best_ask",
+          "__flox_cb_has_arb",
+          "__flox_cb_mark_stale",
+          "__flox_cb_check_staleness"
+        ],
+        "status": "required"
       }
     },
     "context_queries": {
@@ -39766,6 +39841,11 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "data_reader": {
@@ -39793,6 +39873,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "data_writer": {
@@ -39821,6 +39906,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "datareader": {
@@ -39855,6 +39945,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "datawriter": {
@@ -39879,6 +39974,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "delta_book": {
@@ -39916,6 +40016,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "dex_amount": {
@@ -39947,6 +40052,12 @@
           "u256_from_hex"
         ],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "reason": "QuickJS has no arbitrary-precision integer in the bound surface, so a 256-bit amount cannot round-trip through a JS number. Bind when the QuickJS layer grows a BigInt path.\n",
+        "status": "allowlist"
       }
     },
     "execution": {
@@ -39982,6 +40093,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "execution_algos": {
@@ -40022,6 +40138,11 @@
         "functions": [],
         "reason": "public flox_py.execution_algos.{TWAP,VWAP,Iceberg,POV}Executor classes wrap the compiled _TWAPExecutorNative / _VWAPExecutorNative / _IcebergExecutorNative / _POVExecutorNative symbols. The pure-Python facade preserves the existing dataclass-friendly step(now_ns, executor) interface that ships through the user's Executor.",
         "status": "allowlist"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "executor_fill": {
@@ -40041,6 +40162,11 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "fee_schedule": {
@@ -40075,6 +40201,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "feed_clock": {
@@ -40107,6 +40238,22 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_feed_clock_create",
+          "__flox_feed_clock_destroy",
+          "__flox_feed_clock_last_fired",
+          "__flox_feed_clock_last_seen_at",
+          "__flox_feed_clock_last_triggered_by",
+          "__flox_feed_clock_reset",
+          "__flox_feed_clock_staleness_at",
+          "__flox_feed_clock_symbol_at",
+          "__flox_feed_clock_symbol_count",
+          "__flox_feed_clock_tick"
+        ],
+        "status": "required"
       }
     },
     "fixed_point": {
@@ -40129,6 +40276,11 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "floxliveengine_disruptor": {
@@ -40159,6 +40311,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "floxrun": {
@@ -40209,6 +40366,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "footprint_bar": {
@@ -40238,6 +40400,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "funding_schedule": {
@@ -40270,6 +40437,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "grid_search": {
@@ -40298,6 +40470,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "heatmap": {
@@ -40319,6 +40496,11 @@
         "functions": [],
         "reason": "exposed via flox_py.report.heatmap_html / write_heatmap (pure-Python wrappers around the C ABI's flox_render_heatmap_html); also reachable via flox_py._flox_py._heatmap submodule. Submodule shape is not currently inspected by the parity gate.",
         "status": "allowlist"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "heikin_ashi": {
@@ -40342,6 +40524,11 @@
           "aggregate_heikin_ashi_bars"
         ],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "indicator_functions": {
@@ -40399,6 +40586,39 @@
           "atr"
         ],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_indicator_adf",
+          "__flox_indicator_adx",
+          "__flox_indicator_atr",
+          "__flox_indicator_autocorrelation",
+          "__flox_indicator_bollinger",
+          "__flox_indicator_cci",
+          "__flox_indicator_chop",
+          "__flox_indicator_correlation",
+          "__flox_indicator_cvd",
+          "__flox_indicator_dema",
+          "__flox_indicator_ema",
+          "__flox_indicator_kama",
+          "__flox_indicator_kurtosis",
+          "__flox_indicator_macd",
+          "__flox_indicator_obv",
+          "__flox_indicator_parkinson_vol",
+          "__flox_indicator_rma",
+          "__flox_indicator_rogers_satchell_vol",
+          "__flox_indicator_rolling_zscore",
+          "__flox_indicator_rsi",
+          "__flox_indicator_shannon_entropy",
+          "__flox_indicator_skewness",
+          "__flox_indicator_slope",
+          "__flox_indicator_sma",
+          "__flox_indicator_stochastic",
+          "__flox_indicator_tema",
+          "__flox_indicator_vwap"
+        ],
+        "status": "required"
       }
     },
     "indicatorgraph": {
@@ -40451,6 +40671,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "l3_order": {
@@ -40482,6 +40707,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "latency_models": {
@@ -40521,6 +40751,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "liquidation_engine": {
@@ -40578,6 +40813,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "live_queue_position": {
@@ -40613,6 +40853,25 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_live_queue_position_create",
+          "__flox_live_queue_position_destroy",
+          "__flox_live_queue_position_on_level_update",
+          "__flox_live_queue_position_on_order_cancelled",
+          "__flox_live_queue_position_on_order_filled",
+          "__flox_live_queue_position_on_order_placed",
+          "__flox_live_queue_position_on_trade",
+          "__flox_live_queue_position_on_trade_with_flag",
+          "__flox_live_queue_position_set_confidence_half_life_ns",
+          "__flox_live_queue_position_set_hidden_order_policy",
+          "__flox_live_queue_position_set_shrink_factor",
+          "__flox_live_queue_position_snapshot",
+          "__flox_live_queue_position_tracked_count"
+        ],
+        "status": "required"
       }
     },
     "logger": {
@@ -40636,6 +40895,11 @@
           "set_log_callback"
         ],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "market_profile": {
@@ -40670,6 +40934,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "merged_tape_reader": {
@@ -40703,6 +40972,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "metrics": {
@@ -40730,6 +41004,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "multi_tf_helpers": {
@@ -40752,6 +41031,16 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_strategy_get_bar_ring_capacity",
+          "__flox_strategy_last_closed_bar",
+          "__flox_strategy_last_n_closed_bars",
+          "__flox_strategy_set_bar_ring_capacity"
+        ],
+        "status": "required"
       }
     },
     "order_book": {
@@ -40788,6 +41077,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "order_group": {
@@ -40832,6 +41126,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "order_journey_tracer": {
@@ -40866,6 +41165,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "order_tracker": {
@@ -40897,6 +41201,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "partitioner": {
@@ -40927,6 +41236,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "pointer_out": {
@@ -40955,6 +41269,11 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "pool_tape": {
@@ -41000,6 +41319,12 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "reason": "Replay returns 256-bit reserves, which the QuickJS bound surface has no BigInt for yet (see dex_amount / amm_curve). Bind once that lands.\n",
+        "status": "allowlist"
       }
     },
     "portfolio_risk": {
@@ -41035,6 +41360,11 @@
         "functions": [],
         "reason": "exposed via flox_py.portfolio_risk.PortfolioRiskAggregator (pure-Python wrapper around the C ABI). Compiled symbols are _PortfolioRiskAggregator and _PortfolioRiskRules; the public class preserves the original dataclass-friendly surface.",
         "status": "allowlist"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "position": {
@@ -41064,6 +41394,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "position_group": {
@@ -41096,6 +41431,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "rate_limit": {
@@ -41129,6 +41469,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "recorder": {
@@ -41156,6 +41501,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "replay": {
@@ -41181,6 +41531,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "risk": {
@@ -41222,6 +41577,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "segment": {
@@ -41253,6 +41613,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "signal_emission": {
@@ -41292,6 +41657,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "simulated_executor": {
@@ -41334,6 +41704,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "statistics": {
@@ -41358,6 +41733,15 @@
           "trade_pnl",
           "win_rate",
           "profit_factor"
+        ],
+        "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_stat_correlation",
+          "__flox_stat_profit_factor",
+          "__flox_stat_win_rate"
         ],
         "status": "required"
       }
@@ -41387,6 +41771,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "strategy_lifecycle": {
@@ -41414,6 +41803,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "strategyrunner_synchronous": {
@@ -41444,6 +41838,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "symbol_registry": {
@@ -41472,6 +41871,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "tape_aggregator": {
@@ -41521,6 +41925,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "tape_diff": {
@@ -41550,6 +41959,11 @@
         "functions": [],
         "reason": "exposed via flox_py.tape.diff_tapes (pure-Python wrapper around the C ABI's flox_tape_diff_*); the compiled symbol is _tape_diff_native, not a class. Ergonomic alias intentional.",
         "status": "allowlist"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "targets": {
@@ -41573,6 +41987,15 @@
         "functions": [],
         "reason": "exposed as `targets` submodule (see flox_py/_flox_py/targets.pyi); submodule-style is not currently inspected by the parity gate.",
         "status": "allowlist"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_target_future_ctc_volatility",
+          "__flox_target_future_linear_slope",
+          "__flox_target_future_return"
+        ],
+        "status": "required"
       }
     },
     "trace_attach": {
@@ -41595,6 +42018,11 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "validation": {
@@ -41615,6 +42043,11 @@
         "classes": [],
         "functions": [],
         "status": "not_applicable"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "venue_availability": {
@@ -41652,6 +42085,25 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_simulated_executor_set_venue_availability",
+          "__flox_venue_availability_auto_random_outages",
+          "__flox_venue_availability_book_updates_allowed",
+          "__flox_venue_availability_cancels_allowed",
+          "__flox_venue_availability_consume_wrong_side_recovery_bps",
+          "__flox_venue_availability_create",
+          "__flox_venue_availability_destroy",
+          "__flox_venue_availability_is_up",
+          "__flox_venue_availability_latency_multiplier",
+          "__flox_venue_availability_schedule_outage",
+          "__flox_venue_availability_schedule_outage_ex",
+          "__flox_venue_availability_submits_allowed",
+          "__flox_venue_availability_trades_allowed"
+        ],
+        "status": "required"
       }
     },
     "venue_stack": {
@@ -41682,6 +42134,21 @@
           "VenueStack"
         ],
         "functions": [],
+        "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [
+          "__flox_venue_stack_account",
+          "__flox_venue_stack_create",
+          "__flox_venue_stack_destroy",
+          "__flox_venue_stack_executor",
+          "__flox_venue_stack_fees",
+          "__flox_venue_stack_funding",
+          "__flox_venue_stack_liquidation",
+          "__flox_venue_stack_venue",
+          "__flox_venue_stack_venue_name"
+        ],
         "status": "required"
       }
     },
@@ -41715,6 +42182,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     },
     "walk_forward": {
@@ -41738,6 +42210,11 @@
         ],
         "functions": [],
         "status": "required"
+      },
+      "quickjs": {
+        "classes": [],
+        "functions": [],
+        "status": "missing_yaml"
       }
     }
   },
