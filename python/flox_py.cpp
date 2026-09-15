@@ -75,6 +75,15 @@ struct OhlcvBar
   int64_t volume_raw;
 };
 
+// Best-effort unit guess for genuinely unit-less input: a raw CSV column,
+// dict of arrays, or DataFrame column the caller may have populated with
+// seconds, milliseconds, microseconds, or nanoseconds -- there is no way to
+// know from here. See the matching comment on
+// PyBacktestRunner::normalizeTs in strategy_bindings.h: this guess belongs
+// only on data whose unit genuinely isn't known, never on a value the API
+// contract already declares to be in nanoseconds. Do not retune these
+// thresholds -- the unit ranges overlap on real timestamps, so any cutoff
+// is a bet on which dates show up.
 static int64_t normalizeTimestamp(int64_t t)
 {
   if (t < static_cast<int64_t>(1e12))
