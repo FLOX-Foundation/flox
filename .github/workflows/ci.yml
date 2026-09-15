@@ -64,7 +64,13 @@ jobs:
       run: python3 scripts/check_dts_exports.py
     - name: Verify node/index.d.ts class members cover every NAPI wrap method
       run: python3 scripts/check_dts_class_members.py
-    - name: Verify cross-binding parity (pybind11/napi/codon)
+    - name: Verify cross-binding parity (pybind11/napi/codon/quickjs)
+      # The step used to name three bindings and the script read three keys,
+      # while the project has four: `quickjs` was in the manifest and in
+      # nobody's code path, so a group with no QuickJS implementation passed.
+      # It is read now. Most groups still carry no `quickjs` entry, and the
+      # script prints that count rather than implying it checked them; turn on
+      # --require-quickjs here once the manifest is complete.
       run: |
         pip install pyyaml
         python3 scripts/check_binding_parity.py

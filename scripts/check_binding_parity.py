@@ -3,7 +3,23 @@
 
 Reads the IDL spec (`include/flox/capi/flox_capi_spec.hpp`) and verifies
 that every user-facing C ABI group has a corresponding presence in each
-language binding (pybind11 Python, NAPI Node, Codon, optionally QuickJS).
+language binding: pybind11 Python, NAPI Node, Codon, QuickJS.
+
+This gate checked three of the four for a long time. The `quickjs` key was
+read by nobody: the per-group loop called pybind11, napi and codon and then
+printed "all bindings in parity". A group with no QuickJS implementation at
+all passed, which is how the composite-book function shipped missing from
+QuickJS with this green. The manifest had `quickjs` entries; the code never
+opened them.
+
+QuickJS is checked now, against the `addGlobalFunc` registration table in
+`src/quickjs/js_bindings.cpp` -- the same place `check_quickjs_registration.py`
+reads, and the only list of what the JS layer can actually call.
+
+Most groups still carry no `quickjs` entry, so the gate cannot yet demand one.
+It counts them instead and says the number out loud, rather than implying they
+were checked. `--require-quickjs` turns those undeclared groups into failures;
+flip it on in CI once the manifest is complete.
 
 Configuration lives in `tools/codegen/binding_parity.yaml`. Each group
 declared in IDL must be listed there, with a per-binding status:
@@ -20,7 +36,8 @@ The script fails CI when:
 Run as:
     python3 scripts/check_binding_parity.py
 
-Or with --verbose for details on every group.
+Or with --verbose for details on every group, --require-quickjs to demand a
+`quickjs` entry for every group.
 """
 
 from __future__ import annotations
@@ -44,6 +61,7 @@ CONFIG_PATH = ROOT / "tools" / "codegen" / "binding_parity.yaml"
 PYI_PATH = ROOT / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
 DTS_PATH = ROOT / "node" / "index.d.ts"
 CODON_GOLDEN_PATH = ROOT / "tools" / "codegen" / "golden" / "flox_capi.codon"
+QUICKJS_BINDINGS_PATH = ROOT / "src" / "quickjs" / "js_bindings.cpp"
 
 
 # ── IDL parsing ────────────────────────────────────────────────────────
@@ -141,6 +159,24 @@ def scan_codon_groups(path: Path) -> set[str]:
     return seen
 
 
+def scan_quickjs_globals(path: Path) -> set[str]:
+    """Every global name registered with addGlobalFunc in the QuickJS layer.
+
+    Only the string literal is taken, not the wrapper identifier: ~21
+    registrations pass an inline lambda and have no named wrapper to capture.
+    The name is what a strategy calls, so the name is what parity means here.
+
+    Names are not derivable from the C API function names -- the `__` + name
+    convention has real exceptions (`__flox_vprofile_create` wraps
+    `flox_volume_profile_create`) -- which is why the manifest lists the
+    globals explicitly rather than the gate guessing them.
+    """
+    if not path.exists():
+        return set()
+    text = path.read_text(encoding="utf-8")
+    return set(re.findall(r'addGlobalFunc\(\s*ctx\s*,\s*"([^"]+)"', text))
+
+
 # ── Verification ───────────────────────────────────────────────────────
 
 
@@ -208,6 +244,8 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--verbose", action="store_true",
                     help="print every group, not only failures")
+    ap.add_argument("--require-quickjs", action="store_true",
+                    help="fail on a group with no `quickjs` entry instead of counting it")
     args = ap.parse_args(argv)
 
     if not IDL_PATH.exists():
@@ -226,8 +264,14 @@ def main(argv: list[str]) -> int:
     pyi_classes, pyi_funcs = scan_pyi(PYI_PATH)
     dts_classes, dts_funcs = scan_dts(DTS_PATH)
     codon_groups = scan_codon_groups(CODON_GOLDEN_PATH)
+    quickjs_globals = scan_quickjs_globals(QUICKJS_BINDINGS_PATH)
+    if not quickjs_globals:
+        print(f"ERROR: no QuickJS registrations found in {QUICKJS_BINDINGS_PATH}",
+              file=sys.stderr)
+        return 2
 
     reports: list[GroupReport] = []
+    undeclared_quickjs: list[str] = []
 
     # 1. Every IDL group must appear in the config.
     unknown_in_yaml = sorted(idl_names - set(cfg_groups.keys()))
@@ -253,6 +297,16 @@ def main(argv: list[str]) -> int:
         reports += verify_codon(group_name,
                                  entry.get("codon", {"status": "missing_yaml"}),
                                  codon_groups)
+        if "quickjs" in entry:
+            # QuickJS exposes free globals, never classes, so the class set is
+            # empty by construction.
+            reports += verify_classes_and_funcs(group_name, "quickjs",
+                                                entry["quickjs"], set(), quickjs_globals)
+        elif args.require_quickjs:
+            reports.append(GroupReport(group_name, "quickjs", "missing_yaml",
+                                       f"no `quickjs` entry in {CONFIG_PATH.name}"))
+        else:
+            undeclared_quickjs.append(group_name)
 
     # ── Output ─────────────────────────────────────────────────────────
 
@@ -268,6 +322,15 @@ def main(argv: list[str]) -> int:
             for r in failures:
                 print(f"FAIL  {r.group:30s} {r.binding:10s} {r.status}: {r.detail}")
 
+    if undeclared_quickjs:
+        print()
+        print(f"{len(undeclared_quickjs)} of {len(idl_names)} groups carry no "
+              f"`quickjs` entry and were NOT checked against the QuickJS layer:")
+        print("  " + ", ".join(undeclared_quickjs))
+        print(f"Declare them in {CONFIG_PATH.relative_to(ROOT)} (required with the "
+              "registered globals, allowlist with a reason, or not_applicable),")
+        print("then run this with --require-quickjs to keep it that way.")
+
     if failures:
         print()
         print(f"{len(failures)} parity issue(s) found.")
@@ -275,7 +338,16 @@ def main(argv: list[str]) -> int:
         print("or add bindings for the missing groups.")
         return 1
 
-    print(f"OK — {len(idl_names)} groups, all bindings in parity.")
+    # Say what was checked, with the count. "All bindings in parity" is what
+    # this line used to claim while one of the four was never opened.
+    checked = {"pybind11": 0, "napi": 0, "codon": 0, "quickjs": 0}
+    for r in reports:
+        if r.binding in checked:
+            checked[r.binding] += 1
+    print(f"OK — {len(idl_names)} IDL groups. Checked: " +
+          ", ".join(f"{name} {count}" for name, count in checked.items()) +
+          (f" ({len(undeclared_quickjs)} groups undeclared for quickjs)"
+           if undeclared_quickjs else ""))
     return 0
 
 

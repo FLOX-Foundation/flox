@@ -66,7 +66,7 @@ Runs eight checks in sequence (each takes <5s):
 | `gen_indicator_docs.py` | Indicator reference matches `registry.def` | Run `python3 scripts/gen_indicator_docs.py` |
 | `gen_llms_txt.py --check` | `docs/llms.txt` + `llms-full.txt` match `docs/` | Run `python3 scripts/gen_llms_txt.py` |
 | `check_dts_exports.py` | `node/index.d.ts` matches NAPI exports | Edit `.d.ts` to add/remove the listed names |
-| `check_binding_parity.py` | pybind11/NAPI/Codon coverage matches IDL | See [parity-gate.md](parity-gate.md) |
+| `check_binding_parity.py` | pybind11/NAPI/Codon/QuickJS coverage matches IDL | See [parity-gate.md](parity-gate.md) |
 | `check_error_codes.py` | Every error code has a doc page; pages aren't stale | Add the doc page or remove the unused code |
 | `check_test_gating.py` | Every `tests/*.cpp` is registered in CMake | Register the target — see [test-gating.md](test-gating.md) |
 | `check_suite_discovery.py` | Every Python/Node test file is reachable by the suite runners, and nobody re-listed files by hand | Rename the file to `test_*`, add cases, or drop the hand-written step |
@@ -141,6 +141,27 @@ compiles with `-fsanitize=` and does not wrap its test step fails the docs
 gate. The matcher has a `--self-test` that feeds it every report shape it
 claims to catch, plus text it must not match — an unwatched detector is not a
 detector.
+
+### A parity gate that skipped a quarter of what it named
+
+`check_binding_parity.py` is the cross-binding parity gate and the project has
+four bindings: pybind11, NAPI, Codon, QuickJS. The per-group loop called the
+first three. The `quickjs` key existed in the manifest and was read by no line
+of code, and the closing message said "all bindings in parity". A group with no
+QuickJS implementation at all passed, which is how a composite-book function
+shipped missing from QuickJS with this green.
+
+QuickJS is read now, against the `addGlobalFunc` registration table in
+`src/quickjs/js_bindings.cpp` — the only list of what a strategy can actually
+call. A `quickjs: required` entry names the globals rather than deriving them,
+because the `__` plus C-API-name convention has real exceptions
+(`__flox_vprofile_create` wraps `flox_volume_profile_create`).
+
+Most groups still carry no `quickjs` entry, so the gate cannot demand one yet.
+It counts them and prints the number instead of implying they were checked, and
+the closing line now names what it checked per binding. `--require-quickjs`
+turns undeclared groups into failures; turn it on in CI once the manifest is
+filled in.
 
 ### A test suite that quietly shrank
 
