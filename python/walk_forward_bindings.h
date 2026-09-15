@@ -54,6 +54,10 @@ inline std::vector<flox::OhlcvReplaySource::Bar> loadOhlcvCsvForWf(
     std::string tok;
     std::getline(ss, tok, ',');
     int64_t ts = std::stoll(tok);
+    // Best-effort unit guess for a raw CSV column -- see the matching
+    // comment on PyBacktestRunner::normalizeTs in strategy_bindings.h. Valid
+    // only for genuinely unit-less input; never apply this to a value whose
+    // unit the API already declares (e.g. an already-nanosecond timestamp).
     if (ts < static_cast<int64_t>(1e12))
     {
       ts *= 1'000'000'000LL;

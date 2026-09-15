@@ -2234,8 +2234,15 @@ class PyBacktestRunner
       ev.bar.low = Price::fromDouble(pl(i));
       ev.bar.close = Price::fromDouble(pc(i));
       ev.bar.volume = Volume::fromDouble(pv(i));
-      ev.bar.startTime = TimePoint{std::chrono::nanoseconds{normalizeTs(ps(i))}};
-      ev.bar.endTime = TimePoint{std::chrono::nanoseconds{normalizeTs(pe(i))}};
+      // start_time_ns / end_time_ns are already nanoseconds by contract
+      // (the Python-facing kwarg names say so, and the docs example builds
+      // them from a prior run's own nanosecond output). Passing them through
+      // normalizeTs() re-guessed the unit from magnitude and silently
+      // rescaled legitimate small values -- e.g. bar 2 of a 1-minute series
+      // starts at 60_000_000_000ns, which normalizeTs mistook for seconds
+      // and multiplied by 1e9 again, overflowing int64. Use them as-is.
+      ev.bar.startTime = TimePoint{std::chrono::nanoseconds{ps(i)}};
+      ev.bar.endTime = TimePoint{std::chrono::nanoseconds{pe(i)}};
       ev.bar.reason = BarCloseReason::Threshold;
       events.push_back(ev);
     }
@@ -2456,6 +2463,17 @@ class PyBacktestRunner
     return bars;
   }
 
+  // Best-effort unit guess for genuinely unit-less input: a raw CSV column
+  // (loadCsv, run_csv) or a bare int64 array (run_ohlcv) that the caller may
+  // have populated with seconds, milliseconds, microseconds, or nanoseconds
+  // -- flox has no way to know, and docs/bindings/python.md documents this
+  // exact threshold behavior for run_csv. Do NOT call this on a value whose
+  // unit is already part of the contract (run_bars's start_time_ns /
+  // end_time_ns, for instance) -- that was the bug fixed above: guessing a
+  // unit for data that already has one silently corrupts legitimate small
+  // values. Do not retune these thresholds either; second/millisecond/
+  // microsecond/nanosecond ranges overlap on real dates, so any cutoff is a
+  // bet on which timestamps show up.
   static int64_t normalizeTs(int64_t t)
   {
     if (t < static_cast<int64_t>(1e12))
