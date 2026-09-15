@@ -6,6 +6,25 @@
 # Re-exported through `codon/flox/<module>.codon` files; this
 # file is the flat reference, not directly imported by user code.
 
+# ── macro: abi_version ──
+FLOX_CAPI_ABI_VERSION: int = 1
+
+# ── macro: signal_type ──
+FLOX_SIGNAL_TYPE_MARKET: int = 0
+FLOX_SIGNAL_TYPE_LIMIT: int = 1
+FLOX_SIGNAL_TYPE_STOP_MARKET: int = 2
+FLOX_SIGNAL_TYPE_STOP_LIMIT: int = 3
+FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET: int = 4
+FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT: int = 5
+FLOX_SIGNAL_TYPE_TRAILING_STOP: int = 6
+FLOX_SIGNAL_TYPE_CANCEL: int = 7
+FLOX_SIGNAL_TYPE_CANCEL_ALL: int = 8
+FLOX_SIGNAL_TYPE_MODIFY: int = 9
+FLOX_SIGNAL_TYPE_ICEBERG: int = 10
+FLOX_SIGNAL_TYPE_OCO: int = 11
+FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY: int = 12
+FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY: int = 13
+
 # ── account ──
 from C import flox_account_create(u64, float) -> cobj
 from C import flox_account_destroy(cobj)
@@ -149,6 +168,8 @@ from C import flox_composite_book_best_ask(cobj, u32, Ptr[float], Ptr[float]) ->
 from C import flox_composite_book_has_arb(cobj, u32) -> u8
 from C import flox_composite_book_mark_stale(cobj, u32, u32)
 from C import flox_composite_book_check_staleness(cobj, i64, i64)
+from C import flox_composite_book_apply_snapshot(cobj, u32, u32, Ptr[float], Ptr[float], int, Ptr[float], Ptr[float], int, i64)
+from C import flox_composite_book_apply_delta(cobj, u32, u32, Ptr[float], Ptr[float], int, Ptr[float], Ptr[float], int, i64)
 
 # ── context_queries ──
 from C import flox_position_raw(cobj, u32) -> i64

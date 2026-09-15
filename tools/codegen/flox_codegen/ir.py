@@ -82,6 +82,24 @@ class Enum:
     values: Tuple[EnumValue, ...]
 
 
+@dataclass(frozen=True)
+class MacroConstant:
+    """An object-like `#define NAME VALUE` macro constant.
+
+    A macro carries no clang cursor an attribute can attach to, so it can't
+    be tagged with `FLOX_EXPORT(...)` the way a function or handle is.
+    Instead the spec marks an exported macro with a `// flox::export_macro
+    (group="...")` comment on the line directly above the `#define` — see
+    `extractor.parse_macro_group_annotation`. A `#define` with no such
+    marker is invisible to codegen, exactly like an unannotated function.
+    """
+
+    name: str
+    value: str  # normalized replacement-token text, e.g. "0", "1"
+    group: str
+    source_location: Optional[str] = None  # "file:line"
+
+
 @dataclass
 class Module:
     """The full IR — every emitter consumes one Module instance."""
@@ -91,6 +109,7 @@ class Module:
     function_pointers: List[FunctionPointerTypedef] = field(default_factory=list)
     enums: List[Enum] = field(default_factory=list)
     functions: List[Function] = field(default_factory=list)
+    macros: List[MacroConstant] = field(default_factory=list)
 
     def functions_by_group(self) -> Dict[str, List[Function]]:
         """Group exported functions by their `group=` annotation.
@@ -102,4 +121,14 @@ class Module:
         for fn in self.functions:
             g = fn.annotations.get("group", "_ungrouped")
             out.setdefault(g, []).append(fn)
+        return out
+
+    def macros_by_group(self) -> Dict[str, List[MacroConstant]]:
+        """Group exported macro constants by their `group=` annotation.
+
+        Order within each group is preserved from the spec source order.
+        """
+        out: Dict[str, List[MacroConstant]] = {}
+        for m in self.macros:
+            out.setdefault(m.group, []).append(m)
         return out

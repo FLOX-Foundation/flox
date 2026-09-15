@@ -54,6 +54,10 @@ def _ir_handle_index(ir: dict) -> Dict[str, dict]:
     return {h["name"]: h for h in ir.get("typedefs", [])}
 
 
+def _ir_macro_index(ir: dict) -> Dict[str, dict]:
+    return {m["name"]: m for m in ir.get("macros", [])}
+
+
 def _format_function_signature(fn: dict) -> str:
     params = ", ".join(f"{p['type']} {p['name']}".strip()
                        for p in fn.get("params", []))
@@ -68,6 +72,10 @@ def _format_struct_signature(st: dict) -> str:
 def _format_enum_signature(en: dict) -> str:
     values = ", ".join(v["name"] for v in en["values"])
     return f"enum {en['name']} {{ {values} }}"
+
+
+def _format_macro_signature(m: dict) -> str:
+    return f"#define {m['name']} {m['value']}"
 
 
 # ── Per-binding name maps ─────────────────────────────────────────────
@@ -108,14 +116,15 @@ def _class_to_group_index(manifest: dict, binding_key: str) -> Dict[str, str]:
 
 
 def _resolve_capi(ir: dict, name: str) -> Optional[dict]:
-    """Match `name` against the IR. Tries function/struct/enum/handle in
-    that order. Falls back to common naming conventions (``BarData`` →
+    """Match `name` against the IR. Tries function/struct/enum/handle/macro
+    in that order. Falls back to common naming conventions (``BarData`` →
     ``FloxBarData``, ``ema`` → ``flox_indicator_ema``)."""
     candidates = _ir_name_to_capi_keys(name)
     fns = _ir_function_index(ir)
     structs = _ir_struct_index(ir)
     enums = _ir_enum_index(ir)
     handles = _ir_handle_index(ir)
+    macros = _ir_macro_index(ir)
 
     for c in candidates:
         if c in fns:
@@ -132,6 +141,10 @@ def _resolve_capi(ir: dict, name: str) -> Optional[dict]:
             target = handles[c].get("target") or handles[c].get("alias_of")
             return {"kind": "handle", "name": c,
                     "signature": f"typedef {target} {c}"}
+        if c in macros:
+            return {"kind": "macro", "name": c,
+                    "signature": _format_macro_signature(macros[c]),
+                    "group": macros[c].get("group", "_ungrouped")}
     return None
 
 

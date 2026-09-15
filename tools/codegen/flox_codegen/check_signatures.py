@@ -119,46 +119,26 @@ def _index_macros(path: Path, *, include_dirs: Iterable[Path] = ()) -> Dict[str,
     """Parse a C header and return {name: MacroSig} for object-like macros
     `#define`d directly in `path` (not pulled in transitively via #include).
 
-    libclang does not emit MACRO_DEFINITION cursors at all unless the parse
-    is asked for PARSE_DETAILED_PROCESSING_RECORD -- `_index_header` above
-    parses with `options=0`, so a whole class of the C ABI (every
-    `FLOX_SIGNAL_TYPE_*` constant, at the time this was written) was
-    invisible to this module regardless of what the diff logic did with it.
-    Restricting to cursors whose location file is `path` itself keeps
-    macros from <stdint.h> and friends out of the comparison.
+    Delegates the actual libclang walk to `extractor.macro_definition_cursors`
+    -- the same cursor walk the spec's macro-constant IDL group is built
+    from (see `extractor.extract_macros`), so the golden/live comparison and
+    the spec extraction can never see a different macro set for the same
+    file just because one of them drifted its own copy of this walk.
+    PARSE_DETAILED_PROCESSING_RECORD is required for libclang to emit
+    MACRO_DEFINITION cursors at all -- `_index_header` above parses with
+    `options=0`, so a whole class of the C ABI (every `FLOX_SIGNAL_TYPE_*`
+    constant, at the time this module was written) was invisible to it
+    regardless of what the diff logic did with it.
     """
-    extractor._ensure_libclang_loaded()
-    import clang.cindex
-
     args: List[str] = ["-x", "c", "-std=c11"]
     for d in include_dirs:
         args += ["-I", str(d)]
     for d in extractor._discover_system_includes():
         args += ["-I", d]
 
-    index = clang.cindex.Index.create()
-    tu = index.parse(
-        str(path),
-        args=args,
-        options=clang.cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
-    )
-
-    diags = [d for d in tu.diagnostics if d.severity >= clang.cindex.Diagnostic.Error]
-    if diags:
-        msg = "\n".join(f"  {d.location}: {d.spelling}" for d in diags)
-        raise RuntimeError(f"libclang errors parsing {path}:\n{msg}")
-
-    resolved = path.resolve()
     out: Dict[str, MacroSig] = {}
-    for c in tu.cursor.get_children():
-        if c.kind != clang.cindex.CursorKind.MACRO_DEFINITION:
-            continue
-        loc_file = c.location.file
-        if loc_file is None or Path(str(loc_file)).resolve() != resolved:
-            continue
-        tokens = [t.spelling for t in c.get_tokens()]
-        value = _normalize_type(" ".join(tokens[1:])) if len(tokens) > 1 else ""
-        out[c.spelling] = MacroSig(name=c.spelling, value=value)
+    for name, value, _line in extractor.macro_definition_cursors(path, args=args):
+        out[name] = MacroSig(name=name, value=value)
     return out
 
 
@@ -352,51 +332,24 @@ def diff_structs(
 
 
 # Pre-existing coverage gaps, exempted from the "missing" list until a
-# dedicated follow-up closes them. This module only learned to see macros
-# at all after a recent fix; these specific names were
-# already missing from the golden/codegen artifacts before that change, so
-# turning macro coverage on must not fail every PR over a gap this change
-# did not create. Do NOT add a name here to silence a NEW gap your own
-# change introduced -- exempt only what already existed, and delete the
-# entry once something actually closes it.
-KNOWN_MISSING_MACROS = {
-    # FLOX_SIGNAL_TYPE_* order-type codes exist only in the hand-written
-    # include/flox/capi/flox_capi.h; the codegen spec has no macro-constant
-    # IDL group, so golden/flox_capi.{h,codon,md} never learned about them.
-    # Checked again after the cross-binding order-type unification merged:
-    # that fix solved the cross-binding order-type drift via a runtime
-    # name<->code table (order_type_names.hpp), not by teaching codegen
-    # about this macro group, so it did NOT close this gap -- these 11
-    # names are still absent from every golden artifact. Nothing currently
-    # owns closing it; needs its own follow-up (extend the codegen spec /
-    # emitters with a macro-constant IDL group) rather than being lumped
-    # into a future PR that happens to touch order-type codes again.
-    "FLOX_SIGNAL_TYPE_MARKET",
-    "FLOX_SIGNAL_TYPE_LIMIT",
-    "FLOX_SIGNAL_TYPE_STOP_MARKET",
-    "FLOX_SIGNAL_TYPE_STOP_LIMIT",
-    "FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET",
-    "FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT",
-    "FLOX_SIGNAL_TYPE_TRAILING_STOP",
-    "FLOX_SIGNAL_TYPE_CANCEL",
-    "FLOX_SIGNAL_TYPE_CANCEL_ALL",
-    "FLOX_SIGNAL_TYPE_MODIFY",
-    "FLOX_SIGNAL_TYPE_ICEBERG",
-    # Same family, three codes added later for OCO and the two liquidity
-    # signals -- the ones the conversion switch used to drop into its default
-    # and report as a market order. They land in the same already-exempt
-    # group for the same reason: there is still no macro-constant IDL group,
-    # so no golden artifact can carry them. This is the pre-existing gap
-    # widening by three names, not a new one; the fix is still to teach the
-    # spec and the emitters about macro constants, and no batch owns that.
-    "FLOX_SIGNAL_TYPE_OCO",
-    "FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY",
-    "FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY",
-    # The C ABI version the header declares. Same gap, same reason. The
-    # runtime half of the pair, flox_capi_abi_version(), is a function and
-    # does go through codegen.
-    "FLOX_CAPI_ABI_VERSION",
-}
+# dedicated follow-up closes them. Do NOT add a name here to silence a NEW
+# gap your own change introduced -- exempt only what already exists after
+# teaching the spec about it, and delete the entry once something actually
+# closes it.
+#
+# This used to hold fifteen names (the FLOX_SIGNAL_TYPE_* order-type/signal
+# codes and FLOX_CAPI_ABI_VERSION) because the codegen spec had no
+# macro-constant IDL group at all -- every `#define` in flox_capi.h was
+# invisible to golden/flox_capi.{h,codon,md} regardless of what the diff
+# logic did with it, and the list grew by three and then one more name
+# across two separate audit batches with no fix in sight. The spec and the
+# emitters now know about macro constants (`flox::export_macro(group=...)`
+# markers in flox_capi_spec.hpp, emitted by emit_capi/emit_codon/emit_llms),
+# all fifteen are exported through it, and golden/flox_capi.h now carries
+# every one of them -- so the set is empty. A name added here again means a
+# macro exists in the live header with no `flox::export_macro(...)` marker
+# in the spec; add the marker instead of exempting it.
+KNOWN_MISSING_MACROS: set = set()
 
 
 def check(

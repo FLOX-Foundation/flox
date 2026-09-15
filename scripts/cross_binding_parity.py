@@ -201,6 +201,68 @@ def main() -> int:
             print(f"          max abs diff = {worst:.3e}")
         bad += 1
 
+    # ── Bar aggregation parity: same trades through aggregate_time_bars
+    #    (Python, pybind11) and aggregateTimeBars (Node, the shared C ABI
+    #    batch aggregator) must return the same NUMBER of bars, not just
+    #    numerically-close bars where they happen to overlap. Python used to
+    #    always append the trailing bar still open when the trade array ran
+    #    out; the C ABI path every other binding goes through never did, so
+    #    Python silently returned one more bar than everyone else on
+    #    identical input. This is a regression test for that gap, not just
+    #    the indicator-style value check above.
+    print("\n  Bar aggregation parity (Python vs Node):")
+    n_trades = 40
+    ts_bars = [i * 1_000_000_000 for i in range(n_trades)]  # one trade/sec
+    px_bars = [100.0 + i for i in range(n_trades)]
+    qty_bars = [1.0 for _ in range(n_trades)]
+    ib_bars = [1 for _ in range(n_trades)]
+
+    # Node's aggregateTimeBars scales OHLC to double on the way out
+    # (node/src/aggregators.h); Python's aggregate_time_bars returns raw
+    # fixed-point int64 (PyExtBar's *_raw fields, scale 1e8). Divide
+    # Python's raw fields the same way before comparing so a real content
+    # mismatch isn't masked by a units mismatch.
+    price_scale = 1e8
+    py_bars = flox.aggregate_time_bars(
+        np.array(ts_bars, dtype=np.int64), np.array(px_bars, dtype=np.float64),
+        np.array(qty_bars, dtype=np.float64), np.array(ib_bars, dtype=np.uint8),
+        1.0,
+    )
+    py_bar_rows = [
+        [r["open_raw"] / price_scale, r["high_raw"] / price_scale,
+         r["low_raw"] / price_scale, r["close_raw"] / price_scale]
+        for r in py_bars
+    ]
+
+    js_bars_script = (
+        "const flox = require('.');\n"
+        # aggregateTimeBars takes timestamps as a Float64Array (like every
+        # other batch aggregator input), not BigInt64Array -- that's the
+        # DataReader convention, not this one.
+        f"const ts = new Float64Array({ts_bars});\n"
+        f"const px = new Float64Array({px_bars});\n"
+        f"const qty = new Float64Array({qty_bars});\n"
+        f"const ib = new Uint8Array({ib_bars});\n"
+        "const bars = flox.aggregateTimeBars(ts, px, qty, ib, 1.0);\n"
+        "process.stdout.write(JSON.stringify(bars.map("
+        "b => [b.open, b.high, b.low, b.close])));\n"
+    )
+    js_bar_rows = run_node(js_bars_script)
+
+    py_bar_arr = np.array(py_bar_rows)
+    js_bar_arr = np.array(js_bar_rows)
+    if py_bar_arr.shape != js_bar_arr.shape:
+        print(f"  FAIL  bar count: py={len(py_bar_rows)}  js={len(js_bar_rows)}")
+        bad += 1
+    elif not np.allclose(py_bar_arr, js_bar_arr, atol=1e-9, rtol=1e-9):
+        worst = float(np.max(np.abs(py_bar_arr - js_bar_arr)))
+        print(f"  FAIL  bar contents differ between Python and Node: max abs diff = {worst:.3e}")
+        bad += 1
+    else:
+        print(f"  ok    bar aggregation: {len(py_bar_rows)} bars, "
+              f"count and OHLC identical")
+        ok += 1
+
     # ── DataReader parity: read_book_updates / read_bbo / read_trades
     #    + their *_from variants must return identical row counts and per-row
     #    fields between Python and Node on the same .floxlog dataset.

@@ -82,6 +82,13 @@ GROUP_TITLES = {
     "stat": "Statistics",
 }
 
+# Section titles for macro-constant groups. A group with no entry here falls
+# back to a title-cased version of the group name, same as function groups.
+MACRO_GROUP_TITLES = {
+    "signal_type": "Signal type codes (FloxSignal.order_type)",
+    "abi_version": "ABI version",
+}
+
 
 def _banner(title: str, *, indent: str = "  ") -> str:
     bar = "=" * 60
@@ -143,6 +150,29 @@ def _emit_function_pointers(
     for fp in fps:
         params = ", ".join(p.type for p in fp.params) or "void"
         out.write(f"  typedef {fp.return_type} (*{fp.name})({params});\n")
+    out.write("\n")
+
+
+def _emit_macros(out: StringIO, macros: List[ir.MacroConstant]) -> None:
+    """Emit `#define NAME VALUE` grouped under a banner per `group=`.
+
+    Preprocessor directives sit at column 0 regardless of the surrounding
+    `extern "C"` block; clang-format leaves `#define` alone either way, so
+    no special-casing is needed beyond not indenting them here.
+    """
+    if not macros:
+        return
+    grouped: dict = {}
+    for m in macros:
+        grouped.setdefault(m.group, []).append(m)
+
+    out.write("\n")
+    out.write(_banner("Macro constants"))
+    for group_name in sorted(grouped):
+        title = MACRO_GROUP_TITLES.get(group_name, group_name.replace("_", " ").title())
+        out.write(f"\n  // {title}\n")
+        for m in grouped[group_name]:
+            out.write(f"#define {m.name} {m.value}\n")
     out.write("\n")
 
 
@@ -251,9 +281,10 @@ def emit(module: ir.Module, *, format: bool = True,
          style_file: Optional[Path] = None) -> str:
     """Render `module` as a complete C header string.
 
-    Order: handles → event-data structs → function-pointer typedefs →
-    callback-bundle structs → functions. The chain mirrors the dependency
-    graph: event data → fnptr (uses event data) → callback bundle (uses fnptr).
+    Order: handles → macro constants → enums → event-data structs →
+    function-pointer typedefs → callback-bundle structs → functions. The
+    struct/fnptr/bundle chain mirrors the dependency graph: event data →
+    fnptr (uses event data) → callback bundle (uses fnptr).
 
     When `format=True` (the default), pipe the output through clang-format.
     """
@@ -264,6 +295,7 @@ def emit(module: ir.Module, *, format: bool = True,
     event_data, bundles = _partition_structs(module.structs, fp_names)
 
     _emit_handles(out, module.handles)
+    _emit_macros(out, module.macros)
     _emit_enums(out, module.enums)
     _emit_structs(out, event_data)
     _emit_function_pointers(out, module.function_pointers)

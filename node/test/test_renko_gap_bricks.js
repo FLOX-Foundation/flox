@@ -11,10 +11,16 @@
 // heap-buffer-overflow read; see node/src/aggregators.h.
 //
 // Node's aggregate*Bars functions go through the shared C ABI aggregator
-// (flox_aggregate_renko_bars), which -- unlike the Python-only batch path in
-// python/aggregator_bindings.h -- never flushes a still-open trailing bar.
-// So the counts here are one lower than the Python test's for the same
-// input: no bar for the 155-open / 114-open tail.
+// (flox_aggregate_renko_bars). Python's pybind11 batch path
+// (python/aggregator_bindings.h) used to disagree with it: Python flushed
+// the still-open trailing bar and Node never did, so Python's count ran
+// one higher than Node's on identical input. That gap is closed -- neither
+// path returns the trailing bar now. Bar carries no closed/open flag, so
+// returning the still-forming bar would hand the caller something
+// indistinguishable from a real closed one, even though its high/low/
+// close can still change on the next trade; dropping it is the only
+// choice that doesn't forge a close. See python/tests/test_renko_gap_bricks.py
+// for the same counts asserted on the Python side.
 
 const assert = require('assert');
 const path = require('path');

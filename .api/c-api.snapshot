@@ -95,6 +95,8 @@ flox_book_snapshot_bin_read_result|uint32_t|FloxAggregatorHandle|FloxBookSnapsho
 flox_book_spread|uint8_t|FloxBookHandle|double *
 flox_capi_abi_version|uint32_t
 flox_clear_last_error|void
+flox_composite_book_apply_delta|void|FloxCompositeBookHandle|uint32_t|uint32_t|const double *|const double *|size_t|const double *|const double *|size_t|int64_t
+flox_composite_book_apply_snapshot|void|FloxCompositeBookHandle|uint32_t|uint32_t|const double *|const double *|size_t|const double *|const double *|size_t|int64_t
 flox_composite_book_best_ask|uint8_t|FloxCompositeBookHandle|uint32_t|double *|double *
 flox_composite_book_best_bid|uint8_t|FloxCompositeBookHandle|uint32_t|double *|double *
 flox_composite_book_check_staleness|void|FloxCompositeBookHandle|int64_t|int64_t

@@ -97,6 +97,10 @@ from C import flox_composite_book_best_ask(cobj, u32, Ptr[f64], Ptr[f64]) -> u8
 from C import flox_composite_book_has_arb(cobj, u32) -> u8
 from C import flox_composite_book_mark_stale(cobj, u32, u32)
 from C import flox_composite_book_check_staleness(cobj, i64, i64)
+from C import flox_composite_book_apply_snapshot(cobj, u32, u32, Ptr[f64], Ptr[f64], int,
+                                                  Ptr[f64], Ptr[f64], int, i64)
+from C import flox_composite_book_apply_delta(cobj, u32, u32, Ptr[f64], Ptr[f64], int,
+                                               Ptr[f64], Ptr[f64], int, i64)
 
 from C import flox_l3_book_create() -> cobj
 from C import flox_l3_book_destroy(cobj)
@@ -503,6 +507,24 @@ class CompositeBook:
 
     def __init__(self):
         self._h = flox_composite_book_create()
+
+    def apply_snapshot(self, exchange: int, symbol: int,
+                       bid_prices: List[float], bid_qtys: List[float],
+                       ask_prices: List[float], ask_qtys: List[float],
+                       recv_ns: int = 0):
+        flox_composite_book_apply_snapshot(self._h, u32(exchange), u32(symbol),
+                                           bid_prices.arr.ptr, bid_qtys.arr.ptr, len(bid_prices),
+                                           ask_prices.arr.ptr, ask_qtys.arr.ptr, len(ask_prices),
+                                           i64(recv_ns))
+
+    def apply_delta(self, exchange: int, symbol: int,
+                    bid_prices: List[float], bid_qtys: List[float],
+                    ask_prices: List[float], ask_qtys: List[float],
+                    recv_ns: int = 0):
+        flox_composite_book_apply_delta(self._h, u32(exchange), u32(symbol),
+                                        bid_prices.arr.ptr, bid_qtys.arr.ptr, len(bid_prices),
+                                        ask_prices.arr.ptr, ask_qtys.arr.ptr, len(ask_prices),
+                                        i64(recv_ns))
 
     def best_bid(self, symbol: int) -> Optional[Tuple[float, float]]:
         p = 0.0

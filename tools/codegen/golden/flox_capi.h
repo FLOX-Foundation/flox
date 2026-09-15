@@ -83,6 +83,30 @@ extern "C"
   typedef void* FloxLiquidationEngineHandle;
   typedef void* FloxAccountHandle;
   typedef void* FloxVenueStackHandle;
+
+  // ============================================================
+  // Macro constants
+  // ============================================================
+
+  // ABI version
+#define FLOX_CAPI_ABI_VERSION 1
+
+  // Signal type codes (FloxSignal.order_type)
+#define FLOX_SIGNAL_TYPE_MARKET 0
+#define FLOX_SIGNAL_TYPE_LIMIT 1
+#define FLOX_SIGNAL_TYPE_STOP_MARKET 2
+#define FLOX_SIGNAL_TYPE_STOP_LIMIT 3
+#define FLOX_SIGNAL_TYPE_TAKE_PROFIT_MARKET 4
+#define FLOX_SIGNAL_TYPE_TAKE_PROFIT_LIMIT 5
+#define FLOX_SIGNAL_TYPE_TRAILING_STOP 6
+#define FLOX_SIGNAL_TYPE_CANCEL 7
+#define FLOX_SIGNAL_TYPE_CANCEL_ALL 8
+#define FLOX_SIGNAL_TYPE_MODIFY 9
+#define FLOX_SIGNAL_TYPE_ICEBERG 10
+#define FLOX_SIGNAL_TYPE_OCO 11
+#define FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY 12
+#define FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY 13
+
   // ============================================================
   // Enums
   // ============================================================
@@ -1119,6 +1143,16 @@ extern "C"
                                       uint32_t symbol);
   void flox_composite_book_check_staleness(FloxCompositeBookHandle book, int64_t now_ns,
                                            int64_t threshold_ns);
+  void flox_composite_book_apply_snapshot(FloxCompositeBookHandle book, uint32_t exchange,
+                                          uint32_t symbol, const double* bid_prices,
+                                          const double* bid_qtys, size_t bid_len,
+                                          const double* ask_prices, const double* ask_qtys,
+                                          size_t ask_len, int64_t recv_ns);
+  void flox_composite_book_apply_delta(FloxCompositeBookHandle book, uint32_t exchange,
+                                       uint32_t symbol, const double* bid_prices,
+                                       const double* bid_qtys, size_t bid_len,
+                                       const double* ask_prices, const double* ask_qtys,
+                                       size_t ask_len, int64_t recv_ns);
 
   // ============================================================
   // Context Queries

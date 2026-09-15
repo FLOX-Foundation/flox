@@ -475,6 +475,16 @@
         {
           "group": "composite_book",
           "kind": "function",
+          "name": "flox_composite_book_apply_delta"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
+          "name": "flox_composite_book_apply_snapshot"
+        },
+        {
+          "group": "composite_book",
+          "kind": "function",
           "name": "flox_composite_book_best_ask"
         },
         {
@@ -5311,6 +5321,16 @@
         },
         {
           "kind": "method",
+          "name": "apply_delta",
+          "parent": "CompositeBook"
+        },
+        {
+          "kind": "method",
+          "name": "apply_snapshot",
+          "parent": "CompositeBook"
+        },
+        {
+          "kind": "method",
           "name": "best_ask",
           "parent": "CompositeBook"
         },
@@ -8479,6 +8499,14 @@
         {
           "kind": "c_import",
           "name": "flox_clear_last_error"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_composite_book_apply_delta"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_composite_book_apply_snapshot"
         },
         {
           "kind": "c_import",
@@ -26784,6 +26812,16 @@
         },
         {
           "kind": "method",
+          "name": "applyDelta",
+          "parent": "CompositeBookMatrix"
+        },
+        {
+          "kind": "method",
+          "name": "applySnapshot",
+          "parent": "CompositeBookMatrix"
+        },
+        {
+          "kind": "method",
           "name": "bestAsk",
           "parent": "CompositeBookMatrix"
         },
@@ -39668,6 +39706,8 @@
     },
     "composite_book": {
       "capi_functions": [
+        "flox_composite_book_apply_delta",
+        "flox_composite_book_apply_snapshot",
         "flox_composite_book_best_ask",
         "flox_composite_book_best_bid",
         "flox_composite_book_check_staleness",

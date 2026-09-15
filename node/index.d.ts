@@ -1598,6 +1598,24 @@ export class L3Book {
 
 export class CompositeBookMatrix {
   constructor();
+  applySnapshot(
+    exchange: number,
+    symbol: number,
+    bidPrices: Float64Array,
+    bidQtys: Float64Array,
+    askPrices: Float64Array,
+    askQtys: Float64Array,
+    recvNs?: number | bigint,
+  ): void;
+  applyDelta(
+    exchange: number,
+    symbol: number,
+    bidPrices: Float64Array,
+    bidQtys: Float64Array,
+    askPrices: Float64Array,
+    askQtys: Float64Array,
+    recvNs?: number | bigint,
+  ): void;
   bestBid(symbol: number): { price: number; qty: number } | null;
   bestAsk(symbol: number): { price: number; qty: number } | null;
   hasArbitrage(symbol: number): boolean;

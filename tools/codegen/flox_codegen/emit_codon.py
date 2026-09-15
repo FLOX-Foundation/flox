@@ -126,6 +126,12 @@ def _emit_function(out: StringIO, fn: ir.Function) -> None:
         out.write(f"from C import {fn.name}({arg_list})\n")
 
 
+def _emit_macro(out: StringIO, m: ir.MacroConstant) -> None:
+    # Macro values are C integer-literal text (e.g. "0", "12"); Codon has no
+    # preprocessor, so a `#define` becomes a plain module-level constant.
+    out.write(f"{m.name}: int = {m.value}\n")
+
+
 def emit(module: ir.Module) -> str:
     """Render the IR as a Codon FFI declaration file."""
     out = StringIO()
@@ -137,6 +143,13 @@ def emit(module: ir.Module) -> str:
     out.write("# Re-exported through `codon/flox/<module>.codon` files; this\n")
     out.write("# file is the flat reference, not directly imported by user code.\n")
     out.write("\n")
+
+    macro_groups = module.macros_by_group()
+    for group_name in sorted(macro_groups):
+        out.write(f"# ── macro: {group_name} ──\n")
+        for m in macro_groups[group_name]:
+            _emit_macro(out, m)
+        out.write("\n")
 
     grouped = module.functions_by_group()
     for group_name in sorted(grouped):

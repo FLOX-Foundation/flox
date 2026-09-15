@@ -121,3 +121,22 @@ def test_map_type_const_pointer():
 def test_map_type_unknown_passthrough():
     # Unknown type keeps the literal — useful for noticing gaps.
     assert emit_codon.map_type("__weird_type") == "__weird_type"
+
+
+def test_macro_constant_becomes_int_constant():
+    m = ir.Module(macros=[ir.MacroConstant(name="FLOX_THING_A", value="0", group="thing")])
+    text = emit_codon.emit(m)
+    assert "FLOX_THING_A: int = 0" in text
+
+
+def test_macro_groups_get_their_own_comment_section():
+    m = ir.Module(
+        macros=[
+            ir.MacroConstant(name="FLOX_A_ONE", value="0", group="alpha"),
+            ir.MacroConstant(name="FLOX_B_ONE", value="0", group="beta"),
+        ]
+    )
+    text = emit_codon.emit(m)
+    assert "# ── macro: alpha ──" in text
+    assert "# ── macro: beta ──" in text
+    assert text.find("FLOX_A_ONE") < text.find("FLOX_B_ONE")
