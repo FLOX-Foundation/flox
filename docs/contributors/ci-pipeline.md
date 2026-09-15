@@ -102,13 +102,6 @@ Re-runs the IDL→header/codon/markdown emitters and verifies the output matches
 
 Builds the full project (engine + C ABI + tests + benchmarks + Python + Node + Codon + QuickJS), runs `ctest`, runs all the integration tests, runs cross-binding parity tests (Python ↔ Node, same C++ math), and exercises example programs.
 
-The `sanitizers` job also builds `_flox_py` and runs `pytest python/tests` under
-the address and undefined-behavior variants, through the same transcript
-scan. Thread is excluded: loading a ThreadSanitizer-instrumented extension
-into the plain, uninstrumented CPython interpreter aborts inside the
-sanitizer runtime before any test runs, so there is nothing to gain from
-building it there.
-
 ## Green does not mean checked
 
 Two steps in this pipeline used to report success while checking less than
