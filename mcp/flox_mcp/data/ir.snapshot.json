@@ -14455,7 +14455,7 @@
     {
       "group": "abi_version",
       "name": "FLOX_CAPI_ABI_VERSION",
-      "value": "1"
+      "value": "2"
     },
     {
       "group": "signal_type",

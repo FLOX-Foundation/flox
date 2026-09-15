@@ -7248,6 +7248,21 @@ struct FloxBacktestRunnerImpl
     runner->setPnLTracker(pnlAdapter.get());
   }
 
+  // Guesses a timestamp's unit from its magnitude and scales it to
+  // nanoseconds. This is ONLY valid where the unit is genuinely unknown --
+  // a CSV column can hold seconds, milliseconds, microseconds, or
+  // nanoseconds depending on who wrote the file, and there is no contract
+  // to consult. runCsv() is the one caller with that excuse.
+  //
+  // runOhlcv() and runFullBars() are not: their C ABI parameters are
+  // documented and named as nanoseconds already (timestamps_ns,
+  // start_time_ns / end_time_ns). Running an already-correct nanosecond
+  // value back through this guesser corrupts it instead of leaving it
+  // alone -- anything under 1e12 ns (the first eleven and a half days
+  // after the epoch, an ordinary timestamp for synthetic/offset test data)
+  // reads as "probably seconds" and gets rescaled by another 1e9, which
+  // silently wraps on overflow in a release build and aborts under a
+  // sanitizer. Contract-known callers pass their values through untouched.
   static int64_t normalizeTs(int64_t t)
   {
     if (t < static_cast<int64_t>(1e12))
@@ -7413,7 +7428,10 @@ struct FloxBacktestRunnerImpl
     bars.reserve(n);
     for (uint32_t i = 0; i < n; ++i)
     {
-      bars.push_back({normalizeTs(ts[i]), Price::fromDouble(close[i]).raw(), id});
+      // ts[i] is flox_backtest_runner_run_ohlcv's documented
+      // timestamps_ns -- already nanoseconds by contract, not run through
+      // normalizeTs()'s unit guesser (see its comment).
+      bars.push_back({ts[i], Price::fromDouble(close[i]).raw(), id});
     }
     return runBars(std::move(bars), out);
   }
@@ -7438,8 +7456,12 @@ struct FloxBacktestRunnerImpl
       ev.bar.low = Price::fromDouble(low[i]);
       ev.bar.close = Price::fromDouble(close[i]);
       ev.bar.volume = Volume::fromDouble(volume ? volume[i] : 0.0);
-      ev.bar.startTime = TimePoint{std::chrono::nanoseconds{normalizeTs(start_ns[i])}};
-      ev.bar.endTime = TimePoint{std::chrono::nanoseconds{normalizeTs(end_ns[i])}};
+      // start_ns[i] / end_ns[i] are flox_backtest_runner_run_bars's
+      // documented start_time_ns / end_time_ns -- already nanoseconds by
+      // contract, not run through normalizeTs()'s unit guesser (see its
+      // comment).
+      ev.bar.startTime = TimePoint{std::chrono::nanoseconds{start_ns[i]}};
+      ev.bar.endTime = TimePoint{std::chrono::nanoseconds{end_ns[i]}};
       ev.bar.reason = BarCloseReason::Threshold;
       events.push_back(ev);
     }

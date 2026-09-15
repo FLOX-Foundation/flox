@@ -89,7 +89,7 @@ extern "C"
   // ============================================================
 
   // ABI version
-#define FLOX_CAPI_ABI_VERSION 1
+#define FLOX_CAPI_ABI_VERSION 2
 
   // Signal type codes (FloxSignal.order_type)
 #define FLOX_SIGNAL_TYPE_MARKET 0
