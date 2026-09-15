@@ -684,6 +684,20 @@ jobs:
       # command-parsing allocations look like a leak at its own exit, and
       # with abort_on_error=1 that aborts the step on a false positive
       # that has nothing to do with the tests.
+      #
+      # -s (--capture=no) turns off pytest's default output capture, which
+      # redirects the real fd 1/2 to its own internal pipes during
+      # collection and test execution. A sanitizer report is written via a
+      # raw syscall straight to fd 2 -- confirmed locally with a minimal
+      # repro (os.write(2, ...) followed by a signal): under default
+      # capture the write lands in pytest's pipe and is discarded when the
+      # process dies before pytest can flush and report it; only Python's
+      # own faulthandler survives, because it targets the real stderr
+      # rather than whatever pytest has swapped in. That is why earlier
+      # runs of this step showed "Fatal Python error: Aborted" with
+      # nothing else -- not a hidden project macro, not a lost report, a
+      # capture target that stopped existing before the report could be
+      # written to it.
       if: matrix.sanitizer != 'thread'
       env:
         PYTHONPATH: build/python
@@ -694,7 +708,7 @@ jobs:
         if [ "${{ matrix.sanitizer }}" = "address" ]; then
           preload=(env "LD_PRELOAD=$(g++-14 -print-file-name=libasan.so)")
         fi
-        scripts/run-with-sanitizer-scan.sh "${preload[@]}" python3 -u -m pytest python/tests -q
+        scripts/run-with-sanitizer-scan.sh "${preload[@]}" python3 -u -m pytest python/tests -q -s
 
   macos:
     needs: [format-check, verify-docs-current]
