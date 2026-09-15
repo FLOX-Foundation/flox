@@ -2209,3 +2209,75 @@ TEST(JsIntegrationTest, ConsoleLogHandlesBigIntFieldsAndUnprintableValues)
   EXPECT_EQ(n, 2);
   JS_FreeValue(engine.context(), v);
 }
+
+// ============================================================
+// CompositeBook — cross-exchange composite order book
+// ============================================================
+//
+// Node, Codon, and pybind11 could already feed a CompositeBookMatrix
+// (create/destroy/query came first; applySnapshot/applyDelta followed once
+// the C ABI grew the two ingestion entry points). QuickJS had the query
+// side only -- a matrix built from a script stayed empty forever, since
+// nothing could ever write to it. These mirror node/test/test_composite_book.js.
+
+// Mirrors "Bid-only delta does not wipe the ask side" in
+// node/test/test_composite_book.js: BOOK-12 was a composite-book delta
+// zeroing the side it did not touch. This exercises the fix through the
+// QuickJS ingestion path specifically, not just the shared C++ core.
+TEST(JsIntegrationTest, CompositeBookDeltaOnOneSideLeavesTheOtherUntouched)
+{
+  TempJsFile script(R"(
+    var book = new CompositeBook();
+    book.applySnapshot(
+      1, 7,
+      [100.0], [1.0],
+      [100.05], [2.0],
+      0n,
+    );
+    book.applyDelta(
+      1, 7,
+      [100.01], [3.0],
+      [], [],
+      0n,
+    );
+    var bid = book.bestBid(7);
+    var ask = book.bestAsk(7);
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto* ctx = jsStrat.engine().context();
+
+  auto priceOf = [&](const char* name)
+  {
+    JSValue quote = jsStrat.engine().getGlobalProperty(name);
+    JSValue priceVal = JS_GetPropertyStr(ctx, quote, "price");
+    double price = 0;
+    JS_ToFloat64(ctx, &price, priceVal);
+    JS_FreeValue(ctx, priceVal);
+    JS_FreeValue(ctx, quote);
+    return price;
+  };
+
+  EXPECT_NEAR(priceOf("bid"), 100.01, 1e-9) << "bid moved to the delta price";
+  EXPECT_NEAR(priceOf("ask"), 100.05, 1e-9) << "ask side untouched by a bid-only delta";
+}
+
+// Mirrors "Arbitrage across two exchanges" in node/test/test_composite_book.js.
+TEST(JsIntegrationTest, CompositeBookDetectsArbitrageAcrossExchanges)
+{
+  TempJsFile script(R"(
+    var book = new CompositeBook();
+    book.applySnapshot(1, 3, [101.0], [1.0], [101.5], [1.0], 0n);
+    book.applySnapshot(2, 3, [102.0], [1.0], [103.0], [1.0], 0n);
+    var arb = book.hasArbitrage(3);
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto* ctx = jsStrat.engine().context();
+
+  JSValue arb = jsStrat.engine().getGlobalProperty("arb");
+  EXPECT_TRUE(JS_ToBool(ctx, arb)) << "a higher bid on exchange 2 than the ask on exchange 1 is arbitrage";
+  JS_FreeValue(ctx, arb);
+}

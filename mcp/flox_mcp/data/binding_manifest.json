@@ -37600,6 +37600,14 @@
         },
         {
           "kind": "global",
+          "name": "__flox_cb_apply_delta"
+        },
+        {
+          "kind": "global",
+          "name": "__flox_cb_apply_snapshot"
+        },
+        {
+          "kind": "global",
           "name": "__flox_cb_best_ask"
         },
         {
