@@ -1,1 +1,3 @@
 libclang>=15.0.7
+pytest
+pyyaml

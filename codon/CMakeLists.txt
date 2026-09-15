@@ -117,3 +117,9 @@ add_codon_executable(codon_order_type_codes_smoke
 
 add_codon_executable(codon_indicator_bounds_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/indicator_bounds_smoke.codon)
+
+add_codon_executable(codon_signal_fields_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/signal_fields_smoke.codon)
+
+add_codon_executable(codon_aggregate_bars_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/aggregate_bars_smoke.codon)

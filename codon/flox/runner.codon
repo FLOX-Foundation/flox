@@ -111,6 +111,9 @@ class FloxSignalC:
     trailing_bps:    i32
     new_price:       float
     new_quantity:    float
+    range_lower:     float
+    range_upper:     float
+    liquidity:       float
 
 
 @dataclass
@@ -127,6 +130,11 @@ class Signal:
     trailing_bps:    int
     new_price:       float
     new_quantity:    float
+    # provide/withdraw liquidity: range bounds and position size. Zero on
+    # every other signal type.
+    range_lower:     float
+    range_upper:     float
+    liquidity:       float
 
 
 # FLOX_SIGNAL_TYPE_* codes, in order. Mirrors kSignalTypeNames in
@@ -156,6 +164,9 @@ def _signal_from_c(s: Ptr[FloxSignalC]) -> Signal:
         trailing_bps    = int(s[0].trailing_bps),
         new_price       = s[0].new_price,
         new_quantity    = s[0].new_quantity,
+        range_lower     = s[0].range_lower,
+        range_upper     = s[0].range_upper,
+        liquidity       = s[0].liquidity,
     )
 
 

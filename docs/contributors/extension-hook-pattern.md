@@ -72,7 +72,8 @@ This regenerates `flox_capi.h`, the Codon golden file, the Markdown reference, a
 
 ## Layer 2: C++ implementation
 
-In [`src/capi/flox_capi.cpp`](../../src/capi/flox_capi.cpp):
+In [`src/capi/flox_capi.cpp`](../../src/capi/flox_capi.cpp), create and destroy go through
+[`TrackerRegistry`](../../src/capi/tracker_ownership.h), not `new`/`delete` directly:
 
 ```cpp
 struct FloxXxxImpl {
@@ -80,34 +81,51 @@ struct FloxXxxImpl {
 };
 
 FloxXxxHandle flox_xxx_create(FloxXxxCallbacks cb) {
-  return new FloxXxxImpl{cb};
+  return static_cast<FloxXxxHandle>(TrackerRegistry<FloxXxxImpl>::create(FloxXxxImpl{cb}));
 }
 void flox_xxx_destroy(FloxXxxHandle h) {
-  delete static_cast<FloxXxxImpl*>(h);
+  TrackerRegistry<FloxXxxImpl>::destroy(static_cast<FloxXxxImpl*>(h));
 }
 ```
 
-Then **wire the hook into the place that fires it.** For a post-emission observer like PnLTracker, that means storing an atomic pointer on the signal handler and calling its `on_event` after the user callback. For a pre-trade gate like RiskManager, that means evaluating it inside `RunnerSignalHandler::onSignal` *before* the user callback. For an executor, that means routing emitted signals to it instead of `SimulatedExecutor`.
+Then **wire the hook into the place that fires it.** For a post-emission observer like PnLTracker, that means storing a slot on the signal handler and calling its `on_event` after the user callback. For a pre-trade gate like RiskManager, that means evaluating it inside `RunnerSignalHandler::onSignal` *before* the user callback. For an executor, that means routing emitted signals to it instead of `SimulatedExecutor`.
 
-The pattern for hot-swap atomic ownership:
+### Ownership: why a bare atomic pointer is not enough
+
+A hook fired from `RunnerSignalHandler::onSignal` is reachable from the live engine's bus consumer
+threads. `flox_xxx_destroy()` can run on a completely different thread, at any moment, including
+the moment a consumer thread has already loaded the hook's pointer and is in the middle of calling
+into it. Detaching first (`flox_runner_set_xxx(runner, NULL)`) only stops *future* dispatches from
+picking the pointer up; it does nothing for one already in flight. `new`/`delete` on a bare
+`std::atomic<FloxXxxImpl*>` frees the object out from under that in-flight call — see
+`tracker_ownership.h` for the full writeup, and the live-engine + Node channel lifetime fixes that
+motivated it.
+
+The fix is shared ownership instead of a bare pointer, via `TrackerRegistry<T>` (create/destroy,
+keyed by the handle address) and `TrackerSlot<T>` (what the consumer actually holds):
 
 ```cpp
 // On the consumer (RunnerSignalHandler / LiveEngineImpl):
-std::atomic<FloxXxxImpl*> _xxx{nullptr};
+TrackerSlot<FloxXxxImpl> _xxx;
 
-void setXxx(FloxXxxImpl* x) noexcept {
-  _xxx.store(x, std::memory_order_release);
+void setXxx(FloxXxxImpl* x) {
+  _xxx.set(TrackerRegistry<FloxXxxImpl>::lookup(x));
 }
 
 void onSomething(...) {
-  if (auto* x = _xxx.load(std::memory_order_acquire);
-      x != nullptr && x->cb.on_event != nullptr) {
+  // get() returns a strong reference that keeps the object alive for the
+  // rest of this scope, no matter what destroy() does concurrently.
+  if (auto x = _xxx.get(); x && x->cb.on_event != nullptr) {
     x->cb.on_event(x->cb.user_data, &payload);
   }
 }
 ```
 
-Lifecycle (`on_start` / `on_stop`) follows the same hot-swap pattern, balanced against engine `start()` / `stop()` so attaching mid-run fires `on_start` immediately.
+Lifecycle (`on_start` / `on_stop`) follows the same pattern, balanced against engine `start()` /
+`stop()` so attaching mid-run fires `on_start` immediately. Anything that calls straight into
+`prev->cb.on_stop(...)` synchronously inside a setter (rather than from a background dispatch
+thread) does not need this treatment — the caller's own thread already serializes that access
+against a later `destroy()` it makes itself.
 
 ## Layer 3: pybind11 wrapper
 
@@ -295,7 +313,8 @@ Run `python3 scripts/check_binding_parity.py` to verify.
 ## Checklist
 
 - [ ] IDL spec updated, `regenerate.sh` ran clean
-- [ ] C++ impl wired into the right firing point
+- [ ] C++ impl wired into the right firing point, through `TrackerRegistry` / `TrackerSlot` if the
+      firing point is a live-engine dispatch thread
 - [ ] pybind11 trampoline + Owner + class registration + setter on Runner/Engine/BacktestRunner
 - [ ] NAPI Host (with Sync/Threaded modes) + setter on RunnerNode/BacktestRunnerNode
 - [ ] `node/index.d.ts` interface added

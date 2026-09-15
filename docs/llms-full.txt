@@ -6039,6 +6039,27 @@ in-process with the batch aggregators and feed the result to `run_bars`.
                col('close'), col('volume'), "BTCUSDT");
     ```
 
+=== "Codon"
+
+    Bars come back as `AggBar` records with `*_raw` fixed-point fields plus
+    float accessors (`open()`, `high()`, `low()`, `close()`, `volume()`,
+    `buy_volume()`).
+
+    ```python
+    from flox.tools import aggregate_time_bars
+
+    bars = aggregate_time_bars(timestamps, prices, quantities, is_buy,
+                               interval_seconds=60.0)
+    for b in bars:
+        print(b.start_time_ns, b.open(), b.high(), b.low(), b.close())
+    ```
+
+    Also available: `aggregate_tick_bars(..., tick_count)`,
+    `aggregate_volume_bars(..., volume_threshold)`,
+    `aggregate_range_bars(..., range_size)`,
+    `aggregate_renko_bars(..., brick_size)`,
+    `aggregate_heikin_ashi_bars(..., interval_seconds)`.
+
 === "C++"
 
     ```cpp
@@ -6074,9 +6095,9 @@ For real-time bar generation while you trade, configure the aggregator with the 
     aggregator.onTrade(tradeEvent);
     ```
 
-=== "Python / Node.js"
+=== "Python / Node.js / Codon"
 
-    The live `MultiTimeframeAggregator` / `MmapBarWriter` wiring above is C++-only. From the bindings, use the batch aggregators on a trade array — `aggregate_time_bars`, `aggregate_tick_bars`, `aggregate_volume_bars`, `aggregate_range_bars`, `aggregate_renko_bars`, `aggregate_heikin_ashi_bars` (Node: `aggregateTimeBars`, ...) — and replay the result through `run_bars` / `runBars`. Since `MmapBarStorage` is not bound, those functions are the only Python/Node.js bar-aggregation path.
+    The live `MultiTimeframeAggregator` / `MmapBarWriter` wiring above is C++-only. From the bindings, use the batch aggregators on a trade array — `aggregate_time_bars`, `aggregate_tick_bars`, `aggregate_volume_bars`, `aggregate_range_bars`, `aggregate_renko_bars`, `aggregate_heikin_ashi_bars` (Node: `aggregateTimeBars`, ...) — and replay the result through `run_bars` / `runBars`. Since `MmapBarStorage` is not bound, those functions are the only bar-aggregation path for Python, Node.js, and Codon.
 
     `flox_py.BarDispatchRecorder` is a testing helper that records which (bar type, param) closes fired for a trade stream: `add_time_interval_seconds`, `on_trade(symbol, price, qty, ts_ns)`, `finalize`, then `count` / `type_at` / `param_at`.
 
@@ -10705,6 +10726,8 @@ Members:
 
 - *attr* `order_type: str`
 - *attr* `side: str`
+- *property* `liquidity: float`
+- *property* `liquidity: None`
 - *property* `new_price: float`
 - *property* `new_price: None`
 - *property* `new_quantity: float`
@@ -10715,6 +10738,10 @@ Members:
 - *property* `price: None`
 - *property* `quantity: float`
 - *property* `quantity: None`
+- *property* `range_lower: float`
+- *property* `range_lower: None`
+- *property* `range_upper: float`
+- *property* `range_upper: None`
 - *property* `symbol: int`
 - *property* `symbol: None`
 - *property* `trailing_bps: int`
@@ -16605,6 +16632,36 @@ lo, med, hi = bootstrap_ci(data, confidence=0.95, num_samples=10000)
 
 ---
 
+## Bar aggregation
+
+Turn a raw trade array into bars in one call — no live engine required.
+See [Bar aggregation](../../how-to/bar-aggregation.md) for the same helpers
+in Python and Node.js.
+
+```codon
+from flox.tools import aggregate_renko_bars
+
+bars = aggregate_renko_bars(timestamps, prices, quantities, is_buy,
+                            brick_size=2.0)
+for b in bars:
+    print(b.start_time_ns, b.open(), b.high(), b.low(), b.close())
+```
+
+`AggBar` mirrors the C `FloxBar` struct: `*_raw` fields are fixed-point
+(divide by `1e8`), plus float accessors `open()`, `high()`, `low()`,
+`close()`, `volume()`, `buy_volume()`, and a plain `trade_count`.
+
+| Function | Threshold argument | Description |
+|----------|--------------------|--------------|
+| `aggregate_time_bars(ts, px, qty, is_buy, interval_seconds)` | seconds per bar | Fixed-duration bars |
+| `aggregate_tick_bars(ts, px, qty, is_buy, tick_count)` | trades per bar | Fixed trade-count bars |
+| `aggregate_volume_bars(ts, px, qty, is_buy, volume_threshold)` | traded volume | Closes once volume crosses the threshold |
+| `aggregate_range_bars(ts, px, qty, is_buy, range_size)` | price range | Closes once price has moved `range_size` from the open |
+| `aggregate_renko_bars(ts, px, qty, is_buy, brick_size)` | brick size | Fixed-size Renko bricks |
+| `aggregate_heikin_ashi_bars(ts, px, qty, is_buy, interval_seconds)` | seconds per bar | Heikin-Ashi smoothed bars |
+
+---
+
 ## Data I/O
 
 ### DataWriter
@@ -17499,6 +17556,9 @@ Emitted by strategies, received by the order backend.
 | `trailing_bps` | `int32_t` | Trailing stop callback rate (basis points) |
 | `new_price` | `double` | Modify: updated price |
 | `new_quantity` | `double` | Modify: updated quantity |
+| `range_lower` | `double` | Provide/withdraw liquidity: lower bound of the range |
+| `range_upper` | `double` | Provide liquidity: upper bound of the range (0 on withdraw) |
+| `liquidity` | `double` | Provide/withdraw liquidity: position size |
 
 ### `FloxBar`
 

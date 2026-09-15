@@ -141,6 +141,27 @@ in-process with the batch aggregators and feed the result to `run_bars`.
                col('close'), col('volume'), "BTCUSDT");
     ```
 
+=== "Codon"
+
+    Bars come back as `AggBar` records with `*_raw` fixed-point fields plus
+    float accessors (`open()`, `high()`, `low()`, `close()`, `volume()`,
+    `buy_volume()`).
+
+    ```python
+    from flox.tools import aggregate_time_bars
+
+    bars = aggregate_time_bars(timestamps, prices, quantities, is_buy,
+                               interval_seconds=60.0)
+    for b in bars:
+        print(b.start_time_ns, b.open(), b.high(), b.low(), b.close())
+    ```
+
+    Also available: `aggregate_tick_bars(..., tick_count)`,
+    `aggregate_volume_bars(..., volume_threshold)`,
+    `aggregate_range_bars(..., range_size)`,
+    `aggregate_renko_bars(..., brick_size)`,
+    `aggregate_heikin_ashi_bars(..., interval_seconds)`.
+
 === "C++"
 
     ```cpp
@@ -176,9 +197,9 @@ For real-time bar generation while you trade, configure the aggregator with the 
     aggregator.onTrade(tradeEvent);
     ```
 
-=== "Python / Node.js"
+=== "Python / Node.js / Codon"
 
-    The live `MultiTimeframeAggregator` / `MmapBarWriter` wiring above is C++-only. From the bindings, use the batch aggregators on a trade array — `aggregate_time_bars`, `aggregate_tick_bars`, `aggregate_volume_bars`, `aggregate_range_bars`, `aggregate_renko_bars`, `aggregate_heikin_ashi_bars` (Node: `aggregateTimeBars`, ...) — and replay the result through `run_bars` / `runBars`. Since `MmapBarStorage` is not bound, those functions are the only Python/Node.js bar-aggregation path.
+    The live `MultiTimeframeAggregator` / `MmapBarWriter` wiring above is C++-only. From the bindings, use the batch aggregators on a trade array — `aggregate_time_bars`, `aggregate_tick_bars`, `aggregate_volume_bars`, `aggregate_range_bars`, `aggregate_renko_bars`, `aggregate_heikin_ashi_bars` (Node: `aggregateTimeBars`, ...) — and replay the result through `run_bars` / `runBars`. Since `MmapBarStorage` is not bound, those functions are the only bar-aggregation path for Python, Node.js, and Codon.
 
     `flox_py.BarDispatchRecorder` is a testing helper that records which (bar type, param) closes fired for a trade stream: `add_time_interval_seconds`, `on_trade(symbol, price, qty, ts_ns)`, `finalize`, then `count` / `type_at` / `param_at`.
 

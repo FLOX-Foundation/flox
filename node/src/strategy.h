@@ -117,6 +117,9 @@ inline Napi::Object signalToJs(Napi::Env env, const FloxSignal* s)
   obj.Set("trailingBps", Napi::Number::New(env, s->trailing_bps));
   obj.Set("newPrice", Napi::Number::New(env, s->new_price));
   obj.Set("newQuantity", Napi::Number::New(env, s->new_quantity));
+  obj.Set("rangeLower", Napi::Number::New(env, s->range_lower));
+  obj.Set("rangeUpper", Napi::Number::New(env, s->range_upper));
+  obj.Set("liquidity", Napi::Number::New(env, s->liquidity));
   return obj;
 }
 

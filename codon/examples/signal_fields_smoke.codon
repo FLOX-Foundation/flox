@@ -1,0 +1,64 @@
+# Smoke test: FloxSignalC's field layout matches FloxSignal (the C
+# struct) after the range/liquidity fields were appended to it, and
+# _signal_from_c carries all three across into the Codon-facing Signal.
+#
+# Codon strategies have no liquidity-signal emitter yet (unlike Python's
+# Strategy.emit_provide_liquidity / Node's emit.provideLiquidity), so this
+# builds a FloxSignalC value directly rather than driving a live Runner --
+# that's also a tighter test of the one thing this change actually
+# touches: the struct layout and the field-by-field copy in
+# _signal_from_c.
+
+from flox.runner import FloxSignalC, _signal_from_c
+
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL  " + msg)
+
+
+def run():
+    raw = FloxSignalC(
+        order_id=u64(7),
+        symbol=u32(42),
+        side=u8(0),
+        order_type=u8(12),  # FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY
+        price=0.0,
+        quantity=0.0,
+        trigger_price=0.0,
+        trailing_offset=0.0,
+        trailing_bps=i32(0),
+        new_price=0.0,
+        new_quantity=0.0,
+        range_lower=1800.0,
+        range_upper=2200.0,
+        liquidity=5.0,
+    )
+    sig = _signal_from_c(__ptr__(raw))
+
+    check(sig.order_id == 7, f"order_id round-trips (got {sig.order_id})")
+    check(sig.symbol == 42, f"symbol round-trips (got {sig.symbol})")
+    check(sig.order_type == "provide_liquidity",
+          f"order_type decodes to provide_liquidity (got {sig.order_type})")
+    # These three are the ones that used to not exist on FloxSignalC at
+    # all -- a layout mistake here would instead corrupt trailing_bps /
+    # new_price / new_quantity, so those are checked too.
+    check(sig.trailing_bps == 0, f"trailing_bps unaffected (got {sig.trailing_bps})")
+    check(sig.new_price == 0.0, f"new_price unaffected (got {sig.new_price})")
+    check(sig.new_quantity == 0.0, f"new_quantity unaffected (got {sig.new_quantity})")
+    check(abs(sig.range_lower - 1800.0) < 1e-9, f"range_lower round-trips (got {sig.range_lower})")
+    check(abs(sig.range_upper - 2200.0) < 1e-9, f"range_upper round-trips (got {sig.range_upper})")
+    check(abs(sig.liquidity - 5.0) < 1e-9, f"liquidity round-trips (got {sig.liquidity})")
+
+    if failed > 0:
+        raise ValueError(str(failed) + " check(s) failed")
+    print("done")
+
+
+run()

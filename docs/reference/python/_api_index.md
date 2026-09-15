@@ -1778,6 +1778,8 @@ Members:
 
 - *attr* `order_type: str`
 - *attr* `side: str`
+- *property* `liquidity: float`
+- *property* `liquidity: None`
 - *property* `new_price: float`
 - *property* `new_price: None`
 - *property* `new_quantity: float`
@@ -1788,6 +1790,10 @@ Members:
 - *property* `price: None`
 - *property* `quantity: float`
 - *property* `quantity: None`
+- *property* `range_lower: float`
+- *property* `range_lower: None`
+- *property* `range_upper: float`
+- *property* `range_upper: None`
 - *property* `symbol: int`
 - *property* `symbol: None`
 - *property* `trailing_bps: int`

@@ -42,6 +42,9 @@ struct PySignal
   int32_t trailing_bps{0};
   double new_price{0.0};
   double new_quantity{0.0};
+  double range_lower{0.0};
+  double range_upper{0.0};
+  double liquidity{0.0};
 };
 
 inline PySignal pySignalFromC(const FloxSignal* s)
@@ -58,6 +61,9 @@ inline PySignal pySignalFromC(const FloxSignal* s)
   ps.trailing_bps = s->trailing_bps;
   ps.new_price = s->new_price;
   ps.new_quantity = s->new_quantity;
+  ps.range_lower = s->range_lower;
+  ps.range_upper = s->range_upper;
+  ps.liquidity = s->liquidity;
   return ps;
 }
 

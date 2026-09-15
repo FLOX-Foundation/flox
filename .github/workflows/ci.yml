@@ -442,6 +442,10 @@ jobs:
           ./build/codon/codon_order_type_codes_smoke
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_indicator_bounds_smoke
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_signal_fields_smoke
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_aggregate_bars_smoke
 
     - name: Verify QuickJS runner
       run: |

@@ -22,9 +22,10 @@
 
 // ABI version of this header and of the library that ships with it. Bumped
 // whenever a struct on this boundary changes shape, a function changes
-// signature, or an existing code space gains a meaning.
+// signature, or an existing code space gains a meaning. 2: FloxSignal grew
+// range_lower / range_upper / liquidity.
 // flox::export_macro(group="abi_version")
-#define FLOX_CAPI_ABI_VERSION 1
+#define FLOX_CAPI_ABI_VERSION 2
 
 #ifdef __cplusplus
 extern "C"
@@ -2255,6 +2256,9 @@ extern "C"
     int32_t trailing_bps;    // trailing stop — callback rate in basis points
     double new_price;        // modify: updated price
     double new_quantity;     // modify: updated quantity
+    double range_lower;      // provide/withdraw liquidity: lower bound of the range
+    double range_upper;      // provide liquidity: upper bound of the range (0 on withdraw)
+    double liquidity;        // provide/withdraw liquidity: position size
   } FloxSignal;
 
   typedef void (*FloxOnSignalCallback)(void* user_data, const FloxSignal* signal);

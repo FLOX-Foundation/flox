@@ -285,6 +285,50 @@ def test_executor_with_backtest():
         check(submits[0][3] == "market", f"order_type='market', got {submits[0][3]}")
 
 
+def test_lp_signal_fields():
+    print("test_lp_signal_fields")
+    reg = flox.SymbolRegistry()
+    sym_id = reg.add_symbol("test", "ETH-USDC", 0.01)
+
+    seen = []
+
+    def on_signal(sig):
+        seen.append(sig)
+
+    runner = flox.Runner(reg, on_signal, threaded=False)
+
+    fired = [False]
+
+    class S(flox.Strategy):
+        def on_trade(self, ctx, trade):
+            if fired[0]:
+                return
+            fired[0] = True
+            self.emit_provide_liquidity(sym_id, 1800.0, 2200.0, 5.0)
+            self.emit_withdraw_liquidity(sym_id, 2.5)
+
+    strat = S(symbols=[sym_id])
+    runner.add_strategy(strat)
+    runner.start()
+    runner.on_trade(sym_id, 100.0, 1.0, True, 1_000)
+    runner.stop()
+
+    check(len(seen) == 2, f"both liquidity signals fired, got {len(seen)}")
+    provide, withdraw = seen[0], seen[1]
+    check(provide.order_type == "provide_liquidity",
+          f"first signal is provide_liquidity, got {provide.order_type!r}")
+    check(abs(provide.range_lower - 1800.0) < 1e-9,
+          f"range_lower crosses the boundary, got {provide.range_lower}")
+    check(abs(provide.range_upper - 2200.0) < 1e-9,
+          f"range_upper crosses the boundary, got {provide.range_upper}")
+    check(abs(provide.liquidity - 5.0) < 1e-9,
+          f"liquidity crosses the boundary, got {provide.liquidity}")
+    check(withdraw.order_type == "withdraw_liquidity",
+          f"second signal is withdraw_liquidity, got {withdraw.order_type!r}")
+    check(abs(withdraw.liquidity - 2.5) < 1e-9,
+          f"withdraw liquidity crosses the boundary, got {withdraw.liquidity}")
+
+
 def test_log_callback():
     print("test_log_callback")
     msgs = []
@@ -309,6 +353,7 @@ if __name__ == "__main__":
     test_market_data_recorder()
     test_execution_listener_with_backtest()
     test_executor_with_backtest()
+    test_lp_signal_fields()
     test_log_callback()
     print(f"\n{_passed} passed, {_failed} failed")
     sys.exit(0 if _failed == 0 else 1)

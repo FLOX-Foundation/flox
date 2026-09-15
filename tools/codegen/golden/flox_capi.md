@@ -94,7 +94,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 ### abi_version
 
-- `FLOX_CAPI_ABI_VERSION` = `1`
+- `FLOX_CAPI_ABI_VERSION` = `2`
 
 ### signal_type
 
@@ -556,6 +556,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `trailing_bps` | `int32_t` |
 | `new_price` | `double` |
 | `new_quantity` | `double` |
+| `range_lower` | `double` |
+| `range_upper` | `double` |
+| `liquidity` | `double` |
 
 ### `FloxRiskManagerCallbacks`
 
