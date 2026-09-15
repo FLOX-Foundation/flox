@@ -667,16 +667,26 @@ jobs:
       # "Interceptors are not working" unless the runtime is preloaded.
       # UndefinedBehaviorSanitizer needs no such preload -- its checks are
       # inlined at each operation rather than interposed on libc.
+      #
+      # LD_PRELOAD is scoped to the python3 process alone, via `env`, not
+      # exported into this shell. `export` here would also attach ASan to
+      # bash itself for the rest of the step -- including the wrapper
+      # script below, which is itself a bash process -- and bash was never
+      # built to run clean under LeakSanitizer: its own small
+      # command-parsing allocations look like a leak at its own exit, and
+      # with abort_on_error=1 that aborts the step on a false positive
+      # that has nothing to do with the tests.
       if: matrix.sanitizer != 'thread'
       env:
         PYTHONPATH: build/python
         ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
         UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
       run: |
+        preload=()
         if [ "${{ matrix.sanitizer }}" = "address" ]; then
-          export LD_PRELOAD="$(g++-14 -print-file-name=libasan.so)"
+          preload=(env "LD_PRELOAD=$(g++-14 -print-file-name=libasan.so)")
         fi
-        scripts/run-with-sanitizer-scan.sh python3 -m pytest python/tests -q
+        scripts/run-with-sanitizer-scan.sh "${preload[@]}" python3 -u -m pytest python/tests -q
 
   macos:
     needs: [format-check, verify-docs-current]
