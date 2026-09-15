@@ -47,6 +47,18 @@ struct SymbolData
 
 // ── Utilities ───────────────────────────────────────────────────────
 
+// Best-effort unit guess for genuinely unit-less input: a raw CSV column or
+// a bare number array the caller may have populated with seconds,
+// milliseconds, microseconds, or nanoseconds -- there is no way to know
+// from here. Valid only for that case. Never apply this to a value whose
+// unit the API already declares -- BacktestRunnerNode.runBars/runOhlcv
+// take already-nanosecond BigInt64Array timestamps and pass them straight
+// through without going near this function, which is deliberate: guessing
+// a unit for data that already has one silently corrupts legitimate small
+// values (see python/strategy_bindings.h's normalizeTs for the bug this
+// caused when a copy of this same heuristic was applied to that contract).
+// Do not retune the thresholds either -- the unit ranges overlap on real
+// timestamps, so any cutoff is a bet on which dates show up.
 inline int64_t normalizeTs(int64_t t)
 {
   if (t < static_cast<int64_t>(1e12))

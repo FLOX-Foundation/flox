@@ -6862,9 +6862,18 @@ static JSValue js_seg_extract_time(JSContext* c, JSValueConst, int, JSValueConst
 
 static int64_t detectTimestampNs(int64_t ts)
 {
+  // Best-effort unit guess for a raw CSV column -- genuinely unit-less
+  // input, valid only for that case. Never apply this to a value whose
+  // unit the API already declares as nanoseconds; a copy of this same
+  // heuristic did exactly that in python/strategy_bindings.h's run_bars
+  // and silently corrupted legitimate small nanosecond values (a 60s-in
+  // bar offset read as 60 seconds-since-epoch and rescaled again).
+  //
   // Thresholds match Python normalizeTimestamp and Codon _parse_ts.
   // Modern unix-ms timestamps (~1.78e12 in 2026) exceed 1e12, so the
-  // seconds/ms boundary must be at 1e12 for seconds, 1e15 for ms.
+  // seconds/ms boundary must be at 1e12 for seconds, 1e15 for ms. Do not
+  // retune these -- the unit ranges overlap on real timestamps, so any
+  // cutoff is a bet on which dates show up.
   if (ts < 1'000'000'000'000LL)
   {
     return ts * 1'000'000'000LL;  // seconds → ns
