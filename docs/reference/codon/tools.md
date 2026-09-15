@@ -231,6 +231,36 @@ lo, med, hi = bootstrap_ci(data, confidence=0.95, num_samples=10000)
 
 ---
 
+## Bar aggregation
+
+Turn a raw trade array into bars in one call — no live engine required.
+See [Bar aggregation](../../how-to/bar-aggregation.md) for the same helpers
+in Python and Node.js.
+
+```codon
+from flox.tools import aggregate_renko_bars
+
+bars = aggregate_renko_bars(timestamps, prices, quantities, is_buy,
+                            brick_size=2.0)
+for b in bars:
+    print(b.start_time_ns, b.open(), b.high(), b.low(), b.close())
+```
+
+`AggBar` mirrors the C `FloxBar` struct: `*_raw` fields are fixed-point
+(divide by `1e8`), plus float accessors `open()`, `high()`, `low()`,
+`close()`, `volume()`, `buy_volume()`, and a plain `trade_count`.
+
+| Function | Threshold argument | Description |
+|----------|--------------------|--------------|
+| `aggregate_time_bars(ts, px, qty, is_buy, interval_seconds)` | seconds per bar | Fixed-duration bars |
+| `aggregate_tick_bars(ts, px, qty, is_buy, tick_count)` | trades per bar | Fixed trade-count bars |
+| `aggregate_volume_bars(ts, px, qty, is_buy, volume_threshold)` | traded volume | Closes once volume crosses the threshold |
+| `aggregate_range_bars(ts, px, qty, is_buy, range_size)` | price range | Closes once price has moved `range_size` from the open |
+| `aggregate_renko_bars(ts, px, qty, is_buy, brick_size)` | brick size | Fixed-size Renko bricks |
+| `aggregate_heikin_ashi_bars(ts, px, qty, is_buy, interval_seconds)` | seconds per bar | Heikin-Ashi smoothed bars |
+
+---
+
 ## Data I/O
 
 ### DataWriter

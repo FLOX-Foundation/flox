@@ -248,6 +248,12 @@ export interface Signal {
   price: number;
   orderType: OrderType;
   orderId: number;
+  /** Lower bound of the range on a provide/withdraw-liquidity signal, 0 otherwise. */
+  rangeLower: number;
+  /** Upper bound of the range on a provide-liquidity signal, 0 otherwise. */
+  rangeUpper: number;
+  /** Position size on a provide/withdraw-liquidity signal, 0 otherwise. */
+  liquidity: number;
 }
 
 /** User-supplied strategy object. All callbacks are optional. */

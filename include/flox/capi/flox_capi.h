@@ -23,7 +23,7 @@
  * version used against a library from another produces wrong numbers
  * rather than a failed load -- compare FLOX_CAPI_ABI_VERSION against
  * flox_capi_abi_version() once at startup and refuse the mismatch. */
-#define FLOX_CAPI_ABI_VERSION 1
+#define FLOX_CAPI_ABI_VERSION 2
 
 /* ============================================================
  * Calling contract
@@ -532,6 +532,9 @@ extern "C"
     int32_t trailing_bps;
     double new_price;
     double new_quantity;
+    double range_lower;
+    double range_upper;
+    double liquidity;
   } FloxSignal;
 
 /* FLOX_SIGNAL_TYPE_* is the code space used ONLY by FloxSignal.order_type
@@ -555,12 +558,13 @@ extern "C"
 #define FLOX_SIGNAL_TYPE_ICEBERG 10
 #define FLOX_SIGNAL_TYPE_OCO 11
 /* The liquidity pair acts on an AMM pool rather than on an order book, so
- * `price` and `quantity` on the signal carry nothing: the range and the
- * amount live on the C++ Signal and do not cross this struct. A pre-trade
- * gate that filters on notional will wave these through -- check the code
- * first. Before the codes existed all three fell into the switch default
- * and arrived as FLOX_SIGNAL_TYPE_MARKET with two zeros, which no gate
- * could tell from a real market order. */
+ * `price` and `quantity` on the signal carry nothing for these two codes --
+ * the range and the position size are on `range_lower` / `range_upper` /
+ * `liquidity` instead. A pre-trade gate that filters on notional will wave
+ * these through regardless: check the code first, then read the right
+ * fields. Before the codes existed all three fell into the switch default
+ * and arrived as FLOX_SIGNAL_TYPE_MARKET with every field zero, which no
+ * gate could tell from a real market order. */
 #define FLOX_SIGNAL_TYPE_PROVIDE_LIQUIDITY 12
 #define FLOX_SIGNAL_TYPE_WITHDRAW_LIQUIDITY 13
 

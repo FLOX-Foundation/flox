@@ -2769,7 +2769,10 @@ inline void bindStrategy(py::module_& m)
       .def_readwrite("trailing_offset", &PySignal::trailing_offset)
       .def_readwrite("trailing_bps", &PySignal::trailing_bps)
       .def_readwrite("new_price", &PySignal::new_price)
-      .def_readwrite("new_quantity", &PySignal::new_quantity);
+      .def_readwrite("new_quantity", &PySignal::new_quantity)
+      .def_readwrite("range_lower", &PySignal::range_lower)
+      .def_readwrite("range_upper", &PySignal::range_upper)
+      .def_readwrite("liquidity", &PySignal::liquidity);
 
   // ── Extension-hook base classes (users subclass these) ──────────────
 
