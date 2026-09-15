@@ -586,7 +586,18 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14
+        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14 python3-dev python3-pip
+
+    - name: Install Python packages
+      # Only address and undefined-behavior build the Python module below.
+      # ThreadSanitizer cannot run it: loading a TSan-instrumented extension
+      # into the plain, uninstrumented CPython interpreter aborts inside the
+      # sanitizer runtime itself before any test code runs -- a platform
+      # limitation, not something this job can work around. Same pybind11
+      # pin as linux-gcc (see that job's comment: 3.1.0 changed the
+      # signatures stubgen renders).
+      if: matrix.sanitizer != 'thread'
+      run: python3 -m pip install --break-system-packages "pybind11<3.1.0" numpy pytest
 
     - name: Build and Install GoogleTest
       run: |
@@ -617,6 +628,20 @@ jobs:
     - name: Build
       run: cmake --build build -j$(nproc)
 
+    - name: Configure Python bindings with sanitizer
+      # Re-runs cmake on the same build directory: the sanitizer / debug
+      # flags configured above are already cached, this only adds the
+      # Python target to what `cmake --build` produces.
+      if: matrix.sanitizer != 'thread'
+      run: |
+        cmake -B build -G Ninja \
+              -DFLOX_BUILD_PYTHON=ON \
+              -Dpybind11_DIR="$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')"
+
+    - name: Build Python bindings with sanitizer
+      if: matrix.sanitizer != 'thread'
+      run: cmake --build build --target _flox_py -j$(nproc)
+
     - name: Run tests with sanitizer
       # ThreadSanitizer had no options of its own here and ran on its
       # defaults. They are spelled out now: keep going after a race so one
@@ -634,6 +659,24 @@ jobs:
         UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         TSAN_OPTIONS: halt_on_error=0:exitcode=66:second_deadlock_stack=1
       run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
+
+    - name: Run Python test suite with sanitizer
+      # AddressSanitizer intercepts allocator/libc calls at process start;
+      # a module `dlopen`'d later (Python's `import`) into a host process
+      # that was itself not linked with -fsanitize=address aborts with
+      # "Interceptors are not working" unless the runtime is preloaded.
+      # UndefinedBehaviorSanitizer needs no such preload -- its checks are
+      # inlined at each operation rather than interposed on libc.
+      if: matrix.sanitizer != 'thread'
+      env:
+        PYTHONPATH: build/python
+        ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      run: |
+        if [ "${{ matrix.sanitizer }}" = "address" ]; then
+          export LD_PRELOAD="$(g++-14 -print-file-name=libasan.so)"
+        fi
+        scripts/run-with-sanitizer-scan.sh python3 -m pytest python/tests -q
 
   macos:
     needs: [format-check, verify-docs-current]
