@@ -118,9 +118,21 @@ def test_binding_manifest_groups_non_empty(binding_manifest: dict) -> None:
     assert len(binding_manifest["groups"]) > 0
     for grp_name, grp in binding_manifest["groups"].items():
         assert "capi_functions" in grp, grp_name
-        for binding in ("pybind11", "napi", "codon"):
+        for binding in ("pybind11", "napi", "codon", "quickjs"):
             assert binding in grp, f"{grp_name} missing {binding}"
             assert "status" in grp[binding]
+
+
+def test_binding_manifest_quickjs_group_matches_parity_yaml(
+        binding_manifest: dict) -> None:
+    """The per-group `quickjs` entry must carry the same coverage as the
+    other three bindings, not silently drop out of the manifest the way it
+    did before -- a group where QuickJS is declared `required` with real
+    functions must show that, not just a bare `status`."""
+    composite_book = binding_manifest["groups"]["composite_book"]["quickjs"]
+    assert composite_book["status"] == "required"
+    assert "__flox_cb_apply_snapshot" in composite_book["functions"]
+    assert "__flox_cb_apply_delta" in composite_book["functions"]
 
 
 def test_binding_manifest_capi_symbols_have_kinds(binding_manifest: dict) -> None:

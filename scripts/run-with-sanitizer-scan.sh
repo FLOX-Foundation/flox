@@ -17,6 +17,14 @@
 # whatever its verdict -- that file is where a passing test's report hides.
 # The build directory is taken from --test-dir; set FLOX_CTEST_BUILD_DIR to
 # override.
+#
+# On any failure (the command itself, or the scan) this wrapper dumps the
+# transcript(s) it captured before exiting. Live streaming through `tee`
+# usually shows the same bytes already, but that is not something to lean
+# on: a runner that renders or folds output differently, or -- for ctest --
+# LastTest.log, which is never streamed live at all, only scanned. A wrapper
+# whose whole job is "make sure nobody has to guess what happened" should
+# not itself be the reason a failure reads as a bare exit code.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,6 +65,7 @@ fi
 status="${PIPESTATUS[0]}"
 
 logs=("$capture")
+ctest_log=""
 if [ "$is_ctest" -eq 1 ]; then
     if [ -z "$build_dir" ]; then
         echo "::error::run-with-sanitizer-scan: ctest command without --test-dir; set FLOX_CTEST_BUILD_DIR" >&2
@@ -76,11 +85,27 @@ echo "--- scanning the transcript for sanitizer reports"
 "$PYTHON" "$ROOT_DIR/scripts/scan_sanitizer_reports.py" "${logs[@]}"
 scan_status=$?
 
+dump_transcripts() {
+    # Only called on failure -- a green run does not need its transcript
+    # printed a second time, and doing it unconditionally would bloat every
+    # log in the matrix for no reason.
+    echo "::group::run-with-sanitizer-scan: captured transcript (command exited $status)"
+    cat "$capture"
+    echo "::endgroup::"
+    if [ -n "$ctest_log" ]; then
+        echo "::group::run-with-sanitizer-scan: $ctest_log"
+        cat "$ctest_log"
+        echo "::endgroup::"
+    fi
+}
+
 if [ "$status" -ne 0 ]; then
+    dump_transcripts
     exit "$status"
 fi
 if [ "$scan_status" -ne 0 ]; then
     echo "::error::the command exited 0 but its output carries a sanitizer report" >&2
+    dump_transcripts
     exit "$scan_status"
 fi
 exit 0

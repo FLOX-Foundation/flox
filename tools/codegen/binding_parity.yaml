@@ -166,7 +166,18 @@ groups:
     pybind11: { status: required, classes: [CompositeBookMatrix] }
     napi: { status: required, classes: [CompositeBookMatrix] }
     codon: { status: required }
-    quickjs: { status: required, classes: [CompositeBook] }
+    quickjs:
+      status: required
+      functions:
+        - __flox_cb_create
+        - __flox_cb_destroy
+        - __flox_cb_apply_snapshot
+        - __flox_cb_apply_delta
+        - __flox_cb_best_bid
+        - __flox_cb_best_ask
+        - __flox_cb_has_arb
+        - __flox_cb_mark_stale
+        - __flox_cb_check_staleness
 
   order_tracker:
     pybind11: { status: required, classes: [OrderTracker] }
