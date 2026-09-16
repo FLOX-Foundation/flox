@@ -3,11 +3,29 @@
 #
 # Compiles to native code via:
 #   codon build -exe -o sma_crossover -lflox_capi examples/sma_crossover.codon
+#
+# This file used to end at the class body. A Strategy subclass with no
+# module-level statement never realizes on_trade/on_start/on_stop --
+# Codon only compiles a function that is actually called, and nothing
+# called these -- so the binary ran, printed nothing, and exercised zero
+# strategy logic; see codon/examples/strategy_dispatch_smoke.codon for the
+# full story of why that went unnoticed. The driver below feeds the
+# strategy the same 60-point price series verified against the real
+# quickjs/examples/sma_crossover.js (fast=10/slow=30/size=1.0, its fixed
+# parameters) through flox.runner.Runner, and checks the resulting
+# trade_count and the emitted signals' side/quantity/symbol -- a call
+# count alone would still pass if a dispatch regression delivered garbage
+# payloads.
+
+from C import flox_registry_create() -> cobj
+from C import flox_registry_destroy(cobj)
+from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
 
 from flox.strategy import Strategy
 from flox.context import SymbolContext
 from flox.types import TradeData
 from flox.indicators import SMA
+from flox.runner import Runner, Signal
 
 
 class SmaCrossover(Strategy):
@@ -73,3 +91,77 @@ class SmaCrossover(Strategy):
 
     def on_stop(self):
         print(f"SmaCrossover stopped: {self.trade_count} trades executed")
+
+
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL  " + msg)
+
+
+def close_to(a: float, b: float) -> bool:
+    d = a - b
+    return (d if d >= 0.0 else -d) < 1e-6
+
+
+def run():
+    registry = flox_registry_create()
+    exch = "Binance"
+    name = "BTCUSDT"
+    sym = int(flox_registry_add_symbol(registry, exch.c_str(), name.c_str(), 0.01))
+
+    signals: List[Signal] = []
+
+    def on_signal(sig: Signal):
+        signals.append(sig)
+
+    strat = SmaCrossover([sym])
+    runner = Runner(registry, on_signal)
+    runner.add_strategy(strat)
+    runner.start()
+
+    # 30 bars ramping 100 -> 158, then 30 bars back down 158 -> 68.5.
+    # Verified against the real quickjs/examples/sma_crossover.js on this
+    # exact series: 3 trades -- buy, sell, sell -- ending in a short.
+    prices = [100.0 + float(i) * 2.0 for i in range(30)] + \
+             [158.0 - float(i) * 3.0 for i in range(30)]
+    for i in range(len(prices)):
+        runner.on_trade(sym, prices[i], 1.0, True, i * 60_000_000_000)
+    runner.stop()
+
+    check(strat.trade_count == 3,
+          f"trade_count (got {strat.trade_count}, want 3)")
+    check(len(signals) == 3, f"signals emitted (got {len(signals)}, want 3)")
+
+    if len(signals) == 3:
+        want_sides = ["buy", "sell", "sell"]
+        for i in range(3):
+            sig = signals[i]
+            check(sig.side == want_sides[i],
+                  f"signal[{i}].side (got '{sig.side}', want '{want_sides[i]}')")
+            check(sig.order_type == "market",
+                  f"signal[{i}].order_type (got '{sig.order_type}')")
+            check(close_to(sig.quantity, 1.0),
+                  f"signal[{i}].quantity (got {sig.quantity}, want 1.0)")
+            check(sig.symbol == sym,
+                  f"signal[{i}].symbol (got {sig.symbol}, want {sym})")
+
+    check(strat.long_position == False,
+          f"ends flat on the long side (got {strat.long_position})")
+    check(strat.short_position == True,
+          f"ends short after the downtrend (got {strat.short_position})")
+
+    flox_registry_destroy(registry)
+
+    if failed != 0:
+        raise ValueError(f"codon sma_crossover smoke: {failed} check(s) failed")
+    print("codon sma_crossover smoke ok")
+
+
+run()

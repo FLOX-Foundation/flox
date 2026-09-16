@@ -3,10 +3,29 @@
 #
 # Compiles to native code via:
 #   codon build -exe -o pairs_strategy -lflox_capi examples/pairs_strategy.codon
+#
+# Same defect as sma_crossover.codon (see that file's header): no
+# module-level statement meant on_book_update was never realized, so the
+# compiled binary ran and exercised nothing. There is no QuickJS
+# equivalent of this example to check parity against -- quickjs/examples/
+# has no pairs-trading script, unlike sma_crossover.js -- so the driver
+# below is verified only against an independent hand-simulation of the
+# z-score logic (see the T058 PR description), not cross-binding.
+#
+# The driver moves leg1's book while leg2's stays fixed at a mid of
+# 100.0, so on_book_update's spread = mid1 - 100.0 is controlled
+# directly: a 10-tick warmup around spread 5 (small variance), then a
+# jump to 22 that clears entry_z, then a reversion back near 5 that
+# clears exit_z. That is one entry and one exit -- 4 emitted orders.
+
+from C import flox_registry_create() -> cobj
+from C import flox_registry_destroy(cobj)
+from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
 
 from flox.strategy import Strategy
 from flox.context import SymbolContext
 from flox.types import TradeData, BUY, SELL
+from flox.runner import Runner, Signal
 import math
 from collections import deque
 
@@ -135,3 +154,92 @@ class PairsStrategy(Strategy):
 
     def on_stop(self):
         print(f"PairsStrategy stopped: {self.trade_count} trades executed")
+
+
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL  " + msg)
+
+
+def close_to(a: float, b: float) -> bool:
+    d = a - b
+    return (d if d >= 0.0 else -d) < 1e-6
+
+
+def run():
+    registry = flox_registry_create()
+    exch = "Binance"
+    leg1 = int(flox_registry_add_symbol(registry, exch.c_str(), "AAAUSDT".c_str(), 0.01))
+    leg2 = int(flox_registry_add_symbol(registry, exch.c_str(), "BBBUSDT".c_str(), 0.01))
+
+    signals: List[Signal] = []
+
+    def on_signal(sig: Signal):
+        signals.append(sig)
+
+    cfg = PairsConfig(leg1=leg1, leg2=leg2, entry_z=1.5, exit_z=0.5,
+                      lookback=10, size=1.0, hedge=1.0)
+    strat = PairsStrategy(cfg)
+    runner = Runner(registry, on_signal)
+    runner.add_strategy(strat)
+    runner.start()
+
+    # leg2's book is set once and never moves again: mid2 stays 100.0, so
+    # every later on_book_update (fired by a leg1-only snapshot) reads a
+    # spread of mid1 - 100.0 that this driver controls directly.
+    runner.on_book_snapshot(leg2, [99.99], [1.0], [100.01], [1.0], 0)
+
+    # 10-point warmup around spread 5 (fills the lookback window with
+    # real variance), a jump to 22 (clears entry_z=1.5), then a reversion
+    # back near 5 (clears exit_z=0.5). See this file's header.
+    spread_targets = [4.0, 6.0, 5.0, 3.0, 7.0, 4.0, 6.0, 5.0, 4.0, 6.0,
+                      22.0, 6.0, 5.0, 5.2]
+    for i in range(len(spread_targets)):
+        mid1 = 100.0 + spread_targets[i]
+        ts = (i + 1) * 1_000_000_000
+        runner.on_book_snapshot(leg1, [mid1 - 0.01], [1.0],
+                                [mid1 + 0.01], [1.0], ts)
+
+    runner.stop()
+
+    check(strat.trade_count == 4,
+          f"trade_count (got {strat.trade_count}, want 4)")
+    check(len(signals) == 4, f"signals emitted (got {len(signals)}, want 4)")
+
+    if len(signals) == 4:
+        # entry (z > 0, so short the spread: sell leg1, buy leg2), then
+        # exit (buy leg1, sell leg2) -- see PairsStrategy._open_spread /
+        # _close_spread.
+        want = [("sell", leg1), ("buy", leg2), ("buy", leg1), ("sell", leg2)]
+        for i in range(4):
+            sig = signals[i]
+            want_side, want_symbol = want[i]
+            check(sig.side == want_side,
+                  f"signal[{i}].side (got '{sig.side}', want '{want_side}')")
+            check(sig.symbol == want_symbol,
+                  f"signal[{i}].symbol (got {sig.symbol}, want {want_symbol})")
+            check(sig.order_type == "market",
+                  f"signal[{i}].order_type (got '{sig.order_type}')")
+            check(close_to(sig.quantity, 1.0),
+                  f"signal[{i}].quantity (got {sig.quantity}, want 1.0)")
+
+    check(strat.has_position == False,
+          f"flat after the exit (got has_position={strat.has_position})")
+    check(strat.is_long_spread == False,
+          f"is_long_spread left from the short entry (got {strat.is_long_spread})")
+
+    flox_registry_destroy(registry)
+
+    if failed != 0:
+        raise ValueError(f"codon pairs_strategy smoke: {failed} check(s) failed")
+    print("codon pairs_strategy smoke ok")
+
+
+run()
