@@ -459,7 +459,8 @@ jobs:
                    codon_merged_tape_smoke codon_multi_tf_helpers_smoke \
                    codon_order_group_smoke codon_run_trace_smoke \
                    codon_strategy_e2e_smoke codon_targets_smoke \
-                   codon_trace_attach_smoke; do
+                   codon_trace_attach_smoke codon_sma_crossover \
+                   codon_pairs_strategy; do
           echo "── $bin"
           out=$(LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
                 "./build/codon/$bin" 2>&1)

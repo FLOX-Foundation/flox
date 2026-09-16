@@ -54,22 +54,6 @@ EXCEPTIONS: dict[str, str] = {
         "the build, so a runtime invocation checks nothing a passing "
         "build didn't already check."
     ),
-    "sma_crossover": (
-        "a Strategy subclass with no module-level statement -- building "
-        "it realizes __init__ but not on_trade/on_start/on_stop (Codon "
-        "only realizes a called function), so running the compiled "
-        "binary executes no strategy logic. The QuickJS binding runs its "
-        "sma_crossover.js equivalent as a real smoke test; the Codon side "
-        "has no such harness yet. Needs a runner that actually feeds it "
-        "trades before it can leave this list -- tracked as a follow-up, "
-        "not fixed by this pass."
-    ),
-    "pairs_strategy": (
-        "same shape as sma_crossover above: a Strategy subclass with no "
-        "module-level entry point, so compiling it does not realize "
-        "on_trade. Needs the same runner follow-up before it can run for "
-        "real."
-    ),
 }
 
 # stem -> (script that executes it, substring proving the invocation is
