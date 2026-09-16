@@ -2165,6 +2165,15 @@ class PyBacktestRunner
   }
 
  public:
+  // ts is nanoseconds by contract, not a magnitude-guessed unit: the same
+  // contract as flox_backtest_runner_run_ohlcv's timestamps_ns parameter
+  // (src/capi/flox_capi.cpp), Node's runOhlcv (BigInt64Array passed straight
+  // through to that C ABI call), and Codon's run_ohlcv ("timestamps in
+  // nanoseconds" per its docstring, same passthrough). This binding used to
+  // be the odd one out, running every value through normalizeTs()'s
+  // seconds/ms/us/ns magnitude guess -- see run_bars's identical fix a few
+  // lines below for the exact hazard (a legitimate sub-1e12ns value read as
+  // seconds and rescaled by another 1e9, overflowing int64_t).
   py::object run_ohlcv(py::array_t<int64_t, py::array::c_style | py::array::forcecast> ts,
                        py::array_t<double, py::array::c_style | py::array::forcecast> close,
                        const std::string& symbol = "")
@@ -2178,7 +2187,7 @@ class PyBacktestRunner
     auto pc = close.unchecked<1>();
     for (py::ssize_t i = 0; i < n; ++i)
     {
-      bars.push_back({normalizeTs(pts(i)), Price::fromDouble(pc(i)).raw(), id});
+      bars.push_back({pts(i), Price::fromDouble(pc(i)).raw(), id});
     }
     return runBars(std::move(bars));
   }
@@ -2464,13 +2473,14 @@ class PyBacktestRunner
   }
 
   // Best-effort unit guess for genuinely unit-less input: a raw CSV column
-  // (loadCsv, run_csv) or a bare int64 array (run_ohlcv) that the caller may
-  // have populated with seconds, milliseconds, microseconds, or nanoseconds
-  // -- flox has no way to know, and docs/bindings/python.md documents this
-  // exact threshold behavior for run_csv. Do NOT call this on a value whose
-  // unit is already part of the contract (run_bars's start_time_ns /
-  // end_time_ns, for instance) -- that was the bug fixed above: guessing a
-  // unit for data that already has one silently corrupts legitimate small
+  // (loadCsv, run_csv) that the caller may have populated with seconds,
+  // milliseconds, microseconds, or nanoseconds -- flox has no way to know,
+  // and docs/bindings/python.md documents this exact threshold behavior for
+  // run_csv. Do NOT call this on a value whose unit is already part of the
+  // contract (run_bars's start_time_ns / end_time_ns, or run_ohlcv's ts --
+  // both nanoseconds by contract, matching the C ABI, Node, and Codon) --
+  // that was the bug fixed above (run_bars) and in run_ohlcv itself: guessing
+  // a unit for data that already has one silently corrupts legitimate small
   // values. Do not retune these thresholds either; second/millisecond/
   // microsecond/nanosecond ranges overlap on real dates, so any cutoff is a
   // bet on which timestamps show up.
