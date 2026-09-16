@@ -12,9 +12,19 @@ all passed, which is how the composite-book function shipped missing from
 QuickJS with this green. The manifest had `quickjs` entries; the code never
 opened them.
 
-QuickJS is checked now, against the `addGlobalFunc` registration table in
-`src/quickjs/js_bindings.cpp` -- the same place `check_quickjs_registration.py`
-reads, and the only list of what the JS layer can actually call.
+QuickJS functions are checked against the `addGlobalFunc` registration table
+in `src/quickjs/js_bindings.cpp` -- the same place
+`check_quickjs_registration.py` reads. QuickJS classes are checked against
+the embedded JS standard library in `src/quickjs/js_strategy.cpp`, via
+`flox_codegen.manifest.scan_quickjs` -- the same extractor
+`scripts/sync_mcp_data.py` uses to feed the MCP `list_bindings` /
+`lookup_symbol` tools, reused here rather than re-implemented, so the two
+never drift apart on what counts as a registered QuickJS class.
+
+This gate used to hardcode the QuickJS class set to empty regardless of
+what `scan_quickjs` could see, so a `classes:` entry under `quickjs:` failed
+every time with a misleading "class absent" message -- true of no
+implementation existing, false of the check itself.
 
 Most groups still carry no `quickjs` entry, so the gate cannot yet demand one.
 It counts them instead and says the number out loud, rather than implying they
@@ -56,12 +66,17 @@ except ImportError:
     sys.exit(2)
 
 ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(ROOT / "tools" / "codegen"))
+from flox_codegen import manifest as codegen_manifest  # noqa: E402
+
 IDL_PATH = ROOT / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
 CONFIG_PATH = ROOT / "tools" / "codegen" / "binding_parity.yaml"
 PYI_PATH = ROOT / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
 DTS_PATH = ROOT / "node" / "index.d.ts"
 CODON_GOLDEN_PATH = ROOT / "tools" / "codegen" / "golden" / "flox_capi.codon"
 QUICKJS_BINDINGS_PATH = ROOT / "src" / "quickjs" / "js_bindings.cpp"
+QUICKJS_PRELUDE_PATH = ROOT / "src" / "quickjs" / "js_strategy.cpp"
 
 
 # ── IDL parsing ────────────────────────────────────────────────────────
@@ -177,6 +192,24 @@ def scan_quickjs_globals(path: Path) -> set[str]:
     return set(re.findall(r'addGlobalFunc\(\s*ctx\s*,\s*"([^"]+)"', text))
 
 
+def scan_quickjs_classes(bindings_path: Path, prelude_path: Path) -> set[str]:
+    """Classes declared in the QuickJS embedded JS standard library.
+
+    Delegates to `flox_codegen.manifest.scan_quickjs`, the extractor
+    `scripts/sync_mcp_data.py` already uses to build the `binding_manifest`
+    MCP tools query -- reusing it instead of a second regex kept in sync by
+    hand. It reads the raw-string JS literal in `js_strategy.cpp`
+    (`QUICKJS_PRELUDE_PATH`), not `js_bindings.cpp`, since that is where the
+    classes -- as opposed to the C++ registration calls -- are written.
+    """
+    if not bindings_path.exists() or not prelude_path.exists():
+        return set()
+    _globals, classes, _funcs = codegen_manifest.scan_quickjs(
+        bindings_path.read_text(encoding="utf-8", errors="ignore"),
+        prelude_path.read_text(encoding="utf-8", errors="ignore"))
+    return set(classes)
+
+
 # ── Verification ───────────────────────────────────────────────────────
 
 
@@ -269,6 +302,11 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: no QuickJS registrations found in {QUICKJS_BINDINGS_PATH}",
               file=sys.stderr)
         return 2
+    quickjs_classes = scan_quickjs_classes(QUICKJS_BINDINGS_PATH, QUICKJS_PRELUDE_PATH)
+    if not quickjs_classes:
+        print(f"ERROR: no QuickJS classes found in {QUICKJS_PRELUDE_PATH}",
+              file=sys.stderr)
+        return 2
 
     reports: list[GroupReport] = []
     undeclared_quickjs: list[str] = []
@@ -298,10 +336,8 @@ def main(argv: list[str]) -> int:
                                  entry.get("codon", {"status": "missing_yaml"}),
                                  codon_groups)
         if "quickjs" in entry:
-            # QuickJS exposes free globals, never classes, so the class set is
-            # empty by construction.
             reports += verify_classes_and_funcs(group_name, "quickjs",
-                                                entry["quickjs"], set(), quickjs_globals)
+                                                entry["quickjs"], quickjs_classes, quickjs_globals)
         elif args.require_quickjs:
             reports.append(GroupReport(group_name, "quickjs", "missing_yaml",
                                        f"no `quickjs` entry in {CONFIG_PATH.name}"))
