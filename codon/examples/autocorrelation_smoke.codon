@@ -2,6 +2,14 @@
 
 from flox.indicators import autocorrelation, AutoCorrelation
 
+
+def check(label: str, ok: bool):
+    if not ok:
+        print("FAIL: " + label)
+        raise ValueError("smoke fail: " + label)
+    print("ok: " + label)
+
+
 linear = [5.0 + 0.7 * float(i) for i in range(50)]
 ac = autocorrelation(linear, 10, 1)
 print("autocorrelation linear[10] =", ac[10])
@@ -11,3 +19,13 @@ last = 0.0
 for v in linear:
     last = stream.update(v)
 print("streaming AutoCorrelation last =", last)
+
+# A perfectly linear series is perfectly self-similar at any lag, so both
+# the batch and streaming autocorrelation must land on exactly 1.0.
+check("batch autocorrelation on a linear series is 1.0",
+      abs(ac[10] - 1.0) < 1e-9)
+check("streaming autocorrelation on a linear series is 1.0",
+      abs(last - 1.0) < 1e-9)
+check("batch and streaming agree", abs(ac[10] - last) < 1e-9)
+
+print("codon autocorrelation smoke ok")

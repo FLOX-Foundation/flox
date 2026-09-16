@@ -91,6 +91,15 @@ jobs:
     - name: Verify every test file is reachable by the suite runners
       run: python3 scripts/check_suite_discovery.py
 
+    # T050, T056 and T057 were the same defect three times: a Codon example
+    # counted as coverage while CI never ran it. This is a static check (no
+    # Codon compiler needed) so it belongs here rather than in the build
+    # jobs -- every codon/examples/*.codon file must be named by the smoke
+    # loop, the direct-run step, a known external gate, or a reasoned
+    # entry in the script's own EXCEPTIONS list.
+    - name: Verify every Codon example runs in CI or is a listed exception
+      run: python3 scripts/check_codon_examples_coverage.py
+
     # The QuickJS call sites are strings inside C++ string literals, so the
     # compiler cannot see a global that was never registered. setQueueFifoTopN
     # shipped that way and every call was a ReferenceError.
@@ -444,7 +453,13 @@ jobs:
                    codon_order_type_codes_smoke codon_indicator_bounds_smoke \
                    codon_signal_fields_smoke codon_aggregate_bars_smoke \
                    codon_strategy_dispatch_smoke codon_graph_smoke \
-                   codon_streaming_graph_smoke; do
+                   codon_streaming_graph_smoke codon_adf_smoke \
+                   codon_autocorrelation_smoke codon_backtest_run_tapes_smoke \
+                   codon_composite_dsl_smoke codon_feed_clock_smoke \
+                   codon_merged_tape_smoke codon_multi_tf_helpers_smoke \
+                   codon_order_group_smoke codon_run_trace_smoke \
+                   codon_strategy_e2e_smoke codon_targets_smoke \
+                   codon_trace_attach_smoke; do
           echo "── $bin"
           out=$(LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
                 "./build/codon/$bin" 2>&1)
