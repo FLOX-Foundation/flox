@@ -4,9 +4,9 @@
 #include <pybind11/pybind11.h>
 
 #include <pybind11/stl.h>
+#include "bindings_common.h"
 #include "flox/error/flox_error.h"
 
-#include <cstring>
 #include <optional>
 #include <span>
 #include <string>
@@ -178,7 +178,7 @@ class PyIndicatorGraph
   static py::array_t<double> toArray(const std::vector<double>& v)
   {
     py::array_t<double> out(v.size());
-    std::memcpy(out.mutable_data(), v.data(), v.size() * sizeof(double));
+    fillArray(out.mutable_data(), v.data(), v.size());
     return out;
   }
 

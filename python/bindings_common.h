@@ -36,6 +36,7 @@
 #include "flox/error/flox_error.h"
 
 #include <cstddef>
+#include <cstring>
 
 // Deliberately an unnamed namespace, not `namespace flox_py`, to match
 // how the binding headers that need this already declare their other
@@ -55,6 +56,32 @@ inline void checkSameSize(size_t a, size_t b, const char* msg)
   {
     throw flox::FloxError("E_LEN_001", msg);
   }
+}
+
+// Fill a freshly allocated numpy buffer from a contiguous container.
+//
+// Every one of these copies used to be a bare `std::memcpy(out.mutable_data(),
+// v.data(), v.size() * sizeof(T))`, and every one of them was undefined
+// behaviour whenever the container was empty. A vector that has never
+// allocated returns a null pointer from data(), and the standard requires
+// memcpy's pointer arguments to be valid even when the length is zero
+// (C23 7.26.1p3). It is not a theoretical reading: glibc declares memcpy
+// __nonnull, so a build with the undefined-behaviour sanitizer turned on
+// stops the process at the call instead of returning the empty array the
+// release build returns.
+//
+// Empty is an ordinary result here, not a corner nobody reaches: an
+// indicator over an empty series, a tape window that matched no rows, a
+// graph field read after reset() cleared the bars. The length guard makes
+// those paths give back an empty array in every build.
+template <typename T>
+inline void fillArray(T* dst, const T* src, size_t count)
+{
+  if (count == 0)
+  {
+    return;
+  }
+  std::memcpy(dst, src, count * sizeof(T));
 }
 
 }  // namespace

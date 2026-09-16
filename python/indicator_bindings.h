@@ -115,7 +115,7 @@ auto bindSingleIndicator(py::module_& m, const char* name)
                result = self.compute(std::span<const double>(p, n));
              }
              py::array_t<double> out(result.size());
-             std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
+             fillArray(out.mutable_data(), result.data(), result.size());
              return out;
            })
       .def("update", [](T& self, double v) -> std::optional<double>
@@ -151,7 +151,7 @@ auto bindBarIndicator(py::module_& m, const char* name)
                                      std::span<const double>(c, n));
              }
              py::array_t<double> out(result.size());
-             std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
+             fillArray(out.mutable_data(), result.data(), result.size());
              return out;
            })
       .def("update", [](T& self, double high, double low, double close) -> std::optional<double>
@@ -183,7 +183,7 @@ auto bindHighLowIndicator(py::module_& m, const char* name)
                                      std::span<const double>(l, n));
              }
              py::array_t<double> out(result.size());
-             std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
+             fillArray(out.mutable_data(), result.data(), result.size());
              return out;
            })
       .def("update", [](T& self, double high, double low) -> std::optional<double>
@@ -222,7 +222,7 @@ auto bindOhlcIndicator(py::module_& m, const char* name)
                                      std::span<const double>(c, n));
              }
              py::array_t<double> out(result.size());
-             std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
+             fillArray(out.mutable_data(), result.data(), result.size());
              return out;
            })
       .def("update", [](T& self, double open, double high, double low, double close) -> std::optional<double>
@@ -254,7 +254,7 @@ auto bindPairIndicator(py::module_& m, const char* name)
                                      std::span<const double>(yp, n));
              }
              py::array_t<double> out(result.size());
-             std::memcpy(out.mutable_data(), result.data(), result.size() * sizeof(double));
+             fillArray(out.mutable_data(), result.data(), result.size());
              return out;
            })
       .def("update", [](T& self, double x, double y) -> std::optional<double>
@@ -384,9 +384,9 @@ inline void bindIndicators(py::module_& m)
               std::span<const double>(c, n));
         }
         py::array_t<double> adx_out(n), pdi(n), ndi(n);
-        std::memcpy(adx_out.mutable_data(), result.adx.data(), n * sizeof(double));
-        std::memcpy(pdi.mutable_data(), result.plus_di.data(), n * sizeof(double));
-        std::memcpy(ndi.mutable_data(), result.minus_di.data(), n * sizeof(double));
+        fillArray(adx_out.mutable_data(), result.adx.data(), n);
+        fillArray(pdi.mutable_data(), result.plus_di.data(), n);
+        fillArray(ndi.mutable_data(), result.minus_di.data(), n);
         py::dict d;
         d["adx"] = adx_out;
         d["plus_di"] = pdi;
@@ -414,7 +414,7 @@ inline void bindIndicators(py::module_& m)
               std::span<const double>(c, n));
         }
         py::array_t<double> out(n);
-        std::memcpy(out.mutable_data(), result.data(), n * sizeof(double));
+        fillArray(out.mutable_data(), result.data(), n);
         return out;
       },
       py::arg("high"), py::arg("low"), py::arg("close"), py::arg("period") = 14);
@@ -433,9 +433,9 @@ inline void bindIndicators(py::module_& m)
                        .compute(std::span<const double>(inp, n));
         }
         py::array_t<double> upper(n), middle(n), lower(n);
-        std::memcpy(upper.mutable_data(), result.upper.data(), n * sizeof(double));
-        std::memcpy(middle.mutable_data(), result.middle.data(), n * sizeof(double));
-        std::memcpy(lower.mutable_data(), result.lower.data(), n * sizeof(double));
+        fillArray(upper.mutable_data(), result.upper.data(), n);
+        fillArray(middle.mutable_data(), result.middle.data(), n);
+        fillArray(lower.mutable_data(), result.lower.data(), n);
         py::dict d;
         d["upper"] = upper;
         d["middle"] = middle;
@@ -509,7 +509,7 @@ inline void bindIndicators(py::module_& m)
           trades.push_back(pnl);
         }
         py::array_t<double> out(trades.size());
-        std::memcpy(out.mutable_data(), trades.data(), trades.size() * sizeof(double));
+        fillArray(out.mutable_data(), trades.data(), trades.size());
         return out;
       },
       py::arg("signal_long"), py::arg("signal_short"), py::arg("log_returns"));
@@ -574,7 +574,7 @@ inline void bindIndicators(py::module_& m)
         std::vector<double> result;
         { py::gil_scoped_release r; result = flox::indicator::DEMA(period).compute(std::span<const double>(ptr, n)); }
         py::array_t<double> out(n);
-        std::memcpy(out.mutable_data(), result.data(), n * sizeof(double));
+        fillArray(out.mutable_data(), result.data(), n);
         return out; },
       py::arg("input"), py::arg("period"));
 
@@ -587,7 +587,7 @@ inline void bindIndicators(py::module_& m)
         std::vector<double> result;
         { py::gil_scoped_release r; result = flox::indicator::TEMA(period).compute(std::span<const double>(ptr, n)); }
         py::array_t<double> out(n);
-        std::memcpy(out.mutable_data(), result.data(), n * sizeof(double));
+        fillArray(out.mutable_data(), result.data(), n);
         return out; },
       py::arg("input"), py::arg("period"));
 
@@ -608,8 +608,8 @@ inline void bindIndicators(py::module_& m)
           result = flox::indicator::Stochastic(k_period, d_period).compute(std::span<const double>(h, n), std::span<const double>(l, n), std::span<const double>(c, n));
         }
         py::array_t<double> ko(n), dout(n);
-        std::memcpy(ko.mutable_data(), result.k.data(), n * sizeof(double));
-        std::memcpy(dout.mutable_data(), result.d.data(), n * sizeof(double));
+        fillArray(ko.mutable_data(), result.k.data(), n);
+        fillArray(dout.mutable_data(), result.d.data(), n);
         py::dict d;
         d["k"] = ko;
         d["d"] = dout;
@@ -636,7 +636,7 @@ inline void bindIndicators(py::module_& m)
               std::span<const double>(h, n), std::span<const double>(l, n), std::span<const double>(c, n));
         }
         py::array_t<double> out(n);
-        std::memcpy(out.mutable_data(), result.data(), n * sizeof(double));
+        fillArray(out.mutable_data(), result.data(), n);
         return out;
       },
       py::arg("high"), py::arg("low"), py::arg("close"), py::arg("period") = 20);
@@ -657,7 +657,7 @@ inline void bindIndicators(py::module_& m)
               std::span<const double>(c, n), std::span<const double>(v, n));
         }
         py::array_t<double> out(n);
-        std::memcpy(out.mutable_data(), result.data(), n * sizeof(double));
+        fillArray(out.mutable_data(), result.data(), n);
         return out;
       },
       py::arg("close"), py::arg("volume"), py::arg("window") = 96);
@@ -686,7 +686,7 @@ inline void bindIndicators(py::module_& m)
               std::span<const double>(v, n));
         }
         py::array_t<double> out(n);
-        std::memcpy(out.mutable_data(), result.data(), n * sizeof(double));
+        fillArray(out.mutable_data(), result.data(), n);
         return out;
       },
       py::arg("open"), py::arg("high"), py::arg("low"), py::arg("close"), py::arg("volume"));
@@ -930,9 +930,9 @@ inline void bindIndicators(py::module_& m)
              }
              py::dict d;
              py::array_t<double> line(n), sig(n), hist(n);
-             std::memcpy(line.mutable_data(), r.line.data(), n * sizeof(double));
-             std::memcpy(sig.mutable_data(), r.signal.data(), n * sizeof(double));
-             std::memcpy(hist.mutable_data(), r.histogram.data(), n * sizeof(double));
+             fillArray(line.mutable_data(), r.line.data(), n);
+             fillArray(sig.mutable_data(), r.signal.data(), n);
+             fillArray(hist.mutable_data(), r.histogram.data(), n);
              d["line"] = line;
              d["signal"] = sig;
              d["histogram"] = hist;
@@ -973,9 +973,9 @@ inline void bindIndicators(py::module_& m)
              }
              py::dict d;
              py::array_t<double> upper(n), middle(n), lower(n);
-             std::memcpy(upper.mutable_data(), r.upper.data(), n * sizeof(double));
-             std::memcpy(middle.mutable_data(), r.middle.data(), n * sizeof(double));
-             std::memcpy(lower.mutable_data(), r.lower.data(), n * sizeof(double));
+             fillArray(upper.mutable_data(), r.upper.data(), n);
+             fillArray(middle.mutable_data(), r.middle.data(), n);
+             fillArray(lower.mutable_data(), r.lower.data(), n);
              d["upper"] = upper;
              d["middle"] = middle;
              d["lower"] = lower;
@@ -1013,8 +1013,8 @@ inline void bindIndicators(py::module_& m)
              }
              py::dict d;
              py::array_t<double> k(n), dArr(n);
-             std::memcpy(k.mutable_data(), r.k.data(), n * sizeof(double));
-             std::memcpy(dArr.mutable_data(), r.d.data(), n * sizeof(double));
+             fillArray(k.mutable_data(), r.k.data(), n);
+             fillArray(dArr.mutable_data(), r.d.data(), n);
              d["k"] = k;
              d["d"] = dArr;
              return d;
