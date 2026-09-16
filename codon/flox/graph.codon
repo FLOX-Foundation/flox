@@ -58,8 +58,8 @@ class IndicatorGraph:
             self._h = cobj()
 
     def set_bars(self, symbol: int, close: List[float],
-                 high: List[float] = None, low: List[float] = None,
-                 volume: List[float] = None):
+                 high: Optional[List[float]] = None, low: Optional[List[float]] = None,
+                 volume: Optional[List[float]] = None):
         n = len(close)
         h_ptr = high.arr.ptr if high is not None else Ptr[f64]()
         l_ptr = low.arr.ptr if low is not None else Ptr[f64]()

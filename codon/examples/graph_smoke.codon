@@ -4,15 +4,31 @@
 
 from flox.graph import IndicatorGraph
 
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL " + msg)
+
+
 close = [float(i) for i in range(20)]
 g = IndicatorGraph()
 g.set_bars(0, close)
 
 c = g.close(0)
-print("len(close) =", len(c))
-print("close[0] =", c[0])
-print("close[19] =", c[19])
+check(len(c) == 20, f"len(close) == 20, got {len(c)}")
+check(c[0] == 0.0, f"close[0] == 0.0, got {c[0]}")
+check(c[19] == 19.0, f"close[19] == 19.0, got {c[19]}")
 
 # get on a non-existent node returns None.
 maybe = g.get(0, "missing")
-print("get missing is None =", maybe is None)
+check(maybe is None, "get on a missing node returns None")
+
+if failed > 0:
+    raise ValueError("graph smoke test failed")
+print("graph_smoke: OK")
