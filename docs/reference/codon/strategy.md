@@ -18,6 +18,38 @@ Strategy(symbols: List[int], strategy_id: int = 1, registry: cobj = cobj())
   `Runner.add_strategy` rebuilds it once a registry is present. Pass the strategy into a `Runner` to
   give it an event source; on its own it has none.
 
+### How a callback reaches your subclass
+
+Your overrides are called through a table of C function pointers that the
+engine holds. Codon fills that table when the strategy is handed to a runner,
+not when it is constructed, and this is not an implementation detail you can
+ignore: a strategy that is never attached never receives anything.
+
+```codon
+strat = MyStrategy([btc])
+runner.add_strategy(strat)        # installs the callbacks
+# or
+backtest.set_strategy(strat)      # same, for BacktestRunner
+```
+
+The reason for the timing is that the trampolines are generated against your
+concrete subclass. Codon resolves method calls statically, so a trampoline
+written against `Strategy` would call the empty base method rather than your
+override. `add_strategy` and `set_strategy` are generic in the strategy's
+type, which is the last point where that type is still visible -- inside
+`Strategy.__init__` a subclass has already been erased by `super()`.
+
+Two consequences worth knowing:
+
+- Attaching one strategy to a runner is what makes it live. Constructing it is
+  not enough, and a strategy with no callbacks installed raises rather than
+  running silently through a backtest that would finish and print a result
+  your logic took no part in.
+- An exception raised inside a callback is caught at the boundary and reported
+  on stderr, naming the callback. It is not allowed to unwind into the C++
+  frame that called it, because that is undefined behaviour and the engine
+  cannot recover from it.
+
 ### Overridable Callbacks
 
 #### `on_trade(ctx, trade)`
@@ -57,8 +89,9 @@ Lifecycle callbacks.
 
 #### `on_fill(ctx, ev)`
 
-Called on each fill (status `PARTIALLY_FILLED` or `FILLED`) for orders this strategy emitted. `ev`
-carries `order_id`, `side`, `fill_qty`, `fill_price`, `exchange_ts_ns`.
+Called on each fill (status `PARTIALLY_FILLED` or `FILLED`) for orders this strategy emitted. `ev` is
+an `OrderEventData`, described under [Types](types.md); it carries `order_id`, `side`, `fill_qty`,
+`fill_price`, `exchange_ts_ns`.
 
 #### `on_order_update(ctx, ev)`
 

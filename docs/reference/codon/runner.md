@@ -49,7 +49,7 @@ runner.stop()
 ### Constructor
 
 ```codon
-Runner(registry: cobj, on_signal: Function[[Signal], None], threaded: bool = False)
+Runner(registry: cobj, on_signal, threaded: bool = False)
 ```
 
 | Parameter | Description |
@@ -62,7 +62,7 @@ Runner(registry: cobj, on_signal: Function[[Signal], None], threaded: bool = Fal
 
 | Method | Description |
 |--------|-------------|
-| `add_strategy(strategy)` | Register a strategy instance |
+| `add_strategy(strategy)` | Register a strategy instance and install its event callbacks |
 | `start()` | Start the runner |
 | `stop()` | Stop and clean up |
 | `on_trade(symbol, price, qty, is_buy, ts_ns)` | Push a trade tick |
@@ -100,7 +100,7 @@ BacktestRunner(registry: cobj, fee_rate: float = 0.0004, initial_capital: float 
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `set_strategy(strategy)` | `None` | Attach a strategy |
+| `set_strategy(strategy)` | `None` | Attach a strategy and install its event callbacks |
 | `run_csv(path, symbol)` | `BacktestStats` | Replay a CSV file (columns: timestamp, open, high, low, close, volume) |
 | `run_ohlcv(timestamps, closes, symbol)` | `BacktestStats` | Replay raw arrays (`List[int]` timestamps in ns, `List[float]` closes) |
 | `run_bars(start_ns, end_ns, opens, highs, lows, closes, volumes, symbol, bar_type=0, bar_type_param=0)` | `BacktestStats` | Replay full OHLCV bars. `Strategy.on_bar` fires; `on_trade` does **not** |

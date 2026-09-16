@@ -123,3 +123,14 @@ add_codon_executable(codon_signal_fields_smoke
 
 add_codon_executable(codon_aggregate_bars_smoke
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/aggregate_bars_smoke.codon)
+
+add_codon_executable(codon_strategy_dispatch_smoke
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/strategy_dispatch_smoke.codon)
+
+# The documented backtest-and-live walkthrough. Built here because it was
+# broken for as long as nothing compiled it: it passed List[u32] where
+# Strategy.__init__ wants List[int], and its on_trade handed a Price to an
+# indicator that takes a float -- a body no compiler had ever looked at,
+# because a never-dispatched override is never realised.
+add_codon_executable(codon_backtest_vs_live
+  ${CMAKE_SOURCE_DIR}/docs/examples/codon_backtest_vs_live.codon)

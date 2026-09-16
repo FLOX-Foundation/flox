@@ -47,7 +47,34 @@ Trade event data passed to `Strategy.on_trade()`.
 | `price` | `Price` | Trade price |
 | `quantity` | `Quantity` | Trade quantity |
 | `is_buy` | `bool` | Whether trade was a buy |
+| `symbol_name` | `str` | Symbol name, resolved from the registry |
 | `timestamp_ns` | `int` | Exchange timestamp (nanoseconds) |
+
+## `OrderEventData`
+
+Order-lifecycle event for an order this strategy emitted. Passed to
+`Strategy.on_fill()`, `on_order_update()`, `on_queue_position_change()` and
+`on_market_position_change()`. Same fields, under the same names, as the
+equivalents in the Python and Node bindings.
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `order_id` | `int` | Order ID this event belongs to |
+| `symbol` | `int` | Symbol ID |
+| `symbol_name` | `str` | Symbol name, resolved from the registry |
+| `side` | `str` | `"buy"` or `"sell"` |
+| `order_type` | `int` | C++ `flox::OrderType` code, not the signal-type code |
+| `status` | `int` | Order status code |
+| `fill_qty` | `float` | Quantity filled by this event |
+| `fill_price` | `float` | Price this event filled at |
+| `exchange_ts_ns` | `int` | Exchange timestamp (nanoseconds) |
+| `is_maker` | `bool` | Whether the fill was passive |
+| `queue_ahead` | `float` | Quantity ahead in the queue. Backtest only |
+| `queue_total` | `float` | Total quantity at the level. Backtest only |
+| `market_position` | `str` | `"best"`, `"behind_best"`, `"mid_spread"`, `"level_empty"`, `"crossed"`, or `""` when the venue reports none |
+| `distance_to_best_ticks` | `int` | Signed ticks from best on our side |
 
 ## Constants
 
