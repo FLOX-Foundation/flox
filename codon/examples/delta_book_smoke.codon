@@ -23,8 +23,11 @@ if snap1.bid_count == 2 and snap1.ask_count == 1:
 else:
     print("FAIL replayer initial:", snap1.bid_count, snap1.ask_count)
 
+# A one-sided delta UPDATES the mentioned level; it does not replace the
+# whole book side. Bid 10000 is updated in place, bid 9999 is not mentioned
+# and must survive -- so bid_count stays 2, not 1.
 snap2 = rep.apply(1, 1, [10000], [12], [10001, 10002], [8, 3])
-if snap2.bid_count == 1 and snap2.ask_count == 2:
+if snap2.bid_count == 2 and snap2.ask_count == 2:
     print("ok  replayer applies delta correctly")
 else:
     print("FAIL replayer delta:", snap2.bid_count, snap2.ask_count)

@@ -17,11 +17,16 @@
 ## group that emits exports ends up there, so codon defaults to `required`
 ## with no class/function listing.
 ##
-## QuickJS is checked against the addGlobalFunc registration table in
-## src/quickjs/js_bindings.cpp, so a `quickjs: required` entry lists the global
-## names a strategy calls (`__flox_*`), not classes. The names are written out
-## because they are not derivable: the `__` + C-API-name convention has real
-## exceptions, e.g. __flox_vprofile_create wraps flox_volume_profile_create.
+## QuickJS `functions:` are checked against the addGlobalFunc registration
+## table in src/quickjs/js_bindings.cpp, so a `quickjs: required` entry lists
+## the global names a strategy calls (`__flox_*`), not the C-API names. They
+## are written out because they are not derivable: the `__` + C-API-name
+## convention has real exceptions, e.g. __flox_vprofile_create wraps
+## flox_volume_profile_create.
+## QuickJS `classes:` are checked against the embedded JS standard library in
+## src/quickjs/js_strategy.cpp (the same extractor scripts/sync_mcp_data.py
+## uses for the MCP binding manifest), so list the class name a strategy sees
+## (e.g. CompositeBook), not a C++ or registration-table name.
 ##
 ## Most groups still carry no `quickjs` entry. The gate counts and names those
 ## instead of passing them silently; run it with --require-quickjs to make an
@@ -168,6 +173,9 @@ groups:
     codon: { status: required }
     quickjs:
       status: required
+      # Also doubles as the live regression check for QuickJS class parity
+      # itself: this entry used to be unverifiable (see check_binding_parity.py).
+      classes: [CompositeBook]
       functions:
         - __flox_cb_create
         - __flox_cb_destroy
