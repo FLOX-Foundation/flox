@@ -4,7 +4,7 @@ How `scripts/check_binding_parity.py` makes "I added a function to the C ABI but
 
 ## The problem it solves
 
-The C ABI surface (`flox_capi.h`) grows whenever someone adds a `FLOX_EXPORT` to the IDL. Each binding (pybind11, NAPI, Codon) is supposed to expose that addition. Codon is auto-generated, so it's automatic. **pybind11 and NAPI are hand-written**, so they drift.
+The C ABI surface (`flox_capi.h`) grows whenever someone adds a `FLOX_EXPORT` to the IDL. Each binding (pybind11, NAPI, Codon, QuickJS) is supposed to expose that addition. Codon is auto-generated, so it's automatic. **pybind11, NAPI, and QuickJS are hand-written**, so they drift.
 
 Before this gate existed, the only way to notice a gap was for a Python or Node user to say "where's the `Executor` class?" — usually months after the C ABI shipped it. The gate catches it on the PR that introduces the drift.
 
@@ -18,6 +18,8 @@ The script:
    - pybind11: parses `python/flox_py/_flox_py/__init__.pyi` for `class X:` and `def x(...):`
    - NAPI: parses `node/index.d.ts` for `export class X` / `export interface X` / `export function x`
    - Codon: checks the auto-generated `tools/codegen/golden/flox_capi.codon` for the group section
+   - QuickJS `functions`: parses `src/quickjs/js_bindings.cpp` for `addGlobalFunc(ctx, "name", ...)` registrations
+   - QuickJS `classes`: parses the embedded JS standard library in `src/quickjs/js_strategy.cpp` via `flox_codegen.manifest.scan_quickjs` — the same extractor `scripts/sync_mcp_data.py` uses to build the MCP `binding_manifest`, so the two never diverge on what counts as a registered QuickJS class
 4. **Fails loudly** if anything is missing.
 
 Run locally:
@@ -120,9 +122,9 @@ So the gate is a coarse mechanical check: "does the symbol exist?". Tests cover 
 
 ## Extending the gate
 
-The script is small (~280 lines, [scripts/check_binding_parity.py](../../scripts/check_binding_parity.py)). If you need a new check, add it there. Examples:
+The script is small ([scripts/check_binding_parity.py](../../scripts/check_binding_parity.py)). If you need a new check, add it there. Examples:
 
-- **QuickJS coverage.** Partly addressed outside this gate: [`check_quickjs_registration.py`](../../scripts/check_quickjs_registration.py) asserts that every `__flox_*` global the JS layer calls has an `addGlobalFunc` registration, which is what `setQueueFifoTopN` violated. Generating the registration table from the IDL is not currently possible — the global name is derivable but the wrapper name is not (`flox_simulated_executor_set_queue_model` is implemented by `js_executor_set_queue_model`).
+- **QuickJS registration, not just parity.** [`check_quickjs_registration.py`](../../scripts/check_quickjs_registration.py) is a sibling gate: it asserts that every `__flox_*` global the JS layer *calls* has an `addGlobalFunc` registration, which is what `setQueueFifoTopN` violated. That is a different question from this gate's "does the IDL group's promised symbol exist" — this gate would pass on a registered-but-never-called global, and `check_quickjs_registration.py` doesn't know about IDL groups at all.
 - **Method-level checks.** Currently we check class presence; we could check that a class has specific methods (e.g. `Executor` must have `submit`, `cancel`, `replace`).
 
 Both would tighten the gate. Keep changes minimal — every false-positive case wastes contributor time.

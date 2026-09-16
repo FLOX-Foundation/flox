@@ -422,30 +422,38 @@ jobs:
           ./build/codon/codon_full_backtest
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_backtest_from_csv docs/examples/data/btcusdt_1m.csv
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_latency_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_tape_diff_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_portfolio_risk_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_execution_algos_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_delta_book_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_order_book_window_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_composite_book_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_bar_close_ordering_parity_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_order_type_codes_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_indicator_bounds_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_signal_fields_smoke
-        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
-          ./build/codon/codon_aggregate_bars_smoke
+
+    # These print "ok"/"FAIL" per check and most do not raise or exit
+    # nonzero on a failed one, so checking only the process exit code is
+    # blind to a failing check -- codon_delta_book_smoke printed
+    # "FAIL replayer delta: 2 2" and exited 0 under the old form of this
+    # step for as long as the file existed. Capture each binary's output
+    # and fail the step on either a nonzero exit or a FAIL line in it.
+    - name: Run Codon smoke examples
+      run: |
+        set +e
+        fail=0
+        for bin in codon_latency_smoke codon_tape_diff_smoke \
+                   codon_portfolio_risk_smoke codon_execution_algos_smoke \
+                   codon_delta_book_smoke codon_order_book_window_smoke \
+                   codon_composite_book_smoke codon_bar_close_ordering_parity_smoke \
+                   codon_order_type_codes_smoke codon_indicator_bounds_smoke \
+                   codon_signal_fields_smoke codon_aggregate_bars_smoke; do
+          echo "── $bin"
+          out=$(LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+                "./build/codon/$bin" 2>&1)
+          rc=$?
+          echo "$out"
+          if [ "$rc" -ne 0 ]; then
+            echo "!! $bin exited with code $rc"
+            fail=1
+          fi
+          if echo "$out" | grep -qE '(^|[^A-Za-z])FAIL'; then
+            echo "!! $bin printed a FAIL line above (its exit code alone did not catch this)"
+            fail=1
+          fi
+        done
+        exit $fail
 
     - name: Verify QuickJS runner
       run: |
