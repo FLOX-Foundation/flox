@@ -3,8 +3,8 @@
     {
       "language": "codon",
       "path": "docs/examples/codon_backtest_vs_live.codon",
-      "sha256": "e9d3b20120e56ccea2a32e65133e06988b695e5499c36e86a79ecdabbd626c9e",
-      "size_bytes": 4687,
+      "sha256": "a206d3d1255c3e8b5aef36d5720171749d8dda97d7e3c656c8f893e344181c85",
+      "size_bytes": 4730,
       "topic": "backtest"
     },
     {

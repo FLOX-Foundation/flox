@@ -96,9 +96,19 @@ from C import flox_strategy_create(u32, Ptr[u32], u32, cobj, cobj) -> cobj
 
 from flox.types import SCALE, Price, Quantity
 from flox.backtest import BacktestStats
+from flox.dispatch import bind_callbacks, _as_class, _report_callback_error
 
 
-@dataclass
+# Value type, not a reference class. @dataclass in Codon makes a reference
+# class, which is a single pointer: Ptr[FloxSignalC] was then a pointer to a
+# pointer, and reading s[0] out of a signal the engine passed took the first
+# eight bytes of FloxSignal -- the order id -- as an object address and
+# dereferenced it. @tuple lays the fields out by value, matching the C
+# struct, which is what a pointer coming across the ABI actually points at.
+# codon/examples/signal_fields_smoke.codon did not catch that because it
+# builds the value in Codon and passes __ptr__ to it: self-consistent on
+# both sides of a layout that never matched C.
+@tuple
 class FloxSignalC:
     order_id:        u64
     symbol:          u32
@@ -170,11 +180,31 @@ def _signal_from_c(s: Ptr[FloxSignalC]) -> Signal:
     )
 
 
+# The C ABI calls on_signal as (void* user_data, const FloxSignal*). The
+# trampoline is top-level and captures nothing, so it converts to a plain
+# function pointer; the Runner it belongs to comes back through user_data.
+# Generic in the Runner type for the same reason the strategy trampolines
+# are generic in the strategy type -- Runner carries the user's callback as
+# a generic field, so each callback type gives a different Runner type.
+def _signal_tramp(ud: cobj, sig: Ptr[FloxSignalC], T: type):
+    if ud == cobj() or sig == Ptr[FloxSignalC]():
+        return
+    runner = _as_class(ud, T)
+    try:
+        runner._on_signal(_signal_from_c(sig))
+    except Exception as e:
+        _report_callback_error("on_signal", str(e))
+
+
+def _signal_trampoline_raw(T: type) -> cobj:
+    return _signal_tramp(T=T, ...).F.T.__raw__()
+
+
 # ======================================================================
 # Runner
 # ======================================================================
 
-class Runner:
+class Runner[F]:
     """Unified live runner.
 
     Runner(registry, on_signal)              — synchronous (default)
@@ -195,32 +225,54 @@ class Runner:
 
     _sync_handle:   cobj
     _live_handle:   cobj
-    _on_signal:     Function[[Signal], None]
+    _registry:      cobj
+    # Generic in the callback's own type rather than Function[[Signal],
+    # None]. That annotation is a raw function pointer, and the callback the
+    # documentation shows -- a nested def that appends to a list -- is a
+    # closure, which is not one. Written that way, this constructor rejected
+    # the documented call.
+    _on_signal:     F
     _threaded:      bool
 
-    def __init__(self, registry: cobj, on_signal: Function[[Signal], None],
+    def __init__(self, registry: cobj, on_signal: F,
                  threaded: bool = False):
         self._on_signal = on_signal
         self._threaded  = threaded
+        self._registry  = registry
         self._sync_handle = cobj()
         self._live_handle = cobj()
 
         if threaded:
             self._live_handle = flox_live_engine_create(registry)
         else:
-            cb = Function[[Ptr[FloxSignalC]], None](
-                lambda sig: on_signal(_signal_from_c(sig))
-            )
-            self._sync_handle = flox_runner_create(registry, cb.__raw__(), __ptr__(self).__raw__())
+            # The signal callback used to be written as a lambda closing
+            # over on_signal, which Codon cannot turn into a plain function
+            # pointer -- this constructor did not compile at all in the form
+            # the documentation shows. It also declared one parameter where
+            # the C ABI passes two, so the signal pointer would have arrived
+            # in the user_data slot. A top-level trampoline taking both
+            # takes care of each: it captures nothing, and it reaches the
+            # runner back through user_data.
+            self._sync_handle = flox_runner_create(
+                registry, _signal_trampoline_raw(type(self)), self.__raw__())
 
     def add_strategy(self, strategy):
+        """Attach a strategy and wire its overrides to the engine.
+
+        Generic in the strategy's concrete type: that is what lets
+        bind_callbacks build trampolines that reach the subclass's own
+        on_bar / on_trade rather than the empty base methods.
+        """
+        self._attach(strategy, type(strategy))
+
+    def _attach(self, strategy, T: type):
+        if strategy._handle == cobj():
+            strategy._rebuild_handle(self._registry)
+        bind_callbacks(strategy, T)
         if self._threaded:
-            cb = Function[[Ptr[FloxSignalC]], None](
-                lambda sig: self._on_signal(_signal_from_c(sig))
-            )
             flox_live_engine_add_strategy(
                 self._live_handle, strategy._handle,
-                cb.__raw__(), __ptr__(self).__raw__()
+                _signal_trampoline_raw(type(self)), self.__raw__()
             )
         else:
             flox_runner_add_strategy(self._sync_handle, strategy._handle)
@@ -317,9 +369,11 @@ class BacktestRunner:
     """
 
     _handle: cobj
+    _registry: cobj
 
     def __init__(self, registry: cobj, fee_rate: float = 0.0004,
                  initial_capital: float = 10_000.0):
+        self._registry = registry
         self._handle = flox_backtest_runner_create(registry, fee_rate, initial_capital)
 
     def close(self):
@@ -328,7 +382,17 @@ class BacktestRunner:
             self._handle = cobj()
 
     def set_strategy(self, strategy):
-        """Attach a Strategy. Must be called before run_csv / run_ohlcv."""
+        """Attach a Strategy. Must be called before run_csv / run_ohlcv.
+
+        Generic in the strategy's concrete type, like Runner.add_strategy,
+        so the callbacks installed here reach the subclass's overrides.
+        """
+        self._attach(strategy, type(strategy))
+
+    def _attach(self, strategy, T: type):
+        if strategy._handle == cobj():
+            strategy._rebuild_handle(self._registry)
+        bind_callbacks(strategy, T)
         flox_backtest_runner_set_strategy(self._handle, strategy._handle)
 
     def _parse_stats(self, buf: List[i64]) -> BacktestStats:

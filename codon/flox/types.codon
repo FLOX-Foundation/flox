@@ -206,3 +206,85 @@ class BarData:
         b.end_time_ns   = end_ns
         b.close_reason  = close_reason
         return b
+
+
+# Market-position names, indexed by the code in FloxOrderEventData.
+# market_position. Code 0 means the venue did not report a category and
+# maps to the empty string, which is what marketPositionName() in
+# python/strategy_bindings.h, node/src/strategy.h and
+# src/quickjs/js_strategy.cpp all return for it. Index 0 is deliberately
+# "" so the table is read by position rather than by an offset somebody
+# has to remember.
+_MARKET_POSITION_NAMES = [
+    "", "best", "behind_best", "mid_spread", "level_empty", "crossed"
+]
+
+
+@dataclass
+class OrderEventData:
+    """Order-lifecycle event for an order this strategy emitted.
+
+    Reaches on_fill, on_order_update, on_queue_position_change and
+    on_market_position_change. Mirrors C++ flox::OrderEvent (flattened);
+    the same fields the Python and Node bindings hand to their
+    equivalents, under the same names.
+    """
+
+    order_id: int
+    symbol: int
+    symbol_name: str
+    side: str
+    order_type: int
+    status: int
+    fill_qty: float
+    fill_price: float
+    exchange_ts_ns: int
+    is_maker: bool
+    # Queue and market position are filled in by the backtest simulator;
+    # a live venue leaves them at zero and the empty string.
+    queue_ahead: float
+    queue_total: float
+    market_position: str
+    distance_to_best_ticks: int
+
+    def __init__(self):
+        self.order_id = 0
+        self.symbol = 0
+        self.symbol_name = ""
+        self.side = ""
+        self.order_type = 0
+        self.status = 0
+        self.fill_qty = 0.0
+        self.fill_price = 0.0
+        self.exchange_ts_ns = 0
+        self.is_maker = False
+        self.queue_ahead = 0.0
+        self.queue_total = 0.0
+        self.market_position = ""
+        self.distance_to_best_ticks = 0
+
+    @staticmethod
+    def from_raw(order_id: int, symbol: int, side_code: int, order_type: int,
+                 status: int, fill_qty_raw: int, fill_price_raw: int,
+                 exchange_ts_ns: int, is_maker: bool,
+                 queue_ahead_raw: int, queue_total_raw: int,
+                 market_position_code: int, distance_to_best_ticks: int,
+                 symbol_name: str = "") -> OrderEventData:
+        e = OrderEventData()
+        e.order_id = order_id
+        e.symbol = symbol
+        e.symbol_name = symbol_name
+        e.side = "buy" if side_code == 0 else "sell"
+        e.order_type = order_type
+        e.status = status
+        e.fill_qty = float(fill_qty_raw) / float(SCALE)
+        e.fill_price = float(fill_price_raw) / float(SCALE)
+        e.exchange_ts_ns = exchange_ts_ns
+        e.is_maker = is_maker
+        e.queue_ahead = float(queue_ahead_raw) / float(SCALE)
+        e.queue_total = float(queue_total_raw) / float(SCALE)
+        e.market_position = (_MARKET_POSITION_NAMES[market_position_code]
+                             if 0 <= market_position_code < len(_MARKET_POSITION_NAMES)
+                             else "")
+        e.distance_to_best_ticks = distance_to_best_ticks
+        return e

@@ -15343,6 +15343,38 @@ Strategy(symbols: List[int], strategy_id: int = 1, registry: cobj = cobj())
   `Runner.add_strategy` rebuilds it once a registry is present. Pass the strategy into a `Runner` to
   give it an event source; on its own it has none.
 
+### How a callback reaches your subclass
+
+Your overrides are called through a table of C function pointers that the
+engine holds. Codon fills that table when the strategy is handed to a runner,
+not when it is constructed, and this is not an implementation detail you can
+ignore: a strategy that is never attached never receives anything.
+
+```codon
+strat = MyStrategy([btc])
+runner.add_strategy(strat)        # installs the callbacks
+# or
+backtest.set_strategy(strat)      # same, for BacktestRunner
+```
+
+The reason for the timing is that the trampolines are generated against your
+concrete subclass. Codon resolves method calls statically, so a trampoline
+written against `Strategy` would call the empty base method rather than your
+override. `add_strategy` and `set_strategy` are generic in the strategy's
+type, which is the last point where that type is still visible -- inside
+`Strategy.__init__` a subclass has already been erased by `super()`.
+
+Two consequences worth knowing:
+
+- Attaching one strategy to a runner is what makes it live. Constructing it is
+  not enough, and a strategy with no callbacks installed raises rather than
+  running silently through a backtest that would finish and print a result
+  your logic took no part in.
+- An exception raised inside a callback is caught at the boundary and reported
+  on stderr, naming the callback. It is not allowed to unwind into the C++
+  frame that called it, because that is undefined behaviour and the engine
+  cannot recover from it.
+
 ### Overridable Callbacks
 
 #### `on_trade(ctx, trade)`
@@ -15382,8 +15414,9 @@ Lifecycle callbacks.
 
 #### `on_fill(ctx, ev)`
 
-Called on each fill (status `PARTIALLY_FILLED` or `FILLED`) for orders this strategy emitted. `ev`
-carries `order_id`, `side`, `fill_qty`, `fill_price`, `exchange_ts_ns`.
+Called on each fill (status `PARTIALLY_FILLED` or `FILLED`) for orders this strategy emitted. `ev` is
+an `OrderEventData`, described under [Types](types.md); it carries `order_id`, `side`, `fill_qty`,
+`fill_price`, `exchange_ts_ns`.
 
 #### `on_order_update(ctx, ev)`
 
@@ -15622,7 +15655,34 @@ Trade event data passed to `Strategy.on_trade()`.
 | `price` | `Price` | Trade price |
 | `quantity` | `Quantity` | Trade quantity |
 | `is_buy` | `bool` | Whether trade was a buy |
+| `symbol_name` | `str` | Symbol name, resolved from the registry |
 | `timestamp_ns` | `int` | Exchange timestamp (nanoseconds) |
+
+## `OrderEventData`
+
+Order-lifecycle event for an order this strategy emitted. Passed to
+`Strategy.on_fill()`, `on_order_update()`, `on_queue_position_change()` and
+`on_market_position_change()`. Same fields, under the same names, as the
+equivalents in the Python and Node bindings.
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `order_id` | `int` | Order ID this event belongs to |
+| `symbol` | `int` | Symbol ID |
+| `symbol_name` | `str` | Symbol name, resolved from the registry |
+| `side` | `str` | `"buy"` or `"sell"` |
+| `order_type` | `int` | C++ `flox::OrderType` code, not the signal-type code |
+| `status` | `int` | Order status code |
+| `fill_qty` | `float` | Quantity filled by this event |
+| `fill_price` | `float` | Price this event filled at |
+| `exchange_ts_ns` | `int` | Exchange timestamp (nanoseconds) |
+| `is_maker` | `bool` | Whether the fill was passive |
+| `queue_ahead` | `float` | Quantity ahead in the queue. Backtest only |
+| `queue_total` | `float` | Total quantity at the level. Backtest only |
+| `market_position` | `str` | `"best"`, `"behind_best"`, `"mid_spread"`, `"level_empty"`, `"crossed"`, or `""` when the venue reports none |
+| `distance_to_best_ticks` | `int` | Signed ticks from best on our side |
 
 ## Constants
 
@@ -16097,7 +16157,7 @@ runner.stop()
 ### Constructor
 
 ```codon
-Runner(registry: cobj, on_signal: Function[[Signal], None], threaded: bool = False)
+Runner(registry: cobj, on_signal, threaded: bool = False)
 ```
 
 | Parameter | Description |
@@ -16110,7 +16170,7 @@ Runner(registry: cobj, on_signal: Function[[Signal], None], threaded: bool = Fal
 
 | Method | Description |
 |--------|-------------|
-| `add_strategy(strategy)` | Register a strategy instance |
+| `add_strategy(strategy)` | Register a strategy instance and install its event callbacks |
 | `start()` | Start the runner |
 | `stop()` | Stop and clean up |
 | `on_trade(symbol, price, qty, is_buy, ts_ns)` | Push a trade tick |
@@ -16148,7 +16208,7 @@ BacktestRunner(registry: cobj, fee_rate: float = 0.0004, initial_capital: float 
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `set_strategy(strategy)` | `None` | Attach a strategy |
+| `set_strategy(strategy)` | `None` | Attach a strategy and install its event callbacks |
 | `run_csv(path, symbol)` | `BacktestStats` | Replay a CSV file (columns: timestamp, open, high, low, close, volume) |
 | `run_ohlcv(timestamps, closes, symbol)` | `BacktestStats` | Replay raw arrays (`List[int]` timestamps in ns, `List[float]` closes) |
 | `run_bars(start_ns, end_ns, opens, highs, lows, closes, volumes, symbol, bar_type=0, bar_type_param=0)` | `BacktestStats` | Replay full OHLCV bars. `Strategy.on_bar` fires; `on_trade` does **not** |

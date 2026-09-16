@@ -1,0 +1,228 @@
+# Does a Codon strategy subclass actually receive events?
+#
+# Every other Codon example either compiles a strategy without running one
+# (sma_crossover), drives the engine without a subclass (backtest_from_csv),
+# or checks state the C++ side keeps rather than a call the strategy got
+# (strategy_e2e_smoke reads the bar ring). None of them would notice if the
+# strategy's overrides were never called -- and for a long time they were
+# not, on every driver, because nothing ever filled FloxStrategyCallbacks.
+# A backtest in that state still finishes and still prints a result.
+#
+# So this counts calls, and checks what arrived in them. A count alone would
+# pass on a callback that fires with garbage, and the payloads are read out
+# of C structs by byte offset, which is exactly the kind of thing that
+# breaks quietly when a field moves.
+
+from C import flox_registry_create() -> cobj
+from C import flox_registry_destroy(cobj)
+from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32
+
+from flox.runner import BacktestRunner, Runner, Signal
+from flox.strategy import Strategy, SymbolContext
+from flox.types import BarData, TradeData, OrderEventData
+from flox.dispatch import _require_callbacks_installed
+
+failed = 0
+
+
+def check(cond: bool, msg: str):
+    global failed
+    if cond:
+        print("ok  " + msg)
+    else:
+        failed += 1
+        print("FAIL  " + msg)
+
+
+def close_to(a: float, b: float) -> bool:
+    d = a - b
+    return (d if d >= 0.0 else -d) < 1e-6
+
+
+N = 8
+M1 = 60 * 1_000_000_000
+SYMBOL = "BTCUSDT"
+
+
+class Recorder(Strategy):
+    """Counts every callback and keeps the last payload of each kind."""
+
+    bars: int
+    trades: int
+    fills: int
+    order_updates: int
+    starts: int
+    stops: int
+
+    last_bar: BarData
+    last_trade: TradeData
+    last_fill: OrderEventData
+    emit_on_trade: bool
+
+    def __init__(self, symbols: List[int], emit_on_trade: bool = False):
+        super().__init__(symbols)
+        self.bars = 0
+        self.trades = 0
+        self.fills = 0
+        self.order_updates = 0
+        self.starts = 0
+        self.stops = 0
+        self.last_bar = BarData()
+        self.last_trade = TradeData()
+        self.last_fill = OrderEventData()
+        self.emit_on_trade = emit_on_trade
+
+    def on_start(self):
+        self.starts += 1
+
+    def on_stop(self):
+        self.stops += 1
+
+    def on_bar(self, ctx: SymbolContext, bar: BarData):
+        self.bars += 1
+        self.last_bar = bar
+
+    def on_trade(self, ctx: SymbolContext, trade: TradeData):
+        self.trades += 1
+        self.last_trade = trade
+        if self.emit_on_trade and self.trades == 1:
+            self.market_buy(0.25)
+
+    def on_fill(self, ctx: SymbolContext, ev: OrderEventData):
+        self.fills += 1
+        self.last_fill = ev
+
+    def on_order_update(self, ctx: SymbolContext, ev: OrderEventData):
+        self.order_updates += 1
+
+
+def bars_input() -> Tuple[List[int], List[int], List[float], List[float],
+                          List[float], List[float], List[float]]:
+    start_ns = [i * M1 for i in range(N)]
+    end_ns = [(i + 1) * M1 for i in range(N)]
+    opens = [100.0 + float(i) for i in range(N)]
+    highs = [101.0 + float(i) for i in range(N)]
+    lows = [99.0 + float(i) for i in range(N)]
+    closes = [100.5 + float(i) for i in range(N)]
+    volumes = [2.0 + float(i) for i in range(N)]
+    return start_ns, end_ns, opens, highs, lows, closes, volumes
+
+
+def check_run_bars(reg: cobj, sym: int):
+    print("== BacktestRunner.run_bars ==")
+    start_ns, end_ns, opens, highs, lows, closes, volumes = bars_input()
+
+    s = Recorder([sym])
+    bt = BacktestRunner(reg, 0.0004, 10_000.0)
+    bt.set_strategy(s)
+    bt.run_bars(start_ns, end_ns, opens, highs, lows, closes, volumes,
+                SYMBOL, 0, M1)
+
+    check(s.bars == N, f"on_bar called once per bar (got {s.bars}, want {N})")
+    check(s.trades == 0, f"run_bars does not synthesise trades (got {s.trades})")
+    check(s.starts == 1, f"on_start called exactly once (got {s.starts})")
+    check(s.stops >= 1, f"on_stop called (got {s.stops})")
+
+    # The payload, not just the count. These offsets are read by hand in
+    # dispatch.codon, so a field moving in the C struct has to fail here.
+    b = s.last_bar
+    check(b.symbol == sym, f"bar carries the symbol id (got {b.symbol})")
+    check(b.symbol_name == SYMBOL, f"bar carries the symbol name (got '{b.symbol_name}')")
+    check(close_to(b.open, opens[N - 1]), f"bar.open (got {b.open}, want {opens[N - 1]})")
+    check(close_to(b.high, highs[N - 1]), f"bar.high (got {b.high}, want {highs[N - 1]})")
+    check(close_to(b.low, lows[N - 1]), f"bar.low (got {b.low}, want {lows[N - 1]})")
+    check(close_to(b.close, closes[N - 1]), f"bar.close (got {b.close}, want {closes[N - 1]})")
+    check(close_to(b.volume, volumes[N - 1]), f"bar.volume (got {b.volume}, want {volumes[N - 1]})")
+    check(b.start_time_ns == start_ns[N - 1],
+          f"bar.start_time_ns (got {b.start_time_ns}, want {start_ns[N - 1]})")
+    check(b.end_time_ns == end_ns[N - 1],
+          f"bar.end_time_ns (got {b.end_time_ns}, want {end_ns[N - 1]})")
+    check(b.bar_type_param == M1, f"bar.bar_type_param (got {b.bar_type_param}, want {M1})")
+
+
+def check_run_ohlcv(reg: cobj, sym: int):
+    print("== BacktestRunner.run_ohlcv ==")
+    _, end_ns, _, _, _, closes, _ = bars_input()
+
+    s = Recorder([sym])
+    bt = BacktestRunner(reg, 0.0004, 10_000.0)
+    bt.set_strategy(s)
+    bt.run_ohlcv(end_ns, closes, SYMBOL)
+
+    check(s.trades == N, f"on_trade called once per close (got {s.trades}, want {N})")
+    check(s.bars == 0, f"run_ohlcv does not synthesise bars (got {s.bars})")
+    check(s.starts == 1, f"on_start called exactly once (got {s.starts})")
+
+    t = s.last_trade
+    check(t.symbol == sym, f"trade carries the symbol id (got {t.symbol})")
+    check(close_to(t.price.to_double(), closes[N - 1]),
+          f"trade.price (got {t.price.to_double()}, want {closes[N - 1]})")
+    check(t.timestamp_ns == end_ns[N - 1],
+          f"trade.timestamp_ns (got {t.timestamp_ns}, want {end_ns[N - 1]})")
+
+
+def check_live_runner(reg: cobj, sym: int):
+    print("== Runner (live, sync) ==")
+    start_ns, end_ns, opens, highs, lows, closes, volumes = bars_input()
+
+    signals: List[Signal] = []
+
+    def on_signal(sig: Signal):
+        signals.append(sig)
+
+    s = Recorder([sym], True)
+    runner = Runner(reg, on_signal)
+    runner.add_strategy(s)
+    runner.start()
+    for i in range(N):
+        runner.on_bar(sym, opens[i], highs[i], lows[i], closes[i],
+                      volumes[i], 1.0, start_ns[i], end_ns[i], 0, M1, 0)
+        runner.on_trade(sym, closes[i], 0.1, i % 2 == 0, end_ns[i])
+    runner.stop()
+
+    check(s.bars == N, f"on_bar called once per bar (got {s.bars}, want {N})")
+    check(s.trades == N, f"on_trade called once per trade (got {s.trades}, want {N})")
+    check(s.starts == 1, f"on_start called exactly once (got {s.starts})")
+    check(s.stops >= 1, f"on_stop called (got {s.stops})")
+
+    # An order emitted from inside a callback has to come back out as a
+    # signal: that is the round trip the whole binding exists for.
+    check(len(signals) == 1, f"the order emitted from on_trade reached on_signal (got {len(signals)})")
+    if len(signals) == 1:
+        sig = signals[0]
+        check(sig.side == "buy", f"signal.side (got '{sig.side}')")
+        check(sig.order_type == "market", f"signal.order_type (got '{sig.order_type}')")
+        check(close_to(sig.quantity, 0.25), f"signal.quantity (got {sig.quantity})")
+        check(sig.symbol == sym, f"signal.symbol (got {sig.symbol})")
+
+
+def check_unattached_strategy_is_loud(reg: cobj, sym: int):
+    print("== an unattached strategy refuses to look healthy ==")
+    s = Recorder([sym])
+    raised = False
+    try:
+        _require_callbacks_installed(s)
+    except ValueError:
+        raised = True
+    check(raised, "a strategy with no callbacks installed raises instead of running silently")
+
+
+def run():
+    registry = flox_registry_create()
+    exch = "test"
+    name = SYMBOL
+    sym = int(flox_registry_add_symbol(registry, exch.c_str(), name.c_str(), 0.01))
+
+    check_run_bars(registry, sym)
+    check_run_ohlcv(registry, sym)
+    check_live_runner(registry, sym)
+    check_unattached_strategy_is_loud(registry, sym)
+
+    flox_registry_destroy(registry)
+
+    if failed != 0:
+        raise ValueError(f"codon strategy dispatch smoke: {failed} check(s) failed")
+    print("codon strategy dispatch smoke ok")
+
+
+run()

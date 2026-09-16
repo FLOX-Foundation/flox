@@ -25,7 +25,7 @@ class SMAStrategy(Strategy):
     slow_sma: SMA
     trade_count: int
 
-    def __init__(self, symbols: List[u32]):
+    def __init__(self, symbols: List[int]):
         super().__init__(symbols)
         self.fast_sma = SMA(10)
         self.slow_sma = SMA(30)
@@ -39,8 +39,9 @@ class SMAStrategy(Strategy):
         print(f"  SMAStrategy stopped  ({self.trade_count} signals emitted)")
 
     def on_trade(self, ctx: SymbolContext, trade: TradeData):
-        fv = self.fast_sma.update(trade.price)
-        sv = self.slow_sma.update(trade.price)
+        price = trade.price.to_double()
+        fv = self.fast_sma.update(price)
+        sv = self.slow_sma.update(price)
         if not self.slow_sma.ready:
             return
         if fv > sv and ctx.is_flat():
@@ -70,7 +71,7 @@ def main():
     print("── Backtest ──────────────────────────────────────────────────────")
 
     bt = BacktestRunner(reg, fee_rate=0.0004, initial_capital=10_000.0)
-    bt.set_strategy(SMAStrategy([btc]))
+    bt.set_strategy(SMAStrategy([int(btc)]))
     stats = bt.run_csv(DATA, "BTCUSDT")
 
     sign = "+" if stats.return_pct >= 0.0 else ""
@@ -90,7 +91,7 @@ def main():
         live_sigs.append(sig)
 
     runner = Runner(reg, on_live_signal)
-    runner.add_strategy(SMAStrategy([btc]))
+    runner.add_strategy(SMAStrategy([int(btc)]))
     runner.start()
 
     prices: List[float] = [float(50000 + i * 50) for i in range(40)]
@@ -116,7 +117,7 @@ def main():
         engine_sigs.append(sig)
 
     engine = Runner(reg, on_engine_signal, True)
-    engine.add_strategy(SMAStrategy([btc]))
+    engine.add_strategy(SMAStrategy([int(btc)]))
     engine.start()
 
     ts_ns = i64(1_700_000_000_000_000_000)

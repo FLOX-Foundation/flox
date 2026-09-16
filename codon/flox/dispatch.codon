@@ -1,0 +1,346 @@
+# flox/dispatch.codon -- delivering engine events to a Codon Strategy subclass.
+#
+# The C++ side reaches a strategy through FloxStrategyCallbacks, a struct of
+# nine function pointers plus a user_data pointer. Codon could not fill it in
+# for a long time and did not try: Strategy.__init__ zeroed the struct and
+# left it zeroed, so every override a subclass wrote was dead code. The
+# engine delivered the event, BridgeStrategy found a null pointer, and
+# nothing was called. Nothing reported it either, which is why it survived.
+#
+# Two things made the struct hard to fill from Codon:
+#
+#   1. A C callback has to be a plain function pointer. A Codon closure that
+#      captures the strategy is not one, and converting it raises
+#      "does not match expected type 'Ptr[byte]'".
+#   2. Codon has no dynamic dispatch through a base-class reference. A
+#      trampoline written against Strategy would call Strategy.on_bar --
+#      the empty base method -- not the subclass override.
+#
+# Both fall to the same move: the trampolines below are top-level generic
+# functions, and the generic argument T is the concrete subclass. Codon
+# monomorphises one copy of each per strategy type, so `_as_class(ud, T)
+# .on_bar(...)` resolves statically to that type's override, and the copy
+# captures nothing, so `_tramp_on_bar(T=T, ...).F.T.__raw__()` is an ordinary
+# function pointer. (The partial-then-__raw__ spelling is the one the Codon
+# standard library itself uses for this in openmp.codon.)
+#
+# T is bound where the strategy is handed to a runner -- add_strategy and
+# set_strategy are generic in it -- because that is the last place the
+# concrete type is still visible. Inside Strategy.__init__ it is not: a
+# subclass reaches the base through super(), which erases it.
+#
+# Event payloads are read out of the C structs by explicit byte offset, the
+# same way _floxbar_to_bardata already reads FloxBar. The offsets are checked
+# against the header in codon/examples/strategy_dispatch_smoke.codon, which
+# asserts the values that come back rather than just that a call happened.
+
+from flox.types import SCALE, TradeData, BarData, OrderEventData
+from flox.context import SymbolContext
+
+from C import flox_strategy_replace_callbacks_p(cobj, cobj)
+from C import fwrite(cobj, int, int, cobj) -> int
+from C import fdopen(int, cobj) -> cobj
+
+
+# Reinterpret an opaque user_data pointer as a reference to a Codon class.
+# A reference class is already a pointer, so this is a bitcast and not a
+# load. Same shape as _bitcast in the standard library's asyncio module.
+@pure
+@derives
+@llvm
+def _as_class(x: T, D: type, T: type) -> D:
+    %y = bitcast {=T} %x to {=D}
+    ret {=D} %y
+
+
+# ── C struct offsets ──────────────────────────────────────────────────
+# Verified against include/flox/capi/flox_capi.h with offsetof; the smoke
+# example checks the values that arrive, so a layout change that moves a
+# field fails there rather than silently delivering a wrong number.
+
+# FloxSymbolContext (88 bytes)
+_CTX_SYMBOL_ID = 0
+
+# FloxTradeData (40 bytes)
+_TRADE_SYMBOL = 0
+_TRADE_PRICE_RAW = 8
+_TRADE_QTY_RAW = 16
+_TRADE_IS_BUY = 24
+_TRADE_TS_NS = 32
+
+# FloxBarData (88 bytes)
+_BAR_SYMBOL = 0
+_BAR_TYPE = 4
+_BAR_CLOSE_REASON = 5
+_BAR_TYPE_PARAM = 8
+_BAR_OPEN_RAW = 16
+_BAR_HIGH_RAW = 24
+_BAR_LOW_RAW = 32
+_BAR_CLOSE_RAW = 40
+_BAR_VOLUME_RAW = 48
+_BAR_BUY_VOLUME_RAW = 56
+_BAR_START_NS = 72
+_BAR_END_NS = 80
+
+# FloxOrderEventData (144 bytes)
+_EV_ORDER_ID = 0
+_EV_SYMBOL_ID = 8
+_EV_SIDE = 12
+_EV_ORDER_TYPE = 13
+_EV_STATUS = 14
+_EV_FILL_QTY_RAW = 16
+_EV_FILL_PRICE_RAW = 24
+_EV_TS_NS = 32
+_EV_QUEUE_AHEAD_RAW = 48
+_EV_QUEUE_TOTAL_RAW = 56
+_EV_IS_MAKER = 128
+_EV_MARKET_POSITION = 129
+_EV_DISTANCE_TICKS = 132
+
+# Slot order in FloxStrategyCallbacks, in pointers.
+_CB_ON_TRADE = 0
+_CB_ON_BOOK = 1
+_CB_ON_BAR = 2
+_CB_ON_START = 3
+_CB_ON_STOP = 4
+_CB_ON_FILL = 5
+_CB_ON_ORDER_UPDATE = 6
+_CB_ON_QUEUE_POSITION = 7
+_CB_ON_MARKET_POSITION = 8
+_CB_USER_DATA = 9
+_CB_SLOTS = 10
+
+
+def _i64_at(p: cobj, off: int) -> int:
+    return int(Ptr[i64](p + off)[0])
+
+
+def _u32_at(p: cobj, off: int) -> int:
+    return int(Ptr[u32](p + off)[0])
+
+
+def _u8_at(p: cobj, off: int) -> int:
+    return int(Ptr[u8](p + off)[0])
+
+
+def _i32_at(p: cobj, off: int) -> int:
+    return int(Ptr[i32](p + off)[0])
+
+
+def _ctx_symbol(ctx: cobj) -> int:
+    return _u32_at(ctx, _CTX_SYMBOL_ID) if ctx != cobj() else 0
+
+
+# A strategy callback that raises must not unwind into the C++ frame that
+# called it: that is undefined behaviour, and the engine has no way to
+# recover. Report on stderr, naming the callback, and let the run continue.
+# Silence here is what this whole file exists to remove, so the message is
+# not optional.
+def _report_callback_error(name: str, what: str):
+    msg = "flox: Strategy." + name + " raised and was not allowed to escape into the engine: " + what + "\n"
+    err = fdopen(2, "w".c_str())
+    if err != cobj():
+        fwrite(msg.c_str(), 1, len(msg), err)
+
+
+def _build_trade(s, ctx: cobj, ev: cobj, T: type) -> TradeData:
+    sym = _u32_at(ev, _TRADE_SYMBOL)
+    return TradeData.from_raw(
+        sym,
+        _i64_at(ev, _TRADE_PRICE_RAW),
+        _i64_at(ev, _TRADE_QTY_RAW),
+        _u8_at(ev, _TRADE_IS_BUY) != 0,
+        _i64_at(ev, _TRADE_TS_NS),
+        s._reverse_lookup(sym))
+
+
+def _build_bar(s, ctx: cobj, ev: cobj, T: type) -> BarData:
+    sym = _u32_at(ev, _BAR_SYMBOL)
+    return BarData.from_raw(
+        sym,
+        _u8_at(ev, _BAR_TYPE),
+        int(Ptr[u64](ev + _BAR_TYPE_PARAM)[0]),
+        _i64_at(ev, _BAR_OPEN_RAW),
+        _i64_at(ev, _BAR_HIGH_RAW),
+        _i64_at(ev, _BAR_LOW_RAW),
+        _i64_at(ev, _BAR_CLOSE_RAW),
+        _i64_at(ev, _BAR_VOLUME_RAW),
+        _i64_at(ev, _BAR_BUY_VOLUME_RAW),
+        _i64_at(ev, _BAR_START_NS),
+        _i64_at(ev, _BAR_END_NS),
+        _u8_at(ev, _BAR_CLOSE_REASON),
+        s._reverse_lookup(sym))
+
+
+def _build_order_event(s, ev: cobj, T: type) -> OrderEventData:
+    sym = _u32_at(ev, _EV_SYMBOL_ID)
+    return OrderEventData.from_raw(
+        int(Ptr[u64](ev + _EV_ORDER_ID)[0]),
+        sym,
+        _u8_at(ev, _EV_SIDE),
+        _u8_at(ev, _EV_ORDER_TYPE),
+        _u8_at(ev, _EV_STATUS),
+        _i64_at(ev, _EV_FILL_QTY_RAW),
+        _i64_at(ev, _EV_FILL_PRICE_RAW),
+        _i64_at(ev, _EV_TS_NS),
+        _u8_at(ev, _EV_IS_MAKER) != 0,
+        _i64_at(ev, _EV_QUEUE_AHEAD_RAW),
+        _i64_at(ev, _EV_QUEUE_TOTAL_RAW),
+        _u8_at(ev, _EV_MARKET_POSITION),
+        _i32_at(ev, _EV_DISTANCE_TICKS),
+        s._reverse_lookup(sym))
+
+
+def _ctx_for(s, ctx: cobj, sym: int, T: type) -> SymbolContext:
+    return SymbolContext(s._handle, u32(sym), s._reverse_lookup(sym))
+
+
+# ── Trampolines ───────────────────────────────────────────────────────
+# One monomorphised copy per strategy type. Each captures nothing, so each
+# converts to a plain C function pointer.
+
+def _tramp_on_trade(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    s = _as_class(ud, T)
+    try:
+        trade = _build_trade(s, ctx, ev, T)
+        s.on_trade(_ctx_for(s, ctx, trade.symbol, T), trade)
+    except Exception as e:
+        _report_callback_error("on_trade", str(e))
+
+
+def _tramp_on_book(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    s = _as_class(ud, T)
+    try:
+        s.on_book_update(_ctx_for(s, ctx, _ctx_symbol(ctx), T))
+    except Exception as e:
+        _report_callback_error("on_book_update", str(e))
+
+
+def _tramp_on_bar(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    s = _as_class(ud, T)
+    try:
+        bar = _build_bar(s, ctx, ev, T)
+        s.on_bar(_ctx_for(s, ctx, bar.symbol, T), bar)
+    except Exception as e:
+        _report_callback_error("on_bar", str(e))
+
+
+def _tramp_on_start(ud: cobj, T: type):
+    s = _as_class(ud, T)
+    if s._suppress_start:
+        return
+    try:
+        s.on_start()
+    except Exception as e:
+        _report_callback_error("on_start", str(e))
+
+
+def _tramp_on_stop(ud: cobj, T: type):
+    s = _as_class(ud, T)
+    try:
+        s.on_stop()
+    except Exception as e:
+        _report_callback_error("on_stop", str(e))
+
+
+def _tramp_on_fill(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    s = _as_class(ud, T)
+    try:
+        event = _build_order_event(s, ev, T)
+        s.on_fill(_ctx_for(s, ctx, event.symbol, T), event)
+    except Exception as e:
+        _report_callback_error("on_fill", str(e))
+
+
+def _tramp_on_order_update(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    s = _as_class(ud, T)
+    try:
+        event = _build_order_event(s, ev, T)
+        s.on_order_update(_ctx_for(s, ctx, event.symbol, T), event)
+    except Exception as e:
+        _report_callback_error("on_order_update", str(e))
+
+
+def _tramp_on_queue_position(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    s = _as_class(ud, T)
+    try:
+        event = _build_order_event(s, ev, T)
+        s.on_queue_position_change(_ctx_for(s, ctx, event.symbol, T), event)
+    except Exception as e:
+        _report_callback_error("on_queue_position_change", str(e))
+
+
+def _tramp_on_market_position(ud: cobj, ctx: cobj, ev: cobj, T: type):
+    s = _as_class(ud, T)
+    try:
+        event = _build_order_event(s, ev, T)
+        s.on_market_position_change(_ctx_for(s, ctx, event.symbol, T), event)
+    except Exception as e:
+        _report_callback_error("on_market_position_change", str(e))
+
+
+# A strategy handed to a runner is reachable from C as a raw pointer only.
+# Codon's collector is conservative and scans reachable heap words, so
+# holding the pointer in this list is what keeps the object alive for the
+# lifetime of the process -- without it a strategy the caller did not keep
+# a name for (`runner.add_strategy(MyStrategy([sym]))`) can be collected
+# while the engine still holds its address.
+_attached: List[cobj] = []
+
+
+def bind_callbacks(strategy, T: type):
+    """Install C trampolines that dispatch into `strategy`'s own overrides.
+
+    Generic in the concrete strategy type, which is why it has to be called
+    from the place that still knows it -- Runner.add_strategy or
+    BacktestRunner.set_strategy -- and not from Strategy.__init__.
+    """
+    buf = strategy._callbacks_buf
+    slots = Ptr[cobj](buf)
+
+    slots[_CB_ON_TRADE] = _tramp_on_trade(T=T, ...).F.T.__raw__()
+    slots[_CB_ON_BOOK] = _tramp_on_book(T=T, ...).F.T.__raw__()
+    slots[_CB_ON_BAR] = _tramp_on_bar(T=T, ...).F.T.__raw__()
+    slots[_CB_ON_START] = _tramp_on_start(T=T, ...).F.T.__raw__()
+    slots[_CB_ON_STOP] = _tramp_on_stop(T=T, ...).F.T.__raw__()
+    slots[_CB_ON_FILL] = _tramp_on_fill(T=T, ...).F.T.__raw__()
+    slots[_CB_ON_ORDER_UPDATE] = _tramp_on_order_update(T=T, ...).F.T.__raw__()
+    slots[_CB_ON_QUEUE_POSITION] = _tramp_on_queue_position(T=T, ...).F.T.__raw__()
+    slots[_CB_ON_MARKET_POSITION] = _tramp_on_market_position(T=T, ...).F.T.__raw__()
+    slots[_CB_USER_DATA] = strategy.__raw__()
+
+    _attached.append(strategy.__raw__())
+
+    if strategy._handle != cobj():
+        # replace_callbacks is the hot-reload entry point: BridgeStrategy
+        # calls on_stop on the outgoing callbacks and on_start on the
+        # incoming ones, which is what a swapped-in strategy needs. A first
+        # attach is not a swap, and letting that on_start through would give
+        # the strategy two starts where the Python binding gives it one.
+        # The spurious call happens synchronously inside this one call, so
+        # the flag covers exactly it and nothing else.
+        strategy._suppress_start = True
+        flox_strategy_replace_callbacks_p(strategy._handle, buf)
+        strategy._suppress_start = False
+
+    _require_callbacks_installed(strategy)
+
+
+def _require_callbacks_installed(strategy):
+    """Refuse to run a strategy whose callbacks are still all null.
+
+    The state this guards against is the one that hid the defect for as long
+    as it did: every override in place, every event delivered to C++, and
+    nothing called. A backtest in that state still finishes and still prints
+    a plausible result, with the strategy's logic absent from it. Failing
+    here is worse to look at and far better to have.
+    """
+    slots = Ptr[cobj](strategy._callbacks_buf)
+    for i in range(_CB_SLOTS - 1):
+        if slots[i] != cobj():
+            return
+    raise ValueError(
+        "flox: this strategy has no event callbacks installed, so none of its "
+        "on_trade / on_bar / on_fill overrides would ever be called. Attach it "
+        "with Runner.add_strategy() or BacktestRunner.set_strategy(), which "
+        "install them.")
