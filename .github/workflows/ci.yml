@@ -414,6 +414,8 @@ jobs:
         test -f build/codon/codon_pairs_strategy
         test -f build/codon/codon_backtest_from_csv
         test -f build/codon/codon_full_backtest
+        test -f build/codon/codon_strategy_dispatch_smoke
+        test -f build/codon/codon_backtest_vs_live
         file build/codon/codon_sma_crossover | grep -q ELF
 
     - name: Run Codon examples
@@ -422,6 +424,8 @@ jobs:
           ./build/codon/codon_full_backtest
         LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
           ./build/codon/codon_backtest_from_csv docs/examples/data/btcusdt_1m.csv
+        LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
+          ./build/codon/codon_backtest_vs_live
 
     # These print "ok"/"FAIL" per check and most do not raise or exit
     # nonzero on a failed one, so checking only the process exit code is
@@ -438,7 +442,8 @@ jobs:
                    codon_delta_book_smoke codon_order_book_window_smoke \
                    codon_composite_book_smoke codon_bar_close_ordering_parity_smoke \
                    codon_order_type_codes_smoke codon_indicator_bounds_smoke \
-                   codon_signal_fields_smoke codon_aggregate_bars_smoke; do
+                   codon_signal_fields_smoke codon_aggregate_bars_smoke \
+                   codon_strategy_dispatch_smoke; do
           echo "── $bin"
           out=$(LD_LIBRARY_PATH=build/src/capi:$HOME/.codon/lib/codon \
                 "./build/codon/$bin" 2>&1)

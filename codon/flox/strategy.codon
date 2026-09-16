@@ -2,6 +2,7 @@
 # Mirrors C++ flox::Strategy. Override on_trade/on_book_update to implement logic.
 
 from C import flox_strategy_create_p(u32, Ptr[u32], u32, cobj, cobj) -> cobj
+from C import flox_registry_get_symbol_name(cobj, u32, cobj, int, cobj, int) -> u8
 from C import flox_strategy_destroy(cobj)
 from C import flox_emit_market_buy(cobj, u32, i64) -> u64
 from C import flox_emit_market_sell(cobj, u32, i64) -> u64
@@ -36,6 +37,15 @@ from flox.context import SymbolContext
 
 _FLOXBAR_SIZE = 72  # 8 * i64 + u32 + 4 bytes padding
 
+# FloxStrategyCallbacks: nine function pointers plus user_data, 8 bytes each
+# on every 64-bit target this ships on. codon/flox/dispatch.codon fills it.
+_CALLBACKS_BYTES = 80
+
+# Room for an exchange or instrument name coming back from the registry.
+# The C entry point truncates to the length it is given rather than
+# overrunning, so this is a cap and not an assumption about the data.
+_SYMBOL_NAME_CAP = 128
+
 
 def _floxbar_to_bardata(buf: Ptr[byte], symbol: int, bar_type: int,
                         bar_type_param: int, symbol_name: str = "") -> BarData:
@@ -68,11 +78,15 @@ class Strategy:
     """
 
     _handle: cobj
+    _strategy_id: int
     _symbols: List[int]
     _symbol_names: List[str]
     _symbol_map: Dict[str, int]
     _reverse_map: Dict[int, str]
     _callbacks_buf: Ptr[byte]
+    # Set only for the duration of the replace_callbacks call that installs
+    # the trampolines; see dispatch.bind_callbacks for why.
+    _suppress_start: bool
 
     def __init__(self, symbols: List[int], strategy_id: int = 1,
                  registry: cobj = cobj()):
@@ -89,18 +103,68 @@ class Strategy:
         # on_market_position_change, user_data). Zero-initialise —
         # overrides happen on the C++ side via the BridgeStrategy that
         # the runner attaches to this handle.
-        self._callbacks_buf = Ptr[byte](80)
-        for i in range(80):
+        self._strategy_id = strategy_id
+        self._suppress_start = False
+        self._callbacks_buf = Ptr[byte](_CALLBACKS_BYTES)
+        for i in range(_CALLBACKS_BYTES):
             self._callbacks_buf[i] = byte(0)
         if registry == cobj():
-            # No registry attached; downstream `Runner.add_strategy`
-            # will rebuild the handle once a registry is present.
+            # No registry yet. Runner.add_strategy / BacktestRunner
+            # .set_strategy build the handle when the strategy is attached,
+            # through _rebuild_handle below -- the registry they were
+            # constructed with is the one to use.
             self._handle = cobj()
         else:
-            sym_buf = [u32(s) for s in symbols]
-            self._handle = flox_strategy_create_p(
-                u32(strategy_id), Ptr[u32](sym_buf.arr.ptr),
-                u32(len(symbols)), registry, cobj(self._callbacks_buf))
+            self._create_handle(registry)
+
+    def _create_handle(self, registry: cobj):
+        sym_buf = [u32(s) for s in self._symbols]
+        self._handle = flox_strategy_create_p(
+            u32(self._strategy_id), Ptr[u32](sym_buf.arr.ptr),
+            u32(len(self._symbols)), registry, cobj(self._callbacks_buf))
+        self._load_symbol_names(registry)
+
+    def _load_symbol_names(self, registry: cobj):
+        """Fill the symbol name maps from the registry.
+
+        _symbol_names, _symbol_map and _reverse_map were declared and left
+        empty, so _resolve("BTCUSDT") raised on every name and the
+        symbol_name on every TradeData and BarData came out blank. Nobody
+        saw it while the callbacks were dead; the first event that reached
+        a subclass would have.
+        """
+        if registry == cobj():
+            return
+        self._symbol_names = list[str]()
+        self._symbol_map = dict[str, int]()
+        self._reverse_map = dict[int, str]()
+        exch_buf = Ptr[byte](_SYMBOL_NAME_CAP)
+        name_buf = Ptr[byte](_SYMBOL_NAME_CAP)
+        for sym in self._symbols:
+            for i in range(_SYMBOL_NAME_CAP):
+                exch_buf[i] = byte(0)
+                name_buf[i] = byte(0)
+            ok = flox_registry_get_symbol_name(
+                registry, u32(sym), cobj(exch_buf), _SYMBOL_NAME_CAP,
+                cobj(name_buf), _SYMBOL_NAME_CAP)
+            name = str.from_ptr(cobj(name_buf)) if ok != u8(0) else ""
+            self._symbol_names.append(name)
+            if name != "":
+                self._symbol_map[name] = sym
+                self._reverse_map[sym] = name
+
+    def _rebuild_handle(self, registry: cobj):
+        """Create the handle for a strategy that was constructed without a
+        registry. Called when the strategy is attached to a runner."""
+        if self._handle != cobj():
+            return
+        if registry == cobj():
+            raise ValueError(
+                "flox: this strategy was constructed without a registry and "
+                "the runner it is being attached to has none either, so no "
+                "strategy handle can be created. Pass the registry to "
+                "Strategy.__init__ or to the runner.")
+        self._create_handle(registry)
 
     # ------------------------------------------------------------------
     # Overridable callbacks

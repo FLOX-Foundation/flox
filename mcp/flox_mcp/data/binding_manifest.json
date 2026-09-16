@@ -4511,6 +4511,10 @@
         },
         {
           "kind": "class",
+          "name": "OrderEventData"
+        },
+        {
+          "kind": "class",
           "name": "OrderGroup"
         },
         {
@@ -4760,6 +4764,10 @@
         {
           "kind": "function",
           "name": "binance_um_futures"
+        },
+        {
+          "kind": "function",
+          "name": "bind_callbacks"
         },
         {
           "kind": "function",
@@ -5176,6 +5184,11 @@
           "kind": "method",
           "name": "write_equity_curve_csv",
           "parent": "BacktestResult"
+        },
+        {
+          "kind": "method",
+          "name": "_attach",
+          "parent": "BacktestRunner"
         },
         {
           "kind": "method",
@@ -6529,6 +6542,11 @@
         },
         {
           "kind": "method",
+          "name": "from_raw",
+          "parent": "OrderEventData"
+        },
+        {
+          "kind": "method",
           "name": "add_limit_leg",
           "parent": "OrderGroup"
         },
@@ -7089,6 +7107,11 @@
         },
         {
           "kind": "method",
+          "name": "_attach",
+          "parent": "Runner"
+        },
+        {
+          "kind": "method",
           "name": "add_strategy",
           "parent": "Runner"
         },
@@ -7506,6 +7529,21 @@
           "kind": "method",
           "name": "value",
           "parent": "Stochastic"
+        },
+        {
+          "kind": "method",
+          "name": "_create_handle",
+          "parent": "Strategy"
+        },
+        {
+          "kind": "method",
+          "name": "_load_symbol_names",
+          "parent": "Strategy"
+        },
+        {
+          "kind": "method",
+          "name": "_rebuild_handle",
+          "parent": "Strategy"
         },
         {
           "kind": "method",
