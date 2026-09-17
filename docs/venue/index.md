@@ -54,6 +54,7 @@ someone's hands. This is useful for:
 | Runtime | Single-writer sequenced core, journal, deterministic replay | [Runtime and recovery](runtime.md) |
 | Market data | Venue events to an L2 feed: multicast or unicast TCP, SBE or FIX | [Market data](market-data.md) |
 | Perimeter | TCP/WS/TLS/UDP gateways, sessions, FIX/SBE-OE/REST codecs, control plane | [Perimeter](perimeter.md) |
+| FIX initiator | The client end of a FIX 4.4 session, for connecting to a venue instead of running one | [Connecting over FIX](fix-initiator.md) |
 
 ## Design notes
 

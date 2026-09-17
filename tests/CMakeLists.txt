@@ -112,9 +112,13 @@ if(FLOX_ENABLE_ONNX)
     FLOX_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 endif()
 
-# test_receive_path uses POSIX sockets; not built on Windows.
+# test_receive_path uses POSIX sockets; not built on Windows. The FIX initiator
+# tests sit here for the same reason: the sequence sidecar writes through
+# open/fsync/rename and the transport is a POSIX socket.
 if(NOT WIN32)
   add_flox_test(test_receive_path)
+  add_flox_test(test_fix_initiator)
+  add_flox_test(test_fix_client_parser_fuzz)
 endif()
 
 if(FLOX_ENABLE_BACKTEST)

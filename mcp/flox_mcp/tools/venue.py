@@ -80,6 +80,15 @@ Interchangeable, and held identical by a differential fuzz.
 | Market data out (L2 + SBE) | `flox-venue/{market_data,sbe_md_codec}.h` |
 | Gateways, sessions, FIX/SBE-OE/REST | `flox-venue/{tcp_gateway,ws_gateway,tls_gateway,session,fix_codec,sbe_order_entry_codec,rest_json}.h` |
 | Control plane, metrics | `flox-venue/{control_api,metrics,prometheus}.h` |
+| Connecting OUT over FIX (the client side) | `flox/connector/fix/{fix_initiator,fix_client_codec,fix_tcp_client,fix_executor}.h` |
+
+That last row is the exception to everything above it. The FIX *initiator*
+(`flox::fix::FixInitiator`) is in the CORE, not in this module, and needs no
+`FLOX_BUILD_VENUE`. A strategy that connects to a counterparty over FIX 4.4
+reaches for it directly. Only the FIX *acceptor* -- answering someone else's
+session -- is venue-side. Both ends share one framing implementation so their
+bytes cannot drift apart. See
+https://flox-foundation.github.io/flox/venue/fix-initiator/
 
 ## Order vocabulary
 
