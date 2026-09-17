@@ -491,6 +491,7 @@ jobs:
         ./build/src/quickjs/flox_js_runner quickjs/examples/order_group_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/bar_close_ordering_parity_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/renko_gap_bricks_smoke.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/pairs_strategy_smoke.js
 
     # Every test_*.js, not a hand-listed subset (9 of 21 files were unrun).
     # byte_identical_fixture.js is a fixture helper, not a test, and is
