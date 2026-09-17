@@ -23,11 +23,27 @@ jobs:
     timeout-minutes: 5
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Restrict manual trigger
-        if: github.actor != 'eeiaao'
+      # The release workflow pushes the tag as the app, not as a person, so
+      # the app is allowed on the tag path only. Publishing is gated by the
+      # `release` environment's required approval, not by this step.
+      - name: Restrict who can reach the publish path
+        env:
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+          RELEASE_APP: "flox-release-bot[bot]"
         run: |
-          echo "::error::Only eeiaao can trigger this workflow manually."
-          exit 1
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ "$ACTOR" != "eeiaao" ]; then
+              echo "::error::only eeiaao can start this workflow by hand (actor: $ACTOR)"
+              exit 1
+            fi
+          else
+            if [ "$ACTOR" != "eeiaao" ] && [ "$ACTOR" != "$RELEASE_APP" ]; then
+              echo "::error::a v* tag reaches the publish path only from eeiaao or $RELEASE_APP (actor: $ACTOR)"
+              exit 1
+            fi
+          fi
+          echo "actor '$ACTOR' is allowed for event '$EVENT'"
 
   # A tag can be pushed from anywhere; publishing must only ever happen for
   # one that is actually reachable from main, so a stray branch or an
