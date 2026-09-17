@@ -100,6 +100,15 @@ jobs:
     - name: Verify every Codon example runs in CI or is a listed exception
       run: python3 scripts/check_codon_examples_coverage.py
 
+    # Same defect, fourth time, this time on the QuickJS side:
+    # merged_tape_smoke.js and run_trace_smoke.js shipped and were never
+    # added to the "Verify QuickJS runner" step below, so nothing in CI
+    # ever ran them. Also a static check -- every quickjs/examples/*.js
+    # file must be named by that step or a reasoned entry in the script's
+    # own EXCEPTIONS list.
+    - name: Verify every QuickJS example runs in CI or is a listed exception
+      run: python3 scripts/check_quickjs_examples_coverage.py
+
     # The QuickJS call sites are strings inside C++ string literals, so the
     # compiler cannot see a global that was never registered. setQueueFifoTopN
     # shipped that way and every call was a ReferenceError.
@@ -492,6 +501,8 @@ jobs:
         ./build/src/quickjs/flox_js_runner quickjs/examples/bar_close_ordering_parity_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/renko_gap_bricks_smoke.js
         ./build/src/quickjs/flox_js_runner quickjs/examples/pairs_strategy_smoke.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/merged_tape_smoke.js
+        ./build/src/quickjs/flox_js_runner quickjs/examples/run_trace_smoke.js
 
     # Every test_*.js, not a hand-listed subset (9 of 21 files were unrun).
     # byte_identical_fixture.js is a fixture helper, not a test, and is
