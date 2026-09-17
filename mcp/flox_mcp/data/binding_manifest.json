@@ -11424,6 +11424,11 @@
           "name": "BudgetedInference"
         },
         {
+          "header": "include/flox/connector/fix/fix_client_codec.h",
+          "kind": "type",
+          "name": "BusinessReject"
+        },
+        {
           "header": "include/flox/util/performance/busy_backoff.h",
           "kind": "type",
           "name": "BusyBackoff"
@@ -11449,6 +11454,21 @@
           "name": "CachedPositionState"
         },
         {
+          "header": "include/flox/connector/fix/fix_client_codec.h",
+          "kind": "type",
+          "name": "CancelReject"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_client_codec.h",
+          "kind": "type",
+          "name": "CancelReplaceRequest"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_client_codec.h",
+          "kind": "type",
+          "name": "CancelRequest"
+        },
+        {
           "header": "include/flox/execution/algos.h",
           "kind": "type",
           "name": "ChildOrder"
@@ -11457,6 +11477,11 @@
           "header": "include/flox/backtest/concentrated_liquidity_curve.h",
           "kind": "type",
           "name": "ClTick"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_client_codec.h",
+          "kind": "type",
+          "name": "ClientCodec"
         },
         {
           "header": "include/flox/book/composite_book_matrix.h",
@@ -11709,6 +11734,11 @@
           "name": "ExecutionFlags"
         },
         {
+          "header": "include/flox/connector/fix/fix_client_codec.h",
+          "kind": "type",
+          "name": "ExecutionReport"
+        },
+        {
           "header": "include/flox/execution/execution_tracker_adapter.h",
           "kind": "type",
           "name": "ExecutionTrackerAdapter"
@@ -11762,6 +11792,41 @@
           "header": "include/flox/run/trace_recorder.h",
           "kind": "type",
           "name": "FillView"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_initiator.h",
+          "kind": "type",
+          "name": "FixInitiator"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_initiator.h",
+          "kind": "type",
+          "name": "FixInitiatorConfig"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_initiator.h",
+          "kind": "type",
+          "name": "FixInitiatorSidecar"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_executor.h",
+          "kind": "type",
+          "name": "FixRoutableExecutor"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_initiator.h",
+          "kind": "type",
+          "name": "FixSeqState"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_tcp_client.h",
+          "kind": "type",
+          "name": "FixTcpClient"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_tcp_client.h",
+          "kind": "type",
+          "name": "FixTcpSession"
         },
         {
           "header": "include/flox/error/flox_error.h",
@@ -12359,6 +12424,11 @@
           "name": "NLevelOrderBook"
         },
         {
+          "header": "include/flox/connector/fix/fix_client_codec.h",
+          "kind": "type",
+          "name": "NewOrderRequest"
+        },
+        {
           "header": "include/flox/util/performance/system_interface.h",
           "kind": "type",
           "name": "NullSystemInterface"
@@ -12897,6 +12967,11 @@
           "header": "include/flox/util/base/time.h",
           "kind": "type",
           "name": "SeqTag"
+        },
+        {
+          "header": "include/flox/connector/fix/fix_client_codec.h",
+          "kind": "type",
+          "name": "SessionReject"
         },
         {
           "header": "include/flox/strategy/shadow.h",
@@ -15180,6 +15255,81 @@
         },
         {
           "kind": "method",
+          "name": "add",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "dec",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "decode",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "decodeExecReport",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "encode",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "encodeSequenced",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "execTypeOf",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "i32",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "ordTypeStr",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "pxStr",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "qtyStr",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "reframe",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "str",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "tifStr",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
+          "name": "u64",
+          "parent": "ClientCodec"
+        },
+        {
+          "kind": "method",
           "name": "alignas",
           "parent": "CompositeBookMatrix"
         },
@@ -16612,6 +16762,246 @@
           "kind": "method",
           "name": "tiers",
           "parent": "FeeSchedule"
+        },
+        {
+          "kind": "method",
+          "name": "cancel",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "config",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "connect",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "fieldStr",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "fieldU64",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "gapFill",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "heartbeatReply",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "loggedOn",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "logout",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "logoutLocked",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "negotiatedHeartBtIntSec",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "noteSeq",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "onFrame",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "onFrameLocked",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "onLogonReply",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "onSequenceReset",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "onTick",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "replace",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "requestResend",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "restore",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "sendAdminLocked",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "sendApp",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "seqState",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "serveResend",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "setReportHandler",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "setSend",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "setSeqObserver",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "submit",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "append",
+          "parent": "FixInitiatorSidecar"
+        },
+        {
+          "kind": "method",
+          "name": "load",
+          "parent": "FixInitiatorSidecar"
+        },
+        {
+          "kind": "method",
+          "name": "write",
+          "parent": "FixInitiatorSidecar"
+        },
+        {
+          "kind": "method",
+          "name": "cancel",
+          "parent": "FixRoutableExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "forget",
+          "parent": "FixRoutableExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "liveOrderCount",
+          "parent": "FixRoutableExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "onReport",
+          "parent": "FixRoutableExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "replace",
+          "parent": "FixRoutableExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "setClock",
+          "parent": "FixRoutableExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "submit",
+          "parent": "FixRoutableExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "wallClockNs",
+          "parent": "FixRoutableExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "close",
+          "parent": "FixTcpClient"
+        },
+        {
+          "kind": "method",
+          "name": "connect",
+          "parent": "FixTcpClient"
+        },
+        {
+          "kind": "method",
+          "name": "connected",
+          "parent": "FixTcpClient"
+        },
+        {
+          "kind": "method",
+          "name": "fd",
+          "parent": "FixTcpClient"
+        },
+        {
+          "kind": "method",
+          "name": "read",
+          "parent": "FixTcpClient"
+        },
+        {
+          "kind": "method",
+          "name": "send",
+          "parent": "FixTcpClient"
+        },
+        {
+          "kind": "method",
+          "name": "close",
+          "parent": "FixTcpSession"
+        },
+        {
+          "kind": "method",
+          "name": "connect",
+          "parent": "FixTcpSession"
+        },
+        {
+          "kind": "method",
+          "name": "poll",
+          "parent": "FixTcpSession"
         },
         {
           "kind": "method",

@@ -16,11 +16,19 @@
  * strict -- a missing or invalid Side (54), a present-but-unknown OrdType (40),
  * or a missing OrderQty (38) rejects the message rather than guessing a default.
  * Outbound prices/quantities serialise exactly (100.25, not 100.250000).
+ *
+ * Framing, field parsing, the checksum, the session header and the SendingTime
+ * format are not spelled out here: they come from flox/connector/fix/fix_wire.h,
+ * which the FIX initiator uses too. The two ends of a session have to produce
+ * the same bytes for the same message, and one implementation is what makes
+ * that structural rather than a thing tests have to keep noticing.
  */
 #pragma once
 
 #include "flox-venue/decimal_wire.h"
 #include "flox-venue/messages.h"
+
+#include "flox/connector/fix/fix_wire.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -38,51 +46,18 @@ namespace flox::venue
 class FixCodec
 {
  public:
-  static constexpr char SOH = '\x01';
+  static constexpr char SOH = flox::fix::kSoh;
 
   // tag=value fields of a raw FIX message (last occurrence wins on repeats).
   static std::unordered_map<int, std::string> parseFields(const std::string& msg)
   {
-    std::unordered_map<int, std::string> f;
-    size_t i = 0;
-    while (i < msg.size())
-    {
-      size_t eq = msg.find('=', i);
-      if (eq == std::string::npos)
-      {
-        break;
-      }
-      size_t soh = msg.find(SOH, eq + 1);
-      if (soh == std::string::npos)
-      {
-        soh = msg.size();
-      }
-      const int tag = std::atoi(msg.substr(i, eq - i).c_str());
-      f[tag] = msg.substr(eq + 1, soh - eq - 1);
-      i = soh + 1;
-    }
-    return f;
+    return flox::fix::parseFields(msg);
   }
 
   // FIX integrity: if a CheckSum (tag 10) is present it MUST be correct --
   // sum of every byte up to and including the SOH before "10=", mod 256.
   // Lenient when absent, for internal/test callers that don't append one.
-  static bool checksumValid(const std::string& msg)
-  {
-    const std::string marker = std::string(1, SOH) + "10=";
-    const size_t p = msg.rfind(marker);
-    if (p == std::string::npos)
-    {
-      return true;
-    }
-    unsigned sum = 0;
-    for (size_t k = 0; k <= p; ++k)
-    {
-      sum += static_cast<unsigned char>(msg[k]);
-    }
-    return (sum % 256) ==
-           static_cast<unsigned>(std::atoi(msg.c_str() + p + marker.size()));
-  }
+  static bool checksumValid(const std::string& msg) { return flox::fix::checksumValid(msg); }
 
   // ---- inbound: FIX message -> InboundCommand ----
   static std::optional<InboundCommand> decode(const std::string& msg)
@@ -261,10 +236,7 @@ class FixCodec
 
   // MsgSeqNum (34) of a raw FIX message; 0 when absent (a structurally
   // incomplete message -- FIX 4.4 requires 34 on every message).
-  static uint64_t msgSeqNum(const std::string& msg)
-  {
-    return tagValueU64(msg, 34);
-  }
+  static uint64_t msgSeqNum(const std::string& msg) { return flox::fix::msgSeqNum(msg); }
 
   // ---- outbound: OutboundEvent -> ExecutionReport (35=8) ----
   // Session-framed variant: injects the FIX 4.4 required header fields --
@@ -304,18 +276,8 @@ class FixCodec
     const std::string tail =
         bare.substr(bodyStart, (csum == std::string::npos ? bare.size() : csum + 1) - bodyStart);
     std::string b = marker;
-    b += "34=" + std::to_string(seq) + SOH;
-    b += "49=" + senderCompId + SOH;
-    b += "56=" + targetCompId + SOH;
-    b += "52=" + sendingTime + SOH;
-    if (possDup)
-    {
-      b += std::string("43=Y") + SOH;
-    }
-    if (!origSendingTime.empty())
-    {
-      b += "122=" + origSendingTime + SOH;
-    }
+    flox::fix::appendHeader(b, seq, senderCompId, targetCompId, sendingTime, possDup,
+                            origSendingTime);
     b += tail;
     return frame(b);
   }
@@ -329,20 +291,8 @@ class FixCodec
                                  const std::vector<std::pair<int, std::string>>& fields = {},
                                  bool possDup = false)
   {
-    std::string b = "35=" + msgType + SOH;
-    b += "34=" + std::to_string(seq) + SOH;
-    b += "49=" + senderCompId + SOH;
-    b += "56=" + targetCompId + SOH;
-    b += "52=" + sendingTime + SOH;
-    if (possDup)
-    {
-      b += std::string("43=Y") + SOH;
-    }
-    for (const auto& [tag, val] : fields)
-    {
-      b += std::to_string(tag) + "=" + val + SOH;
-    }
-    return frame(b);
+    return flox::fix::encodeAdmin(msgType, seq, senderCompId, targetCompId, sendingTime, fields,
+                                  possDup);
   }
 
   static std::string encode(const OutboundEvent& ev)
@@ -469,38 +419,7 @@ class FixCodec
   }
 
   // Prepend 8/9, append 10 with correct BodyLength and CheckSum.
-  static std::string frame(const std::string& body)
-  {
-    const std::string prefix = std::string("8=FIX.4.4") + SOH;
-    const std::string lenField = std::string("9=") + std::to_string(body.size()) + SOH;
-    std::string msg = prefix + lenField + body;
-    uint32_t sum = 0;
-    for (unsigned char ch : msg)
-    {
-      sum += ch;
-    }
-    char cs[4];
-    std::snprintf(cs, sizeof(cs), "%03u", sum % 256);
-    msg += std::string("10=") + cs + SOH;
-    return msg;
-  }
-
- private:
-  // Value of the first `tag=` field as u64 (0 when absent / non-numeric).
-  static uint64_t tagValueU64(const std::string& msg, int tag)
-  {
-    const std::string needle = std::to_string(tag) + "=";
-    size_t p = 0;
-    while ((p = msg.find(needle, p)) != std::string::npos)
-    {
-      if (p == 0 || msg[p - 1] == SOH)  // field boundary, not a substring of another tag
-      {
-        return std::strtoull(msg.c_str() + p + needle.size(), nullptr, 10);
-      }
-      p += needle.size();
-    }
-    return 0;
-  }
+  static std::string frame(const std::string& body) { return flox::fix::frame(body); }
 };
 
 // FIX session-layer state: monotonic outbound MsgSeqNum, inbound MsgSeqNum
@@ -564,14 +483,7 @@ class FixSession
   // UTCTimestamp for tag 52: YYYYMMDD-HH:MM:SS.sss from wall-clock ns.
   static std::string sendingTime(int64_t wallClockNs)
   {
-    const time_t secs = static_cast<time_t>(wallClockNs / 1'000'000'000);
-    const int millis = static_cast<int>((wallClockNs / 1'000'000) % 1000);
-    tm g{};
-    gmtime_r(&secs, &g);
-    char buf[32];
-    std::snprintf(buf, sizeof buf, "%04d%02d%02d-%02d:%02d:%02d.%03d", g.tm_year + 1900,
-                  g.tm_mon + 1, g.tm_mday, g.tm_hour, g.tm_min, g.tm_sec, millis);
-    return buf;
+    return flox::fix::sendingTime(wallClockNs);
   }
 
  private:

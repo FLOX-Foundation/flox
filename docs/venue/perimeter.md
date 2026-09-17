@@ -192,6 +192,17 @@ monotonic `seq`:
     event is simply not encoded on FIX sessions (no seq is consumed).
   - The sequencing/framing building block (`FixSession` in `fix_codec.h`)
     stays for embedded/test use.
+  - **The other end of this session is `flox::fix::FixInitiator`**
+    (`flox/connector/fix/`, in the core rather than the venue module -- see
+    [Connecting to another venue over FIX](fix-initiator.md) for why). It
+    opens the Logon, keeps the same liveness timers, serves a `ResendRequest`
+    with the same PossDup/GapFill split, and closes its own gaps under the
+    same no-reorder-buffer rule. Both ends frame through one shared
+    implementation in `flox/connector/fix/fix_wire.h` (field parsing, the
+    checksum, the header field order, SendingTime) and print decimals through
+    one shared `flox/util/decimal_wire.h`, so the bytes cannot drift apart.
+    `venue/tests/test_venue_fix_initiator.cpp` runs the pair against each
+    other in one process.
 
 The old `ResendBuffer` (an event-level log reachable from no wire path) was
 removed; the client-side `GapDetector` stays in `resend_buffer.h` for the
@@ -223,6 +234,7 @@ market-data path.
 |---|---|
 | `SbeOrderEntryCodec` | SBE binary order entry + exec reports, full fidelity: every field round-trips, including `reduceOnly`, `peg`, `expiryNs`, `ocoGroup`, `lastLook` (schema `venue/schema/order-entry-sbe.xml`) |
 | `FixCodec` | FIX 4.4: `D`/`F`/`G` in, `ExecutionReport` out, with `BodyLength` and validated `CheckSum` |
+| `flox::fix::ClientCodec` | the mirror, for talking TO a venue: `D`/`F`/`G` out, `35=8`/`9`/`3`/`j` in ([FIX initiator](fix-initiator.md)) |
 | `RestJson` | REST/JSON adoption path (simdjson) |
 | `SbeMdCodec` | outbound market data (SBE, schema `venue/schema/md-sbe.xml`) |
 

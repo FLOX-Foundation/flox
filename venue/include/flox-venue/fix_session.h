@@ -460,29 +460,12 @@ class FixConnection
   // Is this a FIX 4.4 APPLICATION message type -- something a counterparty may
   // legitimately send, that this venue does not implement? Those earn a
   // business-level reject. Anything else (garbage, a session type out of
-  // place) is a session-level problem.
-  //
-  // Deliberately a list rather than "not one of the session types": an
-  // unrecognised byte is not a message we declined to support, it is a message
-  // we could not parse, and saying otherwise hides a framing bug behind a
-  // polite refusal.
+  // place) is a session-level problem. The list lives in
+  // flox/connector/fix/fix_wire.h, where the initiator reads it too: both ends
+  // of a session have to draw the 35=3 / 35=j line in the same place.
   static bool isApplicationMsgType(const std::string& t)
   {
-    static const char* kAppTypes[] = {
-        "6", "7", "8", "9", "AB", "AC", "AD", "AE", "AF", "AG", "AH", "AI", "AJ", "AK",
-        "AL", "AM", "AN", "AO", "AP", "AQ", "AR", "AS", "AT", "AU", "AV", "AW", "AX", "AY",
-        "AZ", "B", "BA", "BB", "BC", "BD", "BE", "BF", "BG", "C", "D", "E", "F", "G",
-        "H", "J", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "X",
-        "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
-        "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"};
-    for (const char* a : kAppTypes)
-    {
-      if (t == a)
-      {
-        return true;
-      }
-    }
-    return false;
+    return flox::fix::isApplicationMsgType(t);
   }
 
   // Timer pass on the gateway idle tick. False = liveness lost, disconnect.
