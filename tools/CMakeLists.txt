@@ -14,3 +14,11 @@ if(NOT WIN32)
   target_link_libraries(afxdp_probe PRIVATE flox)
   target_include_directories(afxdp_probe PRIVATE ${CMAKE_SOURCE_DIR}/include)
 endif()
+
+# Journal window replay: "what happened to account N between t1 and t2".
+# Engine-side -- no sockets, so it builds wherever the venue engine does.
+if(FLOX_BUILD_VENUE)
+  add_executable(venue_replay_window venue_replay_window.cpp)
+  target_link_libraries(venue_replay_window PRIVATE flox-venue)
+  target_include_directories(venue_replay_window PRIVATE ${CMAKE_SOURCE_DIR}/include)
+endif()
