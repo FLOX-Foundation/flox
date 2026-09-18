@@ -490,6 +490,11 @@ void test_inbound_round_trip_from_venue_encoder()
 
   OrderAccepted acc;
   acc.id = 5;
+  // Deliberately different from the venue's own id: 37 and 11 are different
+  // fields, and a report that copies one into the other tells the client
+  // nothing it did not already have. This used to be the same number, which is
+  // why the difference is what the check below looks at.
+  acc.clientOrderId = 77;
   acc.symbol = 2;
   acc.side = Side::BUY;
   acc.price = px(100.25);
@@ -503,7 +508,7 @@ void test_inbound_round_trip_from_venue_encoder()
     CHECK(e != nullptr);
     if (e != nullptr)
     {
-      CHECK(e->orderId == 5 && e->clOrdId == 5 && e->symbol == 2);
+      CHECK(e->orderId == 5 && e->clOrdId == 77 && e->symbol == 2);
       CHECK(e->hasSide && e->side == Side::BUY);
       CHECK(e->execType == fix::ExecType::New && e->ordStatus == "0");
       CHECK(e->price.raw() == px(100.25).raw());

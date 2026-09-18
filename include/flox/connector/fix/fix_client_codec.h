@@ -112,8 +112,12 @@ enum class ExecType : uint8_t
 
 struct ExecutionReport
 {
-  uint64_t orderId{};   // 37
-  uint64_t clOrdId{};   // 11 (absent on some reports; 0 then)
+  uint64_t orderId{};  // 37
+  // 11. A venue that follows FIX 4.4 sends it on every report that describes
+  // an order, and this one does; 0 means the counterparty omitted it, which a
+  // reconciler should treat as "match on 37 instead", not as "the client id is
+  // zero".
+  uint64_t clOrdId{};
   SymbolId symbol{};    // 55
   bool hasSide{false};  // 54 is optional on a venue exec report
   Side side{Side::BUY};

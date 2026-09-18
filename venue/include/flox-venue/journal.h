@@ -106,9 +106,9 @@ static_assert(std::variant_size_v<InboundCommand> == 34,
 // stamp exists to prevent. They get separate numbers and refuse each other by
 // name.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 2;
+inline constexpr uint8_t kRecordVersion = 4;
 #else
-inline constexpr uint8_t kRecordVersion = 1;
+inline constexpr uint8_t kRecordVersion = 3;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
@@ -173,12 +173,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0x0ca8c2de008c6fcfULL,
+static_assert(bodyLayoutFingerprint() == 0xa14fc7eb3ca84dbfULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0xf08f4cc2d02ad417ULL,
+static_assert(bodyLayoutFingerprint() == 0x80cd74b8bd12c127ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");

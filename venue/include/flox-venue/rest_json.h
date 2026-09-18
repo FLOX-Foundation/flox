@@ -114,6 +114,12 @@ class RestJson
     {
       w.str("type", "accepted");
       w.u64("id", a->id);
+      // The submitter's own identifier, written only when there was one: a
+      // reader reconciles against the name it chose, not the venue's.
+      if (a->clientOrderId != 0)
+      {
+        w.u64("clOrdId", a->clientOrderId);
+      }
       w.str("side", a->side == Side::SELL ? "sell" : "buy");
       w.fixed("price", a->price.raw());
       w.fixed("leaves", a->leavesQty.raw());
@@ -132,6 +138,10 @@ class RestJson
     {
       w.str("type", "executed");
       w.u64("id", x->id);
+      if (x->clientOrderId != 0)
+      {
+        w.u64("clOrdId", x->clientOrderId);
+      }
       w.fixed("lastQty", x->lastQty.raw());
       w.fixed("leaves", x->leavesQty.raw());
       w.boolean("complete", x->complete);
@@ -140,12 +150,20 @@ class RestJson
     {
       w.str("type", "canceled");
       w.u64("id", c->id);
+      if (c->clientOrderId != 0)
+      {
+        w.u64("clOrdId", c->clientOrderId);
+      }
       w.str("reason", toString(c->reason));
     }
     else if (const auto* j = std::get_if<OrderRejected>(&ev))
     {
       w.str("type", "rejected");
       w.u64("id", j->id);
+      if (j->clientOrderId != 0)
+      {
+        w.u64("clOrdId", j->clientOrderId);
+      }
       w.str("reason", toString(j->reason));
     }
     else if (const auto* j = std::get_if<CancelRejected>(&ev))
@@ -158,6 +176,10 @@ class RestJson
     {
       w.str("type", "modified");
       w.u64("id", m->id);
+      if (m->clientOrderId != 0)
+      {
+        w.u64("clOrdId", m->clientOrderId);
+      }
       w.fixed("price", m->price.raw());
       w.fixed("leaves", m->leavesQty.raw());
     }
