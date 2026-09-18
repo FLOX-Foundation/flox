@@ -1131,6 +1131,11 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
+    # Seconds, and it answers for every header at once. The Windows job
+    # answers the same question eight minutes in and one header at a time,
+    # because the compiler stops at the first.
+    - name: Check the engine reaches no POSIX header unconditionally
+      run: python3 scripts/check_engine_portability.py
     - name: Configure with the engine and without the perimeter
       run: |
         cmake -B build -G Ninja \
