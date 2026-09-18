@@ -16,12 +16,18 @@
 if(NOT DEFINED FLOX_VENUE_PERIMETER)
   if(WIN32)
     set(FLOX_VENUE_PERIMETER OFF)
-    message(STATUS "FLOX_VENUE_PERIMETER: no POSIX sockets here; engine only.")
+    # Not "no POSIX sockets" any more: the perimeter goes through
+    # flox/net/socket.h and compiles here. What is still unfinished is the
+    # rest of the perimeter's surroundings on this platform -- simdjson and
+    # OpenSSL under clang-cl, and one lifecycle test that interposes close(2)
+    # through dlsym. Off by default until those are answered; the option is
+    # there for whoever wants to try.
+    message(STATUS "FLOX_VENUE_PERIMETER: off by default on Windows; engine only.")
   else()
     set(FLOX_VENUE_PERIMETER ON)
   endif()
 endif()
-option(FLOX_VENUE_PERIMETER "Build the venue's network perimeter (needs POSIX sockets)" ${FLOX_VENUE_PERIMETER})
+option(FLOX_VENUE_PERIMETER "Build the venue's network perimeter" ${FLOX_VENUE_PERIMETER})
 
 # simdjson is the REST codec's parser and the REST codec is perimeter.
 if(FLOX_VENUE_PERIMETER)
