@@ -59,6 +59,18 @@ enum class RejectReason : uint8_t
   // Withdrawn from trading with no scheduled return, unlike Halted (comes back)
   // or MarketClosed (next session). Appended -- wire enum is append-only.
   InstrumentDelisted,
+  // Refused by the risk owner outside the engine (setCreditCheck), for its own
+  // reasons rather than for anything the engine can see. Appended -- the wire
+  // enum is append-only.
+  //
+  // These exist because the alternative was borrowing: an external owner that
+  // refused because an account was suspended had to answer InsufficientFunds,
+  // and one whose limit source had gone quiet had to answer MarketClosed. Both
+  // are false, and a client reading the text acts on the wrong thing -- tops
+  // up an account that is not short of money, or waits for a session that
+  // never closed.
+  CreditRefused,            // the risk owner said no; the reason is its own
+  CreditSourceUnavailable,  // the risk owner could not decide: limits unreachable
 };
 
 enum class CancelReason : uint8_t
