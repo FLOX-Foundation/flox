@@ -25,9 +25,11 @@ inline constexpr uint32_t kMaxFrame = 16u << 20;  // 16 MiB
 // Writes go through sendNoSignal rather than ::write: on a peer that has
 // gone away, a bare write raises SIGPIPE, and the answer to that differs per
 // platform (a socket option on macOS, a send flag on Linux, nothing on
-// Windows). Asking per call is narrower than the process-wide
-// signal(SIGPIPE, SIG_IGN) the gateways fall back to, which changes the
-// disposition for every other line of code in the program too.
+// Windows). Asking per call is narrower than a process-wide
+// signal(SIGPIPE, SIG_IGN), which changes the disposition for every other
+// line of code in the program too. One place still needs that -- the TLS
+// gateway, where OpenSSL issues the write itself and cannot be handed the
+// flag -- and it is the only one.
 inline bool writeAll(net::Handle fd, const uint8_t* p, size_t n)
 {
   size_t off = 0;
