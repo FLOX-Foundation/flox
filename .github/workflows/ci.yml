@@ -891,7 +891,14 @@ jobs:
         if (Test-Path vcpkg) { Remove-Item -Recurse -Force vcpkg }
         Invoke-WithRetry 'git clone vcpkg' 3 { git clone --depth 1 https://github.com/microsoft/vcpkg.git }
         Invoke-WithRetry 'bootstrap-vcpkg' 3 { .\vcpkg\bootstrap-vcpkg.bat }
-        Invoke-WithRetry 'vcpkg install' 3 { .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows }
+        # No gtest here on purpose: this job builds it from source
+        # (FLOX_FETCH_GTEST) because clang-cl and cl disagree about which
+        # types exist. vcpkg puts its include directory ahead of any
+        # target's, so a gtest left installed would be the one compiled
+        # against while the one built here is the one linked, and the two
+        # are different versions. Installing it is what makes that
+        # possible, so it is not installed.
+        Invoke-WithRetry 'vcpkg install' 3 { .\vcpkg\vcpkg install lz4:x64-windows benchmark:x64-windows }
 
     - name: Configure with clang-cl
       run: |
