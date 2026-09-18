@@ -36,6 +36,8 @@
 #include <vector>
 #include "flox/net/socket.h"
 
+#include <csignal>
+
 namespace flox::venue
 {
 namespace tls
@@ -125,6 +127,36 @@ inline bool readFrame(SSL* s, std::vector<uint8_t>& out)
 
 }  // namespace tls
 
+// The one place in the venue that still has to touch a process-wide signal
+// disposition, and it is worth saying exactly why rather than leaving it as
+// folklore.
+//
+// Everywhere else, a write to a peer that has gone away goes through
+// net::sendNoSignal, which passes MSG_NOSIGNAL on Linux and relies on the
+// SO_NOSIGPIPE set at accept on macOS -- no signal is raised and the writer
+// gets EPIPE. Here the write is SSL_write: OpenSSL calls the socket itself
+// and there is no way to hand it that flag. On macOS the per-socket option
+// still covers it. On Linux there is no per-socket option at all, so the
+// only remaining choices are to ignore the signal for the process or to mask
+// it per thread -- and per thread would have to cover the SessionWriter's
+// thread too, which this class does not own and does not create.
+//
+// So: once, on the first TLS gateway a process starts, and not before. A
+// process that never speaks TLS never has its disposition changed. Without
+// it a client that vanishes mid-write kills the venue outright, which is
+// what the test suite showed the moment this was left out.
+inline void suppressSigpipeForOpenSsl() noexcept
+{
+#if !defined(_WIN32)
+  static const bool once = []
+  {
+    ::signal(SIGPIPE, SIG_IGN);
+    return true;
+  }();
+  (void)once;
+#endif
+}
+
 // Delivery over TLS: OpenSSL forbids CONCURRENT SSL_read/SSL_write on one
 // SSL*, not serialized use from two threads. Each connection carries a
 // std::mutex over its SSL*: the read loop establishes readiness OUTSIDE the
@@ -191,6 +223,7 @@ class TlsGateway
   int start(uint16_t port, Handler handler)
   {
     handler_ = std::move(handler);
+    suppressSigpipeForOpenSsl();
     // Contain any exception to this one connection -- connLoop is a thread body,
     // so an escape would reach std::terminate and take down the whole venue.
     // The acceptor owns the fd (closes it after the handler returns).
