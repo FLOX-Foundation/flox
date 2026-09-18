@@ -113,6 +113,10 @@ struct MdSnapshot
 // onEvent runs on the matching thread; snapshotAtomic/resendFrom are called
 // from recovery-server connection threads. The internal mutex makes the
 // (snapshot, lastSeq) pair and the resend ring consistent with the live feed.
+// Heap, not stack. At the default number of levels this object is about 2 MB
+// of preallocated ladder, which does not fit the one-megabyte stack a Windows
+// thread gets by default; the same declaration compiles everywhere and
+// crashes only there. Hold it through a unique_ptr, as the tests here do.
 template <size_t Levels = (1u << 16)>
 class MarketDataPublisher
 {

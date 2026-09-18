@@ -90,12 +90,17 @@ NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct = 1)
 struct Feed
 {
   std::vector<MdMessage> out;
-  MarketDataPublisher<> md;
+  // The publisher is two megabytes of preallocated ring, so it lives on the
+  // heap and this struct holds a reference to it. A Feed on the stack would
+  // otherwise overflow a Windows thread's one-megabyte default.
+  std::unique_ptr<MarketDataPublisher<>> mdHolder;
+  MarketDataPublisher<>& md;
   MatchingEngine<MatchingBook> eng;
 
   explicit Feed(SymbolConfig c = cfg())
-      : md([this](const MdMessage& m)
-           { out.push_back(m); }, px(0.01), SYM),
+      : mdHolder(std::make_unique<MarketDataPublisher<>>([this](const MdMessage& m)
+                                                         { out.push_back(m); }, px(0.01), SYM)),
+        md(*mdHolder),
         eng(c, [this](const OutboundEvent& e)
             { md.onEvent(e, eng.engineTimeNs()); })
   {

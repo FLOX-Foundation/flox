@@ -18,6 +18,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <vector>
 
 using namespace flox;
@@ -80,8 +81,9 @@ void test_l2_and_codec()
 {
   std::printf("test_l2_and_codec\n");
   std::vector<MdMessage> feed;
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { feed.push_back(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { feed.push_back(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
 
@@ -144,7 +146,8 @@ void test_l2_and_codec()
 void test_book_agreement()
 {
   std::printf("test_book_agreement\n");
-  MarketDataPublisher<> md([](const MdMessage&) {}, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([](const MdMessage&) {}, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<LadderBook> eng(cfg(), [&](const OutboundEvent& e)
                                  { md.onEvent(e, eng.engineTimeNs()); }, LadderBook{ladderCfg()});
 
@@ -200,8 +203,9 @@ void test_iceberg_hidden_from_md()
   std::printf("test_iceberg_hidden_from_md\n");
   std::vector<MdMessage> feed;
   std::vector<OrderExecuted> execs;
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { feed.push_back(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { feed.push_back(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(),
                                    [&](const OutboundEvent& e)
                                    {

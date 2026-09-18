@@ -37,6 +37,11 @@ enum class OrderStatus : uint8_t
   Extant
 };
 
+// Heap, not stack. At the default MaxOrders this object is about 2.7 MB of
+// preallocated arena -- the point of the class -- which is a third of a
+// thread's stack on Linux and nearly three times a thread's stack on Windows,
+// where the default is one megabyte. A `L3OrderBook<> book;` local builds
+// cleanly everywhere and crashes on Windows at the first touch.
 template <std::size_t MaxOrders = 8192>
 class L3OrderBook
 /*

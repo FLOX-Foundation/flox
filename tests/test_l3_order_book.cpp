@@ -105,14 +105,16 @@ using namespace flox;
 // Lifecycle Tests
 TEST(L3OrderBookTest, BookStartsEmpty)
 {
-  L3OrderBook<> orderBook;
+  auto orderBookHolder = std::make_unique<L3OrderBook<>>();
+  auto& orderBook = *orderBookHolder;
   ASSERT_EQ(orderBook.bestBid(), std::nullopt);
   ASSERT_EQ(orderBook.bestAsk(), std::nullopt);
 }
 
 TEST(L3OrderBookTest, Add)
 {
-  L3OrderBook<> orderBook;
+  auto orderBookHolder = std::make_unique<L3OrderBook<>>();
+  auto& orderBook = *orderBookHolder;
   Price price = Price::fromDouble(100.0);
   OrderStatus status = OrderStatus::NotFound;
 
@@ -136,7 +138,8 @@ TEST(L3OrderBookTest, Add)
 
 TEST(L3OrderBookTest, Remove)
 {
-  L3OrderBook<> orderBook;
+  auto orderBookHolder = std::make_unique<L3OrderBook<>>();
+  auto& orderBook = *orderBookHolder;
   OrderStatus status = OrderStatus::NotFound;
 
   orderBook.addOrder(OrderId{12345678901231}, Price::fromDouble(99.0), Quantity::fromDouble(1.0), Side::BUY);
@@ -154,7 +157,8 @@ TEST(L3OrderBookTest, Remove)
 
 TEST(L3OrderBookTest, Modify)
 {
-  L3OrderBook<> orderBook;
+  auto orderBookHolder = std::make_unique<L3OrderBook<>>();
+  auto& orderBook = *orderBookHolder;
   Price price = Price::fromDouble(100.0);
   OrderStatus status = OrderStatus::NotFound;
 
@@ -190,7 +194,8 @@ TEST(L3OrderBookTest, ReuseFreedSlot)
 // Corner cases
 TEST(L3OrderBookTest, AddExistingOrder)
 {
-  L3OrderBook<> orderBook;
+  auto orderBookHolder = std::make_unique<L3OrderBook<>>();
+  auto& orderBook = *orderBookHolder;
   orderBook.addOrder(OrderId{12345678901234}, Price::fromDouble(100.0), Quantity::fromDouble(8.2), Side::BUY);
 
   const auto status = orderBook.addOrder(OrderId{12345678901234}, Price::fromDouble(100.0), Quantity::fromDouble(1.0), Side::BUY);
@@ -247,7 +252,8 @@ TEST(L3OrderBookTest, RemoveNonExistingOrder)
 
 TEST(L3OrderBookTest, ModifyNonExistingOrder)
 {
-  L3OrderBook<> book;
+  auto bookHolder = std::make_unique<L3OrderBook<>>();
+  auto& book = *bookHolder;
   const auto status = book.modifyOrder(OrderId{1000}, Quantity::fromDouble(100.0));
   ASSERT_EQ(status, OrderStatus::NotFound);
   ASSERT_EQ(book.bestBid(), std::nullopt);
@@ -290,7 +296,8 @@ TEST(L3OrderBookTest, TimePriceFIFO)
 
 TEST(L3OrderBookTest, BestBid)
 {
-  L3OrderBook<> book;
+  auto bookHolder = std::make_unique<L3OrderBook<>>();
+  auto& book = *bookHolder;
   Price price = Price::fromDouble(100.0);
   Quantity qty = Quantity::fromDouble(5.0);
   Side side = Side::BUY;
@@ -309,7 +316,8 @@ TEST(L3OrderBookTest, BestBid)
 
 TEST(L3OrderBookTest, BestAsk)
 {
-  L3OrderBook<> book;
+  auto bookHolder = std::make_unique<L3OrderBook<>>();
+  auto& book = *bookHolder;
   Price price = Price::fromDouble(100.0);
   Quantity qty = Quantity::fromDouble(5.0);
   Side side = Side::SELL;
@@ -328,7 +336,8 @@ TEST(L3OrderBookTest, BestAsk)
 
 TEST(L3OrderBookTest, BidQuantityAtPrice)
 {
-  L3OrderBook<> book;
+  auto bookHolder = std::make_unique<L3OrderBook<>>();
+  auto& book = *bookHolder;
 
   book.addOrder(OrderId{1}, Price::fromDouble(100.0), Quantity::fromDouble(10.0), Side::BUY);
   book.addOrder(OrderId{2}, Price::fromDouble(100.0), Quantity::fromDouble(5.2), Side::BUY);
@@ -354,7 +363,8 @@ TEST(L3OrderBookTest, BidQuantityAtPrice)
 
 TEST(L3OrderBookTest, AskQuantityAtPrice)
 {
-  L3OrderBook<> book;
+  auto bookHolder = std::make_unique<L3OrderBook<>>();
+  auto& book = *bookHolder;
 
   book.addOrder(OrderId{1}, Price::fromDouble(100.0), Quantity::fromDouble(10.0), Side::SELL);
   book.addOrder(OrderId{2}, Price::fromDouble(100.0), Quantity::fromDouble(5.2), Side::SELL);
@@ -416,7 +426,9 @@ TEST(L3OrderBookTest, BuildFromSnapShot)
     snap.orders_.push_back({OrderId{123 + i}, price, qty, side});
   }
 
-  L3OrderBook<> book;
+  auto bookHolder = std::make_unique<L3OrderBook<>>();
+
+  auto& book = *bookHolder;
   book.buildFromSnapshot(snap);
 
   auto bookSnap = book.exportSnapshot();
