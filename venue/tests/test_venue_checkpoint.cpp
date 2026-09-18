@@ -26,7 +26,6 @@
 
 #include <gtest/gtest.h>
 
-#include <unistd.h>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
