@@ -121,3 +121,12 @@ The shape matters on Windows, where this test does not yet run. What *is*
 covered is the option's effect -- a mutation that stops it taking effect at
 all turns red, because the test asks whether a sender hears its own multicast
 rather than whether `setsockopt` returned zero.
+
+That effect check itself has a platform boundary worth stating. Turning the
+option *off* is asserted everywhere except Linux, where the datagram arrives
+anyway: the test selects the loopback interface for egress, and a packet sent
+out of `lo` comes back because that is what `lo` is. The option governs the
+kernel's extra copy, not delivery over an interface that is already a loop.
+Observing it would need a real NIC address, which a CI runner cannot be
+counted on to have, so the assertion runs on the platforms where it means
+something -- including the macOS job, which builds these tests.
