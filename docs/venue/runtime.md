@@ -320,6 +320,54 @@ arriving through live `submit` are dropped and counted
 (`droppedSnapshotRecords()`): a client must never be able to "restore" itself
 an order or a balance.
 
+## Replaying a window of history
+
+Recovery replays a journal to rebuild an engine. A dispute asks something
+narrower and with a deadline: *what happened to account N between t1 and t2*.
+`flox-venue/journal_window.h` answers it, and `tools/venue_replay_window.cpp`
+is the command line around it.
+
+It applies a snapshot (optional) and then the segments, in order, into a fresh
+engine, and returns the events whose sequencer timestamps fall inside the
+window -- both ends included -- optionally narrowed to one account.
+
+Two properties are what make the extract usable as evidence rather than as a
+plausible story.
+
+**The digest covers the whole replayed stream, not the window.** It is the
+same `hashEvent` fold the determinism tests use, so it can be compared against
+a live run's. Equal digests say this replay took the path the venue took,
+which is the only thing that makes the windowed extract worth anything. A
+digest over the window alone would agree with a run that diverged before the
+window opened and converged again inside it.
+
+**A foreign format version throws, by name.** Not softened into a partial
+answer: an operator settling a dispute must never be handed a short history
+that looks complete. This is the same refusal recovery makes, for the same
+reason.
+
+An event that names no single account -- a public print names two sides and
+belongs to neither -- is attributed to nobody, so an account filter never
+returns another party's business.
+
+The instrument parameters must match the engine that wrote the journal. Raw
+fixed-point state read back under other scales is silently reinterpreted,
+which is why the tool asks for them rather than guessing.
+
+Cost is linear in journal size, and a window at the end of the file pays for
+the whole file (there is no index; replay is the only thing that reproduces
+state exactly). Measured on an apple-silicon laptop, release build:
+
+| records | segment | replay to the end |
+|---|---|---|
+| 10 000 | 1.8 MiB | 6.4 ms |
+| 100 000 | 17.7 MiB | 55 ms |
+| 1 000 000 | 177 MiB | 580 ms |
+
+About 3.3 ms per MiB, ~1.7M records/s. A window early in a segment returns
+sooner only in the sense that the events are collected sooner; the replay
+still has to finish to produce the digest.
+
 ## Clock
 
 Time enters through `IClock`, so the same code runs on simulated and real time:
