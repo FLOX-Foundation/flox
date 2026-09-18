@@ -25,9 +25,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace flox;
@@ -70,12 +72,38 @@ struct HashSink : IEngineEventListener
 {
   uint64_t h = 0;
   uint64_t count = 0;
+  // Per event, so a mismatch can name WHICH one differs instead of handing
+  // back two folded numbers. A digest that only says "not equal" makes a
+  // ten-minute CI round the only way to learn anything.
+  std::vector<std::pair<size_t, uint64_t>> each;  // (variant index, own hash)
   void onEngineEvent(const EngineEventMsg& e) override
   {
     h = hashEvent(h, e.event);
+    each.emplace_back(e.event.index(), hashEvent(0, e.event));
     ++count;
   }
 };
+
+// Where two runs part company, by index and event type.
+std::string firstDifference(const HashSink& a, const HashSink& b)
+{
+  const size_t n = std::min(a.each.size(), b.each.size());
+  for (size_t i = 0; i < n; ++i)
+  {
+    if (a.each[i] != b.each[i])
+    {
+      return "event " + std::to_string(i) + ": type " + std::to_string(a.each[i].first) + " vs " +
+             std::to_string(b.each[i].first) + ", hash " + std::to_string(a.each[i].second) +
+             " vs " + std::to_string(b.each[i].second);
+    }
+  }
+  if (a.each.size() != b.each.size())
+  {
+    return "same prefix, different length: " + std::to_string(a.each.size()) + " vs " +
+           std::to_string(b.each.size());
+  }
+  return "no per-event difference (the fold disagrees but the events do not)";
+}
 
 std::vector<InboundCommand> script()
 {
@@ -149,6 +177,6 @@ TEST(ShardCapacity, TheEventsAShardProducesDoNotDependOnItsRingSize)
   EXPECT_GT(big.count, 0u);
   EXPECT_EQ(small.count, big.count);
   EXPECT_EQ(tiny.count, big.count);
-  EXPECT_EQ(small.h, big.h) << "a smaller ring changed the history";
-  EXPECT_EQ(tiny.h, big.h) << "a smaller ring changed the history";
+  EXPECT_EQ(small.h, big.h) << "a smaller ring changed the history -- " << firstDifference(small, big);
+  EXPECT_EQ(tiny.h, big.h) << "a smaller ring changed the history -- " << firstDifference(tiny, big);
 }
