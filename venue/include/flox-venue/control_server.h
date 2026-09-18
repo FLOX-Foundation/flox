@@ -12,11 +12,11 @@
 #include "flox-venue/socket_acceptor.h"
 #include "flox/util/transport.h"
 
-#include <unistd.h>
 #include <cstdint>
 #include <istream>
 #include <ostream>
 #include <string>
+#include "flox/net/socket.h"
 
 namespace flox::venue
 {
@@ -55,7 +55,7 @@ class TcpControlServer
 
   int start(uint16_t port)
   {
-    return acceptor_.start(port, [this](int fd)
+    return acceptor_.start(port, [this](net::Handle fd)
                            { connLoop(fd); });
   }
   void stop() { acceptor_.stop(); }
@@ -69,13 +69,13 @@ class TcpControlServer
   static constexpr size_t kMaxRequestLine = 1u << 20;
 
  private:
-  void connLoop(int fd)
+  void connLoop(net::Handle fd)
   {
     std::string buf;
     uint8_t tmp[1024];
     while (acceptor_.running())
     {
-      const ssize_t r = ::read(fd, tmp, sizeof tmp);
+      const long r = net::receive(fd, tmp, sizeof tmp);
       if (r <= 0)
       {
         break;

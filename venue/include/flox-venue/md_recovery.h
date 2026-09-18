@@ -39,13 +39,8 @@
 #include "flox-venue/udp_multicast.h"
 #include "flox/util/transport.h"
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include "flox/net/socket.h"
 
-#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <deque>
@@ -90,7 +85,7 @@ class MdRecoveryServer
   // (see docs/venue/market-data.md).
   int start(uint16_t port, const char* bindIp = nullptr)
   {
-    return acceptor_.start(port, [this](int fd)
+    return acceptor_.start(port, [this](net::Handle fd)
                            { serve(fd); }, bindIp);
   }
 
@@ -104,7 +99,7 @@ class MdRecoveryServer
     std::function<std::optional<std::vector<MdMessage>>(uint64_t)> resend;
   };
 
-  void serve(int fd)
+  void serve(net::Handle fd)
   {
     std::vector<uint8_t> frame;
     if (!net::readFrame(fd, frame))
@@ -253,51 +248,50 @@ class MdRecoveryClient
   Status recover(SymbolId symbol, uint64_t fromSeq, Result& out) const
   {
     out = Result{};
-    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0)
+    const net::Handle fd = net::openSocket(net::Kind::Tcp);
+    if (!net::valid(fd))
     {
       return Status::ConnectError;
     }
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons(port_);
-    if (::inet_pton(AF_INET, host_.c_str(), &a.sin_addr) != 1 ||
-        ::connect(fd, reinterpret_cast<const sockaddr*>(&a), sizeof a) != 0)
+    if (!net::connectTo(fd, host_, port_))
     {
-      ::close(fd);
+      net::closeSocket(fd);
       return Status::ConnectError;
     }
-    timeval tv{};
-    tv.tv_sec = static_cast<time_t>(timeout_.count() / 1000);
-    tv.tv_usec = static_cast<suseconds_t>((timeout_.count() % 1000) * 1000);
-    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+    const int ms = static_cast<int>(timeout_.count());
+    net::setReceiveTimeout(fd, ms);
+    net::setSendTimeout(fd, ms);
 
     std::vector<uint8_t> b;
     SbeMdCodec::encode(MdResendRequest{symbol, fromSeq}, b);
     if (!net::writeFrame(fd, b.data(), b.size()))
     {
-      ::close(fd);
+      net::closeSocket(fd);
       return Status::ConnectError;
     }
 
     const Status st = collect(fd, fromSeq, out);
-    ::close(fd);
+    net::closeSocket(fd);
     return st;
   }
 
  private:
-  Status collect(int fd, uint64_t fromSeq, Result& out) const
+  Status collect(net::Handle fd, uint64_t fromSeq, Result& out) const
   {
     bool sawBegin = false;
     bool sawEnd = false;
     std::vector<uint8_t> f;
     while (true)
     {
-      errno = 0;
+      // The error is cleared first so that a clean EOF, which sets none, is
+      // not read as whatever the last failing call left behind. Windows keeps
+      // socket errors somewhere errno never sees, which is why both of these
+      // go through the layer rather than touching errno directly -- the check
+      // below compiles and always says "not a timeout" otherwise.
+      net::clearLastError();
       if (!net::readFrame(fd, f))
       {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        if (net::wouldBlock(net::lastError()))
         {
           return Status::Timeout;  // reply stalled mid-stream, not a clean EOF
         }

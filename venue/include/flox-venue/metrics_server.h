@@ -11,11 +11,11 @@
 #include "flox-venue/socket_acceptor.h"
 #include "flox/util/transport.h"
 
-#include <unistd.h>
 #include <cstdint>
 #include <functional>
 #include <string>
 #include <utility>
+#include "flox/net/socket.h"
 
 namespace flox::venue
 {
@@ -33,14 +33,14 @@ class MetricsServer
 
   int start(uint16_t port)
   {
-    return acceptor_.start(port, [this](int fd)
+    return acceptor_.start(port, [this](net::Handle fd)
                            { connLoop(fd); });
   }
   void stop() { acceptor_.stop(); }
   int port() const noexcept { return acceptor_.port(); }
 
  private:
-  static void respond(int fd, const char* status, const char* ctype, const std::string& body)
+  static void respond(net::Handle fd, const char* status, const char* ctype, const std::string& body)
   {
     std::string r = "HTTP/1.1 ";
     r += status;
@@ -53,13 +53,13 @@ class MetricsServer
     net::writeAll(fd, reinterpret_cast<const uint8_t*>(r.data()), r.size());
   }
 
-  void connLoop(int fd)
+  void connLoop(net::Handle fd)
   {
     std::string req;
     uint8_t tmp[2048];
     while (req.find("\r\n\r\n") == std::string::npos)
     {
-      const ssize_t r = ::read(fd, tmp, sizeof tmp);
+      const long r = net::receive(fd, tmp, sizeof tmp);
       if (r <= 0 || req.size() > (1u << 16))
       {
         return;  // the acceptor owns the descriptor and closes it

@@ -89,13 +89,9 @@
 #include "flox-venue/session_registry.h"
 #include "flox-venue/socket_acceptor.h"
 
+#include "flox/net/socket.h"
 #include "flox/util/transport.h"
 
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
-
-#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -177,7 +173,7 @@ class MdDistributionServer
   // hardening contract in the file comment.
   int start(uint16_t port, const char* bindIp = nullptr)
   {
-    return acceptor_.start(port, [this](int fd)
+    return acceptor_.start(port, [this](net::Handle fd)
                            { serve(fd); }, bindIp);
   }
 
@@ -228,13 +224,13 @@ class MdDistributionServer
   class Session
   {
    public:
-    Session(MdDistributionServer& server, std::unique_ptr<MdEncoder> enc, int fd)
+    Session(MdDistributionServer& server, std::unique_ptr<MdEncoder> enc, net::Handle fd)
         : server_(server), enc_(std::move(enc))
     {
       writer_ = std::make_shared<SessionWriter>(
           [fd](const uint8_t* p, size_t n)
           { return net::writeAll(fd, p, n); }, [fd]
-          { ::shutdown(fd, SHUT_RDWR); }, server_.cfg_.queueCapacity, &writerCounters_);
+          { net::shutdownBoth(fd); }, server_.cfg_.queueCapacity, &writerCounters_);
     }
 
     ~Session() { writer_->stop(); }
@@ -491,7 +487,7 @@ class MdDistributionServer
 
   // Pick the encoding for a fresh connection from its first byte WITHOUT
   // consuming it, so each protocol still starts at its own first byte.
-  std::unique_ptr<MdEncoder> makeEncoder(int fd)
+  std::unique_ptr<MdEncoder> makeEncoder(net::Handle fd)
   {
     uint8_t lead = 0;
     switch (cfg_.encoding)
@@ -509,15 +505,16 @@ class MdDistributionServer
         // that connects a moment before it speaks.
         const auto deadline =
             std::chrono::steady_clock::now() + std::chrono::milliseconds(cfg_.idleTimeoutMs);
-        ssize_t r = -1;
+        long r = -1;
         while (acceptor_.running() && std::chrono::steady_clock::now() < deadline)
         {
-          r = ::recv(fd, &lead, 1, MSG_PEEK);
+          r = net::receive(fd, &lead, 1, /*peek=*/true);
           if (r == 1)
           {
             break;
           }
-          if (r == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR))
+          const int e = net::lastError();
+          if (r == 0 || (!net::wouldBlock(e) && !net::interrupted(e)))
           {
             return nullptr;
           }
@@ -534,12 +531,9 @@ class MdDistributionServer
     return it == encodings_.end() ? nullptr : it->second();
   }
 
-  void serve(int fd)
+  void serve(net::Handle fd)
   {
-    timeval tv{};
-    tv.tv_sec = cfg_.readTimeoutMs / 1000;
-    tv.tv_usec = (cfg_.readTimeoutMs % 1000) * 1000;
-    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    net::setReceiveTimeout(fd, cfg_.readTimeoutMs);
     // Deliberately NO send timeout. The writer thread is allowed to block on a
     // wedged peer -- that is what it is for. The slow-consumer verdict belongs
     // to the venue's own bounded queue, not to a socket timer that would
@@ -547,8 +541,7 @@ class MdDistributionServer
     // the kernel from hiding backlog the queue is supposed to see.
     if (cfg_.sendBufferBytes > 0)
     {
-      const int sz = cfg_.sendBufferBytes;
-      ::setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz);
+      net::setSendBufferBytes(fd, cfg_.sendBufferBytes);
     }
 
     auto enc = makeEncoder(fd);
@@ -587,11 +580,11 @@ class MdDistributionServer
     // The writer thread may be parked in a blocking write on a peer that
     // stopped reading; shut the socket down so it comes back and can be
     // joined. The acceptor still owns the close.
-    ::shutdown(fd, SHUT_RDWR);
+    net::shutdownBoth(fd);
     session->stop();
   }
 
-  void readLoop(int fd, Session& session)
+  void readLoop(net::Handle fd, Session& session)
   {
     std::vector<uint8_t> in;
     uint8_t chunk[4096];
@@ -602,7 +595,7 @@ class MdDistributionServer
 
     while (acceptor_.running())
     {
-      const ssize_t r = ::recv(fd, chunk, sizeof chunk, 0);
+      const long r = net::receive(fd, chunk, sizeof chunk);
       if (r > 0)
       {
         lastIn = std::chrono::steady_clock::now();
@@ -616,9 +609,13 @@ class MdDistributionServer
       {
         return;  // peer closed
       }
-      else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+      else
       {
-        return;
+        const int e = net::lastError();
+        if (!net::wouldBlock(e) && !net::interrupted(e))
+        {
+          return;
+        }
       }
 
       if (session.dead())

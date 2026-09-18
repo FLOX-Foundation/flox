@@ -15,14 +15,11 @@
 #include "flox-venue/session.h"
 #include "flox-venue/session_registry.h"
 #include "flox-venue/socket_acceptor.h"
+#include "flox/net/socket.h"
 #include "flox/util/transport.h"
 
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
 #include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -36,19 +33,21 @@ namespace flox::venue
 // Apply a receive timeout so a blocking read wakes up: liveness (idle peers)
 // and shutdown (SocketAcceptor::stop's shutdown sweep) both depend on the
 // read loop not being parked in the kernel forever.
-inline void setRecvTimeoutMs(int fd, int64_t ms) noexcept
+inline void setRecvTimeoutMs(net::Handle fd, int64_t ms) noexcept
 {
   if (ms <= 0)
   {
     return;
   }
-  timeval tv{};
-  tv.tv_sec = static_cast<time_t>(ms / 1000);
-  tv.tv_usec = static_cast<suseconds_t>((ms % 1000) * 1000);
-  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+  net::setReceiveTimeout(fd, static_cast<int>(ms));
 }
 
-inline bool wasRecvTimeout() noexcept { return errno == EAGAIN || errno == EWOULDBLOCK; }
+// Whether the last read came back empty-handed because the timeout above
+// elapsed, as opposed to the connection being broken. The two platforms keep
+// that answer in different places -- errno on POSIX, a Winsock-only slot on
+// Windows -- and reading the wrong one turns every idle tick into a dropped
+// session.
+inline bool wasRecvTimeout() noexcept { return net::wouldBlock(net::lastError()); }
 
 class TcpGateway
 {
@@ -112,7 +111,7 @@ class TcpGateway
     // Contain any exception to this one connection -- connLoop is a thread body,
     // so an escape would reach std::terminate and take down the whole venue.
     // The acceptor owns the fd (closes it after the handler returns).
-    return acceptor_.start(port, [this](int fd)
+    return acceptor_.start(port, [this](net::Handle fd)
                            {
                              try { connLoop(fd); }
                              catch (...) {} });
@@ -121,7 +120,7 @@ class TcpGateway
   int port() const noexcept { return acceptor_.port(); }
 
  private:
-  void connLoop(int fd)
+  void connLoop(net::Handle fd)
   {
     GatewaySession session(account_, decoder_);
     session.authenticate(true);  // transport-level auth out of scope here
@@ -136,7 +135,7 @@ class TcpGateway
           [fd](const uint8_t* p, size_t n)
           { return net::writeFrame(fd, p, n); },
           [fd]
-          { ::shutdown(fd, SHUT_RDWR); },
+          { net::shutdownBoth(fd); },
           [&cod](const OutboundEvent& e)
           { cod.observe(e); });
     }
@@ -271,7 +270,7 @@ class TcpGateway
       writer->stop();
     }
     cod.flush(handler_);
-    ::shutdown(fd, SHUT_RDWR);  // acceptor owns the close
+    net::shutdownBoth(fd);  // acceptor owns the close
   }
 
   GatewaySession::Decoder decoder_;

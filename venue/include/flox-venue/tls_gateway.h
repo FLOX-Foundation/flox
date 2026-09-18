@@ -22,8 +22,6 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 
-#include <poll.h>
-#include <unistd.h>
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -36,6 +34,7 @@
 #include <mutex>
 #include <utility>
 #include <vector>
+#include "flox/net/socket.h"
 
 namespace flox::venue
 {
@@ -195,7 +194,7 @@ class TlsGateway
     // Contain any exception to this one connection -- connLoop is a thread body,
     // so an escape would reach std::terminate and take down the whole venue.
     // The acceptor owns the fd (closes it after the handler returns).
-    return acceptor_.start(port, [this](int fd)
+    return acceptor_.start(port, [this](net::Handle fd)
                            {
                              try { connLoop(fd); }
                              catch (...) {} });
@@ -227,7 +226,7 @@ class TlsGateway
   // `tick` (FIX mode): run on every idle poll interval; returning false ends
   // the session (FIX liveness lost -- reported as IdleTimeout so the caller's
   // counter accounting matches the plain-idle path).
-  ReadResult readFrameLocked(int fd, SSL* ssl, std::mutex& mu, std::vector<uint8_t>& out,
+  ReadResult readFrameLocked(net::Handle fd, SSL* ssl, std::mutex& mu, std::vector<uint8_t>& out,
                              int64_t idleMs, std::chrono::steady_clock::time_point& lastInbound,
                              const std::function<bool()>* tick = nullptr)
   {
@@ -245,13 +244,14 @@ class TlsGateway
       }
       if (!ready)
       {
-        pollfd pfd{fd, POLLIN, 0};
-        const int pr = ::poll(&pfd, 1, static_cast<int>(kPollMs));
-        if (pr < 0 && errno != EINTR)
+        const net::PollResult pr = net::pollRead(fd, static_cast<int>(kPollMs));
+        if (pr.error)
         {
           return ReadResult::Closed;
         }
-        ready = pr > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR)) != 0;
+        // A signal cut the wait short and says nothing about the socket; an
+        // elapsed wait is the idle tick below. Neither ends the session.
+        ready = pr.readable || pr.hangup;
       }
       if (!ready)
       {
@@ -280,7 +280,7 @@ class TlsGateway
       int err = SSL_ERROR_NONE;
       {
         std::lock_guard<std::mutex> lk(mu);
-        errno = 0;
+        net::clearLastError();
         r = SSL_read(ssl, dst, static_cast<int>(want));
         if (r <= 0)
         {
@@ -336,7 +336,7 @@ class TlsGateway
     return tls::writeAll(ssl, buf.data(), buf.size());
   }
 
-  void connLoop(int fd)
+  void connLoop(net::Handle fd)
   {
     const int64_t idleMs = idleTimeoutMs_.load();
     setRecvTimeoutMs(fd, idleMs);
@@ -364,7 +364,7 @@ class TlsGateway
           [ssl, &sslMu](const uint8_t* p, size_t n)
           { return writeFrameLocked(ssl, sslMu, p, n); },
           [fd]
-          { ::shutdown(fd, SHUT_RDWR); },
+          { net::shutdownBoth(fd); },
           [&cod](const OutboundEvent& e)
           { cod.observe(e); });
     }
@@ -468,7 +468,7 @@ class TlsGateway
     cod.flush(handler_);
     SSL_shutdown(ssl);
     SSL_free(ssl);
-    ::shutdown(fd, SHUT_RDWR);  // acceptor owns the close
+    net::shutdownBoth(fd);  // acceptor owns the close
   }
 
   GatewaySession::Decoder decoder_;

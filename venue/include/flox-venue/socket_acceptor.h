@@ -8,16 +8,13 @@
  */
 #pragma once
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "flox/net/socket.h"
+
 #include <atomic>
-#include <csignal>
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_set>
 #include <utility>
@@ -26,27 +23,22 @@
 namespace flox::venue
 {
 
-// A peer that vanishes mid-write must never take the process down. BSD/macOS
-// suppress SIGPIPE per-socket (SO_NOSIGPIPE); Linux has no such option and
-// SSL_write cannot pass MSG_NOSIGNAL, so we ignore the signal process-wide once.
-// EPIPE is then returned to the writer, which closes the session cleanly.
-inline void suppressSigpipe(int fd) noexcept
+// A peer that vanishes mid-write must never take the process down. The three
+// platforms answer this differently and the layer holds all three: a socket
+// option on macOS, a send flag on Linux (see net::sendNoSignal, which every
+// write here goes through), nothing at all on Windows. What is gone from this
+// file is the process-wide signal(SIGPIPE, SIG_IGN) that used to stand in for
+// the Linux case -- a library reaching into a process-wide signal disposition
+// that the application may be relying on.
+inline void suppressSigpipe(net::Handle fd) noexcept
 {
-#ifdef SO_NOSIGPIPE
-  int one = 1;
-  ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
-#else
-  (void)fd;
-  static const bool ignored = []
-  { ::signal(SIGPIPE, SIG_IGN); return true; }();
-  (void)ignored;
-#endif
+  net::suppressSigPipe(fd);
 }
 
 class SocketAcceptor
 {
  public:
-  using OnConn = std::function<void(int fd)>;
+  using OnConn = std::function<void(net::Handle fd)>;
 
   ~SocketAcceptor() { stop(); }
 
@@ -58,34 +50,23 @@ class SocketAcceptor
   int start(uint16_t port, OnConn onConn, const char* bindIp = nullptr)
   {
     onConn_ = std::move(onConn);
-    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    const net::Handle fd = net::openSocket(net::Kind::Tcp);
     listenFd_.store(fd);
-    if (fd < 0)
+    if (!net::valid(fd))
     {
       return -1;
     }
-    int one = 1;
-    ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if (bindIp != nullptr && bindIp[0] != '\0' && ::inet_pton(AF_INET, bindIp, &a.sin_addr) != 1)
+    net::setReuseAddr(fd, true);
+    const std::string ip = (bindIp == nullptr || bindIp[0] == '\0') ? std::string{"127.0.0.1"}
+                                                                    : std::string{bindIp};
+    if (!net::bindTo(fd, ip, port))
     {
-      ::close(fd);
-      listenFd_.store(-1);
+      net::closeSocket(fd);
+      listenFd_.store(net::kInvalid);
       return -1;
     }
-    a.sin_port = htons(port);
-    if (::bind(fd, reinterpret_cast<sockaddr*>(&a), sizeof a) < 0)
-    {
-      ::close(fd);
-      listenFd_.store(-1);
-      return -1;
-    }
-    socklen_t sl = sizeof a;
-    ::getsockname(fd, reinterpret_cast<sockaddr*>(&a), &sl);
-    port_ = ntohs(a.sin_port);
-    ::listen(fd, 16);
+    port_ = net::boundPort(fd);
+    net::listenOn(fd, 16);
     running_.store(true);
     acceptThread_ = std::thread([this]
                                 { acceptLoop(); });
@@ -99,12 +80,12 @@ class SocketAcceptor
       return;
     }
     // Take the descriptor out atomically: the accept thread reads it in its
-    // ::accept() call, so it must not observe a torn or dangling value.
-    const int fd = listenFd_.exchange(-1);
-    if (fd >= 0)
+    // accept call, so it must not observe a torn or dangling value.
+    const net::Handle fd = listenFd_.exchange(net::kInvalid);
+    if (net::valid(fd))
     {
-      ::shutdown(fd, SHUT_RDWR);
-      ::close(fd);
+      net::shutdownBoth(fd);
+      net::closeSocket(fd);
     }
     if (acceptThread_.joinable())
     {
@@ -117,9 +98,9 @@ class SocketAcceptor
     // fd from the set under the lock before closing it.
     {
       std::lock_guard<std::mutex> lk(connsMutex_);
-      for (int cfd : connFds_)
+      for (net::Handle cfd : connFds_)
       {
-        ::shutdown(cfd, SHUT_RDWR);
+        net::shutdownBoth(cfd);
       }
     }
     // The accept thread has been joined, so no new connection threads can be
@@ -146,8 +127,8 @@ class SocketAcceptor
   {
     while (running_.load())
     {
-      const int fd = ::accept(listenFd_.load(), nullptr, nullptr);
-      if (fd < 0)
+      const net::Handle fd = net::acceptOne(listenFd_.load());
+      if (!net::valid(fd))
       {
         if (!running_.load())
         {
@@ -155,8 +136,7 @@ class SocketAcceptor
         }
         continue;
       }
-      int one = 1;
-      ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+      net::setNoDelay(fd, true);
       suppressSigpipe(fd);
       std::lock_guard<std::mutex> lk(connsMutex_);
       connFds_.insert(fd);
@@ -183,18 +163,18 @@ class SocketAcceptor
                               std::lock_guard<std::mutex> lg(connsMutex_);
                               connFds_.erase(fd);
                             }
-                            ::close(fd); });
+                            net::closeSocket(fd); });
     }
   }
 
   OnConn onConn_;
-  std::atomic<int> listenFd_{-1};
+  std::atomic<net::Handle> listenFd_{net::kInvalid};
   int port_{0};
   std::atomic<bool> running_{false};
   std::thread acceptThread_;
   std::mutex connsMutex_;
   std::vector<std::thread> conns_;
-  std::unordered_set<int> connFds_;  // open connection fds (for stop()'s shutdown sweep)
+  std::unordered_set<net::Handle> connFds_;  // open connection fds (for stop()'s shutdown sweep)
 };
 
 }  // namespace flox::venue

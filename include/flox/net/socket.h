@@ -37,6 +37,7 @@
 #else
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -97,6 +98,20 @@ inline int lastError() noexcept
   return ::WSAGetLastError();
 #else
   return errno;
+#endif
+}
+
+// Clear it, so that a call which fails without setting one -- a clean EOF,
+// for instance -- is not read as whatever the last failing call left behind.
+// A caller that distinguishes "timed out" from "peer closed" has to do this
+// before the read, and errno alone would not do it: Windows keeps socket
+// errors somewhere errno never sees.
+inline void clearLastError() noexcept
+{
+#if defined(_WIN32)
+  ::WSASetLastError(0);
+#else
+  errno = 0;
 #endif
 }
 
@@ -277,6 +292,36 @@ inline bool setMulticastTtl(Handle h, int ttl) noexcept
 #endif
 }
 
+// The egress interface for multicast. An empty selector leaves the choice to
+// the routing table, which is the right production default: the feed then
+// goes out of whichever NIC reaches the group.
+inline bool setMulticastInterface(Handle h, const std::string& iface) noexcept
+{
+  ::in_addr a{};
+  if (iface.empty())
+  {
+    a.s_addr = htonl(INADDR_ANY);
+  }
+  else if (::inet_pton(AF_INET, iface.c_str(), &a) != 1)
+  {
+    return false;
+  }
+  return detail::setOpt(h, IPPROTO_IP, IP_MULTICAST_IF, &a, sizeof a);
+}
+
+// Whether a sender also receives its own multicast. Same argument-shape split
+// as the TTL above: a count of bytes on Windows, a single byte on POSIX.
+inline bool setMulticastLoop(Handle h, bool on) noexcept
+{
+#if defined(_WIN32)
+  const DWORD v = on ? 1u : 0u;
+  return detail::setOpt(h, IPPROTO_IP, IP_MULTICAST_LOOP, &v, sizeof v);
+#else
+  const unsigned char v = on ? 1 : 0;
+  return detail::setOpt(h, IPPROTO_IP, IP_MULTICAST_LOOP, &v, sizeof v);
+#endif
+}
+
 inline bool joinMulticast(Handle h, const std::string& group, const std::string& iface) noexcept
 {
   ::ip_mreq r{};
@@ -328,6 +373,11 @@ struct PollResult
   bool hangup{false};
   bool error{false};
   bool timedOut{false};
+  // A signal cut the wait short and nothing is known about the socket. The
+  // caller should wait again rather than treat the socket as broken -- which
+  // is why this is separate from `error` and not folded into it. Windows has
+  // no such case and never sets it.
+  bool interrupted{false};
 };
 
 // One socket, one wait. WSAPoll takes the same struct and the same flags as
@@ -355,7 +405,14 @@ inline PollResult pollRead(Handle h, int timeoutMs) noexcept
   }
   if (n < 0)
   {
-    r.error = true;
+    if (interrupted(lastError()))
+    {
+      r.interrupted = true;
+    }
+    else
+    {
+      r.error = true;
+    }
     return r;
   }
   r.readable = (p.revents & POLLIN) != 0;
@@ -377,6 +434,133 @@ inline bool parseAddress(const std::string& ip, ::sockaddr_in& out, uint16_t por
     return true;
   }
   return ::inet_pton(AF_INET, ip.c_str(), &out.sin_addr) == 1;
+}
+
+// ------------------------------------------------------- connections
+
+// Everything below takes an address rather than a sockaddr so that the one
+// place that knows how an address is laid out stays parseAddress above.
+
+inline bool bindTo(Handle h, const std::string& ip, uint16_t port) noexcept
+{
+  ::sockaddr_in a{};
+  if (!parseAddress(ip, a, port))
+  {
+    return false;
+  }
+  return ::bind(h, reinterpret_cast<const ::sockaddr*>(&a), sizeof a) == 0;
+}
+
+inline bool listenOn(Handle h, int backlog) noexcept
+{
+  return ::listen(h, backlog) == 0;
+}
+
+// The peer address is optional: a caller that does not log or filter by it
+// should not have to declare a struct to throw away. The length argument is
+// the difference here -- an int on Windows, a socklen_t on POSIX -- and it is
+// an in/out parameter, so it cannot simply be sizeof at the call site.
+inline Handle acceptOne(Handle h, ::sockaddr_in* peer = nullptr) noexcept
+{
+  ::sockaddr_in a{};
+#if defined(_WIN32)
+  int len = static_cast<int>(sizeof a);
+#else
+  ::socklen_t len = static_cast<::socklen_t>(sizeof a);
+#endif
+  const Handle c = ::accept(h, reinterpret_cast<::sockaddr*>(&a), &len);
+  if (valid(c) && peer != nullptr)
+  {
+    *peer = a;
+  }
+  return c;
+}
+
+inline bool connectTo(Handle h, const std::string& ip, uint16_t port) noexcept
+{
+  ::sockaddr_in a{};
+  if (!parseAddress(ip, a, port))
+  {
+    return false;
+  }
+  return ::connect(h, reinterpret_cast<const ::sockaddr*>(&a), sizeof a) == 0;
+}
+
+// Connect to an address already parsed or resolved. The initiator resolves
+// once and connects to the result, so the two steps are separate calls.
+inline bool connectAddress(Handle h, const ::sockaddr_in& to) noexcept
+{
+  return ::connect(h, reinterpret_cast<const ::sockaddr*>(&to), sizeof to) == 0;
+}
+
+// A name, looked up. parseAddress handles a dotted quad with no lookup at all;
+// this is for the case where something has to be asked. getaddrinfo is one of
+// the few calls in this file both platforms spell identically -- it is here
+// for the socket startup guard and so that callers reach one header, not two.
+inline bool resolveIPv4(const std::string& host, ::sockaddr_in& out, uint16_t port) noexcept
+{
+  if (!ensureStarted())
+  {
+    return false;
+  }
+  ::addrinfo hints{};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  ::addrinfo* res = nullptr;
+  if (::getaddrinfo(host.c_str(), nullptr, &hints, &res) != 0 || res == nullptr)
+  {
+    return false;
+  }
+  out = ::sockaddr_in{};
+  out.sin_family = AF_INET;
+  out.sin_port = htons(port);
+  out.sin_addr = reinterpret_cast<const ::sockaddr_in*>(res->ai_addr)->sin_addr;
+  ::freeaddrinfo(res);
+  return true;
+}
+
+// Datagrams. The destination is a parsed address rather than a string: a
+// publisher resolves the group once at open and sends to it per message, and
+// re-parsing per send would put a text conversion on the hot path.
+inline long sendTo(Handle h, const void* p, size_t n, const ::sockaddr_in& to) noexcept
+{
+  return static_cast<long>(::sendto(h, static_cast<const char*>(p), static_cast<IoLen>(n), 0,
+                                    reinterpret_cast<const ::sockaddr*>(&to), sizeof to));
+}
+
+inline long receiveFrom(Handle h, void* p, size_t n, ::sockaddr_in* from = nullptr) noexcept
+{
+  ::sockaddr_in a{};
+#if defined(_WIN32)
+  int len = static_cast<int>(sizeof a);
+#else
+  ::socklen_t len = static_cast<::socklen_t>(sizeof a);
+#endif
+  const long got = static_cast<long>(::recvfrom(h, static_cast<char*>(p), static_cast<IoLen>(n), 0,
+                                                reinterpret_cast<::sockaddr*>(&a), &len));
+  if (got >= 0 && from != nullptr)
+  {
+    *from = a;
+  }
+  return got;
+}
+
+// The port a socket was actually given. Binding to port 0 asks the system to
+// pick a free one, and this is how the caller learns which -- the pattern
+// every test and every ephemeral listener needs.
+inline uint16_t boundPort(Handle h) noexcept
+{
+  ::sockaddr_in a{};
+#if defined(_WIN32)
+  int len = static_cast<int>(sizeof a);
+#else
+  ::socklen_t len = static_cast<::socklen_t>(sizeof a);
+#endif
+  if (::getsockname(h, reinterpret_cast<::sockaddr*>(&a), &len) != 0)
+  {
+    return 0;
+  }
+  return ntohs(a.sin_port);
 }
 
 }  // namespace flox::net
