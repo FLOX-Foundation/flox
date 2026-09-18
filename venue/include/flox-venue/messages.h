@@ -370,7 +370,10 @@ struct SetFundingSchedule
 
 // v2: SnapshotBegin gained configHash; balances moved from Deposit totals to
 // exact RestoreBalance splits; MMP fill windows serialize (RestoreMmpFills).
-inline constexpr uint32_t kSnapshotFormatVersion = 2;
+// 3: order and held-fill records carry the submitter's own identifier. A
+// version-2 snapshot would restore orders whose reports name nobody, so it is
+// refused outright rather than read as though the field had always been zero.
+inline constexpr uint32_t kSnapshotFormatVersion = 3;
 
 struct SnapshotBegin
 {
@@ -398,10 +401,9 @@ struct RestoreOrder  // one resting book order, applied straight to the TAIL of 
   bool lastLook{false};
   bool reduceOnly{false};
   bool postOnly{false};  // may never take, including after an amend
-  // The engine keeps only the per-account dedup SET (restored via
-  // RestoreClOrdIds), not an order -> clientOrderId mapping, so writeSnapshot
-  // emits 0 here; the field exists so the record stays self-contained if a
-  // future engine retains the mapping.
+  // The identifier the submitter gave the order. The resting record carries
+  // it now (see RestingOrder), so this is the real value and not a placeholder
+  // -- a restored order reports under the same name its submitter chose.
   uint64_t clientOrderId{0};
   SeqNanos expiryNs{};   // GTD expiry, sequencer time (0 = none)
   uint64_t ocoGroup{0};  // OCO group (0 = none)
@@ -460,6 +462,10 @@ struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
   // measured from here. Appended -- the record grows, and this module has not
   // shipped.
   int64_t refAtHoldRaw{0};
+  // The identifiers the submitters gave the two legs, so a hold that resolves
+  // after a restart reports under the names they chose.
+  uint64_t makerClientOrderId{0};
+  uint64_t takerClientOrderId{0};
 };
 
 struct RestorePosition  // one perp position (qty, average entry, posted margin)
@@ -637,6 +643,10 @@ struct OrderAccepted  // order accepted / working
   bool restingOnBook{true};  // false = working but not on the visible book (pending stop)
   Quantity displayQty{};     // publicly visible size (== leavesQty unless iceberg; 0 = use leavesQty)
   uint64_t account{0};       // owner (appended: delivery routing)
+  // The identifier the submitter gave the order (0 = none). A submitter
+  // reconciles reports against the identifier it chose, not the one the venue
+  // assigned, so every report about an order carries it.
+  uint64_t clientOrderId{0};
 };
 
 struct OrderRejected
@@ -645,6 +655,10 @@ struct OrderRejected
   SymbolId symbol{};
   RejectReason reason{};
   uint64_t account{0};  // owner (appended: delivery routing)
+  // The identifier the submitter gave the order (0 = none). A submitter
+  // reconciles reports against the identifier it chose, not the one the venue
+  // assigned, so every report about an order carries it.
+  uint64_t clientOrderId{0};
 };
 
 struct Trade
@@ -675,6 +689,10 @@ struct OrderExecuted  // per-order execution report on a fill
   // size. leavesQty stays the whole remaining for the owner's exec report.
   Quantity displayLeaves{};
   uint64_t account{0};  // owner of this order leg (appended: delivery routing)
+  // The identifier the submitter gave the order (0 = none). A submitter
+  // reconciles reports against the identifier it chose, not the one the venue
+  // assigned, so every report about an order carries it.
+  uint64_t clientOrderId{0};
 };
 
 struct OrderCanceled
@@ -683,6 +701,10 @@ struct OrderCanceled
   SymbolId symbol{};
   CancelReason reason{};
   uint64_t account{0};  // owner (appended: delivery routing)
+  // The identifier the submitter gave the order (0 = none). A submitter
+  // reconciles reports against the identifier it chose, not the one the venue
+  // assigned, so every report about an order carries it.
+  uint64_t clientOrderId{0};
 };
 
 struct OrderModified
@@ -693,6 +715,10 @@ struct OrderModified
   Quantity leavesQty{};
   bool priorityKept{false};  // false = re-entered at the tail (lost time priority)
   uint64_t account{0};       // owner (appended: delivery routing)
+  // The identifier the submitter gave the order (0 = none). A submitter
+  // reconciles reports against the identifier it chose, not the one the venue
+  // assigned, so every report about an order carries it.
+  uint64_t clientOrderId{0};
 };
 
 struct OrderTriggered  // a stop / take-profit activated and was injected into matching

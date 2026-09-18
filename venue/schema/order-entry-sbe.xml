@@ -47,11 +47,18 @@
     Deposit/Withdraw, carrying the post-event available/reserved of the
     touched (account, asset). reason: 0=Deposit, 1=Withdraw,
     2=WithdrawRejected (insufficient available; balances unchanged).
+
+  Version 4: the five templates that report on an ORDER (Accepted, Executed,
+  Canceled, Rejected, Replaced) gained a trailing `clOrdId` field (OrderId,
+  sinceVersion="4"): the identifier the submitter gave the order, 0 when it
+  gave none. A submitter reconciles reports against the name it chose, and on
+  a reject there may be no other name to reconcile against. Appended after
+  `seq`, so a version-3 reader skips it via blockLength.
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.oe"
                    id="92"
-                   version="3"
+                   version="4"
                    semanticVersion="1.0"
                    description="Flox venue order entry + execution reports"
                    byteOrder="littleEndian">
@@ -147,6 +154,7 @@
     <field name="leavesQty"    id="5" type="QtyRaw"/>
     <field name="restingOnBook" id="6" type="Flag"/>
     <field name="seq"     id="7" type="SeqNum" sinceVersion="1"/>
+    <field name="clOrdId"  id="8" type="OrderId" sinceVersion="4"/>
   </sbe:message>
 
   <!-- Order (partially) executed. -->
@@ -159,6 +167,7 @@
     <field name="aggressor" id="6" type="Flag"/>
     <field name="complete"  id="7" type="Flag"/>
     <field name="seq"     id="8" type="SeqNum" sinceVersion="1"/>
+    <field name="clOrdId"  id="9" type="OrderId" sinceVersion="4"/>
   </sbe:message>
 
   <!-- Trade print. -->
@@ -179,6 +188,7 @@
     <field name="symbol"  id="2" type="Symbol"/>
     <field name="reason"  id="3" type="EnumU8"/>
     <field name="seq"     id="4" type="SeqNum" sinceVersion="1"/>
+    <field name="clOrdId"  id="5" type="OrderId" sinceVersion="4"/>
   </sbe:message>
 
   <!-- Order rejected (reason = RejectReason underlying value). -->
@@ -187,6 +197,7 @@
     <field name="symbol"  id="2" type="Symbol"/>
     <field name="reason"  id="3" type="EnumU8"/>
     <field name="seq"     id="4" type="SeqNum" sinceVersion="1"/>
+    <field name="clOrdId"  id="5" type="OrderId" sinceVersion="4"/>
   </sbe:message>
 
   <!-- Order replaced (priorityKept = kept time priority in place). -->
@@ -197,6 +208,7 @@
     <field name="leavesQty"    id="4" type="QtyRaw"/>
     <field name="priorityKept" id="5" type="Flag"/>
     <field name="seq"     id="6" type="SeqNum" sinceVersion="1"/>
+    <field name="clOrdId"  id="7" type="OrderId" sinceVersion="4"/>
   </sbe:message>
 
   <!-- Conditional order triggered (refPrice = reference that crossed). -->

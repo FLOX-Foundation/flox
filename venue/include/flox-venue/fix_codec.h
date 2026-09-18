@@ -336,10 +336,22 @@ class FixCodec
     }
 
     add(35, "8");  // ExecutionReport
+    // ClOrdID (11) on every report that describes an order. FIX 4.4 requires
+    // it, and the reason is practical: a submitter reconciles against the
+    // identifier it chose, and on a reject there may never have been another
+    // one to reconcile against. 37 stays the venue's own identifier; the two
+    // are not the same field and this used to put 37's value in both.
+    auto clOrd = [&](uint64_t v)
+    {
+      if (v != 0)
+      {
+        add(11, std::to_string(v));
+      }
+    };
     if (const auto* a = std::get_if<OrderAccepted>(&ev))
     {
       add(37, std::to_string(a->id));
-      add(11, std::to_string(a->id));
+      clOrd(a->clientOrderId);
       add(55, std::to_string(a->symbol));
       add(54, a->side == Side::SELL ? "2" : "1");
       add(150, "0");  // ExecType New
@@ -350,6 +362,7 @@ class FixCodec
     else if (const auto* x = std::get_if<OrderExecuted>(&ev))
     {
       add(37, std::to_string(x->id));
+      clOrd(x->clientOrderId);
       add(55, std::to_string(x->symbol));
       add(150, "F");                     // ExecType Trade
       add(39, x->complete ? "2" : "1");  // Filled / Partially filled
@@ -361,12 +374,14 @@ class FixCodec
     else if (const auto* c = std::get_if<OrderCanceled>(&ev))
     {
       add(37, std::to_string(c->id));
+      clOrd(c->clientOrderId);
       add(150, "4");  // Canceled
       add(39, "4");
     }
     else if (const auto* j = std::get_if<OrderRejected>(&ev))
     {
       add(37, std::to_string(j->id));
+      clOrd(j->clientOrderId);
       add(150, "8");  // Rejected
       add(39, "8");
       add(58, std::string(toString(j->reason)));
@@ -374,6 +389,7 @@ class FixCodec
     else if (const auto* m = std::get_if<OrderModified>(&ev))
     {
       add(37, std::to_string(m->id));
+      clOrd(m->clientOrderId);
       add(150, "5");  // Replaced
       add(39, "5");
       add(151, qn(m->leavesQty));

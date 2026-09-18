@@ -372,6 +372,28 @@ void test_rest_json()
   CHECK(rt && std::get<NewOrder>(*rt).quantity.raw() == 1);
   CHECK(rt && std::get<NewOrder>(*rt).price == px(100.25));
 
+  // A report names the order both ways: "id" is the venue's, "clOrdId" the
+  // submitter's. They are written from different fields, which is only
+  // visible when they differ -- a REST order that gives no clOrdId gets the
+  // venue's id as one (see decode), so an end-to-end check alone cannot tell.
+  {
+    OrderAccepted a;
+    a.id = 5000;
+    a.clientOrderId = 77;
+    a.symbol = 1;
+    a.side = Side::BUY;
+    a.price = px(100.25);
+    a.leavesQty = qty(3);
+    const std::string j = RestJson::encode(OutboundEvent{a});
+    CHECK(j.find("\"id\":5000") != std::string::npos);
+    CHECK(j.find("\"clOrdId\":77") != std::string::npos);
+
+    OrderAccepted anon = a;
+    anon.clientOrderId = 0;
+    const std::string ja = RestJson::encode(OutboundEvent{anon});
+    CHECK(ja.find("clOrdId") == std::string::npos);  // none given, none claimed
+  }
+
   // end-to-end: JSON orders -> engine -> JSON events
   std::vector<std::string> out;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)

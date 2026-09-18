@@ -55,6 +55,15 @@ class StopBook
     return it == loc_.end() ? 0 : it->second.account;
   }
 
+  // The identifier the submitter gave a pending conditional order (0 if none
+  // or unknown) -- so a cancel event for a parked stop names the order the way
+  // its submitter does, exactly like accountOf routes it.
+  uint64_t clientOrderIdOf(OrderId id) const noexcept
+  {
+    auto it = loc_.find(id);
+    return it == loc_.end() ? 0 : it->second.clientOrderId;
+  }
+
   // All pending conditional-order ids (for venue-wide emergency cancel).
   std::vector<OrderId> ids() const
   {
@@ -94,7 +103,7 @@ class StopBook
     if (trailing)
     {
       trailing_.push_back(Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Trailing, initialTrigger, o.accountId};
+      loc_[o.id] = Loc{Container::Trailing, initialTrigger, o.accountId, o.clientOrderId};
       return;
     }
     // Up = fires when ref >= trigger (BUY stop-loss, SELL take-profit).
@@ -102,12 +111,12 @@ class StopBook
     if (up)
     {
       up_.emplace(initialTrigger, Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Up, initialTrigger, o.accountId};
+      loc_[o.id] = Loc{Container::Up, initialTrigger, o.accountId, o.clientOrderId};
     }
     else
     {
       down_.emplace(initialTrigger, Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Down, initialTrigger, o.accountId};
+      loc_[o.id] = Loc{Container::Down, initialTrigger, o.accountId, o.clientOrderId};
     }
   }
 
@@ -306,6 +315,7 @@ class StopBook
     Container container{};
     Price trigger{};
     uint64_t account{};
+    uint64_t clientOrderId{};
   };
 
   static NewOrder toAggressor(const Pending& s)

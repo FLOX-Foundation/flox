@@ -319,6 +319,7 @@ class Matcher
       const Quantity fill = allowed;
       const OrderId makerId = m->id;
       const uint64_t makerAccount = m->accountId;
+      const uint64_t makerClOrd = m->clientOrderId;
       const Price makerPrice = m->price;
       // Total (displayed + hidden) remaining after this fill -- so an iceberg
       // reports leaves/complete against its whole size, not just the peak.
@@ -338,9 +339,10 @@ class Matcher
       out.filled += fill;
 
       sink(OrderExecuted{makerId, order.symbol, fill, makerTotalAfter, false,
-                         makerTotalAfter.isZero(), makerPrice, makerDisplayAfter, makerAccount});
+                         makerTotalAfter.isZero(), makerPrice, makerDisplayAfter, makerAccount,
+                         makerClOrd});
       sink(OrderExecuted{order.id, order.symbol, fill, leaves, true, leaves.isZero(), makerPrice,
-                         leaves, order.accountId});
+                         leaves, order.accountId, order.clientOrderId});
     }
 
     out.leaves = leaves;
@@ -860,9 +862,9 @@ class Matcher
         out.filled += fill;
         sink(OrderExecuted{makerId, order.symbol, fill, makerTotalAfter, false,
                            makerTotalAfter.isZero(), levelPrice, makerDisplayAfter,
-                           level[i].accountId});
+                           level[i].accountId, level[i].clientOrderId});
         sink(OrderExecuted{order.id, order.symbol, fill, leaves, true, leaves.isZero(), levelPrice,
-                           leaves, order.accountId});
+                           leaves, order.accountId, order.clientOrderId});
       }
       if (want < tot)
       {

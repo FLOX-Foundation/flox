@@ -824,21 +824,22 @@ class MatchingEngine
     std::sort(resting.begin(), resting.end());  // deterministic cancel order (layout-independent)
     for (OrderId id : resting)
     {
-      if (book_.cancel(id).has_value())
+      if (auto ro = book_.cancel(id))
       {
         const uint64_t acct = ownerOf(id);
         releaseReservation(id);
         forgetOrder(id);
-        sink_(OrderCanceled{id, cfg_.id, reason, acct});
+        sink_(OrderCanceled{id, cfg_.id, reason, acct, ro->clientOrderId});
       }
     }
     for (OrderId id : stops_.ids())
     {
       const uint64_t acct = stops_.accountOf(id);
+      const uint64_t clOrd = stops_.clientOrderIdOf(id);
       if (stops_.cancel(id))
       {
         releaseReservation(id);
-        sink_(OrderCanceled{id, cfg_.id, reason, acct});
+        sink_(OrderCanceled{id, cfg_.id, reason, acct, clOrd});
       }
     }
   }
@@ -1051,6 +1052,10 @@ class MatchingEngine
       const OrderId askId = ask->id;
       const uint64_t bAcct = bid->accountId;
       const uint64_t aAcct = ask->accountId;
+      // Read off the records now: the consume and cancel below can take either
+      // leg out of the book before the reports are emitted.
+      const uint64_t bClOrd = bid->clientOrderId;
+      const uint64_t aClOrd = ask->clientOrderId;
       // Self-trade prevention. An auction has no aggressor -- both legs are
       // resting -- so the mode is read off each order and applied from the
       // requester's point of view: its counterparty is the "oldest" leg (it is
@@ -1114,10 +1119,11 @@ class MatchingEngine
           // moves on to the next order at this price (and terminates).
           const OrderId blocked = lim.makerBlocked ? askId : bidId;
           const uint64_t blockedAcct = lim.makerBlocked ? aAcct : bAcct;
+          const uint64_t blockedClOrd = lim.makerBlocked ? aClOrd : bClOrd;
           book_.cancel(blocked);
           releaseReservation(blocked);
           forgetOrder(blocked);
-          sink_(OrderCanceled{blocked, cfg_.id, lim.reason, blockedAcct});
+          sink_(OrderCanceled{blocked, cfg_.id, lim.reason, blockedAcct, blockedClOrd});
           continue;
         }
         fill = lim.qty;
@@ -1132,8 +1138,8 @@ class MatchingEngine
       // Post-consume displayed peak (b2/a2 already refilled) for the public feed.
       const Quantity bDisp = b2 ? b2->leaves : Quantity{};
       const Quantity aDisp = a2 ? a2->leaves : Quantity{};
-      emit_(OrderExecuted{bidId, cfg_.id, fill, bl, false, bl.isZero(), P, bDisp, bAcct});
-      emit_(OrderExecuted{askId, cfg_.id, fill, al, false, al.isZero(), P, aDisp, aAcct});
+      emit_(OrderExecuted{bidId, cfg_.id, fill, bl, false, bl.isZero(), P, bDisp, bAcct, bClOrd});
+      emit_(OrderExecuted{askId, cfg_.id, fill, al, false, al.isZero(), P, aDisp, aAcct, aClOrd});
     }
   }
 
@@ -1203,6 +1209,10 @@ class MatchingEngine
           {
             h = mix(h, 0xB00FU);  // only when set: a book without post-only orders hashes as before
           }
+          if (o.clientOrderId != 0)
+          {
+            h = mix(h, o.clientOrderId);  // same rule: absent means the hash is unchanged
+          }
           h = mix(h, static_cast<uint64_t>(expiryOf(o.id).raw()));
           h = mix(h, ocoOf(o.id));
         });
@@ -1224,6 +1234,10 @@ class MatchingEngine
       h = mix(h, o.reduceOnly ? 1U : 0U);
       h = mix(h, static_cast<uint64_t>(o.expiryNs.raw()));
       h = mix(h, o.ocoGroup);
+      if (o.clientOrderId != 0)
+      {
+        h = mix(h, o.clientOrderId);
+      }
       h = mix(h, static_cast<uint64_t>(trig.raw()));
     }
 
@@ -1271,6 +1285,14 @@ class MatchingEngine
       h = mix(h, static_cast<uint64_t>(x.takerExpiryNs.raw()));
       h = mix(h, x.makerReduceOnly ? 1U : 0U);
       h = mix(h, x.takerReduceOnly ? 1U : 0U);
+      if (x.makerClientOrderId != 0)
+      {
+        h = mix(h, x.makerClientOrderId);
+      }
+      if (x.takerClientOrderId != 0)
+      {
+        h = mix(h, x.takerClientOrderId);
+      }
       // Live-tracking truth of the maker (see RestoreHeld::makerTracked).
       h = mix(h, orderAccount_.count(x.maker) != 0 ? 1U : 0U);
     }
@@ -1573,7 +1595,7 @@ class MatchingEngine
         {
           RestoreOrder r{o.id, o.accountId, o.price, o.leaves,
                          o.side, o.hidden, o.peak, o.lastLook,
-                         o.reduceOnly, o.postOnly};
+                         o.reduceOnly, o.postOnly, o.clientOrderId};
           r.expiryNs = expiryOf(o.id);
           r.ocoGroup = ocoOf(o.id);
           out.append(InboundCommand{r}, ts);
@@ -1608,6 +1630,8 @@ class MatchingEngine
                     x.makerAccount, x.price, x.qty, x.deadline, x.takerTif,
                     x.takerType, x.takerPrice, x.takerExpiryNs, x.makerReduceOnly,
                     x.takerReduceOnly};
+      r.makerClientOrderId = x.makerClientOrderId;
+      r.takerClientOrderId = x.takerClientOrderId;
       r.makerTracked = orderAccount_.count(x.maker) != 0;
       r.refAtHoldRaw = x.refAtHoldRaw;
       out.append(InboundCommand{r}, ts);
@@ -2310,7 +2334,7 @@ class MatchingEngine
     if (const RejectReason r = admissionGate(o); r != RejectReason::None)
     {
       ++admissionRejects_;
-      sink_(OrderRejected{o.id, o.symbol, r, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, r, o.accountId, o.clientOrderId});
       return;
     }
     // clientOrderId dedup (per account, window = engine session/uptime; see
@@ -2325,7 +2349,7 @@ class MatchingEngine
       auto& seen = clientOrderIds_[o.accountId];
       if (!seen.insert(o.clientOrderId).second)
       {
-        sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateClientOrderId, o.accountId});
+        sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateClientOrderId, o.accountId, o.clientOrderId});
         return;
       }
     }
@@ -2375,7 +2399,7 @@ class MatchingEngine
       // happily and only surfaced when the stop fired.
       if (const RejectReason r = validateConditional(o); r != RejectReason::None)
       {
-        sink_(OrderRejected{o.id, o.symbol, r, o.accountId});
+        sink_(OrderRejected{o.id, o.symbol, r, o.accountId, o.clientOrderId});
         return;
       }
       committed = onStop(o);  // parked in the stop book -> committed (keep OCO link)
@@ -2388,7 +2412,7 @@ class MatchingEngine
       auto it = byAccount_.find(o.accountId);
       if (it != byAccount_.end() && it->second.size() >= cfg_.maxOpenOrders)
       {
-        sink_(OrderRejected{o.id, o.symbol, RejectReason::TooManyOpenOrders, o.accountId});
+        sink_(OrderRejected{o.id, o.symbol, RejectReason::TooManyOpenOrders, o.accountId, o.clientOrderId});
         return;
       }
     }
@@ -2399,17 +2423,17 @@ class MatchingEngine
     // a no-op.
     if (const RejectReason r = perpRiskGate(o); r != RejectReason::None)
     {
-      sink_(OrderRejected{o.id, o.symbol, r, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, r, o.accountId, o.clientOrderId});
       return;
     }
     if (const RejectReason r = validate(o); r != RejectReason::None)
     {
-      sink_(OrderRejected{o.id, o.symbol, r, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, r, o.accountId, o.clientOrderId});
       return;
     }
     if (!reserveFunds(o))
     {
-      sink_(OrderRejected{o.id, o.symbol, creditReason_, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, creditReason_, o.accountId, o.clientOrderId});
       creditReason_ = RejectReason::InsufficientFunds;  // reset for the next order
       return;                                           // pre-trade buying-power (ledger reservation or credit hook)
     }
@@ -2434,6 +2458,7 @@ class MatchingEngine
       // order that never reaches expiry_ never expires at all, in the auction
       // or after it.
       RestingOrder ro{o.id, o.accountId, restPx, o.quantity, o.side};
+      ro.clientOrderId = o.clientOrderId;
       ro.reduceOnly = o.reduceOnly;
       ro.postOnly = o.postOnly;
       ro.lastLook = o.lastLook && cfg_.lastLookWindowNs.count() > 0;
@@ -2453,7 +2478,7 @@ class MatchingEngine
       {
         pegged_[o.id] = {o.side, o.peg, o.pegOffsetRaw};
       }
-      sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, ro.leaves, o.accountId});
+      sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, ro.leaves, o.accountId, o.clientOrderId});
       return;
     }
 
@@ -2471,7 +2496,7 @@ class MatchingEngine
           (o.side == Side::SELL && o.price.raw() < luldLo))
       {
         releaseReservation(o.id);
-        sink_(OrderRejected{o.id, o.symbol, RejectReason::LuldBreach, o.accountId});
+        sink_(OrderRejected{o.id, o.symbol, RejectReason::LuldBreach, o.accountId, o.clientOrderId});
         tripLuldHalt();
         return;
       }
@@ -2485,12 +2510,13 @@ class MatchingEngine
     if (out.reject != RejectReason::None)
     {
       releaseReservation(o.id);  // post-only-would-cross / FOK-unfulfillable: free the reserve
-      sink_(OrderRejected{o.id, o.symbol, out.reject, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, out.reject, o.accountId, o.clientOrderId});
       return;
     }
     if (out.residualRests)
     {
       RestingOrder ro{o.id, o.accountId, o.price, out.leaves, o.side};
+      ro.clientOrderId = o.clientOrderId;
       ro.lastLook = o.lastLook && cfg_.lastLookWindowNs.count() > 0;  // window 0 = feature off
       ro.reduceOnly = o.reduceOnly;                                   // carried so a later modify preserves it
       ro.postOnly = o.postOnly;                                       // same reason
@@ -2512,7 +2538,7 @@ class MatchingEngine
       }
       // Public feed shows only the displayed peak (ro.leaves); the hidden iceberg
       // reserve (out.leaves - ro.leaves) is not leaked. Non-iceberg: they match.
-      sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves, o.accountId});
+      sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves, o.accountId, o.clientOrderId});
     }
     else if (out.residualCanceled)
     {
@@ -2521,7 +2547,7 @@ class MatchingEngine
       // not run the emit_ wrapper's release-on-cancel. Held slices stay
       // reserved: their accept still has to settle (reject releases later).
       releaseReservationExceptHeld(o.id);
-      sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId});
+      sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId, o.clientOrderId});
     }
 
     processTriggers();  // this order's trades may have crossed resting stops
@@ -2630,48 +2656,48 @@ class MatchingEngine
   {
     if (o.symbol != cfg_.id)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::UnknownSymbol, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::UnknownSymbol, o.accountId, o.clientOrderId});
       return false;
     }
     if (delisted_)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InstrumentDelisted, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InstrumentDelisted, o.accountId, o.clientOrderId});
       return false;
     }
     if (closed_)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::MarketClosed, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::MarketClosed, o.accountId, o.clientOrderId});
       return false;
     }
     if (cfg_.halted)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::Halted, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::Halted, o.accountId, o.clientOrderId});
       return false;
     }
     if (o.quantity.raw() <= 0)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidQuantity, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidQuantity, o.accountId, o.clientOrderId});
       return false;
     }
     const bool trailing = (o.type == OrderType::TRAILING_STOP);
     if (!trailing && o.triggerPrice.raw() <= 0)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId, o.clientOrderId});
       return false;
     }
     if (trailing && o.trailingOffset.raw() <= 0)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId, o.clientOrderId});
       return false;
     }
     if (isLimitStop(o.type) && o.price.raw() <= 0)
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::InvalidPrice, o.accountId, o.clientOrderId});
       return false;
     }
     if (book_.contains(o.id) || stops_.contains(o.id))
     {
-      sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateOrderId, o.accountId});
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateOrderId, o.accountId, o.clientOrderId});
       return false;
     }
 
@@ -2698,8 +2724,8 @@ class MatchingEngine
       expiry_[o.id] = o.expiryNs;
     }
     sink_(OrderAccepted{o.id, o.symbol, o.side, o.triggerPrice, o.quantity, false, Quantity{},
-                        o.accountId});  // pending, not on book
-    processTriggers();                  // may already be in-the-money
+                        o.accountId, o.clientOrderId});  // pending, not on book
+    processTriggers();                                   // may already be in-the-money
     return true;
   }
 
@@ -2741,7 +2767,7 @@ class MatchingEngine
       // reserved) if the reduce-only cap leaves nothing or the cap is breached.
       if (const RejectReason r = perpRiskGate(*agg); r != RejectReason::None)
       {
-        sink_(OrderRejected{agg->id, cfg_.id, r, agg->accountId});
+        sink_(OrderRejected{agg->id, cfg_.id, r, agg->accountId, agg->clientOrderId});
         ref = triggerReference();
         if (!ref)
         {
@@ -2755,7 +2781,7 @@ class MatchingEngine
       // value (buyer receives base it can't pay for).
       if (!reserveFunds(*agg))
       {
-        sink_(OrderRejected{agg->id, cfg_.id, RejectReason::InsufficientFunds, agg->accountId});
+        sink_(OrderRejected{agg->id, cfg_.id, RejectReason::InsufficientFunds, agg->accountId, agg->clientOrderId});
         ref = triggerReference();
         if (!ref)
         {
@@ -2771,21 +2797,22 @@ class MatchingEngine
       if (out.reject != RejectReason::None)
       {
         releaseReservation(agg->id);
-        sink_(OrderRejected{agg->id, cfg_.id, out.reject, agg->accountId});
+        sink_(OrderRejected{agg->id, cfg_.id, out.reject, agg->accountId, agg->clientOrderId});
       }
       else if (out.residualRests)
       {
         RestingOrder rro{agg->id, agg->accountId, agg->price, out.leaves, agg->side};
+        rro.clientOrderId = agg->clientOrderId;
         rro.reduceOnly = agg->reduceOnly;
         book_.addResting(agg->side, rro);
         trackResting(agg->id, agg->accountId, agg->stp);
         sink_(OrderAccepted{agg->id, cfg_.id, agg->side, agg->price, out.leaves, true, Quantity{},
-                            agg->accountId});
+                            agg->accountId, agg->clientOrderId});
       }
       else if (out.residualCanceled)
       {
         releaseReservationExceptHeld(agg->id);  // held slices stay reserved
-        sink_(OrderCanceled{agg->id, cfg_.id, out.residualCancelReason, agg->accountId});
+        sink_(OrderCanceled{agg->id, cfg_.id, out.residualCancelReason, agg->accountId, agg->clientOrderId});
       }
       ref = triggerReference();  // trades may have moved the last-price reference
       if (!ref)
@@ -2841,6 +2868,11 @@ class MatchingEngine
     const bool curPostOnly = cur->postOnly;
     const bool curLastLook = cur->lastLook;
     const Price curPrice = cur->price;
+    // Captured before the cancel below invalidates `cur`. An amend keeps the
+    // identifier the submitter gave the original order, for the same reason it
+    // keeps postOnly: the order is the same order, and the submitter is still
+    // reconciling against the name it chose.
+    const uint64_t curClientOrderId = cur->clientOrderId;
     const Price newPrice = (m.newPrice.raw() == 0) ? curPrice : m.newPrice;
 
     // Validate the new price/qty before mutating so a bad modify leaves the
@@ -2884,7 +2916,7 @@ class MatchingEngine
     {
       book_.reduce(m.id, m.newQty);
       releaseReservationPro(m.id, curLeaves.raw(), m.newQty.raw());
-      sink_(OrderModified{m.id, m.symbol, newPrice, m.newQty, true, acct});
+      sink_(OrderModified{m.id, m.symbol, newPrice, m.newQty, true, acct, curClientOrderId});
       return;
     }
 
@@ -2895,6 +2927,7 @@ class MatchingEngine
     releaseReservation(m.id);
     NewOrder re;
     re.id = m.id;
+    re.clientOrderId = curClientOrderId;
     re.symbol = cfg_.id;
     re.side = side;
     re.type = OrderType::LIMIT;
@@ -2924,13 +2957,13 @@ class MatchingEngine
     if (const RejectReason r = perpRiskGate(re); r != RejectReason::None)
     {
       forgetOrder(m.id);  // order was already canceled above -> stays gone
-      sink_(OrderRejected{m.id, m.symbol, r, acct});
+      sink_(OrderRejected{m.id, m.symbol, r, acct, curClientOrderId});
       return;
     }
     if (!reserveFunds(re))  // cannot fund the modified order -> reject; order is gone
     {
       forgetOrder(m.id);
-      sink_(OrderRejected{m.id, m.symbol, RejectReason::InsufficientFunds, acct});
+      sink_(OrderRejected{m.id, m.symbol, RejectReason::InsufficientFunds, acct, curClientOrderId});
       return;
     }
     const MatchOutcome out =
@@ -2946,7 +2979,7 @@ class MatchingEngine
     {
       releaseReservation(m.id);
       forgetOrder(m.id);
-      sink_(OrderRejected{m.id, m.symbol, out.reject, acct});
+      sink_(OrderRejected{m.id, m.symbol, out.reject, acct, curClientOrderId});
       return;
     }
     if (out.residualCanceled)
@@ -2955,13 +2988,14 @@ class MatchingEngine
       // order. Held slices stay reserved: their accept still has to settle.
       releaseReservationExceptHeld(m.id);
       forgetOrder(m.id);
-      sink_(OrderCanceled{m.id, m.symbol, out.residualCancelReason, acct});
+      sink_(OrderCanceled{m.id, m.symbol, out.residualCancelReason, acct, curClientOrderId});
       processTriggers();
       return;
     }
     if (out.residualRests)
     {
       RestingOrder mro{m.id, acct, newPrice, out.leaves, side};
+      mro.clientOrderId = curClientOrderId;
       mro.reduceOnly = re.reduceOnly;
       mro.postOnly = re.postOnly;
       mro.lastLook = re.lastLook && cfg_.lastLookWindowNs.count() > 0;
@@ -2974,7 +3008,7 @@ class MatchingEngine
       book_.addResting(side, mro);
       trackResting(m.id, acct, re.stp);
     }
-    sink_(OrderModified{m.id, m.symbol, newPrice, out.leaves, false, acct});
+    sink_(OrderModified{m.id, m.symbol, newPrice, out.leaves, false, acct, curClientOrderId});
     processTriggers();  // a reprice-into-cross may have moved the last price
   }
 
@@ -3005,11 +3039,13 @@ class MatchingEngine
     rejectHoldsFor(c.id);
     const uint64_t restingAcct = ownerOf(c.id);
     const uint64_t stopAcct = stops_.accountOf(c.id);
-    if (book_.cancel(c.id).has_value())
+    const uint64_t stopClOrd = stops_.clientOrderIdOf(c.id);
+    if (auto ro = book_.cancel(c.id))
     {
       releaseReservation(c.id);
       forgetOrder(c.id);
-      sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, restingAcct});
+      sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, restingAcct,
+                          ro->clientOrderId});
     }
     else if (stops_.cancel(c.id))
     {
@@ -3018,7 +3054,7 @@ class MatchingEngine
       // looks for an order that no longer exists.
       unlinkOco(c.id);
       forgetOrder(c.id);
-      sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, stopAcct});
+      sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, stopAcct, stopClOrd});
     }
     else
     {
@@ -3094,10 +3130,11 @@ class MatchingEngine
   // tracking, tell the owner.
   void cancelForStp(OrderId id, uint64_t account)
   {
-    book_.cancel(id);
+    const auto ro = book_.cancel(id);
     releaseReservation(id);
     forgetOrder(id);
-    sink_(OrderCanceled{id, cfg_.id, CancelReason::SelfTradePrevention, account});
+    sink_(OrderCanceled{id, cfg_.id, CancelReason::SelfTradePrevention, account,
+                        ro ? ro->clientOrderId : 0});
   }
 
   // Trim one leg by the overlapping quantity without printing. A leg trimmed
@@ -3223,11 +3260,11 @@ class MatchingEngine
     std::sort(ids.begin(), ids.end());                               // deterministic cancel/event order (layout-independent)
     for (OrderId id : ids)
     {
-      if (book_.cancel(id).has_value())
+      if (auto ro = book_.cancel(id))
       {
         releaseReservation(id);
         forgetOrder(id);
-        sink_(OrderCanceled{id, cfg_.id, reason, account});
+        sink_(OrderCanceled{id, cfg_.id, reason, account, ro->clientOrderId});
       }
     }
   }
@@ -3264,19 +3301,21 @@ class MatchingEngine
     }
     rejectHoldsFor(q.bidId);  // a replaced quote may carry open holds
     rejectHoldsFor(q.askId);
-    if (book_.cancel(q.bidId).has_value())
+    if (auto ro = book_.cancel(q.bidId))
     {
       const uint64_t acct = ownerOf(q.bidId);
       releaseReservation(q.bidId);
       forgetOrder(q.bidId);
-      sink_(OrderCanceled{q.bidId, cfg_.id, CancelReason::UserRequested, acct});
+      sink_(OrderCanceled{q.bidId, cfg_.id, CancelReason::UserRequested, acct,
+                          ro->clientOrderId});
     }
-    if (book_.cancel(q.askId).has_value())
+    if (auto ro = book_.cancel(q.askId))
     {
       const uint64_t acct = ownerOf(q.askId);
       releaseReservation(q.askId);
       forgetOrder(q.askId);
-      sink_(OrderCanceled{q.askId, cfg_.id, CancelReason::UserRequested, acct});
+      sink_(OrderCanceled{q.askId, cfg_.id, CancelReason::UserRequested, acct,
+                          ro->clientOrderId});
     }
     if (q.bidQty.raw() > 0)
     {
@@ -4179,6 +4218,7 @@ class MatchingEngine
       }
     }
     RestingOrder ro{r.id, r.accountId, r.price, r.leaves, r.side};
+    ro.clientOrderId = r.clientOrderId;
     ro.hidden = r.hidden;
     ro.peak = r.peak;
     ro.lastLook = r.lastLook;
@@ -4353,6 +4393,11 @@ class MatchingEngine
     // Captured so a checkpoint can re-reserve the taker leg's held backing
     // exactly (a perp reduce-only taker reserves nothing).
     bool takerReduceOnly{false};
+    // Captured for the same reason as the rest of this block: a reject rebuilds
+    // either leg, and the report that follows has to name the order the way its
+    // submitter does.
+    uint64_t makerClientOrderId{0};
+    uint64_t takerClientOrderId{0};
   };
   void createHeld(const RestingOrder& maker, Quantity fill, const NewOrder& taker)
   {
@@ -4381,6 +4426,8 @@ class MatchingEngine
     h.takerPrice = taker.price;
     h.takerExpiryNs = taker.expiryNs;
     h.makerReduceOnly = maker.reduceOnly;
+    h.makerClientOrderId = maker.clientOrderId;
+    h.takerClientOrderId = taker.clientOrderId;
     h.takerReduceOnly = taker.reduceOnly;
     held_[id] = h;
     freshHolds_.push_back(id);
@@ -4480,9 +4527,9 @@ class MatchingEngine
       const Quantity makerLeaves = mk ? Quantity::fromRaw(mk->leaves.raw() + mk->hidden.raw()) : Quantity{};
       const Quantity makerDisp = mk ? mk->leaves : Quantity{};  // displayed peak for public feed
       emit_(OrderExecuted{h.maker, cfg_.id, h.qty, makerLeaves, false, makerLeaves.isZero(), h.price,
-                          makerDisp, h.makerAccount});
+                          makerDisp, h.makerAccount, h.makerClientOrderId});
       emit_(OrderExecuted{h.taker, cfg_.id, h.qty, Quantity{}, true, false, h.price, Quantity{},
-                          h.takerAccount});
+                          h.takerAccount, h.takerClientOrderId});
     }
     else
     {
@@ -4645,18 +4692,21 @@ class MatchingEngine
     {
       ro->leaves += h.qty;  // the returned slice was displayed when it was held
       book_.addResting(ro->side, *ro);
-      sink_(OrderModified{h.maker, cfg_.id, ro->price, ro->leaves, false, h.makerAccount});
+      sink_(OrderModified{h.maker, cfg_.id, ro->price, ro->leaves, false, h.makerAccount,
+                          ro->clientOrderId});
     }
     else
     {
       const Side makerSide = (h.takerSide == Side::BUY) ? Side::SELL : Side::BUY;
       RestingOrder rebuilt{h.maker, h.makerAccount, h.price, h.qty, makerSide};
+      rebuilt.clientOrderId = h.makerClientOrderId;
       rebuilt.lastLook = true;
       rebuilt.reduceOnly = h.makerReduceOnly;
       book_.addResting(makerSide, rebuilt);
       // Still tracked in orderAccount_/byAccount_: a fully-held maker is never
       // forgotten while its hold is open (see createHeld).
-      sink_(OrderModified{h.maker, cfg_.id, h.price, h.qty, false, h.makerAccount});
+      sink_(OrderModified{h.maker, cfg_.id, h.price, h.qty, false, h.makerAccount,
+                          h.makerClientOrderId});
     }
   }
 
@@ -4672,11 +4722,13 @@ class MatchingEngine
       {
         ro->leaves += h.qty;  // combine with the already-resting remainder, tail requeue
         book_.addResting(ro->side, *ro);
-        sink_(OrderModified{h.taker, cfg_.id, ro->price, ro->leaves, false, h.takerAccount});
+        sink_(OrderModified{h.taker, cfg_.id, ro->price, ro->leaves, false, h.takerAccount,
+                            ro->clientOrderId});
       }
       else
       {
         RestingOrder rebuilt{h.taker, h.takerAccount, h.takerPrice, h.qty, h.takerSide};
+        rebuilt.clientOrderId = h.takerClientOrderId;
         book_.addResting(h.takerSide, rebuilt);
         trackResting(h.taker, h.takerAccount, stpOf(h.taker));
         if (h.takerTif == TimeInForce::GTD && static_cast<bool>(h.takerExpiryNs))
@@ -4684,7 +4736,7 @@ class MatchingEngine
           expiry_[h.taker] = h.takerExpiryNs;
         }
         sink_(OrderAccepted{h.taker, cfg_.id, h.takerSide, h.takerPrice, h.qty, true, h.qty,
-                            h.takerAccount});
+                            h.takerAccount, h.takerClientOrderId});
       }
       return;
     }
@@ -4695,7 +4747,7 @@ class MatchingEngine
                                 : (h.takerTif == TimeInForce::FOK)
                                     ? CancelReason::FillOrKillResidual
                                     : CancelReason::ImmediateOrCancelResidual;
-    sink_(OrderCanceled{h.taker, cfg_.id, reason, h.takerAccount});
+    sink_(OrderCanceled{h.taker, cfg_.id, reason, h.takerAccount, h.takerClientOrderId});
   }
 
   // Deterministically resolve (reject) every open hold that references `id` as
@@ -4811,20 +4863,21 @@ class MatchingEngine
     for (OrderId id : due)
     {
       expiry_.erase(id);
-      rejectHoldsFor(id);                // expiry removes the order: resolve holds first
-      if (book_.cancel(id).has_value())  // still resting -> expire it
+      rejectHoldsFor(id);  // expiry removes the order: resolve holds first
+      const uint64_t stopClOrd = stops_.clientOrderIdOf(id);
+      if (auto ro = book_.cancel(id))  // still resting -> expire it
       {
         const uint64_t acct = ownerOf(id);
         releaseReservation(id);
         forgetOrder(id);
-        sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct});
+        sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct, ro->clientOrderId});
       }
       else if (stops_.cancel(id))  // never triggered -> expire the conditional
       {
         const uint64_t acct = ownerOf(id);
         unlinkOco(id);
         forgetOrder(id);
-        sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct});
+        sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct, stopClOrd});
       }
     }
   }
@@ -4945,14 +4998,14 @@ class MatchingEngine
         {
           forgetOrder(id);
           pegged_.erase(id);
-          sink_(OrderCanceled{id, cfg_.id, CancelReason::UserRequested, ro->accountId});
+          sink_(OrderCanceled{id, cfg_.id, CancelReason::UserRequested, ro->accountId, ro->clientOrderId});
           continue;
         }
       }
       RestingOrder nr = *ro;
       nr.price = Price::fromRaw(target);
       book_.addResting(nr.side, nr);
-      sink_(OrderModified{id, cfg_.id, Price::fromRaw(target), nr.leaves, false, nr.accountId});
+      sink_(OrderModified{id, cfg_.id, Price::fromRaw(target), nr.leaves, false, nr.accountId, nr.clientOrderId});
     }
   }
 
@@ -4993,15 +5046,17 @@ class MatchingEngine
     rejectHoldsFor(id);  // the sibling leaves for good: resolve its holds first
     const uint64_t restingAcct = ownerOf(id);
     const uint64_t stopAcct = stops_.accountOf(id);
-    if (book_.cancel(id).has_value())
+    const uint64_t stopClOrd = stops_.clientOrderIdOf(id);
+    if (auto ro = book_.cancel(id))
     {
       releaseReservation(id);
       forgetOrder(id);
-      sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, restingAcct});
+      sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, restingAcct,
+                          ro->clientOrderId});
     }
     else if (stops_.cancel(id))
     {
-      sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, stopAcct});
+      sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, stopAcct, stopClOrd});
     }
   }
 

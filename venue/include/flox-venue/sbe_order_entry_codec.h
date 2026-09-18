@@ -56,7 +56,13 @@ class SbeOrderEntryCodec
   //    cancel-on-disconnect (fire-and-forget, handled at the gateway).
   //  - New outbound BalanceUpdate (21): balance change on a sequenced
   //    Deposit/Withdraw (including a rejected withdraw).
-  static constexpr uint16_t kVersion = 2;
+  // Schema version 4:
+  //  - The five templates that report on an ORDER (Accepted, Executed,
+  //    Canceled, Rejected, Replaced) gained a trailing `clOrdId` (u64,
+  //    sinceVersion=4): the identifier the submitter gave the order, 0 when it
+  //    gave none. Appended after `seq`, so an older reader skips it via
+  //    blockLength exactly as it does for seq.
+  static constexpr uint16_t kVersion = 4;
 
   enum class InTmpl : uint16_t
   {
@@ -94,12 +100,12 @@ class SbeOrderEntryCodec
   static constexpr uint16_t kBlockResendRequest = 8;
   static constexpr uint16_t kBlockSnapshotRequest = 0;
   static constexpr uint16_t kBlockSetSessionConfig = 1;
-  static constexpr uint16_t kBlockAccepted = 38;
-  static constexpr uint16_t kBlockExecuted = 46;
+  static constexpr uint16_t kBlockAccepted = 46;  // v4: + trailing clOrdId (u64)
+  static constexpr uint16_t kBlockExecuted = 54;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockTrade = 53;
-  static constexpr uint16_t kBlockCanceled = 21;
-  static constexpr uint16_t kBlockRejected = 21;
-  static constexpr uint16_t kBlockReplaced = 37;
+  static constexpr uint16_t kBlockCanceled = 29;  // v4: + trailing clOrdId (u64)
+  static constexpr uint16_t kBlockRejected = 29;  // v4: + trailing clOrdId (u64)
+  static constexpr uint16_t kBlockReplaced = 45;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockTriggered = 28;
   static constexpr uint16_t kBlockFillHeld = 60;
   static constexpr uint16_t kBlockFillRejected = 52;
@@ -268,6 +274,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, a->leavesQty.raw());
       sbe::putU8(out, a->restingOnBook ? 1 : 0);
       sbe::putU64(out, seq);
+      sbe::putU64(out, a->clientOrderId);
     }
     else if (const auto* x = std::get_if<OrderExecuted>(&ev))
     {
@@ -280,6 +287,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, x->aggressor ? 1 : 0);
       sbe::putU8(out, x->complete ? 1 : 0);
       sbe::putU64(out, seq);
+      sbe::putU64(out, x->clientOrderId);
     }
     else if (const auto* t = std::get_if<Trade>(&ev))
     {
@@ -300,6 +308,7 @@ class SbeOrderEntryCodec
       sbe::putU32(out, c->symbol);
       sbe::putU8(out, static_cast<uint8_t>(c->reason));
       sbe::putU64(out, seq);
+      sbe::putU64(out, c->clientOrderId);
     }
     else if (const auto* j = std::get_if<OrderRejected>(&ev))
     {
@@ -308,6 +317,7 @@ class SbeOrderEntryCodec
       sbe::putU32(out, j->symbol);
       sbe::putU8(out, static_cast<uint8_t>(j->reason));
       sbe::putU64(out, seq);
+      sbe::putU64(out, j->clientOrderId);
     }
     else if (const auto* m = std::get_if<OrderModified>(&ev))
     {
@@ -318,6 +328,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, m->leavesQty.raw());
       sbe::putU8(out, m->priorityKept ? 1 : 0);
       sbe::putU64(out, seq);
+      sbe::putU64(out, m->clientOrderId);
     }
     else if (const auto* g = std::get_if<OrderTriggered>(&ev))
     {
@@ -381,7 +392,25 @@ class SbeOrderEntryCodec
     {
       return 0;
     }
-    return sbe::getU64(p + sbe::kHeaderSize + h.blockLength - 8);
+    return sbe::getU64(p + sbe::kHeaderSize + seqOffsetIn(h));
+  }
+
+  // Where `seq` sits inside the root block. It was appended at version 1, so
+  // it ends the version-1 block -- and that stopped being the end of the block
+  // when version 4 appended clOrdId after it on the five order-report
+  // templates. Reading the last eight bytes was the old shortcut; it silently
+  // returned a client's order id as a sequence number the moment a v4 frame
+  // arrived, which is what the delivery tests caught. The frame says which
+  // version it is, so that is what decides.
+  static constexpr uint16_t seqOffsetIn(const sbe::Header& h)
+  {
+    const bool hasClOrdIdAfterSeq =
+        h.version >= 4 &&
+        (h.templateId == u16(OutTmpl::Accepted) || h.templateId == u16(OutTmpl::Executed) ||
+         h.templateId == u16(OutTmpl::Canceled) || h.templateId == u16(OutTmpl::Rejected) ||
+         h.templateId == u16(OutTmpl::Replaced));
+    const uint16_t trailing = hasClOrdIdAfterSeq ? 16 : 8;
+    return h.blockLength >= trailing ? static_cast<uint16_t>(h.blockLength - trailing) : 0;
   }
 
   // ---- session-layer verbs (gateway delivery layer, never matched) ----

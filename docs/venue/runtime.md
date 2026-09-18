@@ -161,9 +161,14 @@ existed be named as version 0 rather than misread.
 A scale-checked build (`FLOX_SCALE_CHECKS`, the default without `NDEBUG`) is a
 different format under this rule, not a debugging variant of the same one. It
 widens `Decimal`, so `sizeof(Price)` goes 8 to 16 and every body holding a price
-or a quantity moves its fields. Those layouts carry version 2 and version 1
+or a quantity moves its fields. Those layouts carry version 4 and version 3
 respectively, so a journal from a debug venue is refused by name in a release
 one rather than read at the wrong offsets.
+
+Versions 1 and 2 were the same pair before order records carried the
+identifier the submitter gave the order. A file written by a build without it
+holds orders whose reports would name nobody, so it is refused rather than
+read as though the field had always been absent.
 
 Bumping the version is a deliberate edit, and the build stops you from
 forgetting it. The sizes of all 34 journaled command structs are folded into a
@@ -202,7 +207,10 @@ A snapshot therefore carries two version numbers with different jobs. The
 stamp on every record says how to read the bytes, and a build reads one value
 of it. `SnapshotBegin.formatVersion` says what the records mean -- which
 records a snapshot of this generation is expected to contain -- and a mismatch
-there names both numbers and discards the generation.
+there names both numbers and discards the generation. Contents version 3 is
+the current one: order and held-fill records carry the identifier the
+submitter gave the order, so an order restored from a snapshot still reports
+under the name its submitter chose.
 
 Snapshot contents, in canonical order (price levels best-first, FIFO within a
 level; everything else sorted by key -- the file is byte-for-byte

@@ -41,6 +41,10 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->restingOnBook ? 1U : 0U);
     h = mix(h, static_cast<uint64_t>(x->displayQty.raw()));
     h = mix(h, x->account);
+    if (x->clientOrderId != 0)
+    {
+      h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
   }
   else if (const auto* x = std::get_if<OrderRejected>(&e))
   {
@@ -49,6 +53,10 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->reason));
     h = mix(h, x->account);
+    if (x->clientOrderId != 0)
+    {
+      h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
   }
   else if (const auto* x = std::get_if<CancelRejected>(&e))
   {
@@ -84,6 +92,10 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->lastPx.raw()));
     h = mix(h, static_cast<uint64_t>(x->displayLeaves.raw()));
     h = mix(h, x->account);
+    if (x->clientOrderId != 0)
+    {
+      h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
   }
   else if (const auto* x = std::get_if<OrderCanceled>(&e))
   {
@@ -92,6 +104,10 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->symbol);
     h = mix(h, static_cast<uint64_t>(x->reason));
     h = mix(h, x->account);
+    if (x->clientOrderId != 0)
+    {
+      h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
   }
   else if (const auto* x = std::get_if<OrderModified>(&e))
   {
@@ -102,6 +118,10 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->leavesQty.raw()));
     h = mix(h, x->priorityKept ? 1U : 0U);
     h = mix(h, x->account);
+    if (x->clientOrderId != 0)
+    {
+      h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
   }
   else if (const auto* x = std::get_if<OrderTriggered>(&e))
   {

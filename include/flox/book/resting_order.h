@@ -35,6 +35,11 @@ struct RestingOrder
   // an amend re-enters matching as a fresh aggressor and has to know what the
   // order was admitted with -- the incoming NewOrder is long gone by then.
   bool postOnly{};
+  // The identifier the submitter gave this order, carried for the same reason
+  // postOnly is: every report about the order is emitted long after the
+  // incoming request is gone, and a submitter reconciles against the
+  // identifier it chose, not the one the venue assigned. 0 = none was given.
+  uint64_t clientOrderId{};
 };
 
 }  // namespace flox
