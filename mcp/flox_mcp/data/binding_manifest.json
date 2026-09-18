@@ -21450,7 +21450,27 @@
         },
         {
           "kind": "method",
+          "name": "bind",
+          "parent": "PollResult"
+        },
+        {
+          "kind": "method",
+          "name": "connect",
+          "parent": "PollResult"
+        },
+        {
+          "kind": "method",
           "name": "inet_pton",
+          "parent": "PollResult"
+        },
+        {
+          "kind": "method",
+          "name": "listen",
+          "parent": "PollResult"
+        },
+        {
+          "kind": "method",
+          "name": "ntohs",
           "parent": "PollResult"
         },
         {

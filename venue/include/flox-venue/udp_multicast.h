@@ -13,35 +13,22 @@
 #include "flox-venue/resend_buffer.h"
 #include "flox-venue/sbe_md_codec.h"
 
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include "flox/net/socket.h"
+
 #include <cstdint>
-#include <cstring>
 #include <deque>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace flox::venue
 {
 
-// Resolve a multicast interface selector to an in_addr value (network order).
-// nullptr/"" -> INADDR_ANY (kernel routing picks the egress NIC).
-inline uint32_t ifaceAddr(const char* ifaceIp)
+// An interface selector as the callers spell it: nullptr or "" means "let the
+// routing table decide", which is what the layer's empty string means too.
+inline std::string ifaceOrAny(const char* ifaceIp)
 {
-  if (ifaceIp == nullptr || ifaceIp[0] == '\0')
-  {
-    return htonl(INADDR_ANY);
-  }
-  in_addr a{};
-  if (::inet_pton(AF_INET, ifaceIp, &a) == 1)
-  {
-    return a.s_addr;
-  }
-  return htonl(INADDR_ANY);
+  return ifaceIp == nullptr ? std::string{} : std::string{ifaceIp};
 }
 
 class UdpMdPublisher
@@ -55,29 +42,28 @@ class UdpMdPublisher
   bool open(const char* group, uint16_t port, bool multicast = true, const char* ifaceIp = nullptr,
             unsigned char ttl = 1)
   {
-    fd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd_ < 0)
+    fd_ = net::openSocket(net::Kind::Udp);
+    if (!net::valid(fd_))
     {
       return false;
     }
-    std::memset(&dst_, 0, sizeof dst_);
-    dst_.sin_family = AF_INET;
-    dst_.sin_port = htons(port);
-    ::inet_pton(AF_INET, group, &dst_.sin_addr);
+    // A group that does not parse used to leave the destination at 0.0.0.0 and
+    // every publish silently went nowhere. It is refused here instead.
+    if (!net::parseAddress(group, dst_, port))
+    {
+      close();
+      return false;
+    }
     if (multicast)
     {
-      in_addr iface{};
-      iface.s_addr = ifaceAddr(ifaceIp);
-      ::setsockopt(fd_, IPPROTO_IP, IP_MULTICAST_IF, &iface, sizeof iface);
-      unsigned char loop = 1;
-      ::setsockopt(fd_, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof loop);
-      ::setsockopt(fd_, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof ttl);
+      net::setMulticastInterface(fd_, ifaceOrAny(ifaceIp));
+      net::setMulticastLoop(fd_, true);
+      net::setMulticastTtl(fd_, ttl);
     }
     // Non-blocking: a full socket buffer must never stall the matching thread.
     // The failed datagram is a counted drop, not a wait -- consumers recover
     // the hole via gap detection + the recovery channel.
-    const int fl = ::fcntl(fd_, F_GETFL, 0);
-    ::fcntl(fd_, F_SETFL, fl | O_NONBLOCK);
+    net::setNonBlocking(fd_, true);
     return true;
   }
 
@@ -89,9 +75,8 @@ class UdpMdPublisher
   bool publish(const MdMessage& m)
   {
     SbeMdCodec::encode(m, buf_);
-    const ssize_t n =
-        ::sendto(fd_, buf_.data(), buf_.size(), 0, reinterpret_cast<sockaddr*>(&dst_), sizeof dst_);
-    if (n != static_cast<ssize_t>(buf_.size()))
+    const long n = net::sendTo(fd_, buf_.data(), buf_.size(), dst_);
+    if (n != static_cast<long>(buf_.size()))
     {
       if (counters_ != nullptr)
       {
@@ -104,17 +89,14 @@ class UdpMdPublisher
 
   void close()
   {
-    if (fd_ >= 0)
-    {
-      ::close(fd_);
-      fd_ = -1;
-    }
+    net::closeSocket(fd_);
+    fd_ = net::kInvalid;
   }
   ~UdpMdPublisher() { close(); }
 
  private:
-  int fd_{-1};
-  sockaddr_in dst_{};
+  net::Handle fd_{net::kInvalid};
+  ::sockaddr_in dst_{};
   std::vector<uint8_t> buf_;
   MdCounters* counters_{nullptr};
 };
@@ -127,42 +109,27 @@ class UdpMdSubscriber
   // tests). Mirrors UdpMdPublisher::open.
   bool join(const char* group, uint16_t port, bool multicast = true, const char* ifaceIp = nullptr)
   {
-    fd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd_ < 0)
+    fd_ = net::openSocket(net::Kind::Udp);
+    if (!net::valid(fd_))
     {
       return false;
     }
-    int one = 1;
-    ::setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons(port);
-    a.sin_addr.s_addr = multicast ? htonl(INADDR_ANY) : htonl(INADDR_LOOPBACK);
-    if (::bind(fd_, reinterpret_cast<sockaddr*>(&a), sizeof a) < 0)
+    net::setReuseAddr(fd_, true);
+    // A multicast receiver binds the wildcard so the group's datagrams reach
+    // it whatever interface they arrive on; a unicast one binds loopback.
+    if (!net::bindTo(fd_, multicast ? "" : "127.0.0.1", port))
     {
       return false;
     }
-    socklen_t sl = sizeof a;
-    ::getsockname(fd_, reinterpret_cast<sockaddr*>(&a), &sl);
-    port_ = ntohs(a.sin_port);
-    if (multicast)
+    port_ = net::boundPort(fd_);
+    if (multicast && !net::joinMulticast(fd_, group, ifaceOrAny(ifaceIp)))
     {
-      ip_mreq mr{};
-      ::inet_pton(AF_INET, group, &mr.imr_multiaddr);
-      mr.imr_interface.s_addr = ifaceAddr(ifaceIp);
-      if (::setsockopt(fd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mr, sizeof mr) < 0)
-      {
-        return false;
-      }
+      return false;
     }
     return true;
   }
 
-  void setTimeout(int ms)
-  {
-    timeval tv{ms / 1000, (ms % 1000) * 1000};
-    ::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-  }
+  void setTimeout(int ms) { net::setReceiveTimeout(fd_, ms); }
 
   // Optional client-side sequencing: with a detector attached, recv() delivers
   // messages strictly in seq order per (symbol, epoch) -- held-out reordered
@@ -217,11 +184,8 @@ class UdpMdSubscriber
 
   void close()
   {
-    if (fd_ >= 0)
-    {
-      ::close(fd_);
-      fd_ = -1;
-    }
+    net::closeSocket(fd_);
+    fd_ = net::kInvalid;
   }
   ~UdpMdSubscriber() { close(); }
 
@@ -229,7 +193,7 @@ class UdpMdSubscriber
   bool recvRaw(MdMessage& out)
   {
     uint8_t buf[SbeMdCodec::kMaxSize];
-    const ssize_t n = ::recvfrom(fd_, buf, sizeof buf, 0, nullptr, nullptr);
+    const long n = net::receiveFrom(fd_, buf, sizeof buf);
     if (n <= 0)
     {
       return false;
@@ -237,7 +201,7 @@ class UdpMdSubscriber
     return SbeMdCodec::decode(buf, static_cast<size_t>(n), out);
   }
 
-  int fd_{-1};
+  net::Handle fd_{net::kInvalid};
   int port_{0};
   GapDetector* gd_{nullptr};
   GapDetector::GapFn onGap_;

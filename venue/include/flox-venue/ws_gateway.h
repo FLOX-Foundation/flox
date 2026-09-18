@@ -16,14 +16,12 @@
 #include "flox-venue/session_registry.h"
 #include "flox-venue/socket_acceptor.h"
 #include "flox-venue/tcp_gateway.h"  // setRecvTimeoutMs / wasRecvTimeout
+#include "flox/net/socket.h"
 #include "flox/util/transport.h"
 #include "flox/util/websocket.h"
 
-#include <sys/socket.h>
-#include <unistd.h>
 #include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -86,7 +84,7 @@ class WsGateway
     // connLoop runs as a per-connection thread body: an escaping exception would
     // reach std::terminate and kill the whole venue, so contain it to this one
     // connection (the acceptor closes the fd and the thread exits cleanly).
-    return acceptor_.start(port, [this](int fd)
+    return acceptor_.start(port, [this](net::Handle fd)
                            {
                              try { connLoop(fd); }
                              catch (...) {} });
@@ -95,7 +93,7 @@ class WsGateway
   int port() const noexcept { return acceptor_.port(); }
 
  private:
-  void connLoop(int fd)
+  void connLoop(net::Handle fd)
   {
     const int64_t idleMs = idleTimeoutMs_.load();
     setRecvTimeoutMs(fd, idleMs > 0 ? std::max<int64_t>(idleMs / 2, 1) : 0);
@@ -105,7 +103,7 @@ class WsGateway
     uint8_t tmp[2048];
     while (req.find("\r\n\r\n") == std::string::npos)
     {
-      const ssize_t r = ::read(fd, tmp, sizeof tmp);
+      const long r = net::receive(fd, tmp, sizeof tmp);
       if (r <= 0 || req.size() > (1u << 16))
       {
         return;
@@ -147,7 +145,7 @@ class WsGateway
           [fd](const uint8_t* p, size_t n)
           { return net::writeAll(fd, p, n); },
           [fd]
-          { ::shutdown(fd, SHUT_RDWR); },
+          { net::shutdownBoth(fd); },
           [&cod](const OutboundEvent& e)
           { cod.observe(e); });
     }
@@ -250,8 +248,8 @@ class WsGateway
       }
       if (consumed == 0)
       {
-        errno = 0;
-        const ssize_t r = ::read(fd, tmp, sizeof tmp);
+        net::clearLastError();
+        const long r = net::receive(fd, tmp, sizeof tmp);
         if (r > 0)
         {
           lastInbound = now();
@@ -363,7 +361,7 @@ class WsGateway
       writer->stop();
     }
     cod.flush(handler_);
-    ::shutdown(fd, SHUT_RDWR);  // acceptor owns the close
+    net::shutdownBoth(fd);  // acceptor owns the close
   }
 
   // Decode one fully-assembled message and, if it is a valid command, run it.

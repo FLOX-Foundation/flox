@@ -70,8 +70,7 @@
 
 #include "flox/util/crc32.h"
 
-#include <fcntl.h>
-#include <unistd.h>
+#include "flox/util/file_io.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -234,24 +233,18 @@ class FixSessionSidecar
                 reinterpret_cast<const uint8_t*>(&crc) + sizeof crc);
 
     const std::string tmp = path + ".tmp";
-    const int fd = ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
+    const fileio::Fd fd = fileio::openForWrite(tmp, fileio::OpenMode::Truncate);
+    if (fd == fileio::kInvalidFd)
     {
       return false;
     }
-    size_t off = 0;
-    while (off < body.size())
+    if (!fileio::writeAll(fd, body.data(), body.size()))
     {
-      const ssize_t w = ::write(fd, body.data() + off, body.size() - off);
-      if (w <= 0)
-      {
-        ::close(fd);
-        return false;
-      }
-      off += static_cast<size_t>(w);
+      fileio::closeFd(fd);
+      return false;
     }
-    ::fsync(fd);
-    ::close(fd);
+    fileio::syncFd(fd);
+    fileio::closeFd(fd);
     std::error_code ec;
     std::filesystem::rename(tmp, path, ec);
     return !ec;

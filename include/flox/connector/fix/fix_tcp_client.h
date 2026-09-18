@@ -12,7 +12,8 @@
  * frame is resumable -- the session timers run and the reader comes back to the
  * bytes it already has, instead of resuming from the middle of a message.
  *
- * POSIX sockets only, like the rest of flox/net.
+ * Sockets go through flox/net/socket.h, so this compiles and behaves the same
+ * on every platform flox builds for.
  *
  * TLS is NOT here. The initiator talks to a SendFn and an onFrame(), so a TLS
  * channel is a drop-in replacement for this class rather than a change to the
@@ -24,40 +25,24 @@
 #include "flox/connector/fix/fix_initiator.h"
 #include "flox/util/transport.h"
 
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <csignal>
+#include "flox/net/socket.h"
 
 #include <cstdint>
-#include <cstring>
 #include <string>
 #include <vector>
 
 namespace flox::fix
 {
 
-// A counterparty that vanishes mid-write must not take the process down.
-// BSD and macOS suppress SIGPIPE per socket; Linux has no such option, so the
-// signal is ignored process-wide once and EPIPE comes back to the writer.
-inline void suppressSigpipe(int fd) noexcept
+// A counterparty that vanishes mid-write must not take the process down. The
+// layer holds the three platform answers; what is gone from here is the
+// process-wide signal(SIGPIPE, SIG_IGN) this used to fall back to on Linux --
+// a library has no business changing a signal disposition the application
+// owns, and every write below goes through net::sendNoSignal, which carries
+// the flag that makes it unnecessary.
+inline void suppressSigpipe(net::Handle fd) noexcept
 {
-#ifdef SO_NOSIGPIPE
-  int one = 1;
-  ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
-#else
-  (void)fd;
-  static const bool ignored = []
-  {
-    ::signal(SIGPIPE, SIG_IGN);
-    return true;
-  }();
-  (void)ignored;
-#endif
+  net::suppressSigPipe(fd);
 }
 
 class FixTcpClient
@@ -78,49 +63,36 @@ class FixTcpClient
   bool connect(const char* host, uint16_t port, int recvTimeoutMs = 200)
   {
     close();
-    fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd_ < 0)
+    fd_ = net::openSocket(net::Kind::Tcp);
+    if (!net::valid(fd_))
     {
       return false;
     }
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons(port);
-    if (host == nullptr || host[0] == '\0')
+    const std::string h = (host == nullptr || host[0] == '\0') ? std::string{"127.0.0.1"}
+                                                               : std::string{host};
+    // A dotted quad needs no lookup; a name does. Trying the cheap one first
+    // keeps a resolver out of the path of every connect that does not need it.
+    ::sockaddr_in a{};
+    if (!net::parseAddress(h, a, port) && !net::resolveIPv4(h, a, port))
     {
-      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+      close();
+      return false;
     }
-    else if (::inet_pton(AF_INET, host, &a.sin_addr) != 1)
-    {
-      addrinfo hints{};
-      hints.ai_family = AF_INET;
-      hints.ai_socktype = SOCK_STREAM;
-      addrinfo* res = nullptr;
-      if (::getaddrinfo(host, nullptr, &hints, &res) != 0 || res == nullptr)
-      {
-        close();
-        return false;
-      }
-      a.sin_addr = reinterpret_cast<sockaddr_in*>(res->ai_addr)->sin_addr;
-      ::freeaddrinfo(res);
-    }
-    if (::connect(fd_, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0)
+    if (!net::connectAddress(fd_, a))
     {
       close();
       return false;
     }
     suppressSigpipe(fd_);
-    int one = 1;
-    ::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
-    timeval tv{recvTimeoutMs / 1000, (recvTimeoutMs % 1000) * 1000};
-    ::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    net::setNoDelay(fd_, true);
+    net::setReceiveTimeout(fd_, recvTimeoutMs);
     reader_ = net::FrameReader{};
     return true;
   }
 
   bool send(const std::string& msg)
   {
-    if (fd_ < 0)
+    if (!net::valid(fd_))
     {
       return false;
     }
@@ -129,7 +101,7 @@ class FixTcpClient
 
   Status read(std::string& out)
   {
-    if (fd_ < 0)
+    if (!net::valid(fd_))
     {
       return Status::Closed;
     }
@@ -149,18 +121,15 @@ class FixTcpClient
 
   void close()
   {
-    if (fd_ >= 0)
-    {
-      ::close(fd_);
-      fd_ = -1;
-    }
+    net::closeSocket(fd_);
+    fd_ = net::kInvalid;
   }
 
-  bool connected() const noexcept { return fd_ >= 0; }
-  int fd() const noexcept { return fd_; }
+  bool connected() const noexcept { return net::valid(fd_); }
+  net::Handle fd() const noexcept { return fd_; }
 
  private:
-  int fd_{-1};
+  net::Handle fd_{net::kInvalid};
   net::FrameReader reader_;
 };
 
