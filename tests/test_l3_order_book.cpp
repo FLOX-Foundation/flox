@@ -269,7 +269,10 @@ TEST(L3OrderBookTest, TimePriceFIFO)
   OrderId id{12345678901230};
   constexpr size_t N = 8192;
 
-  L3OrderBook<N> book;
+  // 8192 orders of preallocated arena: heap, for the same reason as the
+  // default instantiation above.
+  auto bookHolder = std::make_unique<L3OrderBook<N>>();
+  auto& book = *bookHolder;
 
   for (size_t i = 0; i < N; ++i)
   {
