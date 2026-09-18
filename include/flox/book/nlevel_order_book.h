@@ -488,7 +488,7 @@ class NLevelOrderBook : public IOrderBook
       return {Quantity{}, Volume{}};
     }
 
-#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
+#if defined(__SIZEOF_INT128__)
     // Fast path: 128-bit accumulator with single division at end (GCC/Clang)
     int64_t remRaw = needQty.raw();
     __int128_t notionalRaw2 = 0;
@@ -547,7 +547,7 @@ class NLevelOrderBook : public IOrderBook
       return {Quantity{}, Volume{}};
     }
 
-#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
+#if defined(__SIZEOF_INT128__)
     // Fast path: 128-bit accumulator with single division at end (GCC/Clang)
     int64_t remRaw = needQty.raw();
     __int128_t notionalRaw2 = 0;

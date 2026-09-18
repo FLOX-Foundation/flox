@@ -236,7 +236,7 @@ constexpr int64_t checkedAddI64(int64_t a, int64_t b) noexcept
 //
 // A zero divisor routes through dividedByZeroI64, so it is counted and
 // saturated the same way as every other fixed-point division by zero.
-#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
+#if defined(__SIZEOF_INT128__)
 constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
 {
   using i128 = __int128_t;
