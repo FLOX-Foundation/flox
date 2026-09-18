@@ -270,6 +270,7 @@ nav:
 
   - Reference:
       - reference/README.md
+      - "Sockets across platforms": reference/portable-sockets.md
       - Python:
           - reference/python/index.md
           - "Full API index": reference/python/_api_index.md

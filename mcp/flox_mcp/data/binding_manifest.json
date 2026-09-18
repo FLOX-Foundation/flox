@@ -12644,6 +12644,11 @@
           "name": "PerSidePositionState"
         },
         {
+          "header": "include/flox/net/socket.h",
+          "kind": "type",
+          "name": "PollResult"
+        },
+        {
           "header": "include/flox/util/memory/pool.h",
           "kind": "type",
           "name": "Pool"
@@ -21442,6 +21447,11 @@
           "kind": "method",
           "name": "shortPosition",
           "parent": "PerSidePositionState"
+        },
+        {
+          "kind": "method",
+          "name": "inet_pton",
+          "parent": "PollResult"
         },
         {
           "kind": "method",
