@@ -582,8 +582,11 @@ void test_md_equals_book()
 {
   std::printf("test_md_equals_book\n");
   std::vector<MdMessage> md;
-  MarketDataPublisher<1 << 16> pub([&](const MdMessage& m)
-                                   { md.push_back(m); }, px(0.01), SYM);
+  // Two megabytes of ladder, written out at its default size: heap, not a
+  // local -- a Windows thread's stack is one.
+  auto pubHolder = std::make_unique<MarketDataPublisher<1 << 16>>([&](const MdMessage& m)
+                                                                  { md.push_back(m); }, px(0.01), SYM);
+  auto& pub = *pubHolder;
   Cap cap;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    {
