@@ -10,8 +10,10 @@
 
 #include "flox-venue/metrics.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace flox::venue
 {
@@ -150,6 +152,74 @@ inline std::string render(const Metrics& m)
   return out;
 }
 
+// Last-look behaviour, per maker and venue-wide.
+//
+// Every series is labeled by maker and emitted for every maker that has held
+// anything -- including makers whose counters are all zero beyond `held`,
+// because "held ten, refused none" is the reading that says a maker is
+// behaving, and a series that disappears when it behaves cannot say that.
+//
+// The two directional series are what make this worth exporting at all: a
+// maker refusing only the fills that moved its way is taking a free option,
+// and one alert over `rejected` alone cannot see the difference.
+inline void lastLook(std::string& out, const LastLookSample& l)
+{
+  out += "# HELP fme_last_look_holds_total Fills held for a maker's last-look decision\n";
+  out += "# TYPE fme_last_look_holds_total counter\n";
+  auto series = [&out](const char* name, uint64_t maker, uint64_t v)
+  {
+    out += name;
+    out += "{maker=\"";
+    out += std::to_string(maker);
+    out += "\"} ";
+    out += std::to_string(v);
+    out += '\n';
+  };
+  // Sorted: a text page a human diffs between scrapes must not reorder itself
+  // because a hash map rehashed.
+  std::vector<uint64_t> makers;
+  makers.reserve(l.byMaker.size());
+  for (const auto& [maker, st] : l.byMaker)
+  {
+    makers.push_back(maker);
+  }
+  std::sort(makers.begin(), makers.end());
+
+  for (uint64_t maker : makers)
+  {
+    series("fme_last_look_holds_total", maker, l.byMaker.at(maker).held);
+  }
+  out += "# HELP fme_last_look_rejects_total Held fills the maker refused\n";
+  out += "# TYPE fme_last_look_rejects_total counter\n";
+  for (uint64_t maker : makers)
+  {
+    series("fme_last_look_rejects_total", maker, l.byMaker.at(maker).rejected);
+  }
+  out +=
+      "# HELP fme_last_look_rejects_adverse_total Refusals where the price moved AGAINST the "
+      "maker\n";
+  out += "# TYPE fme_last_look_rejects_adverse_total counter\n";
+  for (uint64_t maker : makers)
+  {
+    series("fme_last_look_rejects_adverse_total", maker, l.byMaker.at(maker).rejectedAdverse);
+  }
+  out +=
+      "# HELP fme_last_look_rejects_favourable_total Refusals where the price moved the maker's "
+      "WAY (free-option signal)\n";
+  out += "# TYPE fme_last_look_rejects_favourable_total counter\n";
+  for (uint64_t maker : makers)
+  {
+    series("fme_last_look_rejects_favourable_total", maker, l.byMaker.at(maker).rejectedFavourable);
+  }
+
+  counter(out, "fme_last_look_tolerance_rejects_total",
+          "Held fills the VENUE refused on its own tolerance, whatever the maker answered",
+          l.toleranceRejectedHolds);
+  counter(out, "fme_last_look_prorata_skips_total",
+          "Pro-rata participants skipped because they were holding rather than firm",
+          l.skippedLastLookProRata);
+}
+
 // Render counters + latency AND point-in-time venue gauges (insurance, funding,
 // open interest) sampled from the ledger/risk manager.
 inline std::string render(const Metrics& m, const Gauges& g)
@@ -167,6 +237,13 @@ inline std::string render(const Metrics& m, const Gauges& g)
            std::to_string(g.markPriceAgeNs));
   gaugeStr(out, "fme_liquidations_paused", "1 = liquidation circuit breaker engaged",
            std::to_string(g.liquidationsPaused));
+  return out;
+}
+
+inline std::string render(const Metrics& m, const Gauges& g, const LastLookSample& l)
+{
+  std::string out = render(m, g);
+  lastLook(out, l);
   return out;
 }
 

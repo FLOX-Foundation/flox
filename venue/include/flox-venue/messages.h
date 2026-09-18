@@ -370,6 +370,29 @@ struct SetFundingSchedule
 
 // v2: SnapshotBegin gained configHash; balances moved from Deposit totals to
 // exact RestoreBalance splits; MMP fill windows serialize (RestoreMmpFills).
+// What a maker did with the fills it was offered under last look, per maker.
+//
+// The split by direction is the point. A maker that refuses only when the
+// price moved ITS way is taking a free option: it keeps the good fills and
+// returns the bad ones. One that refuses in both directions at a similar rate
+// is answering a latency problem, not picking. Totals alone cannot tell those
+// apart, which is why `rejectedAdverse` and `rejectedFavourable` are counted
+// separately rather than derived.
+//
+// Lives here rather than inside MatchingEngine because a metrics exporter has
+// to name the type, and a type nested in a class template is a different type
+// for every book the engine is instantiated with.
+struct LastLookStats
+{
+  uint64_t held{0};
+  uint64_t accepted{0};
+  uint64_t rejected{0};
+  uint64_t adverse{0};          // holds where the move went against the maker
+  uint64_t rejectedAdverse{0};  // ... of which it refused
+  uint64_t favourable{0};       // holds where the move went its way
+  uint64_t rejectedFavourable{0};
+};
+
 // 3: order and held-fill records carry the submitter's own identifier. A
 // version-2 snapshot would restore orders whose reports name nobody, so it is
 // refused outright rather than read as though the field had always been zero.

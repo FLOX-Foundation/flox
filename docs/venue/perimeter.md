@@ -317,3 +317,38 @@ its own, so anything able to reach it can move every risk limit on the venue.
 samples venue state (open interest, position count, best bid/ask, mark age,
 feed-breaker state). `prometheus.h` renders the exposition format and
 `MetricsServer` serves it over HTTP for scraping.
+
+### Last look
+
+Six series, from `LastLookSample`. Four are labeled by maker:
+
+| Series | What it counts |
+|---|---|
+| `fme_last_look_holds_total{maker}` | fills held for that maker's decision |
+| `fme_last_look_rejects_total{maker}` | held fills it refused |
+| `fme_last_look_rejects_adverse_total{maker}` | ... of which the price had moved AGAINST it |
+| `fme_last_look_rejects_favourable_total{maker}` | ... of which the price had moved its WAY |
+
+and two are venue-wide, because no maker can be blamed for them:
+`fme_last_look_tolerance_rejects_total` (the venue refused the hold on its own
+tolerance, whatever the maker answered) and
+`fme_last_look_prorata_skips_total` (pro-rata participants skipped for holding
+rather than standing firm).
+
+The split by direction is the reason these exist. A maker refusing only the
+fills that moved its way is taking a free option: it keeps the good ones and
+hands back the bad, and every taker pays for it. A maker refusing at a similar
+rate in both directions is answering a latency problem instead. **The totals
+are identical in both cases** -- an alert on `fme_last_look_rejects_total`
+alone cannot tell them apart, which is what `..._favourable_total` over
+`..._rejects_total` is for.
+
+A maker that refused nothing still gets its series, at zero. A series that
+vanishes when it is healthy cannot be alerted on, and its absence would read
+as "no data" rather than "held ten, refused none".
+
+Like `Gauges`, these are sampled rather than pushed: the library runs no
+monitoring thread, so a deployment reads `lastLookStats()`,
+`toleranceRejectedHolds()` and `skippedLastLookProRata()` off the engine and
+hands them to `prom::render`. Left unsampled they render zeros, and zeros look
+exactly like a venue where nobody has ever held a fill.
