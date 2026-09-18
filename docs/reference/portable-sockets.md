@@ -123,10 +123,10 @@ all turns red, because the test asks whether a sender hears its own multicast
 rather than whether `setsockopt` returned zero.
 
 That effect check itself has a platform boundary worth stating. Turning the
-option *off* is asserted everywhere except Linux, where the datagram arrives
-anyway: the test selects the loopback interface for egress, and a packet sent
-out of `lo` comes back because that is what `lo` is. The option governs the
+option *off* is asserted on macOS only: the test selects the loopback
+interface for egress, and Linux and Windows both deliver a packet sent out of
+it regardless, because that is what a loopback interface is. The option governs the
 kernel's extra copy, not delivery over an interface that is already a loop.
 Observing it would need a real NIC address, which a CI runner cannot be
-counted on to have, so the assertion runs on the platforms where it means
-something -- including the macOS job, which builds these tests.
+counted on to have, so the assertion runs where it means
+something -- the macOS job, which builds these tests.
