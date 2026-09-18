@@ -17,19 +17,33 @@
  */
 #pragma once
 
-#include <unistd.h>
-
+#include <filesystem>
 #include <string>
+
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace flox::venue::test
 {
 
-// "/tmp/flox_test_<stem>_<pid><ext>". Call it once per path and keep the
+// "<temp dir>/flox_test_<stem>_<pid><ext>". Call it once per path and keep the
 // result: a test that forks must hand the child the parent's string, not
 // recompute it on the other side of the fork.
 inline std::string tmpPath(const std::string& stem, const std::string& ext = "")
 {
-  return "/tmp/flox_test_" + stem + "_" + std::to_string(::getpid()) + ext;
+#if defined(_WIN32)
+  const int pid = ::_getpid();
+#else
+  const int pid = static_cast<int>(::getpid());
+#endif
+  // The temporary directory is asked for rather than spelled: "/tmp" does not
+  // exist on every platform this builds on, and a path that does not exist
+  // fails at run time rather than at compile time.
+  const auto dir = std::filesystem::temp_directory_path();
+  return (dir / ("flox_test_" + stem + "_" + std::to_string(pid) + ext)).string();
 }
 
 }  // namespace flox::venue::test

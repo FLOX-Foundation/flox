@@ -27,8 +27,10 @@
 
 #include <gtest/gtest.h>
 
+#if !defined(_WIN32)
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 #include <cstdint>
 #include <cstdio>
@@ -153,6 +155,15 @@ std::vector<InboundCommand> childCommands()
 // A shard dies mid-stream via _exit (no stop(), no flush of the tail); a new
 // shard on the same journal must recover the intact prefix and then behave
 // exactly like a reference engine that was fed that prefix directly.
+//
+// POSIX only, and not for want of effort: the test needs a child that is an
+// exact copy of this process at this instant and then dies without unwinding.
+// Windows has no fork, and CreateProcess starts a fresh program rather than
+// continuing this one, so the same scenario would have to be built a
+// different way -- a second binary, a shared journal path, an agreed point to
+// die at. Worth doing; not worth faking. The other eight tests in this file
+// cover recovery from a journal written cleanly, and they run everywhere.
+#if !defined(_WIN32)
 TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
 {
   const std::string path = tmpPath("venue_recovery_procdeath", ".bin");
@@ -257,6 +268,8 @@ TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
 
 // The core O_TRUNC regression: constructing a shard on an existing journal
 // must not erase it -- the restart replays it and keeps appending.
+#endif  // !_WIN32
+
 TEST(VenueRecovery, RestartPreservesAndReplaysJournal)
 {
   const std::string path = tmpPath("venue_recovery_restart", ".bin");
