@@ -403,7 +403,12 @@ bool SymbolRegistry::saveToFile(const std::filesystem::path& path) const
 {
   std::lock_guard lock(_mutex);
 
-  std::FILE* f = std::fopen(path.string().c_str(), "w");
+  // Binary, both here and in loadFromFile. In text mode Windows turns every
+  // "\n" written into two bytes and turns them back on the way in, so the
+  // size ftell reports and the count fread returns disagree and the load
+  // rejects a file it wrote itself. Nothing on POSIX distinguishes the two
+  // modes, so this costs nothing there.
+  std::FILE* f = std::fopen(path.string().c_str(), "wb");
   if (!f)
   {
     return false;
@@ -457,22 +462,30 @@ bool SymbolRegistry::saveToFile(const std::filesystem::path& path) const
 
 bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
 {
-  std::FILE* f = std::fopen(path.string().c_str(), "r");
+  std::FILE* f = std::fopen(path.string().c_str(), "rb");
   if (!f)
   {
     return false;
   }
 
-  // Read entire file
-  std::fseek(f, 0, SEEK_END);
-  long size = std::ftell(f);
-  std::fseek(f, 0, SEEK_SET);
-
-  std::string content(size, '\0');
-  size_t bytesRead = std::fread(content.data(), 1, size, f);
+  // Read to the end and use what actually arrived, rather than asking ftell
+  // how many bytes there should be and rejecting the file when fread returns
+  // a different number. That comparison has no right answer on Windows: in
+  // text mode the CRT rewrites line endings on the way through, so the two
+  // disagree by design, and a file this same class had just written was
+  // refused on load. Binary mode above removes the rewriting; reading to EOF
+  // removes the dependency on the two numbers agreeing at all.
+  std::string content;
+  char buf[64 * 1024];
+  for (size_t n = std::fread(buf, 1, sizeof buf, f); n > 0;
+       n = std::fread(buf, 1, sizeof buf, f))
+  {
+    content.append(buf, n);
+  }
+  const bool readFailed = std::ferror(f) != 0;
   std::fclose(f);
 
-  if (bytesRead != static_cast<size_t>(size))
+  if (readFailed || content.empty())
   {
     return false;
   }

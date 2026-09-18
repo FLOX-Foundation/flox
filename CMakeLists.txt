@@ -124,6 +124,48 @@ if(FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS)
   target_compile_definitions(${FLOX} PUBLIC FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS=${FLOX_DEFAULT_EVENTBUS_MAX_CONSUMERS})
 endif()
 
+# 128-bit arithmetic needs runtime helpers -- __divti3, __floattidf, __fixdfti
+# -- and where they come from is a property of the toolchain, not of the
+# language. GCC and Clang on Unix link libgcc or compiler-rt for you. clang-cl
+# targeting the MSVC ABI does not: the Microsoft link line has no such default,
+# and the omission surfaces as undefined symbols at the very end of a build.
+#
+# This belongs to the core and not to one module: money arithmetic uses the
+# 128-bit path everywhere, and while this lived under venue/ the guards in
+# common.h steered clang-cl around that path into a narrower fallback that
+# overflows on ordinary prices. The helpers are linked here so the path is
+# available to everything that computes with money.
+#
+# The library is found at configure time, so a configure that cannot find it
+# says so here instead of letting the link fail eight minutes later.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+  set(FLOX_CLANG_BUILTINS "")
+  # Ask the compiler first; it knows where its own runtime lives.
+  execute_process(
+    COMMAND "${CMAKE_CXX_COMPILER}" --rtlib=compiler-rt -print-libgcc-file-name
+    OUTPUT_VARIABLE _rt OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET RESULT_VARIABLE _rt_rc)
+  if(_rt_rc EQUAL 0 AND EXISTS "${_rt}")
+    set(FLOX_CLANG_BUILTINS "${_rt}")
+  else()
+    # Otherwise look where clang keeps it, next to the driver.
+    get_filename_component(_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(_root "${_bin}" DIRECTORY)
+    file(GLOB_RECURSE _found "${_root}/lib/clang/*/lib/windows/clang_rt.builtins-x86_64.lib")
+    if(_found)
+      list(GET _found 0 FLOX_CLANG_BUILTINS)
+    endif()
+  endif()
+  if(NOT FLOX_CLANG_BUILTINS)
+    message(FATAL_ERROR
+      "clang-cl needs clang_rt.builtins for 128-bit arithmetic (__divti3 and "
+      "friends) and it was not found near ${CMAKE_CXX_COMPILER}. Install the "
+      "LLVM runtime.")
+  endif()
+  message(STATUS "128-bit helpers from ${FLOX_CLANG_BUILTINS}")
+  target_link_libraries(${FLOX} PUBLIC "${FLOX_CLANG_BUILTINS}")
+endif()
+
 # Platform-specific settings
 if(WIN32)
   # Prevent Windows.h from defining min/max macros that break std::min/max

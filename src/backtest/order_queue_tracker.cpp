@@ -30,7 +30,7 @@ namespace
 // sites here (queue sizes and trade quantities).
 inline int64_t mulDiv64(int64_t a, int64_t b, int64_t c) noexcept
 {
-#if defined(__SIZEOF_INT128__) && !defined(_WIN32)
+#if defined(__SIZEOF_INT128__)
   return static_cast<int64_t>((static_cast<__int128>(a) *
                                static_cast<__int128>(b)) /
                               static_cast<__int128>(c));

@@ -54,9 +54,11 @@ static inline int fastdiv_pow2_shift(uint64_t d)
   return std::countr_zero(d);
 }
 
-// Use __uint128_t only on non-Windows platforms with GCC/Clang
-// clang-cl on Windows defines __SIZEOF_INT128__ but lacks runtime support (__udivti3)
-#if defined(__SIZEOF_INT128__) && !defined(_WIN32)
+// Whoever has the type. clang-cl on Windows has it too: the runtime helpers
+// it needs (__udivti3 and friends) come from clang_rt.builtins, which the
+// build links -- see CMakeLists.txt. Excluding Windows here was the older
+// belief, and it silently sent clang-cl down a narrower path.
+#if defined(__SIZEOF_INT128__)
 
 // Build reciprocal: m = ceil( 2^(64+k) / d )
 static inline FastDiv64 make_fastdiv64(uint64_t d, unsigned k = 1)

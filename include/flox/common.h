@@ -124,8 +124,9 @@ inline Volume operator*(Quantity qty, Price px)
 {
   FLOX_SCALE_CHECK(qty.scale() == Quantity::Scale && px.scale() == Price::Scale,
                    "Quantity*Price requires default scale; rescale a per-symbol value first");
-#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
-  // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
+#if defined(__SIZEOF_INT128__)
+  // Any compiler that has the type, clang-cl included: the runtime helpers
+  // it needs are linked by the build (see CMakeLists.txt).
   using i128 = __int128_t;
   return Volume::fromRaw(
       checkedNarrowI64((i128)qty.raw() * (i128)px.raw() / (i128)Volume::Scale));
@@ -159,8 +160,9 @@ inline Price operator/(Volume vol, Quantity qty)
   {
     return Price::fromRaw(dividedByZeroI64(vol.raw()));
   }
-#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
-  // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
+#if defined(__SIZEOF_INT128__)
+  // Any compiler that has the type, clang-cl included: the runtime helpers
+  // it needs are linked by the build (see CMakeLists.txt).
   using i128 = __int128_t;
   return Price::fromRaw(
       checkedNarrowI64((i128)vol.raw() * (i128)Price::Scale / (i128)qty.raw()));
@@ -186,8 +188,9 @@ inline Quantity operator/(Volume vol, Price px)
   {
     return Quantity::fromRaw(dividedByZeroI64(vol.raw()));
   }
-#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
-  // GCC/Clang on Linux/Mac - use native 128-bit arithmetic
+#if defined(__SIZEOF_INT128__)
+  // Any compiler that has the type, clang-cl included: the runtime helpers
+  // it needs are linked by the build (see CMakeLists.txt).
   using i128 = __int128_t;
   return Quantity::fromRaw(
       checkedNarrowI64((i128)vol.raw() * (i128)Quantity::Scale / (i128)px.raw()));
