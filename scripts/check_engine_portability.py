@@ -36,8 +36,7 @@ PERIMETER = {
     "socket_acceptor.h", "tcp_gateway.h", "ws_gateway.h", "tls_gateway.h",
     "udp_multicast.h", "session.h", "session_registry.h", "cancel_on_disconnect.h",
     "fix_session.h", "md_distribution.h", "md_recovery.h", "control_server.h",
-    "control_api.h", "metrics_server.h", "rest_json.h", "md_encoder.h",
-    "fix_md_codec.h",
+    "control_api.h", "metrics_server.h", "rest_json.h",
 }
 
 

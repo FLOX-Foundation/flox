@@ -128,11 +128,7 @@ if(FLOX_BUILD_TESTS)
         socket_acceptor.h tcp_gateway.h ws_gateway.h tls_gateway.h udp_multicast.h
         session.h session_registry.h cancel_on_disconnect.h fix_session.h
         md_distribution.h md_recovery.h control_server.h control_api.h
-        metrics_server.h rest_json.h
-        # Wire encoders: they frame for a socket, so they carry
-        # flox/util/transport.h and its POSIX read/write with them. Adding
-        # them here was not a guess -- the build named the file.
-        md_encoder.h fix_md_codec.h)
+        metrics_server.h rest_json.h)
     set(FLOX_VENUE_ENGINE_TESTS "")
     set(FLOX_VENUE_DROPPED "")
     foreach(t ${FLOX_VENUE_TESTS})
