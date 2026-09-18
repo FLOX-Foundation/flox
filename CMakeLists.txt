@@ -54,6 +54,28 @@ file(GLOB_RECURSE SRC_FILES
 # module. Declared here, before the option below, so the implication applies on
 # a first configure; the add_subdirectory(venue) itself lives further down,
 # after enable_testing() so the module's tests register.
+# GoogleTest is normally found already built. That works until the compiler
+# building flox and the compiler that built GoogleTest disagree about which
+# types exist: clang-cl has __int128, cl does not, and GoogleTest's header
+# declares a printer for it under __SIZEOF_INT128__. A library compiled by cl
+# never contains that printer, so a clang-cl build of code that puts a
+# 128-bit value in an assertion fails to link on a symbol neither project got
+# wrong. Building GoogleTest from source with the same compiler removes the
+# disagreement rather than working around it.
+option(FLOX_FETCH_GTEST "Build GoogleTest from source instead of finding a prebuilt one" OFF)
+if(FLOX_BUILD_TESTS AND FLOX_FETCH_GTEST)
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG        v1.15.2
+  )
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+  message(STATUS "FLOX_FETCH_GTEST: GoogleTest built here, by this compiler")
+endif()
+
 option(FLOX_BUILD_VENUE "Build the venue module (matching engine, clearing, venue risk)" ON)
 
 # The venue ledger keeps money in native 128-bit integers so a notional can

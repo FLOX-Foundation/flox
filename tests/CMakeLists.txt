@@ -1,4 +1,6 @@
-find_package(GTest REQUIRED)
+if(NOT TARGET GTest::gtest)
+  find_package(GTest REQUIRED)
+endif()
 find_package(Threads)
 
 function(add_flox_test name)
