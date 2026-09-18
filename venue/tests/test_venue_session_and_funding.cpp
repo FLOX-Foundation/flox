@@ -26,6 +26,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -669,8 +670,9 @@ void test_close_reaches_the_feed()
 {
   std::printf("test_close_reaches_the_feed\n");
   std::vector<MdMessage> feed;
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { feed.push_back(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { feed.push_back(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
 

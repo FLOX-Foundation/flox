@@ -38,6 +38,7 @@
 #include <chrono>
 #include <cstdio>
 #include <map>
+#include <memory>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -466,11 +467,12 @@ void test_subscribe_midstream()
   ConsumerBook refBook;
   MdDistributionServer dist(&counters, testConfig());
 
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           {
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          {
                              refBook.apply(m);
                              dist.publish(m); },
-                           px(0.01), SYM);
+                                                          px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   dist.addPublisher(md);
@@ -539,11 +541,12 @@ void test_slow_consumer_disconnected()
   dcfg.sendBufferBytes = 4096;  // do not let the kernel hide the backlog
   MdDistributionServer dist(&counters, dcfg);
 
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           {
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          {
                              refBook.apply(m);
                              dist.publish(m); },
-                           px(0.01), SYM, 0, /*resendCapacity*/ 1u << 16);
+                                                          px(0.01), SYM, 0, /*resendCapacity*/ 1u << 16);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   dist.addPublisher(md);
@@ -658,11 +661,12 @@ void test_resend_and_snapshot_required()
   ConsumerBook refBook;
   MdDistributionServer dist(&counters, testConfig());
 
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           {
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          {
                              refBook.apply(m);
                              dist.publish(m); },
-                           px(0.01), SYM, /*epoch*/ 0, /*resendCapacity*/ 16);
+                                                          px(0.01), SYM, /*epoch*/ 0, /*resendCapacity*/ 16);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   dist.addPublisher(md);
@@ -784,7 +788,8 @@ void test_publisher_restart_epoch()
     dist.publish(m);
   };
 
-  MarketDataPublisher<> first(sink, px(0.01), SYM, /*epoch*/ 1111);
+  auto firstHolder = std::make_unique<MarketDataPublisher<>>(sink, px(0.01), SYM, /*epoch*/ 1111);
+  auto& first = *firstHolder;
   MatchingEngine<MatchingBook> eng1(cfg(), [&](const OutboundEvent& e)
                                     { first.onEvent(e, eng1.engineTimeNs()); });
   dist.addPublisher(first);
@@ -813,7 +818,8 @@ void test_publisher_restart_epoch()
 
   // Restart: a fresh publisher for the same symbol, new epoch, seq back to 1.
   refBook.clear();
-  MarketDataPublisher<> second(sink, px(0.01), SYM, /*epoch*/ 2222);
+  auto secondHolder = std::make_unique<MarketDataPublisher<>>(sink, px(0.01), SYM, /*epoch*/ 2222);
+  auto& second = *secondHolder;
   MatchingEngine<MatchingBook> eng2(cfg(), [&](const OutboundEvent& e)
                                     { second.onEvent(e, eng2.engineTimeNs()); });
   dist.addPublisher(second);
@@ -862,8 +868,9 @@ void test_fix_market_data()
   MdCounters counters;
   MdDistributionServer dist(&counters, testConfig());
 
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { dist.publish(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { dist.publish(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   dist.addPublisher(md);
@@ -969,8 +976,9 @@ void test_both_encodings_one_server()
   MdCounters counters;
   MdDistributionServer dist(&counters, testConfig());
 
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { dist.publish(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { dist.publish(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   dist.addPublisher(md);
@@ -1030,8 +1038,9 @@ void test_idle_subscriber_dropped()
   dcfg.heartbeatMs = 60000;
   MdDistributionServer dist(&counters, dcfg);
 
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { dist.publish(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { dist.publish(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   dist.addPublisher(md);
   CHECK(dist.start(0) > 0);
 
@@ -1060,8 +1069,9 @@ void test_status_and_derivatives_over_unicast()
   std::printf("test_status_and_derivatives_over_unicast\n");
   MdDistributionServer dist(nullptr, testConfig());
 
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { dist.publish(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { dist.publish(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   SymbolConfig c = cfg();
   c.fundingIntervalNs = DurationNs{8'000'000'000LL};
   MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)

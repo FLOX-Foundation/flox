@@ -202,11 +202,12 @@ void test_late_joiner_snapshot()
 
   // Small ring so a from-genesis resend is impossible: the late joiner MUST be
   // routed through the snapshot path.
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           {
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          {
                              refBook.apply(m);
                              udpPub.publish(m); },
-                           px(0.01), SYM, /*epoch*/ 0, /*resendCapacity*/ 8);
+                                                          px(0.01), SYM, /*epoch*/ 0, /*resendCapacity*/ 8);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   MdRecoveryServer rec(&counters);
@@ -320,8 +321,9 @@ void test_resend_served()
   std::printf("test_resend_served\n");
   MdCounters counters;
   std::vector<MdMessage> sent;
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { sent.push_back(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { sent.push_back(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   MdRecoveryServer rec(&counters);
@@ -362,7 +364,8 @@ void test_resend_served()
 
   // A trimmed-out fromSeq flips to the snapshot path (small ring).
   MdCounters counters2;
-  MarketDataPublisher<> md2([](const MdMessage&) {}, px(0.01), SYM, 0, /*resendCapacity*/ 4);
+  auto md2Holder = std::make_unique<MarketDataPublisher<>>([](const MdMessage&) {}, px(0.01), SYM, 0, /*resendCapacity*/ 4);
+  auto& md2 = *md2Holder;
   MatchingEngine<MatchingBook> eng2(cfg(), [&](const OutboundEvent& e)
                                     { md2.onEvent(e, eng2.engineTimeNs()); });
   MdRecoveryServer rec2(&counters2);
@@ -514,13 +517,14 @@ void test_recovery_backoff_bounded()
   MdCounters counters;
   // Lossy wire: seq 2 never reaches the subscriber (it stays on the resend
   // ring) -- the manufactured gap this test recovers.
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           {
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          {
                              if (m.seq != 2)
                              {
                                pub.publish(m);
                              } },
-                           px(0.01), SYM, /*epoch*/ 7);
+                                                          px(0.01), SYM, /*epoch*/ 7);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   MdRecoveryServer rec(&counters);
@@ -587,7 +591,8 @@ void test_recovery_server_bind_address()
 {
   std::printf("test_recovery_server_bind_address\n");
   MdCounters counters;
-  MarketDataPublisher<> md([](const MdMessage&) {}, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([](const MdMessage&) {}, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, eng.engineTimeNs()); });
   for (int i = 1; i <= 3; ++i)
@@ -646,8 +651,9 @@ void test_status_and_derivatives_over_multicast_and_recovery()
   UdpMdSubscriber sub;
   CHECK(setupUdp(udpPub, sub, "239.7.8.4"));
 
-  MarketDataPublisher<> md([&](const MdMessage& m)
-                           { udpPub.publish(m); }, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([&](const MdMessage& m)
+                                                          { udpPub.publish(m); }, px(0.01), SYM);
+  auto& md = *mdHolder;
   SymbolConfig c = cfg();
   c.fundingIntervalNs = DurationNs{8'000'000'000LL};
   MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)

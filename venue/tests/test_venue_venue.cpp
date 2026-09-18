@@ -21,6 +21,7 @@
 
 #include <gtest/gtest.h>
 #include <chrono>
+#include <memory>
 
 #include <cstdio>
 #include <cstdlib>
@@ -234,7 +235,8 @@ TEST(Venue, EngineSuite)
     }
     return frameCount(a) >= want;
   };
-  MarketDataPublisher<> md([](const MdMessage&) {}, px(0.01), SYM);
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([](const MdMessage&) {}, px(0.01), SYM);
+  auto& md = *mdHolder;
   const std::string journalPath = tmpPath("venue_venue_journal", ".bin");
   Journal journal(journalPath);
   uint64_t liveHash = 1469598103934665603ULL;
