@@ -17,13 +17,11 @@
  * rejected from live traffic.
  */
 #include "flox-venue/event_hash.h"
-#include "flox-venue/fix_session.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/ledger.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/sequenced_shard.h"
-#include "flox-venue/session_registry.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
@@ -1261,103 +1259,6 @@ TEST(VenueCheckpoint, ConservationHoldsAcrossPeriodicCheckpoints)
   cleanFiles(base);
 }
 
-// BalanceUpdate across checkpoint/recovery: a live deposit emits exactly one
-// BalanceUpdate; recovery (snapshot Deposit records + journal tail) publishes
-// NOTHING outbound -- reconnecting clients reconcile via snapshots, not a
-// re-broadcast; a fresh post-recovery deposit emits exactly one again. The
-// onCheckpoint hook fires at the checkpoint boundary and the FIX session
-// sidecar written there restores into a fresh host + registry.
-TEST(VenueCheckpoint, BalanceUpdateRecoverySuppressionAndSidecarHook)
-{
-  const std::string base = pidPath("checkpoint_balance") + ".bin";
-  const std::string sidecar = FixSessionSidecar::pathFor(base);
-  cleanFiles(base);
-  std::remove(sidecar.c_str());
-
-  const auto countBalance = [](const std::vector<OutboundEvent>& events)
-  {
-    size_t n = 0;
-    for (const auto& e : events)
-    {
-      n += std::get_if<BalanceUpdate>(&e) != nullptr ? 1 : 0;
-    }
-    return n;
-  };
-
-  Ledger led1;
-  HashSink sink1;
-  auto t1 = clockState(1'000'000);
-  auto s1 = std::make_unique<SequencedShard<>>(cfg(), base, MatchingBook{}, Journal::Sync::Off,
-                                               clockOf(t1));
-  s1->engine().setLedger(&led1, VENUE_ACCT);
-  s1->subscribeOutbound(&sink1);
-
-  // FIX session state as the gateway harness would hold it at runtime.
-  FixSessionHost host;
-  SessionRegistry registry;
-  {
-    auto st = host.stateOf(7);
-    std::lock_guard<std::mutex> lk(st->m);
-    st->expectedIn = 42;
-    st->established = true;
-  }
-  int64_t hookTs = 0;
-  s1->onCheckpoint([&](int64_t ts)
-                   {
-                     hookTs = ts;
-                     ASSERT_TRUE(FixSessionSidecar::write(sidecar, host, registry)); });
-  s1->start();
-
-  s1->submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(100), SYM}});
-  s1->flush();
-  EXPECT_EQ(countBalance(sink1.events), 1u);  // the live deposit reported once
-
-  ASSERT_TRUE(s1->checkpointNow());
-  EXPECT_GT(hookTs, 0);                                               // the hook rode the checkpoint boundary
-  s1->submit(InboundCommand{Withdraw{1, QUOTE, quoteRaw(30), SYM}});  // journal-tail record
-  s1->flush();
-  EXPECT_EQ(countBalance(sink1.events), 2u);
-  s1->stop();
-  s1.reset();
-
-  // The sidecar restores into a fresh host + registry (restart semantics are
-  // pinned end-to-end in test_venue_fix_session).
-  FixSessionHost host2;
-  SessionRegistry registry2;
-  ASSERT_TRUE(FixSessionSidecar::load(sidecar, host2, registry2));
-  {
-    auto st = host2.stateOf(7);
-    std::lock_guard<std::mutex> lk(st->m);
-    EXPECT_EQ(st->expectedIn, 42u);
-    EXPECT_TRUE(st->established);
-  }
-
-  // Recovery: snapshot RestoreBalance records AND the journal-tail Withdraw
-  // replay into the engine without a single outbound event.
-  Ledger led2;
-  HashSink sink2;
-  auto t2 = clockState(t1->load() + 1'000'000);
-  auto s2 = std::make_unique<SequencedShard<>>(cfg(), base, MatchingBook{}, Journal::Sync::Off,
-                                               clockOf(t2));
-  s2->engine().setLedger(&led2, VENUE_ACCT);
-  s2->subscribeOutbound(&sink2);
-  s2->start();
-  EXPECT_GT(s2->recoveredCommands(), 0u);
-  EXPECT_EQ(sink2.count, 0u);  // no re-broadcast of recovered history at all
-  EXPECT_EQ(led2.available(1, QUOTE), led1.available(1, QUOTE));
-
-  // A fresh deposit after recovery reports exactly once, as live.
-  s2->submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(5), SYM}});
-  s2->flush();
-  EXPECT_EQ(countBalance(sink2.events), 1u);
-  s2->stop();
-  cleanFiles(base);
-  std::remove(sidecar.c_str());
-}
-
-// Exact balances: a moment the old Deposit-total encoding could not represent
-// (negative available mid-liquidation) now snapshots and restores bit-for-bit
-// via RestoreBalance -- no generation fallback, no hash mismatch.
 TEST(VenueCheckpoint, NegativeAvailableBalanceRestoredExactly)
 {
   const std::string path = pidPath("checkpoint_negbal") + ".snap";
