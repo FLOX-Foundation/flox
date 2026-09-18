@@ -116,7 +116,9 @@ install(EXPORT flox-venueTargets
 
 # ── tests ────────────────────────────────────────────────────────────
 if(FLOX_BUILD_TESTS)
+  if(NOT TARGET GTest::gtest)
   find_package(GTest REQUIRED)
+endif()
   find_package(Threads)
   file(GLOB FLOX_VENUE_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp)
   if(NOT FLOX_VENUE_PERIMETER)

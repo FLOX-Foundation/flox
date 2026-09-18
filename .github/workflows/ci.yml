@@ -901,6 +901,7 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release `
               -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
               -DFLOX_BUILD_TESTS=ON `
+              -DFLOX_FETCH_GTEST=ON `
               -DFLOX_BUILD_BENCHMARKS=ON `
               -DFLOX_BUILD_DEMO=ON `
               -DFLOX_ENABLE_LZ4=ON `
