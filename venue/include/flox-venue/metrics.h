@@ -160,6 +160,25 @@ struct Gauges
   uint64_t liquidationsPaused{0};  // 1 = liquidation circuit breaker engaged
 };
 
+// Last-look behaviour, sampled from the engine the same way Gauges are: the
+// library runs no monitoring thread, so a deployment reads these off the
+// engine and hands them to the exporter.
+//
+// Unsampled reads as "no maker has ever held a fill", which is indistinguishable
+// from a healthy venue with last look switched off -- the same trap Gauges
+// carries, and the reason the exporter's test drives a real hold cycle rather
+// than a hand-built struct.
+struct LastLookSample
+{
+  // Per maker account. Keyed the way the engine keys it.
+  std::unordered_map<uint64_t, LastLookStats> byMaker;
+  // Holds the VENUE refused on its own tolerance, whatever the maker answered.
+  // Engine-wide: a maker cannot be blamed for these.
+  uint64_t toleranceRejectedHolds{0};
+  // Pro-rata participants skipped because they were holding rather than firm.
+  uint64_t skippedLastLookProRata{0};
+};
+
 inline void Metrics::observe(const EngineEventMsg& m) noexcept
 {
   observe(m.event);

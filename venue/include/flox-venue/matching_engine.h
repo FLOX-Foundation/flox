@@ -1827,17 +1827,6 @@ class MatchingEngine
   // it did not; one taking the free option refuses almost only when it was
   // losing. That single split is what makes the behaviour visible without
   // anyone having to see the maker's code.
-  struct LastLookStats
-  {
-    uint64_t held{0};
-    uint64_t accepted{0};
-    uint64_t rejected{0};
-    uint64_t adverse{0};          // holds where the move went against the maker
-    uint64_t rejectedAdverse{0};  // ... of which it refused
-    uint64_t favourable{0};       // holds where the move went its way
-    uint64_t rejectedFavourable{0};
-  };
-
   const std::unordered_map<uint64_t, LastLookStats>& lastLookStats() const noexcept
   {
     return lastLookStats_;
