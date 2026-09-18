@@ -80,6 +80,10 @@ const char* toString(RejectReason r) noexcept
       return "QuoteNotPermitted";
     case RejectReason::InstrumentDelisted:
       return "InstrumentDelisted";
+    case RejectReason::CreditRefused:
+      return "CreditRefused";
+    case RejectReason::CreditSourceUnavailable:
+      return "CreditSourceUnavailable";
   }
   return "?";
 }

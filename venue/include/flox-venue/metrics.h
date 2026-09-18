@@ -97,7 +97,13 @@ struct Metrics
   uint64_t liquidations{0};
   uint64_t holds{0};
   __int128 volumeRaw{0};  // cumulative traded notional (quote raw, kMoneyScale)
-  static constexpr size_t kReasons = 24;
+  // Derived from the enum's last value rather than counted by hand. A reason
+  // appended past this array is not a smaller number on a dashboard -- the
+  // per-reason counter drops it entirely (see observe), so the rejects still
+  // show up in the total and nowhere else. test_venue_reject_reasons pins the
+  // two together by asking toString whether anything past the end has a name.
+  static constexpr size_t kReasons =
+      static_cast<size_t>(RejectReason::CreditSourceUnavailable) + 1;
   std::array<uint64_t, kReasons> rejectsByReason{};  // indexed by RejectReason
 
   // Symbols with a non-default scale must be registered so trade notional is
