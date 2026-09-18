@@ -8,8 +8,8 @@
  */
 #pragma once
 
-#include <unistd.h>
-#include <cerrno>
+#include "flox/net/socket.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -22,12 +22,18 @@ namespace flox::net
 // allocation a 4-byte length prefix can trigger.
 inline constexpr uint32_t kMaxFrame = 16u << 20;  // 16 MiB
 
-inline bool writeAll(int fd, const uint8_t* p, size_t n)
+// Writes go through sendNoSignal rather than ::write: on a peer that has
+// gone away, a bare write raises SIGPIPE, and the answer to that differs per
+// platform (a socket option on macOS, a send flag on Linux, nothing on
+// Windows). Asking per call is narrower than the process-wide
+// signal(SIGPIPE, SIG_IGN) the gateways fall back to, which changes the
+// disposition for every other line of code in the program too.
+inline bool writeAll(net::Handle fd, const uint8_t* p, size_t n)
 {
   size_t off = 0;
   while (off < n)
   {
-    const ssize_t w = ::write(fd, p + off, n - off);
+    const long w = net::sendNoSignal(fd, p + off, n - off);
     if (w <= 0)
     {
       return false;
@@ -37,12 +43,12 @@ inline bool writeAll(int fd, const uint8_t* p, size_t n)
   return true;
 }
 
-inline bool readAll(int fd, uint8_t* p, size_t n)
+inline bool readAll(net::Handle fd, uint8_t* p, size_t n)
 {
   size_t off = 0;
   while (off < n)
   {
-    const ssize_t r = ::read(fd, p + off, n - off);
+    const long r = net::receive(fd, p + off, n - off);
     if (r <= 0)
     {
       return false;  // EOF or error
@@ -53,14 +59,14 @@ inline bool readAll(int fd, uint8_t* p, size_t n)
 }
 
 // Framing: [u32 big-endian length][payload].
-inline bool writeFrame(int fd, const uint8_t* p, size_t n)
+inline bool writeFrame(net::Handle fd, const uint8_t* p, size_t n)
 {
   const uint8_t hdr[4] = {static_cast<uint8_t>(n >> 24), static_cast<uint8_t>(n >> 16),
                           static_cast<uint8_t>(n >> 8), static_cast<uint8_t>(n)};
   return writeAll(fd, hdr, 4) && writeAll(fd, p, n);
 }
 
-inline bool readFrame(int fd, std::vector<uint8_t>& out)
+inline bool readFrame(net::Handle fd, std::vector<uint8_t>& out)
 {
   uint8_t hdr[4];
   if (!readAll(fd, hdr, 4))
@@ -103,7 +109,7 @@ class FrameReader
     Closed,      // peer closed, a read error, or a length prefix past kMaxFrame
   };
 
-  Status read(int fd, std::vector<uint8_t>& out)
+  Status read(net::Handle fd, std::vector<uint8_t>& out)
   {
     lastBytes_ = 0;
     if (!haveLen_)
@@ -149,12 +155,11 @@ class FrameReader
   bool inProgress() const noexcept { return haveLen_ || hdrOff_ != 0; }
 
  private:
-  Status fill(int fd, uint8_t* p, size_t n, size_t& off)
+  Status fill(net::Handle fd, uint8_t* p, size_t n, size_t& off)
   {
     while (off < n)
     {
-      errno = 0;
-      const ssize_t r = ::read(fd, p + off, n - off);
+      const long r = net::receive(fd, p + off, n - off);
       if (r > 0)
       {
         off += static_cast<size_t>(r);
@@ -165,11 +170,12 @@ class FrameReader
       {
         return Status::Closed;  // EOF
       }
-      if (errno == EINTR)
+      const int e = net::lastError();
+      if (net::interrupted(e))
       {
         continue;
       }
-      if (errno == EAGAIN || errno == EWOULDBLOCK)
+      if (net::wouldBlock(e))
       {
         return Status::Incomplete;
       }
