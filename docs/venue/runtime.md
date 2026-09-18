@@ -127,6 +127,53 @@ One caveat worth stating: on macOS `fsync` does not flush the drive's write
 cache (`F_FULLFSYNC` does), so these figures are an upper bound for durability
 on that platform and the Linux gap may be larger.
 
+### Sizing a shard
+
+A shard carries its ingress and outbound rings **by value**, so the capacity
+it is instantiated with is the object's size:
+
+| ingress / outbound | `sizeof(SequencedShard<MatchingBook, ...>)` |
+|---|---|
+| 65536 / 65536 (default) | 28.1 MiB |
+| 4096 / 4096 | 1.8 MiB |
+| 1024 / 1024 | 0.45 MiB |
+
+Two consequences follow, and neither is a defect as long as it is chosen.
+
+**A shard is a heap object.** At the default it does not fit in a thread's
+stack -- two of them as locals in `main` overflow the stack in the prologue,
+before a line of the body runs, which is not a failure anyone reads correctly
+the first time. Hold one through `std::unique_ptr`, as the tests do.
+
+**A venue of N instruments is N shards.** At the default that is 2.8 GiB of
+ring for a hundred symbols, plus a consumer thread each, whatever the flow
+through most of them is.
+
+Capacity does not buy throughput. Saturated ingest on one shard, journal
+`Sync::Off` so the ring is the variable rather than the disk:
+
+| capacity | throughput |
+|---|---|
+| 65536 | 533k cmd/s |
+| 4096 | 552k cmd/s |
+| 1024 | 546k cmd/s |
+
+The differences are noise; if anything the smaller rings are marginally
+quicker, having more of themselves in cache. What capacity buys is **burst
+absorption**. The bus back-pressures rather than dropping: a required consumer
+that falls behind stalls the publisher at wrap gating, so a ring sized below
+the burst makes `submit` wait sooner. Nothing is lost either way -- the
+question is only whether a producer is allowed to run ahead.
+
+So: size the ring to the deepest burst an instrument actually sees, not to the
+throughput you want. A quiet instrument at 1024 costs a fifth of a percent of
+the default's memory and measures the same.
+
+`tests/test_venue_shard_capacity.cpp` prints these sizes on every run and
+pins the two things that must not drift: that the default is still far past a
+stack frame, and that **the events a shard produces do not depend on its ring
+size** -- a venue whose history changed with a buffer could not be replayed.
+
 Records are `[ts:8][stamp:1][tag:1][len:4][body][crc:4]`; every command type is
 trivially copyable (enforced by `static_assert`), so a body is a raw blob. The
 sequencer timestamp is stored, so `loadTimed` reproduces time-dependent
