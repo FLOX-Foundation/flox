@@ -33,12 +33,10 @@
 #pragma once
 
 #include "flox-venue/messages.h"
+#include "flox/util/file_io.h"
 
 #include "flox/util/base/scale_check.h"  // FLOX_SCALE_CHECKS: it changes the on-disk layout
 #include "flox/util/crc32.h"
-
-#include <fcntl.h>
-#include <unistd.h>
 
 #include <atomic>
 #include <cstdint>
@@ -226,8 +224,8 @@ class Journal
                    OpenMode mode = OpenMode::Truncate)
       : sync_(sync)
   {
-    const int flags = O_WRONLY | O_CREAT | (mode == OpenMode::Truncate ? O_TRUNC : O_APPEND);
-    fd_ = ::open(path.c_str(), flags, 0644);
+    fd_ = flox::fileio::openForWrite(path, mode == OpenMode::Truncate ? flox::fileio::OpenMode::Truncate
+                                                                      : flox::fileio::OpenMode::Append);
     if (fd_ < 0)
     {
       throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
@@ -238,7 +236,7 @@ class Journal
   {
     if (fd_ >= 0)
     {
-      ::close(fd_);
+      flox::fileio::closeFd(fd_);
     }
   }
 
@@ -253,11 +251,11 @@ class Journal
   {
     if (fd_ >= 0)
     {
-      ::fsync(fd_);
-      ::close(fd_);
+      flox::fileio::syncFd(fd_);
+      flox::fileio::closeFd(fd_);
     }
-    const int flags = O_WRONLY | O_CREAT | (mode == OpenMode::Truncate ? O_TRUNC : O_APPEND);
-    fd_ = ::open(path.c_str(), flags, 0644);
+    fd_ = flox::fileio::openForWrite(path, mode == OpenMode::Truncate ? flox::fileio::OpenMode::Truncate
+                                                                      : flox::fileio::OpenMode::Append);
     if (fd_ < 0)
     {
       throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
@@ -292,7 +290,7 @@ class Journal
     writeAll(rec_.data(), rec_.size());
     if (sync_ == Sync::Full)
     {
-      ::fsync(fd_);
+      flox::fileio::syncFd(fd_);
     }
     else if (sync_ == Sync::Group)
     {
@@ -309,7 +307,7 @@ class Journal
   {
     if (dirty_ && fd_ >= 0)
     {
-      ::fsync(fd_);
+      flox::fileio::syncFd(fd_);
       ++syncs_;
       dirty_ = false;
     }
@@ -326,7 +324,7 @@ class Journal
   {
     if (fd_ >= 0)
     {
-      ::fsync(fd_);
+      flox::fileio::syncFd(fd_);
     }
   }
   // Records/bytes appended since open (atomic: the shard's idle sweeper reads
@@ -635,15 +633,9 @@ class Journal
 
   void writeAll(const uint8_t* p, size_t n)
   {
-    size_t off = 0;
-    while (off < n)
+    if (!flox::fileio::writeAll(fd_, p, n))
     {
-      const ssize_t w = ::write(fd_, p + off, n - off);
-      if (w <= 0)
-      {
-        throw std::runtime_error("Journal: write failed");
-      }
-      off += static_cast<size_t>(w);
+      throw std::runtime_error("Journal: write failed");
     }
   }
 

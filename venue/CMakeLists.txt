@@ -6,6 +6,25 @@
 #
 # Namespace: flox::venue.  Include prefix: <flox-venue/...>.
 
+# The module splits in two along a line the platforms draw for us. The
+# engine -- matching, clearing, risk, journal, recovery -- needs a 128-bit
+# integer and nothing else from the system. The perimeter -- gateways,
+# sessions, market-data distribution, the control and metrics servers --
+# needs POSIX sockets, and there is no Winsock port yet. Building the first
+# without the second is what lets a venue exist on a platform the second
+# does not reach.
+if(NOT DEFINED FLOX_VENUE_PERIMETER)
+  if(WIN32)
+    set(FLOX_VENUE_PERIMETER OFF)
+    message(STATUS "FLOX_VENUE_PERIMETER: no POSIX sockets here; engine only.")
+  else()
+    set(FLOX_VENUE_PERIMETER ON)
+  endif()
+endif()
+option(FLOX_VENUE_PERIMETER "Build the venue's network perimeter (needs POSIX sockets)" ${FLOX_VENUE_PERIMETER})
+
+# simdjson is the REST codec's parser and the REST codec is perimeter.
+if(FLOX_VENUE_PERIMETER)
 include(FetchContent)
 FetchContent_Declare(
   simdjson
@@ -13,6 +32,7 @@ FetchContent_Declare(
   GIT_TAG        0c0ce1bd48baa0677dc7c0945ea7cd1e8b52b297
 )
 FetchContent_MakeAvailable(simdjson)
+endif()
 
 file(GLOB_RECURSE FLOX_VENUE_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 
@@ -24,7 +44,12 @@ target_include_directories(flox-venue
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-target_link_libraries(flox-venue PUBLIC ${FLOX} simdjson::simdjson)
+if(FLOX_VENUE_PERIMETER)
+  target_link_libraries(flox-venue PUBLIC ${FLOX} simdjson::simdjson)
+  target_compile_definitions(flox-venue PUBLIC FLOX_VENUE_PERIMETER=1)
+else()
+  target_link_libraries(flox-venue PUBLIC ${FLOX})
+endif()
 target_compile_features(flox-venue PUBLIC cxx_std_23)
 
 # ── benchmarks ───────────────────────────────────────────────────────
@@ -57,6 +82,39 @@ if(FLOX_BUILD_TESTS)
   find_package(GTest REQUIRED)
   find_package(Threads)
   file(GLOB FLOX_VENUE_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp)
+  if(NOT FLOX_VENUE_PERIMETER)
+    # Derived from what each test includes, not from a list someone keeps in
+    # step. The first version of this was a list of names written by hand and
+    # it was wrong on the first build: four tests that needed the perimeter
+    # were not on it, and two that were on it did not exist.
+    set(FLOX_VENUE_PERIMETER_HEADERS
+        socket_acceptor.h tcp_gateway.h ws_gateway.h tls_gateway.h udp_multicast.h
+        session.h session_registry.h cancel_on_disconnect.h fix_session.h
+        md_distribution.h md_recovery.h control_server.h control_api.h
+        metrics_server.h rest_json.h)
+    set(FLOX_VENUE_ENGINE_TESTS "")
+    set(FLOX_VENUE_DROPPED "")
+    foreach(t ${FLOX_VENUE_TESTS})
+      file(STRINGS ${t} _includes REGEX "^#include \"flox-venue/")
+      set(_needs_perimeter FALSE)
+      foreach(h ${FLOX_VENUE_PERIMETER_HEADERS})
+        foreach(line ${_includes})
+          if(line MATCHES "flox-venue/${h}\"")
+            set(_needs_perimeter TRUE)
+          endif()
+        endforeach()
+      endforeach()
+      if(_needs_perimeter)
+        get_filename_component(_n ${t} NAME_WE)
+        list(APPEND FLOX_VENUE_DROPPED ${_n})
+      else()
+        list(APPEND FLOX_VENUE_ENGINE_TESTS ${t})
+      endif()
+    endforeach()
+    set(FLOX_VENUE_TESTS ${FLOX_VENUE_ENGINE_TESTS})
+    list(LENGTH FLOX_VENUE_DROPPED _n_dropped)
+    message(STATUS "FLOX_VENUE_PERIMETER=OFF: ${_n_dropped} tests need the perimeter: ${FLOX_VENUE_DROPPED}")
+  endif()
   # The TLS gateway needs OpenSSL; the rest of the module does not. Keep the
   # heavy dependency optional (same posture as connectors/) so a plain build of
   # the venue stays dependency-free.

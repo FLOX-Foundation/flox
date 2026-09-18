@@ -13,6 +13,7 @@
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/messages.h"
 #include "flox-venue/shard_events.h"
+#include "flox/util/file_io.h"
 
 #include "flox/util/eventing/event_bus.h"
 
@@ -744,12 +745,10 @@ class SequencedShard
   {
     std::filesystem::path dir = std::filesystem::path(journalPath_).parent_path();
     const std::string d = dir.empty() ? "." : dir.string();
-    const int fd = ::open(d.c_str(), O_RDONLY);
-    if (fd >= 0)
-    {
-      ::fsync(fd);
-      ::close(fd);
-    }
+    // On POSIX a renamed file can exist while the directory entry naming it
+    // does not, so the directory is synced too. Windows has no directory
+    // handle and orders the rename itself; see flox/util/file_io.h.
+    flox::fileio::syncDirectory(d);
   }
 
   // Idle sweeper: while holds are open, inject a TimeTick through the normal

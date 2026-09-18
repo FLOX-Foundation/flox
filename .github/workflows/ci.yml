@@ -1116,6 +1116,46 @@ jobs:
         test ! -f build/venue/libflox-venue.a
         ! ctest --test-dir build -N | grep -qE "Test +#[0-9]+: test_venue_(matcher|engine|ledger)"
 
+  # The venue's engine without its network perimeter: the configuration a
+  # platform without POSIX sockets gets. Kept honest by checking that the
+  # engine's own tests DO run here -- an exclusion rule that quietly took
+  # the matcher with the gateways would otherwise look like a pass.
+  venue-engine-only:
+    needs: [format-check, verify-docs-current]
+    runs-on: ubuntu-24.04
+    # Observed: ~5 min.
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v5
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
+    - name: Configure with the engine and without the perimeter
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_BUILD_VENUE=ON \
+              -DFLOX_VENUE_PERIMETER=OFF \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_ENABLE_BACKTEST=ON
+    - name: Build
+      run: cmake --build build -j"$(nproc)"
+    - name: Test
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
+    - name: Verify the engine is here and the perimeter is not
+      run: |
+        test -f build/venue/libflox-venue.a
+        for t in matcher engine ledger checkpoint recovery conservation_fuzz differential_fuzz; do
+          ctest --test-dir build -N | grep -qE "test_venue_$t\b" \
+            || { echo "::error::engine test test_venue_$t is missing from the engine-only build"; exit 1; }
+        done
+        for t in gateway fix_session md_distribution control_plane tls; do
+          ! ctest --test-dir build -N | grep -qE "test_venue_$t\b" \
+            || { echo "::error::perimeter test test_venue_$t was built without the perimeter"; exit 1; }
+        done
+
   # Weekly deep run of the venue fuzzes. Pull requests run them at a
   # CI-friendly depth; this raises the command count by an order of magnitude,
   # which is where the rarer book divergences and reservation leaks surface.

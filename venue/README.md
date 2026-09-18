@@ -22,8 +22,19 @@ layer needed (`flox/util/{crypto,wire,transport,websocket,system_clock}.h`),
 because they are useful on their own. The map-based `MatchingBook` reference
 oracle lives in the module (`flox-venue/matching_book.h`).
 
-Platform: Linux and macOS. Skipped on MSVC/clang-cl, which have no `__int128`,
-the type the ledger keeps money in.
+Platform, in two parts, because the two halves need different things of the
+system.
+
+The **engine** -- matching, clearing, venue risk, the journal and recovery --
+needs a native 128-bit integer, the type the ledger keeps money in, and
+nothing else. That is GCC, Clang, and clang-cl. `cl` has no such type and no
+announced plan for one, so the module is off there until `venue::Amount` is
+ported onto the portable wide integers in `flox/util/int`.
+
+The **perimeter** -- gateways, sessions, market-data distribution, the
+control and metrics servers -- needs POSIX sockets, and there is no Winsock
+port. `FLOX_VENUE_PERIMETER` turns it off, automatically where those sockets
+are absent, and takes its tests and the REST codec's parser with it.
 
 ## What it unlocks
 
