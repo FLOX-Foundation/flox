@@ -401,7 +401,15 @@ class MdRecoveryClient
 // (setGapDetector): this class owns sequencing. Single-threaded like the
 // subscriber itself: all recovery work happens inside recv() on the calling
 // thread (backoff sleeps block the caller, as any synchronous recover would).
-class RecoveringMdSubscriber
+// The subscriber is a parameter for the same reason its decoder is: recovery
+// asks it for one thing, `recv(MdMessage&) -> bool`, and nothing about
+// detecting a gap, fetching a snapshot or resuming a stream is particular to
+// how the bytes on the wire were laid out. A template rather than an
+// interface: this sits on the receive path, and a virtual call per message
+// buys nothing here -- the substitution is a build-time choice, not a runtime
+// one.
+template <class Subscriber>
+class RecoveringMdSubscriberT
 {
  public:
   struct Config
@@ -427,7 +435,7 @@ class RecoveringMdSubscriber
   using SnapshotStateFn =
       std::function<void(SymbolId symbol, const MdMessage* status, const MdMessage* derivatives)>;
 
-  RecoveringMdSubscriber(UdpMdSubscriber& sub, Config cfg, GapDetector::Config gdCfg = {})
+  RecoveringMdSubscriberT(Subscriber& sub, Config cfg, GapDetector::Config gdCfg = {})
       : sub_(sub), cfg_(std::move(cfg)), gd_(gdCfg)
   {
   }
@@ -595,7 +603,7 @@ class RecoveringMdSubscriber
     p = Pending{};
   }
 
-  UdpMdSubscriber& sub_;
+  Subscriber& sub_;
   Config cfg_;
   GapDetector gd_;
   SnapshotFn onSnapshot_;
@@ -608,5 +616,8 @@ class RecoveringMdSubscriber
   uint64_t snapshots_{0};
   uint64_t failures_{0};
 };
+
+// The venue's own feed, unchanged.
+using RecoveringMdSubscriber = RecoveringMdSubscriberT<UdpMdSubscriber>;
 
 }  // namespace flox::venue

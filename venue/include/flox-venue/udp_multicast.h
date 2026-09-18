@@ -101,7 +101,28 @@ class UdpMdPublisher
   MdCounters* counters_{nullptr};
 };
 
-class UdpMdSubscriber
+// The decoder is a parameter, and the transport is not.
+//
+// Everything below the decode -- the socket, the receive timeout, the gap
+// detector, the resequencing buffer -- is about datagrams arriving out of
+// order on a multicast group. None of that is particular to how a venue lays
+// out its bytes, and a consumer of somebody else's feed should be able to keep
+// all of it. Only the wire format is theirs.
+//
+// A Codec must offer:
+//   static constexpr size_t kMaxSize;                       // largest datagram
+//   static bool decode(const uint8_t*, size_t, MdMessage&); // false = not ours
+//
+// Producing an MdMessage is how the decoder hands over (symbol, epoch, seq):
+// the gap detector reads them off the message, so extracting them is part of
+// decoding rather than a second thing a caller has to wire up. A decoder that
+// leaves seq at zero therefore breaks sequencing loudly, at the detector,
+// instead of quietly letting holes through.
+// No default argument: `UdpMdSubscriber` below is the spelling for this
+// venue's own feed, and two ways to say the same thing is one more than
+// anybody needs.
+template <class Codec>
+class UdpMdSubscriberT
 {
  public:
   // ifaceIp selects the interface to receive the group on: nullptr/"" ->
@@ -187,18 +208,18 @@ class UdpMdSubscriber
     net::closeSocket(fd_);
     fd_ = net::kInvalid;
   }
-  ~UdpMdSubscriber() { close(); }
+  ~UdpMdSubscriberT() { close(); }
 
  private:
   bool recvRaw(MdMessage& out)
   {
-    uint8_t buf[SbeMdCodec::kMaxSize];
+    uint8_t buf[Codec::kMaxSize];
     const long n = net::receiveFrom(fd_, buf, sizeof buf);
     if (n <= 0)
     {
       return false;
     }
-    return SbeMdCodec::decode(buf, static_cast<size_t>(n), out);
+    return Codec::decode(buf, static_cast<size_t>(n), out);
   }
 
   net::Handle fd_{net::kInvalid};
@@ -208,5 +229,9 @@ class UdpMdSubscriber
   GapDetector::EpochFn onEpoch_;
   std::deque<MdMessage> ready_;  // sequenced, deliverable messages
 };
+
+// The venue's own feed, unchanged: the name every existing caller uses still
+// means exactly what it meant.
+using UdpMdSubscriber = UdpMdSubscriberT<SbeMdCodec>;
 
 }  // namespace flox::venue
