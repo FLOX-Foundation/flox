@@ -395,18 +395,19 @@ TEST(Socket, MulticastLoopDecidesWhetherASenderHearsItself)
 
   ASSERT_TRUE(setMulticastLoop(tx, false));
   ASSERT_EQ(sendTo(tx, msg, sizeof msg, to), static_cast<long>(sizeof msg));
-#if defined(__linux__)
-  // Not asserted here, and the reason is a real difference rather than a
-  // flake: the egress interface selected above is the loopback one, and on
-  // Linux a datagram sent out of lo comes back because that is what lo does,
-  // whatever the loop option says. The option governs the kernel's extra
-  // copy, not delivery over an interface that is itself a loop. Selecting a
-  // real NIC would make it observable, and CI runners have no such address
-  // to count on. Drain whatever arrived so the socket is left clean.
-  (void)receiveFrom(rx, buf, sizeof buf);
-#else
+#if defined(__APPLE__)
   EXPECT_LT(receiveFrom(rx, buf, sizeof buf), 0)
       << "with loop off, it does not -- the receive times out instead";
+#else
+  // Asserted on macOS only, and the reason is a real difference rather than a
+  // flake: the egress interface selected above is the loopback one, and Linux
+  // and Windows both deliver a datagram sent out of it regardless, because
+  // that is what a loopback interface does. The option governs the kernel's
+  // extra copy, not delivery over an interface that is already a loop.
+  // Observing it elsewhere would need a real NIC address, which a CI runner
+  // cannot be counted on to have. Drain whatever arrived so the socket is
+  // left clean for the next test.
+  (void)receiveFrom(rx, buf, sizeof buf);
 #endif
 
   closeSocket(tx);

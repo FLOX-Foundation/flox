@@ -146,6 +146,11 @@ TEST(BacktestMetrics, EquityCurveCsvRoundTrip)
     }
   }
   EXPECT_EQ(rows, result.equityCurve().size());
+  // Closed before removing: Windows refuses to delete a file that is still
+  // open, where POSIX is happy to unlink one out from under a reader. The
+  // stream would have closed at the end of scope anyway, which is exactly why
+  // this went unnoticed on the platforms that tolerate it.
+  in.close();
   std::filesystem::remove(path);
 }
 

@@ -16,6 +16,7 @@
 #include <optional>
 #include <shared_mutex>
 #include <span>
+#include <stdexcept>
 
 namespace flox
 {
@@ -498,113 +499,130 @@ bool SymbolRegistry::loadFromFile(const std::filesystem::path& path)
   _map.clear();
   _reverse.clear();
 
-  size_t pos = 0;
-  while ((pos = content.find("\"id\":", pos)) != std::string::npos)
+  // A file that is not the shape this expects is a false, not an exception:
+  // the signature promises a bool, and a caller loading a registry at startup
+  // should not have to guard a bool-returning call with a try. The numbers
+  // below are the reason it can happen -- a nanosecond timestamp and a
+  // fixed-point price do not fit the 32 bits `long` has on Windows, which is
+  // why they are parsed as long long, and a truncated or foreign file can
+  // still present something that does not convert.
+  try
   {
-    SymbolInfo info;
+    size_t pos = 0;
+    while ((pos = content.find("\"id\":", pos)) != std::string::npos)
+    {
+      SymbolInfo info;
 
-    // Parse id
-    pos += 5;
-    info.id = static_cast<SymbolId>(std::stoul(content.substr(pos)));
+      // Parse id
+      pos += 5;
+      info.id = static_cast<SymbolId>(std::stoull(content.substr(pos)));
 
-    // Parse exchange
-    size_t exch_start = content.find("\"exchange\":", pos);
-    if (exch_start == std::string::npos)
-    {
-      break;
-    }
-    exch_start = content.find('"', exch_start + 11) + 1;
-    size_t exch_end = content.find('"', exch_start);
-    info.exchange = content.substr(exch_start, exch_end - exch_start);
-
-    // Parse symbol
-    size_t sym_start = content.find("\"symbol\":", pos);
-    if (sym_start == std::string::npos)
-    {
-      break;
-    }
-    sym_start = content.find('"', sym_start + 9) + 1;
-    size_t sym_end = content.find('"', sym_start);
-    info.symbol = content.substr(sym_start, sym_end - sym_start);
-
-    // Parse type
-    size_t type_start = content.find("\"type\":", pos);
-    if (type_start != std::string::npos && type_start < content.find('}', pos))
-    {
-      type_start += 7;
-      info.type = static_cast<InstrumentType>(std::stoi(content.substr(type_start)));
-    }
-
-    // Parse tick_size
-    size_t tick_start = content.find("\"tick_size\":", pos);
-    if (tick_start != std::string::npos && tick_start < content.find('}', pos))
-    {
-      tick_start += 12;
-      info.tickSize = Price::fromRaw(std::stol(content.substr(tick_start)));
-    }
-
-    // Optional fields - strike
-    size_t strike_start = content.find("\"strike\":", pos);
-    size_t entry_end = content.find('}', pos);
-    if (strike_start != std::string::npos && strike_start < entry_end)
-    {
-      strike_start += 9;
-      info.strike = Price::fromRaw(std::stol(content.substr(strike_start)));
-    }
-
-    // Optional - expiry
-    size_t expiry_start = content.find("\"expiry\":", pos);
-    if (expiry_start != std::string::npos && expiry_start < entry_end)
-    {
-      expiry_start += 9;
-      auto ns = std::stol(content.substr(expiry_start));
-      info.expiry = TimePoint(std::chrono::nanoseconds(ns));
-    }
-
-    // Optional - option_type
-    size_t opt_start = content.find("\"option_type\":", pos);
-    if (opt_start != std::string::npos && opt_start < entry_end)
-    {
-      opt_start += 14;
-      info.optionType = static_cast<OptionType>(std::stoi(content.substr(opt_start)));
-    }
-
-    // Contract spec (older files omit these; defaults already on `info`).
-    size_t mult_start = content.find("\"contract_multiplier\":", pos);
-    if (mult_start != std::string::npos && mult_start < entry_end)
-    {
-      info.contractMultiplier = std::stod(content.substr(mult_start + 22));
-    }
-    size_t settle_start = content.find("\"settlement_type\":", pos);
-    if (settle_start != std::string::npos && settle_start < entry_end)
-    {
-      info.settlementType = static_cast<SettlementType>(std::stoi(content.substr(settle_start + 18)));
-    }
-    size_t ex_start = content.find("\"exercise_style\":", pos);
-    if (ex_start != std::string::npos && ex_start < entry_end)
-    {
-      info.exerciseStyle = static_cast<ExerciseStyle>(std::stoi(content.substr(ex_start + 17)));
-    }
-    size_t ccy_start = content.find("\"settlement_ccy\": \"", pos);
-    if (ccy_start != std::string::npos && ccy_start < entry_end)
-    {
-      ccy_start += 19;
-      size_t ccy_end = content.find('"', ccy_start);
-      if (ccy_end != std::string::npos)
+      // Parse exchange
+      size_t exch_start = content.find("\"exchange\":", pos);
+      if (exch_start == std::string::npos)
       {
-        info.settlementCcy = content.substr(ccy_start, ccy_end - ccy_start);
+        break;
       }
+      exch_start = content.find('"', exch_start + 11) + 1;
+      size_t exch_end = content.find('"', exch_start);
+      info.exchange = content.substr(exch_start, exch_end - exch_start);
+
+      // Parse symbol
+      size_t sym_start = content.find("\"symbol\":", pos);
+      if (sym_start == std::string::npos)
+      {
+        break;
+      }
+      sym_start = content.find('"', sym_start + 9) + 1;
+      size_t sym_end = content.find('"', sym_start);
+      info.symbol = content.substr(sym_start, sym_end - sym_start);
+
+      // Parse type
+      size_t type_start = content.find("\"type\":", pos);
+      if (type_start != std::string::npos && type_start < content.find('}', pos))
+      {
+        type_start += 7;
+        info.type = static_cast<InstrumentType>(std::stoi(content.substr(type_start)));
+      }
+
+      // Parse tick_size
+      size_t tick_start = content.find("\"tick_size\":", pos);
+      if (tick_start != std::string::npos && tick_start < content.find('}', pos))
+      {
+        tick_start += 12;
+        info.tickSize = Price::fromRaw(std::stoll(content.substr(tick_start)));
+      }
+
+      // Optional fields - strike
+      size_t strike_start = content.find("\"strike\":", pos);
+      size_t entry_end = content.find('}', pos);
+      if (strike_start != std::string::npos && strike_start < entry_end)
+      {
+        strike_start += 9;
+        info.strike = Price::fromRaw(std::stoll(content.substr(strike_start)));
+      }
+
+      // Optional - expiry
+      size_t expiry_start = content.find("\"expiry\":", pos);
+      if (expiry_start != std::string::npos && expiry_start < entry_end)
+      {
+        expiry_start += 9;
+        auto ns = std::stoll(content.substr(expiry_start));
+        info.expiry = TimePoint(std::chrono::nanoseconds(ns));
+      }
+
+      // Optional - option_type
+      size_t opt_start = content.find("\"option_type\":", pos);
+      if (opt_start != std::string::npos && opt_start < entry_end)
+      {
+        opt_start += 14;
+        info.optionType = static_cast<OptionType>(std::stoi(content.substr(opt_start)));
+      }
+
+      // Contract spec (older files omit these; defaults already on `info`).
+      size_t mult_start = content.find("\"contract_multiplier\":", pos);
+      if (mult_start != std::string::npos && mult_start < entry_end)
+      {
+        info.contractMultiplier = std::stod(content.substr(mult_start + 22));
+      }
+      size_t settle_start = content.find("\"settlement_type\":", pos);
+      if (settle_start != std::string::npos && settle_start < entry_end)
+      {
+        info.settlementType = static_cast<SettlementType>(std::stoi(content.substr(settle_start + 18)));
+      }
+      size_t ex_start = content.find("\"exercise_style\":", pos);
+      if (ex_start != std::string::npos && ex_start < entry_end)
+      {
+        info.exerciseStyle = static_cast<ExerciseStyle>(std::stoi(content.substr(ex_start + 17)));
+      }
+      size_t ccy_start = content.find("\"settlement_ccy\": \"", pos);
+      if (ccy_start != std::string::npos && ccy_start < entry_end)
+      {
+        ccy_start += 19;
+        size_t ccy_end = content.find('"', ccy_start);
+        if (ccy_end != std::string::npos)
+        {
+          info.settlementCcy = content.substr(ccy_start, ccy_end - ccy_start);
+        }
+      }
+
+      // Add to registry
+      std::string key = info.exchange + ":" + info.symbol;
+      _map[key] = info.id;
+      std::string exchange_copy = info.exchange;
+      std::string symbol_copy = info.symbol;
+      _symbols[info.id] = std::move(info);
+      _reverse.emplace_back(std::move(exchange_copy), std::move(symbol_copy));
+
+      pos = entry_end + 1;
     }
-
-    // Add to registry
-    std::string key = info.exchange + ":" + info.symbol;
-    _map[key] = info.id;
-    std::string exchange_copy = info.exchange;
-    std::string symbol_copy = info.symbol;
-    _symbols[info.id] = std::move(info);
-    _reverse.emplace_back(std::move(exchange_copy), std::move(symbol_copy));
-
-    pos = entry_end + 1;
+  }
+  catch (const std::exception&)
+  {
+    _symbols.clear();
+    _map.clear();
+    _reverse.clear();
+    return false;
   }
 
   return !_symbols.empty() || content.find("\"symbols\": []") != std::string::npos;
