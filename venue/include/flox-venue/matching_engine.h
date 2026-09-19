@@ -349,6 +349,14 @@ class MatchingEngine
     }
     // ListInstrument is consumed above the engine (InstrumentRegistry / router);
     // an existing engine has nothing to do with its own listing record.
+    //
+    // Anything else with no branch above is not rejected, logged or counted --
+    // it is dropped, and the venue carries on as if it had never been sent.
+    // Snapshot-only records are supposed to land here; a new LIVE command is
+    // not, and nothing but this says so.
+    static_assert(std::variant_size_v<InboundCommand> == 35,
+                  "new InboundCommand alternative: give it a branch in submit(), or confirm it "
+                  "is snapshot-only and handled in applySnapshotRecord");
     processOco();
     repeg();
     mmpEnforce();
@@ -1698,6 +1706,8 @@ class MatchingEngine
   // reservation, hash mismatch at SnapshotEnd); the caller then discards the
   // generation. NEVER wire this to live traffic: submit() drops snapshot tags
   // for exactly that reason.
+  // Returns whether the record was understood. A snapshot record with no
+  // branch below returns true anyway -- see the assert at the end.
   bool applySnapshotRecord(const InboundCommand& cmd, int64_t tsNs)
   {
     if (const auto* b = std::get_if<SnapshotBegin>(&cmd))
@@ -1830,6 +1840,14 @@ class MatchingEngine
     {
       return applySnapshotEnd(*e);
     }
+    // Anything not named above is a live command replayed from the snapshot's
+    // own segment, and goes through the live path -- which is correct, and is
+    // also why a NEW snapshot-only record that nobody added a branch for would
+    // be handed to submit(), drop out of its chain, and be reported as applied.
+    static_assert(std::variant_size_v<InboundCommand> == 35,
+                  "new InboundCommand alternative: if it is a snapshot-only record, give it a "
+                  "branch above -- falling through to submit() reports it as applied when it "
+                  "was not");
     submit(cmd, tsNs);  // existing record types apply through the live path
     return true;
   }

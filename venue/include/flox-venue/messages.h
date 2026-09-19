@@ -688,6 +688,13 @@ static_assert(std::is_same_v<std::variant_alternative_t<kLastContiguousSnapshotT
 inline bool isSnapshotRecord(const InboundCommand& c) noexcept
 {
   const size_t i = c.index();
+  // A snapshot-only record that this predicate does not recognise is treated
+  // as live traffic: accepted from a client, journaled into the live stream,
+  // and replayed as a command. The contiguous range covers the original block;
+  // everything appended since has to be named.
+  static_assert(std::variant_size_v<InboundCommand> == 35,
+                "new InboundCommand alternative: if it is snapshot-only, name it here -- "
+                "otherwise it is treated as live traffic a client may send");
   return (i >= kFirstSnapshotTag && i <= kLastContiguousSnapshotTag) ||
          std::holds_alternative<RestoreBalance>(c) || std::holds_alternative<RestoreMmpFills>(c) ||
          std::holds_alternative<RestoreFunding>(c);

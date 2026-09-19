@@ -416,6 +416,14 @@ class SbeOrderEntryCodec
     // DerivativesUpdated are instrument-wide, not account-scoped: they carry
     // no account to route to and belong on the public market-data feed
     // (market_data.h), not in a client's exec-report stream.
+    //
+    // A NEW event with no branch produces no frame either, and looks exactly
+    // like one of the deliberate omissions above. That is how CancelRejected
+    // was declared in the schema and absent from the codec for a release: the
+    // client waited for bytes nobody was sending, and neither side said so.
+    static_assert(std::variant_size_v<OutboundEvent> == 17,
+                  "new OutboundEvent alternative: encode it above, or decide here -- with the "
+                  "reason written down -- that order entry has no mapping for it");
   }
 
   // Per-session seq of an outbound exec report (schema v1 trailing field).
