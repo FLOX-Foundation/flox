@@ -169,11 +169,35 @@ TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
   // The helper writes the same stream this test expects -- both take it from
   // support/recovery_scenario.h, because two copies would drift and the drift
   // would read as a recovery bug.
-  const std::string cmd = std::string("\"") + FLOX_JOURNAL_WRITER + "\" \"" + path + "\"";
+  // The quoting is not cosmetic. std::system runs the string through cmd.exe
+  // on Windows, and cmd strips the first and last quote of a command line
+  // that begins with one -- so `"prog" "arg"` arrives as `prog" "arg` and it
+  // answers "The filename, directory name, or volume label syntax is
+  // incorrect". Wrapping the whole thing in one more pair is the documented
+  // way round it. POSIX shells need no such thing and do not mind it either.
+  const std::string inner = std::string("\"") + FLOX_JOURNAL_WRITER + "\" \"" + path + "\"";
+#if defined(_WIN32)
+  const std::string cmd = "\"" + inner + "\"";
+#else
+  const std::string cmd = inner;
+#endif
   const std::string cleanMarker = path + ".clean";
   std::remove(cleanMarker.c_str());
   const int rc = std::system(cmd.c_str());
   (void)rc;  // it dies on purpose; what it left behind is the subject
+
+  // It ran at all. Without this the next assertion reports "0 records, wanted
+  // 22" whether the helper died mid-stream or was never launched -- and on
+  // Windows it was never launched, because of the quoting above.
+  {
+    std::FILE* journal = std::fopen(path.c_str(), "rb");
+    const bool wrote = journal != nullptr;
+    if (journal != nullptr)
+    {
+      std::fclose(journal);
+    }
+    ASSERT_TRUE(wrote) << "the helper left no journal at all: it did not run. Command was: " << cmd;
+  }
 
   // It really died. The helper registers an atexit handler that writes this
   // marker, and _exit / TerminateProcess skip atexit -- so the marker being
