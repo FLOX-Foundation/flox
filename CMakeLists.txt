@@ -508,7 +508,16 @@ install(TARGETS flox
   RUNTIME DESTINATION bin
 )
 
-install(DIRECTORY include/ DESTINATION include)
+# flox/ml/onnx_inference.h includes <onnxruntime_cxx_api.h> unconditionally,
+# and FLOX_ENABLE_ONNX is off by default. Shipping it in a build without the
+# dependency hands a consumer a header that cannot compile, with nothing to
+# say why -- so it is not shipped in that build. Same rule as the venue's TLS
+# gateway; scripts/check_installed_headers_declared.py is what asks.
+if(FLOX_ENABLE_ONNX)
+  install(DIRECTORY include/ DESTINATION include)
+else()
+  install(DIRECTORY include/ DESTINATION include PATTERN "onnx_inference.h" EXCLUDE)
+endif()
 
 install(EXPORT floxTargets
   FILE floxTargets.cmake

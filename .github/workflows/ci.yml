@@ -1150,6 +1150,13 @@ jobs:
     # and one declared a message the codec had no template for.
     - name: Check the SBE schemas parse and the codec implements them
       run: python3 scripts/check_sbe_schema_implemented.py
+    # A header that is installed is part of what find_package hands over. If
+    # it reaches for a dependency the target does not declare, the consumer
+    # finds out at their own build, with no indication of the cause -- and
+    # nothing inside this tree can notice, because the dependency is present
+    # here.
+    - name: Check every installed header only needs what its target declares
+      run: python3 scripts/check_installed_headers_declared.py
     - name: Configure with the engine and without the perimeter
       run: |
         cmake -B build -G Ninja \
