@@ -794,9 +794,32 @@ jobs:
     # failed on us mid-run (vcpkg.exe download, portfile download). Retry with
     # backoff, and cap the step so a hung download fails in minutes instead of
     # sitting at the job's default limit.
+    #
+    # Retries alone were not enough: three attempts against a 502 still fail,
+    # and burn twenty-five minutes doing it. The binary cache is the actual
+    # fix -- after the first run the packages come out of the GitHub Actions
+    # cache and the source archives are never fetched at all.
+    - name: Export the Actions cache endpoint for vcpkg
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // vcpkg's x-gha provider reads these two out of the environment,
+          // and the runner only exposes them to actions, not to run steps.
+          // Newer runners name the endpoint ACTIONS_RESULTS_URL; export
+          // whichever is present so this does not quietly stop caching when
+          // the runner image moves.
+          const url = process.env.ACTIONS_CACHE_URL || process.env.ACTIONS_RESULTS_URL || '';
+          core.exportVariable('ACTIONS_CACHE_URL', url);
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          if (!url) { core.warning('no Actions cache endpoint: vcpkg will build from source'); }
     - name: Install vcpkg dependencies
       timeout-minutes: 25
       shell: pwsh
+      env:
+        VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
+        # vcpkg release 2026.07.29. A tag, resolved to its commit, so the
+        # toolchain is the same on every run and the cache key is stable.
+        VCPKG_PIN: 'c76c06644034521fb761a39f8f52d8e87d1103d5'
       run: |
         $ErrorActionPreference = 'Continue'
         function Invoke-WithRetry {
@@ -811,7 +834,19 @@ jobs:
           exit 1
         }
         if (Test-Path vcpkg) { Remove-Item -Recurse -Force vcpkg }
-        Invoke-WithRetry 'git clone vcpkg' 3 { git clone --depth 1 https://github.com/microsoft/vcpkg.git }
+        # Pinned, not floating HEAD. A clone of whatever vcpkg is today gives a
+        # different toolchain on every run, so the binary cache would miss
+        # every time and the archives would be re-downloaded anyway -- which is
+        # the failure this exists to stop.
+        #
+        # Fetching the one commit rather than cloning: vcpkg's full history is
+        # around a gigabyte, and pulling it every run would trade a flaky
+        # download for a slow certain one.
+        New-Item -ItemType Directory -Path vcpkg | Out-Null
+        git -C vcpkg init -q
+        git -C vcpkg remote add origin https://github.com/microsoft/vcpkg.git
+        Invoke-WithRetry 'fetch vcpkg pin' 3 { git -C vcpkg fetch --depth 1 -q origin $env:VCPKG_PIN }
+        Invoke-WithRetry 'checkout vcpkg pin' 3 { git -C vcpkg checkout -q FETCH_HEAD }
         Invoke-WithRetry 'bootstrap-vcpkg' 3 { .\vcpkg\bootstrap-vcpkg.bat }
         Invoke-WithRetry 'vcpkg install' 3 { .\vcpkg\vcpkg install lz4:x64-windows gtest:x64-windows benchmark:x64-windows }
 
@@ -874,9 +909,32 @@ jobs:
     # failed on us mid-run (vcpkg.exe download, portfile download). Retry with
     # backoff, and cap the step so a hung download fails in minutes instead of
     # sitting at the job's default limit.
+    #
+    # Retries alone were not enough: three attempts against a 502 still fail,
+    # and burn twenty-five minutes doing it. The binary cache is the actual
+    # fix -- after the first run the packages come out of the GitHub Actions
+    # cache and the source archives are never fetched at all.
+    - name: Export the Actions cache endpoint for vcpkg
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // vcpkg's x-gha provider reads these two out of the environment,
+          // and the runner only exposes them to actions, not to run steps.
+          // Newer runners name the endpoint ACTIONS_RESULTS_URL; export
+          // whichever is present so this does not quietly stop caching when
+          // the runner image moves.
+          const url = process.env.ACTIONS_CACHE_URL || process.env.ACTIONS_RESULTS_URL || '';
+          core.exportVariable('ACTIONS_CACHE_URL', url);
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          if (!url) { core.warning('no Actions cache endpoint: vcpkg will build from source'); }
     - name: Install vcpkg dependencies
       timeout-minutes: 25
       shell: pwsh
+      env:
+        VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
+        # vcpkg release 2026.07.29. A tag, resolved to its commit, so the
+        # toolchain is the same on every run and the cache key is stable.
+        VCPKG_PIN: 'c76c06644034521fb761a39f8f52d8e87d1103d5'
       run: |
         $ErrorActionPreference = 'Continue'
         function Invoke-WithRetry {
@@ -891,7 +949,19 @@ jobs:
           exit 1
         }
         if (Test-Path vcpkg) { Remove-Item -Recurse -Force vcpkg }
-        Invoke-WithRetry 'git clone vcpkg' 3 { git clone --depth 1 https://github.com/microsoft/vcpkg.git }
+        # Pinned, not floating HEAD. A clone of whatever vcpkg is today gives a
+        # different toolchain on every run, so the binary cache would miss
+        # every time and the archives would be re-downloaded anyway -- which is
+        # the failure this exists to stop.
+        #
+        # Fetching the one commit rather than cloning: vcpkg's full history is
+        # around a gigabyte, and pulling it every run would trade a flaky
+        # download for a slow certain one.
+        New-Item -ItemType Directory -Path vcpkg | Out-Null
+        git -C vcpkg init -q
+        git -C vcpkg remote add origin https://github.com/microsoft/vcpkg.git
+        Invoke-WithRetry 'fetch vcpkg pin' 3 { git -C vcpkg fetch --depth 1 -q origin $env:VCPKG_PIN }
+        Invoke-WithRetry 'checkout vcpkg pin' 3 { git -C vcpkg checkout -q FETCH_HEAD }
         Invoke-WithRetry 'bootstrap-vcpkg' 3 { .\vcpkg\bootstrap-vcpkg.bat }
         # No gtest here on purpose: this job builds it from source
         # (FLOX_FETCH_GTEST) because clang-cl and cl disagree about which
