@@ -10,8 +10,10 @@ FloxJsExecutor::FloxJsExecutor(const std::string& scriptPath, SymbolRegistry& re
                                size_t queueCapacity)
     : _scriptPath(scriptPath), _registry(registry), _capacity(queueCapacity)
 {
-  _thread = makeThread("flox.quickjs", [this]
-                       { run(); });
+  _thread = makeThread(
+      "flox.quickjs", [this]
+      { run(); }, [this]
+      { releaseWaiters(); });
 
   std::unique_lock<std::mutex> lock(_initMu);
   _initCv.wait(lock, [this]
@@ -38,6 +40,38 @@ FloxJsExecutor::~FloxJsExecutor()
   if (_thread.joinable())
   {
     _thread.join();
+  }
+}
+
+void FloxJsExecutor::releaseWaiters() noexcept
+{
+  std::deque<Event> pending;
+  {
+    std::lock_guard<std::mutex> lock(_queueMu);
+    _closed = true;
+    pending.swap(_queue);
+  }
+  // The same two notifications the destructor sends: push() blocks a bus
+  // consumer thread when the queue is full, and that thread must not wait on
+  // a worker that is no longer there.
+  _notEmpty.notify_all();
+  _notFull.notify_all();
+
+  // Clearing the queue is not enough for the callers parked on a future: they
+  // hold the promise themselves, so it stays alive and unsatisfied. Break it
+  // explicitly, and they wake with an error instead of never waking.
+  const auto err = std::make_exception_ptr(
+      std::runtime_error("flox: the QuickJS executor thread died; request abandoned"));
+  for (auto& ev : pending)
+  {
+    if (ev.barrier)
+    {
+      ev.barrier->set_exception(err);
+    }
+    if (ev.intResult)
+    {
+      ev.intResult->set_exception(err);
+    }
   }
 }
 

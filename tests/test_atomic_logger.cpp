@@ -318,3 +318,52 @@ TEST(AtomicLoggerTest, FastRotationKeepsEveryArchive)
   EXPECT_GE(names.size(), 20u);
   EXPECT_GE(survived, static_cast<size_t>(kMessages) - 2);
 }
+
+// The logger rotates on the flush thread, and rotate() used to reach the
+// filesystem through the throwing overloads. A log directory that went away
+// under a running process -- an unmounted volume, a filled disk, changed
+// permissions -- therefore threw on a thread body, which is std::terminate:
+// the logging subsystem killing the thing it exists to observe, at rotation,
+// which is to say more likely the busier the process is.
+//
+// Not being able to write a log is not a reason to stop trading. The logger
+// drops output and says so instead.
+TEST(AtomicLoggerTest, ARotationThatCannotOpenItsFileDropsTheLogNotTheProcess)
+{
+  cleanLogs();
+  auto logDir = getLogDir();
+
+  AtomicLoggerOptions opts;
+  opts.directory = logDir.string();
+  opts.basename = "doomed.log";
+  opts.maxFileSize = 1;  // every entry rotates
+  opts.rotateInterval = std::chrono::minutes(999);
+
+  AtomicLogger logger(opts);
+  logger.error("before");
+  logger.flush();
+  ASSERT_EQ(logger.rotationFailures(), 0u);
+
+  // Put a regular file where the directory was. Neither create_directories
+  // nor fopen can succeed past this, and the old code threw on the first.
+  fs::remove_all(logDir);
+  {
+    std::ofstream blocker(logDir.string());
+    blocker << "not a directory";
+  }
+
+  for (int i = 0; i < 8; ++i)
+  {
+    logger.error("after " + std::to_string(i));
+    logger.flush();
+  }
+
+  EXPECT_GT(logger.rotationFailures(), 0u);
+
+  // Still serving: flush() returns, the thread is alive, and the process is
+  // here to assert it.
+  logger.error("still alive");
+  logger.flush();
+
+  fs::remove(logDir);
+}

@@ -66,12 +66,16 @@ inline const char* lastDeadThreadName() noexcept
 // through here; see the note above for why.
 //
 // `name` must be a string literal: it is stored, not copied.
+//
+// Returns true if the body returned normally, false if it died. Callers use
+// that to release whatever was waiting on the thread.
 template <typename Fn>
-void runThreadBody(const char* name, Fn&& fn) noexcept
+bool runThreadBody(const char* name, Fn&& fn) noexcept
 {
   try
   {
     std::forward<Fn>(fn)();
+    return true;
   }
   catch (const std::exception& e)
   {
@@ -81,6 +85,7 @@ void runThreadBody(const char* name, Fn&& fn) noexcept
   {
     detail::noteThreadDeath(name, "unknown exception");
   }
+  return false;
 }
 
 // Construct a thread whose body is already contained. Prefer this over
@@ -91,6 +96,30 @@ std::thread makeThread(const char* name, Fn&& fn)
 {
   return std::thread([name, f = std::forward<Fn>(fn)]() mutable
                      { runThreadBody(name, f); });
+}
+
+// As above, plus a release to run if -- and only if -- the body died.
+//
+// Containment on its own can turn a crash into a deadlock, which for a
+// process holding positions is the worse of the two: whoever was parked
+// waiting for this thread to make progress now waits for a thread that is no
+// longer there. Components with such a waiter pass a release that does what
+// their shutdown path does -- drop the running flag, wake the condition
+// variables, break the promises -- so the wait ends rather than hangs.
+//
+// The release is contained too: a release that throws would terminate the
+// process on the one path whose whole purpose is to prevent that.
+template <typename Fn, typename OnDeath>
+std::thread makeThread(const char* name, Fn&& fn, OnDeath&& onDeath)
+{
+  return std::thread(
+      [name, f = std::forward<Fn>(fn), d = std::forward<OnDeath>(onDeath)]() mutable
+      {
+        if (!runThreadBody(name, f))
+        {
+          runThreadBody(name, d);
+        }
+      });
 }
 
 }  // namespace flox

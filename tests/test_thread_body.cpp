@@ -109,4 +109,56 @@ TEST(ThreadBody, CountsEveryDeathWhenSeveralThreadsDie)
   EXPECT_EQ(threadDeathCount(), before + kThreads);
 }
 
+// Containment that leaves a waiter parked forever has traded a crash for a
+// deadlock, and for a process holding positions that is the worse of the two.
+// The release is how a component takes its shutdown exit when the thread died
+// instead of stopping.
+TEST(ThreadBody, TheReleaseRunsWhenTheBodyDies)
+{
+  std::atomic<bool> released{false};
+
+  auto t = makeThread(
+      "test.dies", []
+      { throw std::runtime_error("boom"); },
+      [&released]
+      { released.store(true); });
+  t.join();
+
+  EXPECT_TRUE(released.load());
+}
+
+// And only then: a release that also fired on the ordinary exit would tear
+// down a component that had merely finished.
+TEST(ThreadBody, TheReleaseDoesNotRunWhenTheBodyReturns)
+{
+  std::atomic<bool> released{false};
+  std::atomic<bool> ran{false};
+
+  auto t = makeThread(
+      "test.returns", [&ran]
+      { ran.store(true); }, [&released]
+      { released.store(true); });
+  t.join();
+
+  EXPECT_TRUE(ran.load());
+  EXPECT_FALSE(released.load());
+}
+
+// The release runs on the same thread with the same nothing above it, so it
+// needs the same net: a release that throws while cleaning up after a death
+// would terminate the process on the one path whose purpose is preventing it.
+TEST(ThreadBody, AReleaseThatThrowsIsContainedToo)
+{
+  const uint64_t before = threadDeathCount();
+
+  auto t = makeThread(
+      "test.badrelease", []
+      { throw std::runtime_error("boom"); },
+      []
+      { throw std::runtime_error("the release is broken too"); });
+  t.join();
+
+  EXPECT_EQ(threadDeathCount(), before + 2);
+}
+
 }  // namespace
