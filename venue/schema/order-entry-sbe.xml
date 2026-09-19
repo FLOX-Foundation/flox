@@ -23,7 +23,7 @@
   - Every OUTBOUND template gained a trailing `seq` field (uint64,
     sinceVersion="1"): the per-session monotonic execution-report sequence
     number. Appended to the END of each root block, so a version-0 reader
-    skips it via the header blockLength -- the SBE-sanctioned extension path
+    skips it via the header blockLength — the SBE-sanctioned extension path
     (no wrapper template, no re-layout).
   - New inbound session verbs: ResendRequest (4) replays reports with
     seq >= fromSeq from the venue's per-session log; AccountSnapshotRequest
@@ -40,7 +40,7 @@
     Snapshot frames themselves stay unsequenced and are never in the resend
     log.
   - New inbound session verb SetSessionConfig (6): per-session
-    cancel-on-disconnect negotiation. Fire-and-forget -- the update takes
+    cancel-on-disconnect negotiation. Fire-and-forget — the update takes
     effect immediately, there is no reply frame (the effect is observable: a
     later disconnect sweeps or keeps the session's orders).
   - New outbound BalanceUpdate (21): balance change on a sequenced
@@ -132,7 +132,7 @@
   </sbe:message>
 
   <!-- Session verb: request the session account's open orders + position.
-       Carries no fields -- the authenticated session IS the account. Answered
+       Carries no fields — the authenticated session IS the account. Answered
        by a series of Accepted frames (restingOnBook=0 for pending stops)
        terminated by SnapshotEnd. -->
   <sbe:message name="AccountSnapshotRequest" id="5" sinceVersion="1"/>
@@ -246,7 +246,7 @@
   </sbe:message>
 
   <!-- Session layer: the requested resend fromSeq is older than the retained
-       log -- the client must reconcile via AccountSnapshotRequest instead.
+       log — the client must reconcile via AccountSnapshotRequest instead.
        lastSeq = the venue's current per-session sequence. -->
   <sbe:message name="SnapshotRequired" id="19" sinceVersion="1">
     <field name="lastSeq" id="1" type="SeqNum" sinceVersion="1"/>
