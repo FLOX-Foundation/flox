@@ -396,7 +396,7 @@ struct LastLookStats
 // 3: order and held-fill records carry the submitter's own identifier. A
 // version-2 snapshot would restore orders whose reports name nobody, so it is
 // refused outright rather than read as though the field had always been zero.
-inline constexpr uint32_t kSnapshotFormatVersion = 3;
+inline constexpr uint32_t kSnapshotFormatVersion = 4;
 
 struct SnapshotBegin
 {
@@ -517,6 +517,11 @@ struct RestoreClOrdIds  // fixed-size batch of an account's clientOrderId dedup 
   // journal's strictly-sized blittable body model is preserved.
   uint64_t account{};
   uint32_t count{0};  // ids[0..count) valid, count <= kClOrdIdBatch
+  // Which half of the rotating window these ids belong to (0 = current,
+  // 1 = previous). Written into padding that was already there, so the record
+  // keeps its size and the journal layout fingerprint does not move -- only
+  // what the bytes MEAN changed, which is what the snapshot version is for.
+  uint32_t generation{0};
   uint64_t ids[kClOrdIdBatch]{};
 };
 
