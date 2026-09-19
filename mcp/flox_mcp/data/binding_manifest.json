@@ -11829,6 +11829,11 @@
           "name": "FixTcpSession"
         },
         {
+          "header": "include/flox/connector/fix/fix_tls_channel.h",
+          "kind": "type",
+          "name": "FixTlsChannel"
+        },
+        {
           "header": "include/flox/error/flox_error.h",
           "kind": "type",
           "name": "FloxError"
@@ -17007,6 +17012,46 @@
           "kind": "method",
           "name": "poll",
           "parent": "FixTcpSession"
+        },
+        {
+          "kind": "method",
+          "name": "close",
+          "parent": "FixTlsChannel"
+        },
+        {
+          "kind": "method",
+          "name": "connect",
+          "parent": "FixTlsChannel"
+        },
+        {
+          "kind": "method",
+          "name": "connected",
+          "parent": "FixTlsChannel"
+        },
+        {
+          "kind": "method",
+          "name": "fill",
+          "parent": "FixTlsChannel"
+        },
+        {
+          "kind": "method",
+          "name": "read",
+          "parent": "FixTlsChannel"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
+          "parent": "FixTlsChannel"
+        },
+        {
+          "kind": "method",
+          "name": "send",
+          "parent": "FixTlsChannel"
+        },
+        {
+          "kind": "method",
+          "name": "writeAll",
+          "parent": "FixTlsChannel"
         },
         {
           "kind": "method",

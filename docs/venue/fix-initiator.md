@@ -228,17 +228,55 @@ FIX message per length-prefixed frame. Reads go through
 `flox::net::FrameReader`, so a receive timeout in the middle of a frame is
 resumable and the session timers run without the reader losing its place.
 
-TLS is not implemented. The venue's OpenSSL path is reusable in principle,
-since `flox::venue::tls::clientCtx()` already exists, but it lives in a module
-that links OpenSSL and the core links none. Adding that dependency to the core,
-where every flox user would carry it, costs more than the feature is worth
-today.
+`FixTlsChannel` is the same thing encrypted: the same `connect`/`send`/`read`/
+`close`, the same framing, the same resumable read. The initiator hands
+finished messages to a `SendFn` and is fed complete messages through
+`onFrame()`, so the channel drops in where `FixTcpClient` sits and the session
+layer does not know which one it is on.
 
-The initiator hands finished messages to a `SendFn` and is fed complete
-messages through `onFrame()`, so a TLS channel drops in where `FixTcpClient`
-sits without touching the session. Until one exists, an encrypted session needs
-a TLS terminator in front, or a channel the caller supplies from a module that
-already links OpenSSL.
+### Why it is behind a flag
+
+`-DFLOX_FIX_TLS=ON` finds OpenSSL and builds the channel; the flag is off by
+default and the core links no OpenSSL without it. Nobody who does not ask for
+TLS acquires the dependency, which is why the initiator is in the core in the
+first place: a FIX client should not pay for a matching engine, and it should
+not pay for a TLS stack it never opens either.
+
+The alternative placement considered for THIS channel was `connectors/`, which
+already links OpenSSL. It also requires ZLIB and CURL and fetches ixwebsocket
+and simdjson -- three system libraries and two fetched projects to get an
+encrypted FIX session. One optional dependency behind one flag is the cheaper
+of the two, and that is the whole reason for the placement.
+
+(The venue module does not come into this. `flox-venue` links neither
+`connectors` nor OpenSSL: its TLS gateway finds OpenSSL on its own and links
+it to that gateway's test alone.)
+
+### Verification is on
+
+The venue's own `tls::clientCtx()` sets `SSL_VERIFY_NONE`, which is correct
+where it is used: a test talking to a self-signed certificate it just
+generated. It would not be correct here. A counterparty's certificate is the
+only thing between a FIX session and whoever happens to answer that port, so
+the channel:
+
+- verifies the chain against the system trust store, or a `caFile`/`caPath`
+  the caller names;
+- checks the hostname (`SSL_set1_host`) -- without it any certificate the
+  trust store accepts would pass, not just this counterparty's;
+- requires TLS 1.2 or better;
+- **refuses to connect if the trust store could not be loaded.** A verify that
+  cannot load its roots verifies nothing, and failing is the honest outcome.
+
+`Options::verifyPeer = false` turns it off. It is a named, explicit act, which
+is what a test harness against a self-signed venue needs and what production
+should never contain.
+
+A failed handshake leaves nothing readable: the `SSL*` and the socket are
+dropped together, so no later read can pick bytes off a half-established
+channel. A frame length the channel will not honour closes the session rather
+than resynchronising -- past that point the stream is no longer one this side
+can follow.
 
 ## What the numbers look like
 

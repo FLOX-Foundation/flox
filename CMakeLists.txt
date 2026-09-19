@@ -411,6 +411,23 @@ if (FLOX_BUILD_DEMO)
   add_subdirectory(demo)
 endif()
 
+# TLS for the FIX initiator. Off by default, and that is the point: the core
+# links no OpenSSL, so a strategy that speaks plain FIX -- or no FIX at all --
+# does not acquire the dependency. Turning it on finds OpenSSL and defines the
+# macro the channel header refuses to compile without.
+#
+# The alternative placement was connectors/, which already links OpenSSL and
+# also requires ZLIB and CURL and fetches ixwebsocket and simdjson. One
+# optional dependency behind one flag is cheaper for whoever is writing the
+# strategy, which is the only cost that matters here.
+option(FLOX_FIX_TLS "Build the FIX initiator's TLS channel (needs OpenSSL)" OFF)
+if(FLOX_FIX_TLS)
+  find_package(OpenSSL REQUIRED)
+  target_link_libraries(${FLOX} PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+  target_compile_definitions(${FLOX} PUBLIC FLOX_FIX_TLS=1)
+  message(STATUS "FLOX_FIX_TLS: the FIX initiator can speak TLS")
+endif()
+
 option(FLOX_BUILD_TOOLS "Build command-line tools" OFF)
 if (FLOX_BUILD_TOOLS)
   add_subdirectory(tools)

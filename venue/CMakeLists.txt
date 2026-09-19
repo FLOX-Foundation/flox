@@ -96,6 +96,19 @@ if(FLOX_BUILD_TESTS)
 endif()
   find_package(Threads)
   file(GLOB FLOX_VENUE_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp)
+  # Derived the same way the perimeter split is: a test that includes the TLS
+  # channel needs the flag that builds it. Without the flag the header refuses
+  # to compile, on purpose, so the test is dropped rather than broken.
+  if(NOT FLOX_FIX_TLS)
+    foreach(t ${FLOX_VENUE_TESTS})
+      file(STRINGS ${t} _tlsinc REGEX "fix_tls_channel.h")
+      if(_tlsinc)
+        list(REMOVE_ITEM FLOX_VENUE_TESTS ${t})
+        get_filename_component(_n ${t} NAME)
+        message(STATUS "FLOX_FIX_TLS is off: skipping ${_n}")
+      endif()
+    endforeach()
+  endif()
   if(NOT FLOX_VENUE_PERIMETER)
     # Derived from what each test includes, not from a list someone keeps in
     # step. The first version of this was a list of names written by hand and
