@@ -85,6 +85,27 @@ the state the close interrupted.
 
 ## Journal and replay
 
+Every command carries an explicit wire tag (`kWireTag` in `messages.h`). The
+tag used to be the alternative's position in the `InboundCommand` variant,
+which made the variant's declaration order a format promise kept only by a
+comment saying "append only, never reorder". Breaking that rule did not
+produce an error: an old journal was re-read as **different commands**, which
+is the worst thing a format can do.
+
+The tag travels with the alternative now, so the variant can be rearranged
+freely. What is still append-only is the tag space: a tag that has been on
+disk may never mean a different command.
+
+Two things follow, and both are checked at compile time:
+
+- the layout fingerprint is folded in **tag order**, and its sizes are derived
+  from the variant rather than listed by hand, so rearranging the type does not
+  move it and a hand-maintained list cannot fall out of step;
+- a record tag this build has no command for is refused with
+  `JournalFormatError` rather than ending the read, because stopping there
+  hands back a prefix of the history as though it were all of it.
+
+
 ```cpp
 Journal j(path);
 j.append(cmd, tsNs);        // write-ahead: record, then apply
