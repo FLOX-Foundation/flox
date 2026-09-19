@@ -184,6 +184,15 @@ endif()
     list(REMOVE_ITEM FLOX_VENUE_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_venue_tls.cpp)
     message(STATUS "OpenSSL not found -- skipping venue TLS gateway test")
   endif()
+  # A shard that writes a journal and then abandons the process. Used by the
+  # process-death test on every platform: Windows has no fork, and a
+  # Windows-only mechanism would be exercised only where nobody runs it by
+  # hand. Excluded from the test list -- it has a main(), not a TEST().
+  list(REMOVE_ITEM FLOX_VENUE_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/support/journal_writer_main.cpp)
+  add_executable(venue_journal_writer ${CMAKE_CURRENT_SOURCE_DIR}/tests/support/journal_writer_main.cpp)
+  target_link_libraries(venue_journal_writer PRIVATE flox-venue)
+  target_include_directories(venue_journal_writer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+
   foreach(test_src ${FLOX_VENUE_TESTS})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})
@@ -191,6 +200,14 @@ endif()
       PRIVATE flox-venue GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     if(TARGET Threads::Threads)
       target_link_libraries(${test_name} PRIVATE Threads::Threads)
+    endif()
+    if(test_name STREQUAL "test_venue_recovery")
+      # The helper's path rather than a guess at the build layout: a test that
+      # looked for a sibling binary by name would find the wrong one, or none,
+      # depending on the generator.
+      target_compile_definitions(${test_name}
+        PRIVATE FLOX_JOURNAL_WRITER="$<TARGET_FILE:venue_journal_writer>")
+      add_dependencies(${test_name} venue_journal_writer)
     endif()
     add_test(NAME ${test_name} COMMAND ${test_name})
   endforeach()
