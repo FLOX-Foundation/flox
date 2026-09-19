@@ -334,6 +334,24 @@ Before the first trade there is no reference price, so no band exists yet.
   choose between the primitive built for two-sided quoting and the controls
   that make two-sided quoting safe.
 
+  A maker holding several levels per side sends one `Quote` per level; there
+  is no bulk ladder replace, and that is a measured decision rather than a
+  gap. On a synthetic ladder feed -- 20 levels a side, three sizes changing
+  per update, the mid stepping a tick one time in five, 5 sources x 50
+  instruments at 100 updates a second each -- the merged stream is about
+  **156k single commands a second**, against a shard that accepts **650-770k**
+  with its journal on disk and replays about 6M a second. By bytes a bulk
+  command is a wash, not a win: one 20-level ladder is ~320 bytes against
+  180-300 for the 3-5 single commands that actually changed.
+  
+  What limits a maker here is journal volume, and the two things that move it
+  are the number of levels published and coalescing updates before sending --
+  both of which live on the maker's side and neither of which a venue command
+  would improve. A bulk `ReplaceLadder` would also change the size of a
+  journaled command, so every existing journal would stop being readable, for
+  parity. See W29-T002; the measurement and the rejected alternatives are
+  there.
+
 ### Last-look lifecycle
 
 `lastLookWindowNs > 0` enables last look venue-wide; `0` disables it entirely
@@ -346,6 +364,23 @@ to answer with `LastLookDecision{heldId, accept}`.
 - **Ownership.** Only the maker account that owns the held quote may decide;
   any other account gets `OrderRejected{NotOrderOwner}` and the hold stands.
 - **Accept** prints the trade at the held price/size and settles normally.
+  The decision is all-or-nothing on purpose, and the reason is what a hold
+  *is*: the quantity was reserved out of the maker's own resting order before
+  the maker was asked. Its inventory for this fill is that order, and the
+  venue is holding all of it — there is no sense in which the maker filled
+  part of it somewhere else. A maker that wants to show less should quote
+  less; one whose appetite changes mid-window says no, and its liquidity
+  returns intact.
+
+  Partial acceptance (`acceptQty`) is a coherent feature and a deliberate
+  omission rather than an oversight. It would mean "I will honour three of
+  the five you are offering", which is a real liquidity-provider behaviour —
+  and it costs a change to the size of a journaled command (record version
+  and layout fingerprint), an SBE schema version, decode on two more wires,
+  and a second restore path through code where a hold must resolve exactly
+  once. That is a lot of format churn, paid for by everyone with an existing
+  journal, for a behaviour nothing has asked for. See W29-T004 for what would
+  change the answer.
 - **Reject / timeout** (`lastLookAcceptOnTimeout=false`) destroys no
   liquidity:
   - The maker's held quantity returns to its price level **at the tail**
