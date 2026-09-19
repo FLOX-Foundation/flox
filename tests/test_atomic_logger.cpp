@@ -320,50 +320,55 @@ TEST(AtomicLoggerTest, FastRotationKeepsEveryArchive)
 }
 
 // The logger rotates on the flush thread, and rotate() used to reach the
-// filesystem through the throwing overloads. A log directory that went away
-// under a running process -- an unmounted volume, a filled disk, changed
-// permissions -- therefore threw on a thread body, which is std::terminate:
-// the logging subsystem killing the thing it exists to observe, at rotation,
-// which is to say more likely the busier the process is.
+// filesystem through the throwing overloads: fs::create_directories and
+// fs::exists. A log directory that could not be made -- an unmounted volume, a
+// filled disk, changed permissions -- therefore threw on a thread body, which
+// is std::terminate: the logging subsystem killing the thing it exists to
+// observe, at rotation, which is to say more likely the busier the process is.
 //
-// Not being able to write a log is not a reason to stop trading. The logger
-// drops output and says so instead.
+// Not being able to write a log is not a reason to stop trading.
+//
+// The obstruction is a regular file standing where a directory component has
+// to be. Neither create_directories nor fopen can work through one, on POSIX
+// or on Windows, and it holds from construction onward -- so there is no
+// window to race the flush thread for, and nothing has to delete a file the
+// logger still has open, which Windows refuses outright.
 TEST(AtomicLoggerTest, ARotationThatCannotOpenItsFileDropsTheLogNotTheProcess)
 {
   cleanLogs();
-  auto logDir = getLogDir();
+  const auto root = getLogDir();
+  fs::create_directories(root);
+
+  const fs::path blocker = root / "not-a-directory";
+  {
+    std::ofstream f(blocker.string());
+    f << "x";
+  }
 
   AtomicLoggerOptions opts;
-  opts.directory = logDir.string();
+  opts.directory = (blocker / "logs").string();
   opts.basename = "doomed.log";
-  opts.maxFileSize = 1;  // every entry rotates
+  opts.maxFileSize = 1;
   opts.rotateInterval = std::chrono::minutes(999);
 
+  // The constructor rotates, and that rotation is the one that cannot succeed.
   AtomicLogger logger(opts);
-  logger.error("before");
+
+  logger.error("dropped");
   logger.flush();
-  ASSERT_EQ(logger.rotationFailures(), 0u);
+  logger.error("dropped as well");
+  logger.flush();
 
-  // Put a regular file where the directory was. Neither create_directories
-  // nor fopen can succeed past this, and the old code threw on the first.
-  fs::remove_all(logDir);
-  {
-    std::ofstream blocker(logDir.string());
-    blocker << "not a directory";
-  }
-
-  for (int i = 0; i < 8; ++i)
-  {
-    logger.error("after " + std::to_string(i));
-    logger.flush();
-  }
-
+  // The drop is counted rather than silent, the process is here to assert it,
+  // and flush() returned rather than spinning on a flush thread that a throw
+  // would have taken away.
   EXPECT_GT(logger.rotationFailures(), 0u);
-
-  // Still serving: flush() returns, the thread is alive, and the process is
-  // here to assert it.
-  logger.error("still alive");
-  logger.flush();
-
-  fs::remove(logDir);
+  EXPECT_FALSE(fs::exists(opts.directory));
 }
+
+// What the test above does NOT cover: the fs::exists in nextArchivePath. That
+// one runs only when a file was open and is being renamed away, so reaching it
+// requires a directory that goes bad while the logger holds a handle in it --
+// which POSIX permits and Windows refuses, and which therefore has no portable
+// test. The overload was hardened along with the other, uncovered, rather than
+// left throwing because no test could be written for it.
