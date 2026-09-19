@@ -122,16 +122,24 @@ std::vector<InboundCommand> script()
 template <size_t Cap>
 HashSink drive()
 {
-  const std::string path = tmpPath("shard-cap");
-  auto shard = std::make_unique<SequencedShard<MatchingBook, Cap, Cap>>(cfg(), path);
+  // A path per capacity, and the shard destroyed before the journal is
+  // removed. Both matter, and the second one is why this test failed on
+  // Windows and nowhere else: `remove` on a file something still holds open
+  // succeeds on POSIX and fails there, so the next run with the same name
+  // started by replaying the previous run's journal. The counts still
+  // matched; the very first event did not.
+  const std::string path = tmpPath("shard-cap-" + std::to_string(Cap));
   HashSink sink;
-  shard->subscribeOutbound(&sink);
-  shard->start();
-  for (const auto& c : script())
   {
-    shard->submit(c);
+    auto shard = std::make_unique<SequencedShard<MatchingBook, Cap, Cap>>(cfg(), path);
+    shard->subscribeOutbound(&sink);
+    shard->start();
+    for (const auto& c : script())
+    {
+      shard->submit(c);
+    }
+    shard->stop();
   }
-  shard->stop();
   std::remove(path.c_str());
   return sink;
 }
