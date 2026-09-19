@@ -195,6 +195,16 @@ static_assert(bodyLayoutFingerprint() == 0xefdec4e946deaf9dULL,
 // A journal or snapshot written in a format version this build does not read.
 // Distinct from a torn tail or a crc failure, which are recoverable and leave
 // the intact prefix behind: this one says the file is not ours to decode.
+// A record tag no type in this build answers to. Names the tag and where it
+// sits, because the first question is always "which command, and how far in".
+inline std::string unknownTagMessage(const std::string& path, uint8_t tag, size_t afterRecords)
+{
+  return "journal '" + path + "': record tag " + std::to_string(static_cast<unsigned>(tag)) +
+         " after " + std::to_string(afterRecords) + " good records" +
+         " is not a command this build knows. The file was written by a build with a command "
+         "this one does not have; reading past it would silently return a prefix of the history.";
+}
+
 class JournalFormatError : public std::runtime_error
 {
  public:
@@ -389,9 +399,19 @@ class Journal
       std::memcpy(&len, frame.data() + 10, sizeof(len));
 
       const uint32_t expect = expectedBodySize(tag);
-      if (expect == 0 || len != expect)
+      if (expect == 0)
       {
-        break;  // unknown tag or wrong-sized body -> corrupt, stop
+        // A tag this build has no record type for. Today that means a file
+        // written by a build that knows a command this one does not -- and
+        // stopping here quietly would hand back a PREFIX of the history as if
+        // it were all of it: recovery lands in a state the venue was never in,
+        // and nothing says so. A short read is a torn tail and is fine to stop
+        // on; this is not.
+        throw JournalFormatError(unknownTagMessage(path, tag, v.size()));
+      }
+      if (len != expect)
+      {
+        break;  // body the wrong size for its tag: corrupt, stop
       }
       frame.resize(kHeaderSize + len);
       if (!in.read(reinterpret_cast<char*>(frame.data() + kHeaderSize), len))
