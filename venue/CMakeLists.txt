@@ -88,6 +88,9 @@ target_compile_features(flox-venue PUBLIC cxx_std_23)
 if(FLOX_BUILD_BENCHMARKS)
   add_executable(bench_venue_book ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/bench_book.cpp)
   target_link_libraries(bench_venue_book PRIVATE flox-venue)
+  add_executable(bench_venue_generated_flow
+                 ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/bench_generated_flow.cpp)
+  target_link_libraries(bench_venue_generated_flow PRIVATE flox-venue)
   # Sockets: perimeter only.
   if(FLOX_VENUE_PERIMETER)
     add_executable(bench_venue_md_decoder_seam
