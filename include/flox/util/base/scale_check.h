@@ -236,23 +236,19 @@ constexpr int64_t checkedAddI64(int64_t a, int64_t b) noexcept
 //
 // A zero divisor routes through dividedByZeroI64, so it is counted and
 // saturated the same way as every other fixed-point division by zero.
-#if defined(__SIZEOF_INT128__)
-constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
-{
-  using i128 = __int128_t;
-  if (d == 0)
-  {
-    const bool nonZero = (a != 0) && (b != 0);
-    const bool negative = (a < 0) != (b < 0);
-    return dividedByZeroI64(nonZero ? (negative ? -1 : 1) : 0);
-  }
-  return checkedNarrowI64((i128)a * (i128)b / (i128)d);
-}
-#else
+// Multiply two int64 and divide by an int64, exactly, saturating at the
+// int64 boundary rather than wrapping. Every fixed-point operator that turns
+// a price and a quantity into money goes through here.
+//
+// The portable implementation below is compiled ALWAYS, not only where a
+// native 128-bit integer is missing. It used to live behind #else, which
+// meant it was never built on any platform this project supports -- untested
+// code standing by for the day it would be needed, which is the shape of
+// every defect this file exists to prevent. Now it is built everywhere and
+// checked against the hardware path by test_fixed_point_muldiv.
 namespace detail
 {
-// 64x64 -> 128 through 32-bit halves, for toolchains with no native 128-bit
-// integer type.
+// 64x64 -> 128 through 32-bit halves.
 constexpr void umul64(uint64_t a, uint64_t b, uint64_t& hi, uint64_t& lo) noexcept
 {
   const uint64_t aLo = a & 0xFFFFFFFFull;
@@ -278,8 +274,7 @@ constexpr uint64_t udiv128By64(uint64_t hi, uint64_t lo, uint64_t d) noexcept
   uint64_t remainder = 0;
   for (int bit = 127; bit >= 0; --bit)
   {
-    const uint64_t nextBit =
-        (bit >= 64) ? ((hi >> (bit - 64)) & 1u) : ((lo >> bit) & 1u);
+    const uint64_t nextBit = (bit >= 64) ? ((hi >> (bit - 64)) & 1u) : ((lo >> bit) & 1u);
     remainder = (remainder << 1) | nextBit;
     if (remainder >= d)
     {
@@ -297,22 +292,17 @@ constexpr uint64_t absToU64(int64_t v) noexcept
 {
   return v < 0 ? (~static_cast<uint64_t>(v) + 1u) : static_cast<uint64_t>(v);
 }
-}  // namespace detail
 
-constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
+// The magnitudes, with the sign handled by the caller. Splitting it this way
+// is what lets the hardware paths work on unsigned values without any of them
+// having to get the sign right a second time -- the MSVC intrinsic path used
+// to cast a signed value straight to uint64_t, so a negative volume became
+// 1.8e19 and the answer was nonsense.
+constexpr int64_t mulDivMagnitude(uint64_t ua, uint64_t ub, uint64_t ud, bool negative) noexcept
 {
-  if (d == 0)
-  {
-    const bool nonZeroProduct = (a != 0) && (b != 0);
-    const bool negativeProduct = (a < 0) != (b < 0);
-    return dividedByZeroI64(nonZeroProduct ? (negativeProduct ? -1 : 1) : 0);
-  }
-
-  const bool negative = ((a < 0) != (b < 0)) != (d < 0);
   uint64_t hi = 0;
   uint64_t lo = 0;
-  detail::umul64(detail::absToU64(a), detail::absToU64(b), hi, lo);
-  const uint64_t ud = detail::absToU64(d);
+  umul64(ua, ub, hi, lo);
 
   constexpr uint64_t kMax = static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
   if (hi >= ud)
@@ -322,7 +312,7 @@ constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
                     : (std::numeric_limits<int64_t>::max)();
   }
 
-  const uint64_t q = detail::udiv128By64(hi, lo, ud);
+  const uint64_t q = udiv128By64(hi, lo, ud);
   if (negative)
   {
     if (q > kMax + 1u)
@@ -339,6 +329,40 @@ constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
   }
   return static_cast<int64_t>(q);
 }
+}  // namespace detail
+
+constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
+{
+  if (d == 0)
+  {
+    const bool nonZeroProduct = (a != 0) && (b != 0);
+    const bool negativeProduct = (a < 0) != (b < 0);
+    return dividedByZeroI64(nonZeroProduct ? (negativeProduct ? -1 : 1) : 0);
+  }
+#if defined(__SIZEOF_INT128__)
+  using i128 = __int128_t;
+  return checkedNarrowI64((i128)a * (i128)b / (i128)d);
+#else
+  const bool negative = ((a < 0) != (b < 0)) != (d < 0);
+  return detail::mulDivMagnitude(detail::absToU64(a), detail::absToU64(b), detail::absToU64(d),
+                                 negative);
 #endif
+}
+
+// The portable path by name, so a test on a platform that HAS a 128-bit type
+// can still exercise the code a platform without one would run. Untested
+// fallbacks are how a backtest came back with -534 where 5000 was expected.
+constexpr int64_t mulDivI64Portable(int64_t a, int64_t b, int64_t d) noexcept
+{
+  if (d == 0)
+  {
+    const bool nonZeroProduct = (a != 0) && (b != 0);
+    const bool negativeProduct = (a < 0) != (b < 0);
+    return dividedByZeroI64(nonZeroProduct ? (negativeProduct ? -1 : 1) : 0);
+  }
+  const bool negative = ((a < 0) != (b < 0)) != (d < 0);
+  return detail::mulDivMagnitude(detail::absToU64(a), detail::absToU64(b), detail::absToU64(d),
+                                 negative);
+}
 
 }  // namespace flox

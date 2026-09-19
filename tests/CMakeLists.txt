@@ -126,6 +126,7 @@ endif()
 
 if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_backtest)
+  add_flox_test(test_fixed_point_muldiv)
   add_flox_test(test_strategy_pump)
   add_flox_test(test_ntoken_curve)
   add_flox_test(test_constant_product_curve)

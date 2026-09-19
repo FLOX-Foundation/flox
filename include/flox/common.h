@@ -124,24 +124,12 @@ inline Volume operator*(Quantity qty, Price px)
 {
   FLOX_SCALE_CHECK(qty.scale() == Quantity::Scale && px.scale() == Price::Scale,
                    "Quantity*Price requires default scale; rescale a per-symbol value first");
-#if defined(__SIZEOF_INT128__)
-  // Any compiler that has the type, clang-cl included: the runtime helpers
-  // it needs are linked by the build (see CMakeLists.txt).
-  using i128 = __int128_t;
-  return Volume::fromRaw(
-      checkedNarrowI64((i128)qty.raw() * (i128)px.raw() / (i128)Volume::Scale));
-#elif defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
-  // MSVC x64: use _umul128 + _udiv128 intrinsics
-  uint64_t hi;
-  uint64_t lo = _umul128(static_cast<uint64_t>(qty.raw()), static_cast<uint64_t>(px.raw()), &hi);
-  uint64_t rem;
-  uint64_t result = _udiv128(hi, lo, Volume::Scale, &rem);
-  return Volume::fromRaw(static_cast<int64_t>(result));
-#else
-  // Portable fallback: split multiplication to avoid overflow
-  return Volume::fromRaw((qty.raw() / Volume::Scale) * px.raw() +
-                         (qty.raw() % Volume::Scale) * px.raw() / Volume::Scale);
-#endif
+  // One implementation of "multiply two fixed-point numbers and divide by a
+  // scale, exactly". It used to be three branches here, and the third -- the
+  // portable one -- was hand-rolled, wrong, and the branch clang-cl landed on:
+  // its remainder term overflows int64 at a price of 60000 and a quantity of
+  // 0.5, and a backtest came back with -534 where 5000 was expected.
+  return Volume::fromRaw(mulDivI64(qty.raw(), px.raw(), Volume::Scale));
 }
 
 inline Volume operator*(Price px, Quantity qty)
@@ -160,24 +148,7 @@ inline Price operator/(Volume vol, Quantity qty)
   {
     return Price::fromRaw(dividedByZeroI64(vol.raw()));
   }
-#if defined(__SIZEOF_INT128__)
-  // Any compiler that has the type, clang-cl included: the runtime helpers
-  // it needs are linked by the build (see CMakeLists.txt).
-  using i128 = __int128_t;
-  return Price::fromRaw(
-      checkedNarrowI64((i128)vol.raw() * (i128)Price::Scale / (i128)qty.raw()));
-#elif defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
-  // MSVC x64: use _umul128 + _udiv128 intrinsics
-  uint64_t hi;
-  uint64_t lo = _umul128(static_cast<uint64_t>(vol.raw()), Price::Scale, &hi);
-  uint64_t rem;
-  uint64_t result = _udiv128(hi, lo, static_cast<uint64_t>(qty.raw()), &rem);
-  return Price::fromRaw(static_cast<int64_t>(result));
-#else
-  // Portable fallback
-  return Price::fromRaw((vol.raw() / qty.raw()) * Price::Scale +
-                        (vol.raw() % qty.raw()) * Price::Scale / qty.raw());
-#endif
+  return Price::fromRaw(mulDivI64(vol.raw(), Price::Scale, qty.raw()));
 }
 
 inline Quantity operator/(Volume vol, Price px)
@@ -188,24 +159,7 @@ inline Quantity operator/(Volume vol, Price px)
   {
     return Quantity::fromRaw(dividedByZeroI64(vol.raw()));
   }
-#if defined(__SIZEOF_INT128__)
-  // Any compiler that has the type, clang-cl included: the runtime helpers
-  // it needs are linked by the build (see CMakeLists.txt).
-  using i128 = __int128_t;
-  return Quantity::fromRaw(
-      checkedNarrowI64((i128)vol.raw() * (i128)Quantity::Scale / (i128)px.raw()));
-#elif defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
-  // MSVC x64: use _umul128 + _udiv128 intrinsics
-  uint64_t hi;
-  uint64_t lo = _umul128(static_cast<uint64_t>(vol.raw()), Quantity::Scale, &hi);
-  uint64_t rem;
-  uint64_t result = _udiv128(hi, lo, static_cast<uint64_t>(px.raw()), &rem);
-  return Quantity::fromRaw(static_cast<int64_t>(result));
-#else
-  // Portable fallback
-  return Quantity::fromRaw((vol.raw() / px.raw()) * Quantity::Scale +
-                           (vol.raw() % px.raw()) * Quantity::Scale / px.raw());
-#endif
+  return Quantity::fromRaw(mulDivI64(vol.raw(), Quantity::Scale, px.raw()));
 }
 
 }  // namespace flox
