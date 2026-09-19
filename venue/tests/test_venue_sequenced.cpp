@@ -14,8 +14,10 @@
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <thread>
 
 #include <cstdio>
 #include <cstdlib>
@@ -129,4 +131,116 @@ TEST(Sequenced, EngineSuite)
 
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
+}
+
+namespace
+{
+
+// A book that refuses to take the Nth resting order. The shard is templated on
+// the book, so the throw is injected through the type rather than through a
+// hook added to production code for a test's benefit.
+class BookThatThrows : public MatchingBook
+{
+ public:
+  BookThatThrows() = default;
+  explicit BookThatThrows(int throwOnNth) : throwOnNth_(throwOnNth) {}
+
+  void addResting(Side side, const RestingOrder& o)
+  {
+    if (++adds_ == throwOnNth_)
+    {
+      throw std::runtime_error("the book refused the order");
+    }
+    MatchingBook::addResting(side, o);
+  }
+
+ private:
+  int throwOnNth_ = 0;
+  int adds_ = 0;
+};
+
+InboundCommand restingSell(uint64_t id, double price)
+{
+  NewOrder o;
+  o.id = id;
+  o.symbol = SYM;
+  o.side = Side::SELL;
+  o.type = OrderType::LIMIT;
+  o.price = Price::fromDouble(price);
+  o.quantity = Quantity::fromDouble(1.0);
+  o.tif = TimeInForce::GTC;
+  o.accountId = 1;
+  return InboundCommand{o};
+}
+
+}  // namespace
+
+// The engine is not transactional. The journal is written before the command
+// is applied, which is the right order: it keeps the durable state recoverable
+// whatever happens next. What it does not do is undo a half-applied command in
+// memory, so after a throw the shard holds a state that disagrees with the one
+// it would recover into.
+//
+// Worse than that, in fact. Letting the throw leave onCommand does not crash
+// the shard, it wedges it: the ingress never advances past the command and
+// flush() spins forever. That is why the wait below is bounded -- a hang is
+// not a red test, and without the bound this one would only be caught by
+// ctest's timeout minutes later.
+TEST(Sequenced, AShardThatThrewPartWayThroughStopsInsteadOfServingDivergedState)
+{
+  const std::string journalPath = tmpPath("venue_sequenced_apply_fail", ".bin");
+  std::remove(journalPath.c_str());
+
+  HashSink sink;
+  auto shard = std::make_unique<SequencedShard<BookThatThrows>>(
+      cfg(), journalPath, BookThatThrows{2}, Journal::Sync::Off);
+  ASSERT_TRUE(shard->subscribeOutbound(&sink, true));
+  shard->start();
+
+  // Three commands in one batch, the second of which the book refuses. The
+  // third matters: it is already in the ingress when the failure happens, so
+  // it exercises the consumer's own refusal to keep journaling afterwards --
+  // the producer-side rejection cannot help with what is already queued.
+  std::atomic<bool> done{false};
+  std::thread worker(
+      [&]
+      {
+        shard->submit(restingSell(10, 101.00));
+        shard->submit(restingSell(11, 102.00));
+        shard->submit(restingSell(12, 103.00));
+        shard->flush();
+        done.store(true, std::memory_order_release);
+      });
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (!done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  if (!done.load(std::memory_order_acquire))
+  {
+    // The shard is wedged and the worker is still inside it. Detach, and let
+    // the shard leak rather than destroy it under a thread that is using it.
+    worker.detach();
+    (void)shard.release();
+    FAIL() << "flush() did not return: a throw while applying wedged the ingress";
+  }
+  worker.join();
+
+  EXPECT_TRUE(shard->failed());
+  EXPECT_NE(shard->failedAtTs(), 0);
+
+  // Two records: the one that applied, and the one that was written ahead of
+  // the apply that threw. The third was dropped rather than written, because a
+  // record appended now would describe a transition this engine never made.
+  EXPECT_EQ(shard->journaled(), 2u);
+
+  // And from here the shard takes nothing at all.
+  EXPECT_EQ(shard->submit(restingSell(13, 104.00)),
+            SequencedShard<BookThatThrows>::kSubmitRejected);
+  shard->flush();
+  EXPECT_EQ(shard->journaled(), 2u);
+
+  shard->stop();
+  std::remove(journalPath.c_str());
 }
