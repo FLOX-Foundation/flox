@@ -207,6 +207,28 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->nextFundingNs.raw()));
     h = mix(h, static_cast<uint64_t>(x->openInterest.raw()));
   }
+  else if (const auto* x = std::get_if<PositionAdjusted>(&e))
+  {
+    h = mix(h, 16);
+    h = mix(h, x->account);
+    h = mix(h, x->symbol);
+    h = mix(h, static_cast<uint64_t>(x->qtyDeltaRaw));
+    h = mix(h, static_cast<uint64_t>(x->qtyAfterRaw));
+    h = mix(h, static_cast<uint64_t>(x->entryAfterRaw));
+    h = mix(h, static_cast<uint64_t>(x->reason));
+    // The note is part of the correction, not decoration: a replay that
+    // reproduced a different reason text would be a different history.
+    for (size_t i = 0; i < kAdjustNoteLen; ++i)
+    {
+      h = mix(h, static_cast<uint64_t>(static_cast<unsigned char>(x->note[i])));
+    }
+  }
+  // A new OutboundEvent alternative that is not hashed here is invisible to
+  // every replay-equivalence test in the suite: they would keep agreeing while
+  // the streams differed.
+  static_assert(std::variant_size_v<OutboundEvent> == 17,
+                "new OutboundEvent alternative: hash it above, or a replay that produced a "
+                "different stream would still compare equal");
   return h;
 }
 

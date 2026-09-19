@@ -71,6 +71,15 @@ enum class RejectReason : uint8_t
   // never closed.
   CreditRefused,            // the risk owner said no; the reason is its own
   CreditSourceUnavailable,  // the risk owner could not decide: limits unreachable
+  // An operator correction (AdjustPosition) that the engine will not make.
+  // Appended -- the wire enum is append-only.
+  //
+  // A correction that neither moves the size nor sets an entry says nothing,
+  // and a correction that creates a position out of nothing has no average
+  // entry to give it: a zero entry would make every later PnL wrong, quietly,
+  // which is worse than refusing to do it.
+  AdjustmentEmpty,       // neither a size delta nor an entry was given
+  AdjustmentNeedsEntry,  // no position to adjust, and no entry to open one at
 };
 
 enum class CancelReason : uint8_t

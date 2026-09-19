@@ -95,6 +95,16 @@ inline SymbolId symbolOf(const InboundCommand& c) noexcept
   {
     return fc->symbol;
   }
+  if (const auto* ap = std::get_if<AdjustPosition>(&c))
+  {
+    return ap->symbol;
+  }
+  // A live command missing from the chain above routes to symbol 0 and is
+  // silently dropped by submit(). The count is pinned so a new alternative
+  // cannot join that fate unnoticed.
+  static_assert(std::variant_size_v<InboundCommand> == 35,
+                "new InboundCommand alternative: route it above if it is a live command, or "
+                "confirm it is snapshot-only");
   return 0;  // snapshot-only records never route by symbol (recovery-path only)
 }
 

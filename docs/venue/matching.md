@@ -127,6 +127,52 @@ The direct setters on the engine remain for pre-start wiring. On a running
 engine they apply immediately and ride nothing: a restart reverts them and a
 replica replaying the journal never sees the change. Use the command.
 
+### Correcting a position by hand
+
+The venue's books and an external record of the same positions drift for
+ordinary reasons: a counterparty reports a fill the venue never saw, settlement
+lands differently, history is brought in from elsewhere. `AdjustPosition`
+books the difference.
+
+```cpp
+AdjustPosition a{};
+a.accountId = 1;
+a.symbol = SYM;
+a.qtyDeltaRaw = qty(-2).raw();   // signed; added to the existing position
+a.entryRaw = px(98.25).raw();    // 0 = keep the current average entry
+a.reason = AdjustReason::CounterpartyReport;
+std::strncpy(a.note, "LP fill 88213", kAdjustNoteLen - 1);
+venue.submit(InboundCommand{a}, tsNs);
+```
+
+It is a command, not a setter, for the same reason as everything else here: a
+correction applied directly to the engine reverts on restart and a replica
+replaying the journal never sees it.
+
+**It is deliberately not a trade.** No PnL is realized, no fee is charged, the
+ledger is not touched and posted margin is left alone. The discrepancy being
+corrected is by definition not backed by a fill, so inventing the cash flow a
+fill would have produced would make the books agree by adding a second error.
+Margin that no longer fits the corrected size is the operator's next decision;
+the `PositionAdjusted` event says what the position became so that decision can
+be made.
+
+Two corrections are refused rather than booked:
+
+| | |
+|---|---|
+| `AdjustmentEmpty` | neither a size delta nor an entry was given: it would journal and broadcast a no-op |
+| `AdjustmentNeedsEntry` | no position to adjust and no entry to open one at; a zero entry would make every later PnL wrong in a way nothing downstream can detect |
+
+A correction to zero clears the entry price with it: an entry left on a flat
+position is a number that means nothing and reads like it means something.
+
+`PositionAdjusted` goes out to SBE clients (template 23) and to JSON readers.
+It has no FIX mapping: FIX 4.4 carries a position change in a Position Report
+(AP), a different message category with its own request flow, and putting a
+correction into an execution report would tell the client a fill happened when
+none did.
+
 ### Delisting
 
 `AdminAction::Delist` withdraws an instrument from trading and pulls the

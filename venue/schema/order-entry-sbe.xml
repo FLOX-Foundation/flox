@@ -58,7 +58,7 @@
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.oe"
                    id="92"
-                   version="4"
+                   version="5"
                    semanticVersion="1.0"
                    description="Flox venue order entry + execution reports"
                    byteOrder="littleEndian">
@@ -78,6 +78,7 @@
     <type name="EnumU8"   primitiveType="uint8"/>   <!-- engine enum underlying value -->
     <type name="Nanos"    primitiveType="int64"/>
     <type name="SeqNum"   primitiveType="uint64"/>  <!-- per-session exec-report sequence -->
+    <type name="NoteText" primitiveType="char" length="32"/>  <!-- NUL-padded operator note -->
   </types>
 
   <!-- ============ inbound: client -> venue ============ -->
@@ -286,5 +287,23 @@
     <field name="reason"     id="3" type="EnumU8"/>
     <field name="wasReplace" id="4" type="Flag"/>
     <field name="seq"        id="5" type="SeqNum"/>
+  </sbe:message>
+
+  <!-- An operator corrected this account's position. Not a fill: no order, no
+       price, no fee. The owner of the account is told because its position
+       changed under it, and a client that reconciles against the venue would
+       otherwise see a jump with nothing to explain it. -->
+  <sbe:message name="PositionAdjusted" id="23" sinceVersion="5">
+    <field name="account"       id="1" type="Account"/>
+    <field name="symbol"        id="2" type="Symbol"/>
+    <field name="qtyDeltaRaw"   id="3" type="QtyRaw"/>
+    <field name="qtyAfterRaw"   id="4" type="QtyRaw"/>
+    <field name="entryAfterRaw" id="5" type="PriceRaw"/>
+    <field name="reason"        id="6" type="EnumU8"/>
+    <field name="seq"           id="7" type="SeqNum"/>
+    <!-- Fixed 32 bytes, NUL-padded, not a var-length field: this codec has no
+         var-length support, and inventing it for one note would change every
+         decoder's framing for a string. -->
+    <field name="note"          id="8" type="NoteText"/>
   </sbe:message>
 </sbe:messageSchema>

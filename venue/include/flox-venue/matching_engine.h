@@ -329,6 +329,13 @@ class MatchingEngine
         onForceClose(*fc);
       }
     }
+    else if (const auto* ap = std::get_if<AdjustPosition>(&cmd))
+    {
+      if (ap->symbol == cfg_.id)
+      {
+        onAdjustPosition(*ap);
+      }
+    }
     else if (std::get_if<TimeTick>(&cmd) != nullptr)
     {
       // Pure time sweep: expireHolds/expireOrders already ran above. Sequenced
@@ -3852,6 +3859,50 @@ class MatchingEngine
     {
       ledger_->release(acct, cfg_.quoteAsset, im);
     }
+  }
+
+  // An operator correction. Not a trade: see the note on AdjustPosition for
+  // why no PnL is realized, no fee charged and no margin moved. All this does
+  // is make the engine's idea of the position match the one being reconciled
+  // against, and say so loudly enough that a reader a week later can tell a
+  // correction from a fill.
+  void onAdjustPosition(const AdjustPosition& a)
+  {
+    if (a.qtyDeltaRaw == 0 && a.entryRaw == 0)
+    {
+      sink_(OrderRejected{0, cfg_.id, RejectReason::AdjustmentEmpty, a.accountId, 0});
+      return;
+    }
+    auto it = positions_.find(a.accountId);
+    if (it == positions_.end() && a.entryRaw == 0)
+    {
+      // Opening a position with no entry price would leave every later PnL
+      // computed against zero. Refuse rather than book a number that is wrong
+      // in a way nothing downstream can detect.
+      sink_(OrderRejected{0, cfg_.id, RejectReason::AdjustmentNeedsEntry, a.accountId, 0});
+      return;
+    }
+    Position& p = positions_[a.accountId];
+    p.qtyRaw += a.qtyDeltaRaw;
+    if (a.entryRaw != 0)
+    {
+      p.entryRaw = a.entryRaw;
+    }
+    if (p.qtyRaw == 0)
+    {
+      // Flat is flat: an entry price left behind on a zero position is a
+      // number that means nothing and reads like it means something.
+      p.entryRaw = 0;
+    }
+    PositionAdjusted ev{};
+    ev.account = a.accountId;
+    ev.symbol = cfg_.id;
+    ev.qtyDeltaRaw = a.qtyDeltaRaw;
+    ev.qtyAfterRaw = p.qtyRaw;
+    ev.entryAfterRaw = p.entryRaw;
+    ev.reason = a.reason;
+    std::memcpy(ev.note, a.note, kAdjustNoteLen);
+    sink_(ev);
   }
 
   void updatePerpPosition(uint64_t acct, OrderId orderId, bool fillBuy, int64_t qtyRaw,
