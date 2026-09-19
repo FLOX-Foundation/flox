@@ -32,7 +32,7 @@
     the incremental feed resumes at lastSeq+1.
 
   Version 2 (unicast distribution):
-  - Templates ONLY -- no existing root block changed, so a version-1 reader
+  - Templates ONLY — no existing root block changed, so a version-1 reader
     decodes every incremental and recovery message byte for byte as before.
   - Subscribe (11) / Unsubscribe (12) / SubscribeReject (13) are the verbs of
     the long-lived unicast distribution session (md_distribution.h). The
@@ -45,18 +45,18 @@
     appended to the END of the root block exactly as `epoch` was in version 1,
     so a version-1/2 reader keeps decoding every existing field byte for byte
     and skips these via the header blockLength:
-      engineTs -- sequencer-ts the ENGINE produced the event at. Journaled
+      engineTs — sequencer-ts the ENGINE produced the event at. Journaled
                   input, so a replay of the same journal reproduces it exactly.
-      sendTs   -- wall clock when the publisher SENT this copy. Deliberately
+      sendTs   — wall clock when the publisher SENT this copy. Deliberately
                   not reproducible: a resend of the same message carries a
                   later sendTs than the original, which is how a consumer
                   tells a replay from live flow. Never hash it.
   - New templates, no existing block touched:
-      TradingStatus (14)     -- halt, LULD volatility pause, auction phase,
+      TradingStatus (14)     — halt, LULD volatility pause, auction phase,
                                 session close/open and their release, from the
                                 engine's own state transitions rather than
                                 inferred from silence.
-      DerivativesUpdate (15) -- mark price, funding rate + next funding time,
+      DerivativesUpdate (15) — mark price, funding rate + next funding time,
                                 open interest.
     Both also travel INSIDE a snapshot (between SnapshotBegin and the AddOrder
     body, seq=0), so a late joiner starts with the instrument's real status and
@@ -105,7 +105,7 @@
          operator / control plane.
          Values are append-only: Closed sits at the end, so the root block is
          unchanged and a reader of the previous version still decodes every
-         field -- it sees an unrecognised status code, which it must treat as
+         field — it sees an unrecognised status code, which it must treat as
          "not tradeable" rather than as Trading. -->
     <enum name="TradingStatus" encodingType="uint8">
       <validValue name="Trading">0</validValue>
@@ -263,7 +263,7 @@
 
   <!-- Trading state transition of the instrument: halt, LULD volatility pause,
        auction phase and their release. Emitted on the TRANSITION only, from the
-       engine's own state change -- a subscriber never has to infer a halt from
+       engine's own state change — a subscriber never has to infer a halt from
        the absence of messages. untilNs is the sequencer-ts a timed pause
        expires at (0 = the state has no deadline). Also carried inside a
        snapshot, so a late joiner starts in the right state. -->
@@ -278,7 +278,7 @@
     <field name="untilNs"  id="8" type="TimeNs" sinceVersion="3"/>
   </sbe:message>
 
-  <!-- Derivatives layer: the numbers a perp holder needs to value a position --
+  <!-- Derivatives layer: the numbers a perp holder needs to value a position —
        mark price, funding rate with the next funding time, open interest.
        Published when the engine LEARNS them (a sequenced mark, funding or
        schedule command), not on every fill. openInterest is the long side of

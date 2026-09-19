@@ -1144,6 +1144,12 @@ jobs:
     # because the compiler stops at the first.
     - name: Check the engine reaches no POSIX header unconditionally
       run: python3 scripts/check_engine_portability.py
+    # Seconds as well, and it answers a question nothing else asks: the SBE
+    # schemas exist to be read by somebody else's generator, and nothing in
+    # this tree ever read them. Both were malformed XML for their whole life,
+    # and one declared a message the codec had no template for.
+    - name: Check the SBE schemas parse and the codec implements them
+      run: python3 scripts/check_sbe_schema_implemented.py
     - name: Configure with the engine and without the perimeter
       run: |
         cmake -B build -G Ninja \

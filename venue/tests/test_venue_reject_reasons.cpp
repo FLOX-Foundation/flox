@@ -162,3 +162,32 @@ TEST(RejectReasons, ARefusalByTheRiskOwnerReachesTheClientAsItself)
     EXPECT_TRUE(foundByte) << "the reason byte is not on the wire";
   }
 }
+
+// A refused cancel is not an execution report, and the binary path has to say
+// so. The schema has declared CancelRejected (22) since version 3; the codec
+// had no template for it, so a client generating a decoder from the schema
+// waited for a message the venue never sent. FIX answered 35=9 and REST
+// answered cancel_rejected all along -- only the binary path was silent.
+TEST(RejectReasons, ARefusedCancelHasItsOwnBinaryTemplate)
+{
+  CancelRejected cr;
+  cr.id = 4242;
+  cr.symbol = SYM;
+  cr.reason = RejectReason::UnknownOrder;
+  cr.account = 7;
+  cr.wasReplace = true;
+
+  std::vector<uint8_t> buf;
+  SbeOrderEntryCodec::encode(OutboundEvent{cr}, buf, /*seq=*/9);
+  ASSERT_FALSE(buf.empty()) << "the codec produced nothing for a declared message";
+
+  // The template id is what a decoder switches on: it must be 22, not the
+  // Rejected template, or a client reads a refused cancel as a dead order.
+  EXPECT_EQ(SbeOrderEntryCodec::templateId(buf.data(), buf.size()),
+            static_cast<uint16_t>(SbeOrderEntryCodec::OutTmpl::CancelRejected));
+  EXPECT_NE(SbeOrderEntryCodec::templateId(buf.data(), buf.size()),
+            static_cast<uint16_t>(SbeOrderEntryCodec::OutTmpl::Rejected));
+
+  // And the sequence number stays where a reader looks for it.
+  EXPECT_EQ(SbeOrderEntryCodec::seqOf(buf.data(), buf.size()), 9u);
+}

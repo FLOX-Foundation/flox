@@ -90,6 +90,11 @@ class SbeOrderEntryCodec
     SnapshotRequired = 19,  // resend fromSeq is older than the retained log -> re-sync via snapshot
     SnapshotEnd = 20,       // terminates a snapshot reply (position + open-order count + lastSeq)
     BalanceUpdate = 21,     // balance change on Deposit/Withdraw (sequenced exec-report stream)
+    // A refused cancel/replace. FIX answers this with 35=9 rather than an
+    // execution report, because an exec report describes the state of an ORDER
+    // and a refused cancel changed no order state at all. Same distinction
+    // here: its own template, not a variant of Rejected.
+    CancelRejected = 22,
   };
 
   // Root-block lengths (bytes after the header). Must match order-entry-sbe.xml.
@@ -113,6 +118,8 @@ class SbeOrderEntryCodec
   static constexpr uint16_t kBlockSnapshotEndV1 = 28;  // pre-lastSeq layout (schema v1)
   static constexpr uint16_t kBlockSnapshotEnd = 36;    // v2: + trailing lastSeq (u64)
   static constexpr uint16_t kBlockBalanceUpdate = 35;
+  // orderId(8) + symbol(4) + reason(1) + wasReplace(1) + seq(8)
+  static constexpr uint16_t kBlockCancelRejected = 22;
 
   static constexpr size_t kMaxSize = sbe::kHeaderSize + kBlockEnter;
 
@@ -299,6 +306,15 @@ class SbeOrderEntryCodec
       sbe::putU64(out, t->makerId);
       sbe::putU64(out, t->takerId);
       sbe::putU8(out, static_cast<uint8_t>(t->takerSide));
+      sbe::putU64(out, seq);
+    }
+    else if (const auto* cr = std::get_if<CancelRejected>(&ev))
+    {
+      sbe::putHeader(out, kBlockCancelRejected, u16(OutTmpl::CancelRejected), kSchemaId, kVersion);
+      sbe::putU64(out, cr->id);
+      sbe::putU32(out, cr->symbol);
+      sbe::putU8(out, static_cast<uint8_t>(cr->reason));
+      sbe::putU8(out, cr->wasReplace ? 1 : 0);
       sbe::putU64(out, seq);
     }
     else if (const auto* c = std::get_if<OrderCanceled>(&ev))
