@@ -25,6 +25,7 @@ endfunction()
 
 add_flox_test(test_book_update_bus)
 add_flox_test(test_socket_portability)
+add_flox_test(test_thread_body)
 add_flox_test(test_shadow_mode)
 add_flox_test(test_latency_contour)
 add_flox_test(test_rt_spin_guard)

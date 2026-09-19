@@ -8,6 +8,7 @@
  */
 
 #include "flox/log/atomic_logger.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <cstdio>
 #include <ctime>
@@ -39,7 +40,8 @@ AtomicLogger::AtomicLogger(AtomicLoggerOptions opts)
   }
 
   rotate();
-  _flushThread = std::thread(&AtomicLogger::flushLoop, this);
+  _flushThread = makeThread("flox.log.flush", [this]
+                            { flushLoop(); });
 }
 
 AtomicLogger::~AtomicLogger()

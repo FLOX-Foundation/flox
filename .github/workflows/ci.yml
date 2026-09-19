@@ -87,6 +87,8 @@ jobs:
       run: python3 scripts/check_error_codes.py
     - name: Verify test gating against backtest / capi headers
       run: python3 scripts/check_test_gating.py
+    - name: Verify no thread body can terminate the process
+      run: python3 scripts/check_thread_bodies_contained.py
 
     - name: Verify every test file is reachable by the suite runners
       run: python3 scripts/check_suite_discovery.py

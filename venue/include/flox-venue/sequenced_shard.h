@@ -15,6 +15,7 @@
 #include "flox-venue/shard_events.h"
 #include "flox/util/file_io.h"
 
+#include "flox/util/concurrency/thread_body.h"
 #include "flox/util/eventing/event_bus.h"
 
 #include <algorithm>
@@ -759,8 +760,8 @@ class SequencedShard
   void startIdleSweeper()
   {
     sweepStop_.store(false, std::memory_order_release);
-    sweeper_ = std::thread(
-        [this]
+    sweeper_ = makeThread(
+        "venue.shard.sweeper", [this]
         {
           int64_t lastSweep = 0;
           while (!sweepStop_.load(std::memory_order_acquire))
@@ -790,8 +791,7 @@ class SequencedShard
             }
             lastSweep = now;
             submit(InboundCommand{TimeTick{symbol_}});
-          }
-        });
+          } });
   }
 
   void stopIdleSweeper()

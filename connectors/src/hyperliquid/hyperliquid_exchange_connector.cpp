@@ -10,6 +10,7 @@
 #include "flox-connectors/hyperliquid/hyperliquid_exchange_connector.h"
 #include "flox-connectors/net/ix_websocket_client.h"
 #include "flox-connectors/util/safe_parse.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <flox/log/log.h>
 
@@ -113,7 +114,11 @@ void HyperliquidExchangeConnector::start()
   _wsClient->start();
 
   // Start ping thread to keep connection alive
-  _pingThread = std::thread(&HyperliquidExchangeConnector::pingLoop, this);
+  _pingThread = makeThread("conn.hyperliquid.ping",
+                           [this]
+                           {
+                             pingLoop();
+                           });
 }
 
 void HyperliquidExchangeConnector::pingLoop()

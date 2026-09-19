@@ -1,4 +1,5 @@
 #include "js_executor.h"
+#include "flox/util/concurrency/thread_body.h"
 
 namespace flox
 {
@@ -9,7 +10,8 @@ FloxJsExecutor::FloxJsExecutor(const std::string& scriptPath, SymbolRegistry& re
                                size_t queueCapacity)
     : _scriptPath(scriptPath), _registry(registry), _capacity(queueCapacity)
 {
-  _thread = std::thread(&FloxJsExecutor::run, this);
+  _thread = makeThread("flox.quickjs", [this]
+                       { run(); });
 
   std::unique_lock<std::mutex> lock(_initMu);
   _initCv.wait(lock, [this]

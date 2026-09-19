@@ -10,6 +10,7 @@
 #include "demo/demo_connector.h"
 #include "demo/latency_collector.h"
 #include "flox/common.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <chrono>
 #include <thread>
@@ -28,7 +29,8 @@ void DemoConnector::start()
   {
     return;
   }
-  _thread = std::thread(&DemoConnector::run, this);
+  _thread = makeThread("demo.connector", [this]
+                       { run(); });
 }
 
 void DemoConnector::stop()
