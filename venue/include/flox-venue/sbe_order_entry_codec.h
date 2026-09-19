@@ -62,7 +62,7 @@ class SbeOrderEntryCodec
   //    sinceVersion=4): the identifier the submitter gave the order, 0 when it
   //    gave none. Appended after `seq`, so an older reader skips it via
   //    blockLength exactly as it does for seq.
-  static constexpr uint16_t kVersion = 4;
+  static constexpr uint16_t kVersion = 5;
 
   enum class InTmpl : uint16_t
   {
@@ -95,6 +95,11 @@ class SbeOrderEntryCodec
     // and a refused cancel changed no order state at all. Same distinction
     // here: its own template, not a variant of Rejected.
     CancelRejected = 22,
+    // An operator corrected the account's position. Its own template because
+    // it is not an order event at all: no order id, no price, no fee. A client
+    // that reconciles against the venue would otherwise see its position jump
+    // with nothing on the session to explain it.
+    PositionAdjusted = 23,
   };
 
   // Root-block lengths (bytes after the header). Must match order-entry-sbe.xml.
@@ -120,6 +125,9 @@ class SbeOrderEntryCodec
   static constexpr uint16_t kBlockBalanceUpdate = 35;
   // orderId(8) + symbol(4) + reason(1) + wasReplace(1) + seq(8)
   static constexpr uint16_t kBlockCancelRejected = 22;
+  // account(8) + symbol(4) + qtyDelta(8) + qtyAfter(8) + entryAfter(8)
+  // + reason(1) + seq(8) + note(32)
+  static constexpr uint16_t kBlockPositionAdjusted = 77;
 
   static constexpr size_t kMaxSize = sbe::kHeaderSize + kBlockEnter;
 
@@ -316,6 +324,22 @@ class SbeOrderEntryCodec
       sbe::putU8(out, static_cast<uint8_t>(cr->reason));
       sbe::putU8(out, cr->wasReplace ? 1 : 0);
       sbe::putU64(out, seq);
+    }
+    else if (const auto* pa = std::get_if<PositionAdjusted>(&ev))
+    {
+      sbe::putHeader(out, kBlockPositionAdjusted, u16(OutTmpl::PositionAdjusted), kSchemaId,
+                     kVersion);
+      sbe::putU64(out, pa->account);
+      sbe::putU32(out, pa->symbol);
+      sbe::putU64(out, static_cast<uint64_t>(pa->qtyDeltaRaw));
+      sbe::putU64(out, static_cast<uint64_t>(pa->qtyAfterRaw));
+      sbe::putU64(out, static_cast<uint64_t>(pa->entryAfterRaw));
+      sbe::putU8(out, static_cast<uint8_t>(pa->reason));
+      sbe::putU64(out, seq);
+      for (size_t i = 0; i < kAdjustNoteLen; ++i)
+      {
+        sbe::putU8(out, static_cast<uint8_t>(pa->note[i]));
+      }
     }
     else if (const auto* c = std::get_if<OrderCanceled>(&ev))
     {

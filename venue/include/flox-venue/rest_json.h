@@ -220,10 +220,57 @@ class RestJson
                       : bu->reason == BalanceReason::Withdraw ? "withdraw"
                                                               : "withdrawRejected");
     }
+    else if (const auto* pa = std::get_if<PositionAdjusted>(&ev))
+    {
+      w.str("type", "positionAdjusted");
+      w.u64("account", pa->account);
+      w.u64("symbol", pa->symbol);
+      w.fixed("qtyDelta", pa->qtyDeltaRaw);
+      w.fixed("qtyAfter", pa->qtyAfterRaw);
+      w.fixed("entryAfter", pa->entryAfterRaw);
+      w.str("reason", adjustReasonName(pa->reason));
+      w.str("note", noteText(pa->note).c_str());
+    }
+    // An alternative with no branch here emits an object with no "type" at
+    // all: valid JSON that says nothing, which a reader cannot distinguish
+    // from a bug on its own side.
+    static_assert(std::variant_size_v<OutboundEvent> == 17,
+                  "new OutboundEvent alternative: give it a branch above, or a JSON reader gets "
+                  "an object with no type");
     w.finish();
   }
 
  private:
+  static const char* adjustReasonName(AdjustReason r) noexcept
+  {
+    switch (r)
+    {
+      case AdjustReason::Reconciliation:
+        return "reconciliation";
+      case AdjustReason::CounterpartyReport:
+        return "counterpartyReport";
+      case AdjustReason::SettlementCorrection:
+        return "settlementCorrection";
+      case AdjustReason::Migration:
+        return "migration";
+      case AdjustReason::Manual:
+        return "manual";
+    }
+    return "unknown";
+  }
+
+  // The note is NUL-padded rather than NUL-terminated: a full 32 bytes has no
+  // terminator, and strlen would read past it.
+  static std::string noteText(const char* note)
+  {
+    size_t n = 0;
+    while (n < kAdjustNoteLen && note[n] != '\0')
+    {
+      ++n;
+    }
+    return std::string(note, n);
+  }
+
   // ---- decode internals ----
 
   enum FieldBit : uint32_t

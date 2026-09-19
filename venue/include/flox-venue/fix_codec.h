@@ -428,7 +428,17 @@ class FixCodec
     }
     else
     {
-      return {};  // Trade/Triggered are market-data, not exec reports
+      // Trade/Triggered are market-data, not exec reports. PositionAdjusted is
+      // deliberately here too: FIX 4.4 carries a position change in a Position
+      // Report (AP), a different message category with its own request flow,
+      // and squeezing a correction into an execution report would tell the
+      // client a fill happened when none did. A FIX client learns of a
+      // correction through the position report or out of band; SBE clients get
+      // the event itself.
+      static_assert(std::variant_size_v<OutboundEvent> == 17,
+                    "new OutboundEvent alternative: encode it above, or decide here -- with a "
+                    "reason -- that FIX has no mapping for it");
+      return {};
     }
 
     return frame(b);

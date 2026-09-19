@@ -617,13 +617,54 @@ struct ForceClosePosition
   int64_t qtyRaw{};  // 0 = the whole position
 };
 
+// Why a position was corrected by hand. The venue's books and an external
+// record of the same positions drift for ordinary reasons -- a counterparty
+// reports a fill the venue never saw, a settlement lands differently, a
+// migration brings history in -- and the correction has to say which, or the
+// next person to look at it cannot tell a reconciliation from a mistake.
+enum class AdjustReason : uint8_t
+{
+  Reconciliation = 0,    // periodic comparison against an external record
+  CounterpartyReport,    // a counterparty reported what the venue did not see
+  SettlementCorrection,  // settlement differed from what was booked
+  Migration,             // history brought in from elsewhere
+  Manual,                // operator judgement; the note carries the rest
+};
+inline constexpr size_t kAdjustReasons = 5;
+
+// Note length is fixed because the record is memcpy'd into the journal like
+// every other body; 32 bytes is a sentence, not an essay, and an essay belongs
+// in the operator's own record rather than in the matching path.
+inline constexpr size_t kAdjustNoteLen = 32;
+
+// Correct a position by hand, journaled like any other command so the
+// correction replays and a later reader can see it happened and why.
+//
+// Deliberately NOT a trade: no PnL is realized, no fee is charged, the ledger
+// is not touched and posted margin is left alone. The discrepancy being
+// corrected is by definition not backed by a fill, so inventing the cash flow
+// that a fill would have produced would make the books agree by adding a
+// second error. Margin that no longer fits the corrected size is the
+// operator's next decision, not this command's business -- and the event says
+// what the position became so that decision can be made.
+struct AdjustPosition
+{
+  uint64_t accountId{};
+  SymbolId symbol{};
+  int64_t qtyDeltaRaw{0};  // signed; added to the existing position
+  int64_t entryRaw{0};     // 0 = keep the current average entry; else set it
+  AdjustReason reason{AdjustReason::Reconciliation};
+  char note[kAdjustNoteLen]{};
+};
+
 using InboundCommand =
     std::variant<NewOrder, CancelOrder, ModifyOrder, MassCancel, Quote, LastLookDecision, SetMark,
                  ApplyFunding, AdminCmd, Deposit, Withdraw, ListInstrument, SetBands, TimeTick,
                  SetTriggerRef, SnapshotBegin, RestoreOrder, RestoreStop, RestorePeg, RestoreHeld,
                  RestorePosition, RestoreMmpCfg, RestoreClOrdIds, SnapshotEnd, RestoreReservation,
                  RestoreBalance, RestoreMmpFills, SetStpGroup, SetFundingSchedule, RestoreFunding,
-                 ForceClosePosition, RestoreOrderStp, SetAdmissionProfile, SetRiskLimits>;
+                 ForceClosePosition, RestoreOrderStp, SetAdmissionProfile, SetRiskLimits,
+                 AdjustPosition>;
 
 inline constexpr size_t kFirstSnapshotTag = 15;
 inline constexpr size_t kLastContiguousSnapshotTag = 24;
@@ -934,9 +975,23 @@ struct CancelRejected
   bool wasReplace{false};  // false = cancel request, true = cancel/replace
 };
 
+// A position was corrected by hand. Carries what it became, not only what
+// changed, so a reader does not have to replay to know where it ended up.
+struct PositionAdjusted
+{
+  uint64_t account{};
+  SymbolId symbol{};
+  int64_t qtyDeltaRaw{0};
+  int64_t qtyAfterRaw{0};
+  int64_t entryAfterRaw{0};
+  AdjustReason reason{AdjustReason::Reconciliation};
+  char note[kAdjustNoteLen]{};
+};
+
 using OutboundEvent =
     std::variant<OrderAccepted, OrderRejected, Trade, OrderExecuted, OrderCanceled, OrderModified,
                  OrderTriggered, FillHeld, FillRejected, MmpTriggered, FeeCharged, Liquidation,
-                 BalanceUpdate, TradingStatusChanged, DerivativesUpdated, CancelRejected>;
+                 BalanceUpdate, TradingStatusChanged, DerivativesUpdated, CancelRejected,
+                 PositionAdjusted>;
 
 }  // namespace flox::venue

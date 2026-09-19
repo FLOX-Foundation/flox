@@ -90,7 +90,8 @@ static_assert(std::is_trivially_copyable_v<RestoreOrderStp>, "RestoreOrderStp mu
 static_assert(std::is_trivially_copyable_v<SetAdmissionProfile>,
               "SetAdmissionProfile must be blittable");
 static_assert(std::is_trivially_copyable_v<SetRiskLimits>, "SetRiskLimits must be blittable");
-static_assert(std::variant_size_v<InboundCommand> == 34,
+static_assert(std::is_trivially_copyable_v<AdjustPosition>, "AdjustPosition must be blittable");
+static_assert(std::variant_size_v<InboundCommand> == 35,
               "new InboundCommand alternative: extend expectedBodySize/appendDecoded and the "
               "blittable asserts above");
 
@@ -105,16 +106,22 @@ static_assert(std::variant_size_v<InboundCommand> == 34,
 // read at the wrong offsets by a release one, which is the failure this whole
 // stamp exists to prevent. They get separate numbers and refuse each other by
 // name.
+//
+// The two numbers move by TWO when the layout changes, never by one: bumping
+// both by one would give the unchecked build the number the checked build
+// just vacated, and a checked journal would then pass the version test in an
+// unchecked reader and be decoded at the wrong offsets -- the exact failure
+// the separate numbering exists to prevent.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 4;
+inline constexpr uint8_t kRecordVersion = 6;
 #else
-inline constexpr uint8_t kRecordVersion = 3;
+inline constexpr uint8_t kRecordVersion = 5;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
 // The mark exists so a file written before versioning is recognised as such
 // instead of being misread: its byte at that offset is the variant tag, which
-// is below 34 and therefore always has bit 7 clear.
+// is below 35 and therefore always has bit 7 clear.
 inline constexpr uint8_t kVersionedMark = 0x80;
 inline constexpr uint8_t kVersionMask = 0x7F;
 inline constexpr uint8_t kRecordStamp = kVersionedMark | kRecordVersion;
@@ -158,6 +165,7 @@ consteval uint64_t bodyLayoutFingerprint()
       sizeof(RestoreOrderStp),
       sizeof(SetAdmissionProfile),
       sizeof(SetRiskLimits),
+      sizeof(AdjustPosition),
   };
   uint64_t h = 1469598103934665603ULL;
   for (const size_t s : kSizes)
@@ -173,12 +181,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0xa14fc7eb3ca84dbfULL,
+static_assert(bodyLayoutFingerprint() == 0xc2deabb811fc7ab5ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0x80cd74b8bd12c127ULL,
+static_assert(bodyLayoutFingerprint() == 0xefdec4e946deaf9dULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
@@ -502,6 +510,8 @@ class Journal
         return sizeof(SetAdmissionProfile);
       case 33:
         return sizeof(SetRiskLimits);
+      case 34:
+        return sizeof(AdjustPosition);
       default:
         return 0;
     }
@@ -621,6 +631,9 @@ class Journal
         break;
       case 33:
         v.emplace_back(ts, fromBody<SetRiskLimits>(body));
+        break;
+      case 34:
+        v.emplace_back(ts, fromBody<AdjustPosition>(body));
         break;
     }
   }

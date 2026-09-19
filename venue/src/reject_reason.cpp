@@ -84,6 +84,10 @@ const char* toString(RejectReason r) noexcept
       return "CreditRefused";
     case RejectReason::CreditSourceUnavailable:
       return "CreditSourceUnavailable";
+    case RejectReason::AdjustmentEmpty:
+      return "AdjustmentEmpty";
+    case RejectReason::AdjustmentNeedsEntry:
+      return "AdjustmentNeedsEntry";
   }
   return "?";
 }
