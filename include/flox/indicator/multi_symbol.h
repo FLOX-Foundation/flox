@@ -3,6 +3,7 @@
 #include "flox/aggregator/bar.h"
 #include "flox/aggregator/events/bar_event.h"
 #include "flox/common.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <atomic>
 #include <span>
@@ -84,7 +85,7 @@ void forEachSymbolParallel(const std::unordered_map<SymbolId, std::vector<Bar>>&
   pool.reserve(actual);
   for (int i = 0; i < actual; ++i)
   {
-    pool.emplace_back(worker);
+    pool.push_back(makeThread("flox.indicator.multi_symbol", worker));
   }
   for (auto& t : pool)
   {

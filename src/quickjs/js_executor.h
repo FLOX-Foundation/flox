@@ -125,6 +125,10 @@ class FloxJsExecutor
 
   void push(Event&& ev);
   void run();
+  // Take the shutdown exit when the worker thread died instead of stopping:
+  // close the queue, wake both condition variables, and break every promise
+  // the dead worker will never keep.
+  void releaseWaiters() noexcept;
   void dispatchOne(Event& ev, const FloxStrategyCallbacks& cb);
   static Event makeOrderEvent(const FloxSymbolContext* ctx, const FloxOrderEventData* data);
 

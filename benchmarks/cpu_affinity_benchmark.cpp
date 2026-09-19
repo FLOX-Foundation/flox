@@ -18,6 +18,7 @@
  * dedicated hardware and can control the entire system's workload.
  */
 
+#include "flox/util/concurrency/thread_body.h"
 #include "flox/util/performance/cpu_affinity.h"
 
 #include <benchmark/benchmark.h>
@@ -324,15 +325,15 @@ static void BM_MultiThreaded_WithAffinity(benchmark::State& state)
 
     for (int i = 0; i < numThreads; ++i)
     {
-      threads.emplace_back([&counter, i, numCores]()
-                           {
+      threads.push_back(flox::makeThread("bench.affinity.pinned", [&counter, i, numCores]()
+                                         {
                 auto threadCpuAffinity = createCpuAffinity();
                 threadCpuAffinity->pinToCore(i % numCores);
                 
                 for (int j = 0; j < 1000; ++j)
                 {
                     counter.fetch_add(1, std::memory_order_relaxed);
-                } });
+                } }));
     }
 
     for (auto& t : threads)
@@ -360,12 +361,12 @@ static void BM_MultiThreaded_WithoutAffinity(benchmark::State& state)
 
     for (int i = 0; i < numThreads; ++i)
     {
-      threads.emplace_back([&counter]()
-                           {
+      threads.push_back(flox::makeThread("bench.affinity.unpinned", [&counter]()
+                                         {
                 for (int j = 0; j < 1000; ++j)
                 {
                     counter.fetch_add(1, std::memory_order_relaxed);
-                } });
+                } }));
     }
 
     for (auto& t : threads)

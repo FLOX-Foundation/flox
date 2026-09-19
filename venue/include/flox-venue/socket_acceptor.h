@@ -9,6 +9,7 @@
 #pragma once
 
 #include "flox/net/socket.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <atomic>
 #include <cstdint>
@@ -68,8 +69,8 @@ class SocketAcceptor
     port_ = net::boundPort(fd);
     net::listenOn(fd, 16);
     running_.store(true);
-    acceptThread_ = std::thread([this]
-                                { acceptLoop(); });
+    acceptThread_ = makeThread("venue.acceptor", [this]
+                               { acceptLoop(); });
     return port_;
   }
 
@@ -143,8 +144,8 @@ class SocketAcceptor
       // The acceptor owns the fd lifecycle: the handler must NOT close it.
       // Deregistering under the lock before close keeps stop()'s shutdown
       // sweep away from a recycled descriptor number.
-      conns_.emplace_back([this, fd]
-                          {
+      conns_.push_back(makeThread("venue.acceptor.conn", [this, fd]
+                                  {
                             // This lambda is a thread body, so an exception
                             // leaving the handler is std::terminate for the
                             // whole process -- one connection's parse error
@@ -163,7 +164,7 @@ class SocketAcceptor
                               std::lock_guard<std::mutex> lg(connsMutex_);
                               connFds_.erase(fd);
                             }
-                            net::closeSocket(fd); });
+                            net::closeSocket(fd); }));
     }
   }
 

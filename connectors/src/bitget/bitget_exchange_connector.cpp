@@ -11,6 +11,7 @@
 #include "flox-connectors/net/ix_websocket_client.h"
 #include "flox-connectors/util/safe_parse.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <flox/log/log.h>
 
@@ -200,7 +201,11 @@ void BitgetExchangeConnector::start()
       });
 
   _wsClient->start();
-  _pingThread = std::thread(&BitgetExchangeConnector::pingLoop, this);
+  _pingThread = makeThread("conn.bitget.ping",
+                           [this]
+                           {
+                             pingLoop();
+                           });
 
   if (_config.enablePrivate)
   {

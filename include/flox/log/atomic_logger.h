@@ -50,6 +50,14 @@ class AtomicLogger final : public ILogger
 
   void flush();
 
+  // Rotations that did not produce a writable file. Nonzero means the log is
+  // being dropped: the logger keeps running because a log that cannot be
+  // written is not a reason to stop what it was logging.
+  uint64_t rotationFailures() const noexcept
+  {
+    return _rotationFailures.load(std::memory_order_acquire);
+  }
+
  private:
   static constexpr size_t BUFFER_SIZE = 1024;
   static constexpr size_t MAX_MESSAGE_SIZE = 256;
@@ -96,6 +104,7 @@ class AtomicLogger final : public ILogger
 
   FILE* _file = nullptr;
   size_t _bytesWritten = 0;
+  std::atomic<uint64_t> _rotationFailures{0};
   std::chrono::system_clock::time_point _lastRotation;
 
   void log(LogLevel level, std::string_view msg);

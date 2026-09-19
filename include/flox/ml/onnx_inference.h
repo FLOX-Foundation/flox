@@ -26,6 +26,7 @@
 // sklearn, torch, xgboost, keras -- whatever the researcher used.
 
 #include "flox/indicator/indicator_pipeline.h"
+#include "flox/util/concurrency/thread_body.h"
 #include "flox/util/performance/latency_contour.h"
 #include "flox/util/performance/latency_histogram.h"
 
@@ -216,8 +217,8 @@ class OnnxSidecar
         _prediction(_model->outputCount(), 0.0f)
   {
     _running.store(true, std::memory_order_release);
-    _worker = std::thread([this]
-                          { loop(); });
+    _worker = makeThread("flox.onnx.sidecar", [this]
+                         { loop(); });
   }
 
   ~OnnxSidecar()

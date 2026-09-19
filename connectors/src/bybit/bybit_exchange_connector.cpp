@@ -11,6 +11,7 @@
 #include "flox-connectors/net/ix_websocket_client.h"
 #include "flox-connectors/util/safe_parse.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <flox/log/atomic_logger.h>
 #include <flox/log/log.h>
@@ -272,27 +273,27 @@ void BybitExchangeConnector::start()
   _wsClient->start();
 
   // Application-level ping thread (Bybit requires {"op":"ping"} every 20s)
-  _pingThread = std::thread(
-      [this]()
-      {
-        // Wait for initial connection
-        for (int i = 0; i < 50 && _running.load(); ++i)
-        {
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+  _pingThread = makeThread("conn.bybit.ping",
+                           [this]()
+                           {
+                             // Wait for initial connection
+                             for (int i = 0; i < 50 && _running.load(); ++i)
+                             {
+                               std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                             }
 
-        while (_running.load())
-        {
-          if (_wsClient)
-          {
-            _wsClient->send(R"({"op":"ping"})");
-          }
-          for (int i = 0; i < 200 && _running.load(); ++i)
-          {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-          }
-        }
-      });
+                             while (_running.load())
+                             {
+                               if (_wsClient)
+                               {
+                                 _wsClient->send(R"({"op":"ping"})");
+                               }
+                               for (int i = 0; i < 200 && _running.load(); ++i)
+                               {
+                                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                               }
+                             }
+                           });
 
   if (_config.enablePrivate)
   {

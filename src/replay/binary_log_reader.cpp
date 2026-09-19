@@ -12,6 +12,7 @@
 #include "flox/log/log.h"
 #include "flox/replay/aggregator.h"
 #include "flox/replay/ops/compression.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1364,9 +1365,9 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
     {
       const std::size_t lo = (ti * n_blocks) / workers_for_segment;
       const std::size_t hi = ((ti + 1) * n_blocks) / workers_for_segment;
-      threads.emplace_back(
-          [this, ti, lo, hi, &blocks, &worker_panels, &local_stats, &ok,
-           &error_mutex, &first_error, &seg_path, reorder_W, strict_ordering]()
+      threads.push_back(makeThread(
+          "flox.replay.reader", [this, ti, lo, hi, &blocks, &worker_panels, &local_stats, &ok,
+                                 &error_mutex, &first_error, &seg_path, reorder_W, strict_ordering]()
           {
             try
             {
@@ -1401,8 +1402,7 @@ bool BinaryLogReader::run(std::span<IAggregator* const> aggregators,
                 first_error = std::current_exception();
               }
               ok.store(false, std::memory_order_relaxed);
-            }
-          });
+            } }));
     }
     for (auto& t : threads)
     {

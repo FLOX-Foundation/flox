@@ -13825,6 +13825,11 @@
         },
         {
           "kind": "method",
+          "name": "rotationFailures",
+          "parent": "AtomicLogger"
+        },
+        {
+          "kind": "method",
           "name": "serviceFlushRequest",
           "parent": "AtomicLogger"
         },

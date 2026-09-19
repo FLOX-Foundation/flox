@@ -10,6 +10,7 @@
 #include "flox/replay/replay_connector.h"
 
 #include "flox/util/base/time.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <chrono>
 #include <thread>
@@ -42,7 +43,8 @@ void ReplayConnector::start()
   _reader = std::make_unique<replay::BinaryLogReader>(std::move(reader_config));
   _finished.store(false);
 
-  _replay_thread = std::thread(&ReplayConnector::replayLoop, this);
+  _replay_thread = makeThread("flox.replay.connector", [this]
+                              { replayLoop(); });
 }
 
 void ReplayConnector::stop()

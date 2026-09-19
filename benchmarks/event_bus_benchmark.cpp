@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 
+#include "flox/util/concurrency/thread_body.h"
 #include "flox/util/eventing/event_bus.h"
 
 namespace flox
@@ -173,14 +174,14 @@ static void BM_EventBus_ConcurrentPublishers(benchmark::State& state)
   std::vector<std::thread> publishers;
   for (int i = 0; i < numPublishers; ++i)
   {
-    publishers.emplace_back([&bus, &running, &totalPublished]
-                            {
+    publishers.push_back(makeThread("bench.event_bus.publisher", [&bus, &running, &totalPublished]
+                                    {
       flox::BenchEvent event{};
       while (running.load(std::memory_order_relaxed))
       {
         bus.publish(event);
         totalPublished.fetch_add(1, std::memory_order_relaxed);
-      } });
+      } }));
   }
 
   for (auto _ : state)

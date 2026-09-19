@@ -1639,7 +1639,7 @@ void SimulatedExecutor::maybeRefreshIceberg(Order& order)
   }
 }
 
-void SimulatedExecutor::setIcebergPriorityModeByName(const std::string& name) noexcept
+void SimulatedExecutor::setIcebergPriorityModeByName(const std::string& name)
 {
   std::string lower;
   lower.reserve(name.size());

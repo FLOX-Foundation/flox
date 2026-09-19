@@ -44,6 +44,7 @@
 
 #include "flox-venue/messages.h"
 #include "flox-venue/metrics.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <chrono>
 #include <condition_variable>
@@ -111,8 +112,8 @@ class SessionWriter
   SessionWriter(WriteFn write, CloseFn close, size_t capacity, GatewayCounters* counters = nullptr)
       : write_(std::move(write)), close_(std::move(close)), capacity_(capacity), counters_(counters)
   {
-    thread_ = std::thread([this]
-                          { run(); });
+    thread_ = makeThread("venue.session.writer", [this]
+                         { run(); });
   }
   ~SessionWriter() { stop(); }
 

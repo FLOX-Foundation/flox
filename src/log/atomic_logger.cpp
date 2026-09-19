@@ -8,6 +8,7 @@
  */
 
 #include "flox/log/atomic_logger.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <cstdio>
 #include <ctime>
@@ -39,7 +40,17 @@ AtomicLogger::AtomicLogger(AtomicLoggerOptions opts)
   }
 
   rotate();
-  _flushThread = std::thread(&AtomicLogger::flushLoop, this);
+  _flushThread = makeThread(
+      "flox.log.flush", [this]
+      { flushLoop(); },
+      [this]
+      {
+        // flush() spins until the flush thread acknowledges its ticket. With
+        // the thread gone that spin never ends, so dropping _running takes the
+        // same exit the destructor uses: every waiter observes it and leaves.
+        _running.store(false, std::memory_order_release);
+        _cv.notify_all();
+      });
 }
 
 AtomicLogger::~AtomicLogger()
@@ -293,7 +304,12 @@ std::string AtomicLogger::nextArchivePath() const
   base << _opts.directory << "/" << _opts.basename << "." << timestamp;
 
   std::string candidate = base.str() + ".log";
-  for (int dup = 1; dup < 10000 && fs::exists(candidate); ++dup)
+  // The error_code overload, not the throwing one: this runs on the flush
+  // thread, and an unreadable directory must not be able to take the process
+  // down through the logger. A query that fails answers "does not exist",
+  // which at worst reuses a name -- the right trade against terminating.
+  std::error_code ec;
+  for (int dup = 1; dup < 10000 && fs::exists(candidate, ec); ++dup)
   {
     candidate = base.str() + "-" + std::to_string(dup) + ".log";
   }
@@ -315,10 +331,26 @@ void AtomicLogger::rotate()
   }
 
   std::string path = _opts.directory + "/" + _opts.basename;
-  fs::create_directories(_opts.directory);
+  std::error_code ec;
+  fs::create_directories(_opts.directory, ec);
   _file = std::fopen(path.c_str(), "w");
   _bytesWritten = 0;
   _lastRotation = std::chrono::system_clock::now();
+
+  if (_file == nullptr)
+  {
+    // The log directory went away or became unwritable under a running
+    // process -- a volume unmounted, a disk filled, permissions changed. The
+    // logger keeps going with no file: writeToOutput already drops when
+    // _file is null. Report the transition once rather than on every
+    // rotation, and count them so the drop is visible to a supervisor.
+    if (_rotationFailures.fetch_add(1, std::memory_order_release) == 0)
+    {
+      const std::string reason = ec ? ec.message() : std::string("cannot open the file");
+      std::fprintf(stderr, "flox: WARN log rotation failed for '%s': %s; log output dropped\n",
+                   path.c_str(), reason.c_str());
+    }
+  }
 }
 
 void AtomicLogger::writeToOutput(const LogEntry& entry)

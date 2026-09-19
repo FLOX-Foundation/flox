@@ -15,6 +15,7 @@
 #include "flox-venue/shard_events.h"
 #include "flox/util/file_io.h"
 
+#include "flox/util/concurrency/thread_body.h"
 #include "flox/util/eventing/event_bus.h"
 
 #include <algorithm>
@@ -328,6 +329,14 @@ class SequencedShard
   uint64_t checkpointsTaken() const noexcept
   {
     return checkpoints_.load(std::memory_order_acquire);
+  }
+
+  // Background snapshot publishes that did not produce a snapshot. Nonzero
+  // means recovery will replay from an older generation than the newest
+  // boundary the shard reached.
+  uint64_t checkpointPublishFailures() const noexcept
+  {
+    return checkpointPublishFailures_.load(std::memory_order_acquire);
   }
 
   // Consumer-thread stall of the most recent checkpoint (state clone + journal
@@ -672,31 +681,63 @@ class SequencedShard
     auto publish = [this, ts, cl = std::move(clone)]() mutable -> bool
     {
       const std::string snap = snapshotPath(journalPath_, ts);
-      const std::string tmp = snap + ".tmp";
+      // Everything below runs on a task whose result is only ever waited on,
+      // never got: an exception escaping here would be stored in the future
+      // and destroyed with it, taking the only evidence that the checkpoint
+      // did not happen. Writing the snapshot can throw for ordinary reasons --
+      // the Journal constructor throws when it cannot open the file, and the
+      // generation sweep touches the filesystem -- so the task converts every
+      // failure into the same visible shape instead: a WARN naming the
+      // snapshot and the reason, and a bump of checkpointPublishFailures_.
+      try
       {
-        Journal out(tmp, Journal::Sync::Off, Journal::OpenMode::Truncate);
-        cl.engine->writeSnapshot(out);
-        out.flush();  // durable BEFORE the rename publishes it
+        const std::string tmp = snap + ".tmp";
+        {
+          Journal out(tmp, Journal::Sync::Off, Journal::OpenMode::Truncate);
+          cl.engine->writeSnapshot(out);
+          out.flush();  // durable BEFORE the rename publishes it
+        }
+        std::error_code ec;
+        std::filesystem::rename(tmp, snap, ec);
+        if (ec)
+        {
+          return notePublishFailure(snap, ec.message().c_str());
+        }
+        syncDir();
+        pruneGenerations();
+        checkpoints_.fetch_add(1, std::memory_order_release);
+        return true;
       }
-      std::error_code ec;
-      std::filesystem::rename(tmp, snap, ec);
-      if (ec)
+      catch (const std::exception& e)
       {
-        std::fprintf(stderr, "flox-venue: WARN checkpoint rename failed for %s: %s\n",
-                     snap.c_str(), ec.message().c_str());
-        return false;  // recovery falls back a generation (both segments replay)
+        return notePublishFailure(snap, e.what());
       }
-      syncDir();
-      pruneGenerations();
-      checkpoints_.fetch_add(1, std::memory_order_release);
-      return true;
+      catch (...)
+      {
+        return notePublishFailure(snap, "unknown exception");
+      }
     };
     std::lock_guard<std::mutex> lk(ckptMx_);
     ckptPending_ = std::async(std::launch::async, std::move(publish)).share();
   }
 
+  // A failed publish leaves the previous generation as the newest valid one,
+  // which recovery already tolerates: both tail segments replay after it. That
+  // is correct but invisible, so the failure is counted where an operator can
+  // see it -- a venue whose snapshots have quietly stopped working is one
+  // whose next recovery replays further than anybody expects.
+  bool notePublishFailure(const std::string& snap, const char* why) noexcept
+  {
+    checkpointPublishFailures_.fetch_add(1, std::memory_order_release);
+    std::fprintf(stderr, "flox-venue: WARN checkpoint publish failed for %s: %s\n", snap.c_str(),
+                 why ? why : "?");
+    return false;
+  }
+
   // Wait for the in-flight background snapshot publish, if any. Safe from any
   // thread; the consumer thread calls it before starting the next checkpoint.
+  // wait() rather than get() is deliberate and only sound because the task
+  // above cannot throw: it catches everything and reports through the counter.
   void waitCheckpointPublish()
   {
     std::shared_future<bool> f;
@@ -759,8 +800,8 @@ class SequencedShard
   void startIdleSweeper()
   {
     sweepStop_.store(false, std::memory_order_release);
-    sweeper_ = std::thread(
-        [this]
+    sweeper_ = makeThread(
+        "venue.shard.sweeper", [this]
         {
           int64_t lastSweep = 0;
           while (!sweepStop_.load(std::memory_order_acquire))
@@ -790,8 +831,7 @@ class SequencedShard
             }
             lastSweep = now;
             submit(InboundCommand{TimeTick{symbol_}});
-          }
-        });
+          } });
   }
 
   void stopIdleSweeper()
@@ -819,6 +859,7 @@ class SequencedShard
   std::atomic<bool> checkpointRequested_{false};
   std::function<void(int64_t)> checkpointHook_;
   std::atomic<uint64_t> checkpoints_{0};
+  std::atomic<uint64_t> checkpointPublishFailures_{0};
   int64_t lastCheckpointTs_{0};  // consumer thread (and pre-start recovery) only
   // Background snapshot publish: at most one in flight (doCheckpoint waits for
   // the previous). Guarded by ckptMx_ against checkpointNow()/stop() readers.

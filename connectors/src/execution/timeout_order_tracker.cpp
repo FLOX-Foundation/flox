@@ -8,6 +8,7 @@
  */
 
 #include "flox-connectors/execution/timeout_order_tracker.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <flox/log/log.h>
 
@@ -25,23 +26,23 @@ void TimeoutOrderTracker::start()
     return;  // Already running
   }
 
-  _checkerThread = std::thread(
-      [this]()
-      {
-        while (_running.load())
-        {
-          checkTimeouts();
+  _checkerThread = makeThread("conn.timeout_tracker",
+                              [this]()
+                              {
+                                while (_running.load())
+                                {
+                                  checkTimeouts();
 
-          // Sleep in small intervals to allow quick shutdown
-          int sleepMs = _config.checkIntervalMs;
-          while (sleepMs > 0 && _running.load())
-          {
-            int chunk = std::min(sleepMs, 50);
-            std::this_thread::sleep_for(std::chrono::milliseconds(chunk));
-            sleepMs -= chunk;
-          }
-        }
-      });
+                                  // Sleep in small intervals to allow quick shutdown
+                                  int sleepMs = _config.checkIntervalMs;
+                                  while (sleepMs > 0 && _running.load())
+                                  {
+                                    int chunk = std::min(sleepMs, 50);
+                                    std::this_thread::sleep_for(std::chrono::milliseconds(chunk));
+                                    sleepMs -= chunk;
+                                  }
+                                }
+                              });
 }
 
 void TimeoutOrderTracker::stop()

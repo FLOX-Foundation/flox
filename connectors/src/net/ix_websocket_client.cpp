@@ -8,6 +8,7 @@
  */
 
 #include "flox-connectors/net/ix_websocket_client.h"
+#include "flox/util/concurrency/thread_body.h"
 
 #include <string>
 
@@ -55,7 +56,11 @@ void IxWebSocketClient::start()
     return;
   }
 
-  _thread = std::thread(&IxWebSocketClient::run, this);
+  _thread = makeThread("conn.ws",
+                       [this]
+                       {
+                         run();
+                       });
 }
 
 void IxWebSocketClient::stop()

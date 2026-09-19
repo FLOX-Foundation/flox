@@ -43,7 +43,7 @@ MmapBarWriter::~MmapBarWriter()
   }
 }
 
-void MmapBarWriter::onBar(const BarEvent& event) noexcept
+void MmapBarWriter::onBar(const BarEvent& event)
 {
   TimeframeId tf{event.barType, event.barTypeParam};
 

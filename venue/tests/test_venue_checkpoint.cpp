@@ -1847,3 +1847,59 @@ TEST(VenueCheckpoint, GroupCommitAcksEverythingItJournalsWhenStopped)
 
   cleanFiles(base);
 }
+
+// The background publish is the one part of a checkpoint whose result is
+// waited on but never got. An exception raised inside it used to be stored in
+// the future and destroyed with it: no WARN, no counter, and a venue that
+// believed its snapshot had been taken. Recovery still worked -- it falls back
+// a generation -- but nothing said the snapshots had stopped working, so the
+// fallback would keep growing until the day it mattered.
+TEST(VenueCheckpoint, AFailedBackgroundPublishIsCountedRatherThanLost)
+{
+  namespace fs = std::filesystem;
+  const std::string base = pidPath("checkpoint_publish_fail") + ".bin";
+  cleanFiles(base);
+
+  venue::SymbolConfig c = cfg();
+  Ledger led;
+  auto t = clockState(1'000'000);
+  // On the heap like every other shard in this suite: the object is megabytes
+  // and a stack local is a segfault before the test ever runs.
+  auto s = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off,
+                                              clockOf(t));
+  s->engine().setLedger(&led, VENUE_ACCT);
+
+  // Occupy the path the publish writes to with a directory: the Journal
+  // constructor cannot open it and throws. The hook runs at the boundary on
+  // the consumer thread, before the background task is spawned, so the
+  // obstruction is in place by the time the task looks.
+  std::string blocked;
+  s->onCheckpoint(
+      [&base, &blocked](int64_t ts)
+      {
+        blocked = SequencedShard<>::snapshotPath(base, ts) + ".tmp";
+        std::error_code ec;
+        fs::create_directory(blocked, ec);
+      });
+
+  s->start();
+  s->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
+  s->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s->submit(InboundCommand{limit(10, Side::SELL, 100.00, 1.0, 1)});
+
+  EXPECT_FALSE(s->checkpointNow());
+  EXPECT_EQ(s->checkpointPublishFailures(), 1u);
+  EXPECT_EQ(s->checkpointsTaken(), 0u);
+  EXPECT_FALSE(fs::exists(SequencedShard<>::snapshotPath(base, 0)));
+
+  // The shard keeps matching: a snapshot that could not be written is a
+  // degradation, not a reason to stop trading.
+  s->submit(InboundCommand{limit(11, Side::BUY, 100.00, 1.0, 2)});
+  s->flush();
+  EXPECT_GT(s->engine().stateHash(), 0u);
+  s->stop();
+
+  std::error_code ec;
+  fs::remove(blocked, ec);
+  cleanFiles(base);
+}
