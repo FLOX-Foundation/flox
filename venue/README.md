@@ -32,9 +32,12 @@ announced plan for one, so the module is off there until `venue::Amount` is
 ported onto the portable wide integers in `flox/util/int`.
 
 The **perimeter** -- gateways, sessions, market-data distribution, the
-control and metrics servers -- needs POSIX sockets, and there is no Winsock
-port. `FLOX_VENUE_PERIMETER` turns it off, automatically where those sockets
-are absent, and takes its tests and the REST codec's parser with it.
+control and metrics servers -- goes through `flox/net/socket.h` and no longer
+reaches a POSIX header of its own. `FLOX_VENUE_PERIMETER` still turns it off,
+and on Windows it is off by default, but not for the reason it used to be:
+what is unfinished there is simdjson and OpenSSL under clang-cl, and one
+lifecycle test that interposes `close(2)` through `dlsym`. The flag is there
+for whoever wants to try.
 
 ## What it unlocks
 

@@ -35,8 +35,12 @@ the ledger keeps money in -- and nothing else from the system. GCC, Clang and
 clang-cl all have one. `cl` does not, and Microsoft has announced no plan to
 add one, so `FLOX_BUILD_VENUE` turns itself off there and says why.
 
-The **perimeter** needs POSIX sockets. `FLOX_VENUE_PERIMETER` controls it and
-defaults off where they are absent:
+The **perimeter** used to need POSIX sockets. It does not any more: every
+socket call goes through `flox/net/socket.h`, and nothing under `venue/`
+includes a POSIX network header. `FLOX_VENUE_PERIMETER` still controls it and
+still defaults off on Windows, for what is actually left there -- simdjson and
+OpenSSL under clang-cl, and one lifecycle test that interposes `close(2)`
+through `dlsym`:
 
 ```bash
 # the engine without the network perimeter
@@ -55,6 +59,32 @@ parser fuzz. The engine's own suite, including crash recovery, the
 differential fuzz and the conservation fuzz, runs in full. CI builds this
 configuration on every run and checks both halves of that claim: that the
 engine's tests are present and the perimeter's are not.
+
+### What actually runs on Windows
+
+Measured on the `windows-clang-cl` job rather than reasoned about:
+
+| | builds | tests |
+|---|---|---|
+| Linux / macOS, perimeter on | everything | 230 |
+| Windows (clang-cl), engine only | engine, journal, recovery, codecs | 207 |
+| Windows (`cl`) | nothing of this module | -- |
+
+The 207 include the conservation and differential fuzzes and the
+process-death recovery drill, which runs there through a helper binary rather
+than a fork -- Windows has neither fork nor a way to continue this process in
+a child, so the scenario is a second executable that writes the journal and
+abandons itself. The parser fuzz is perimeter and does not run there.
+
+`cl` is a separate question with a known price rather than an unknown one:
+it has no 128-bit integer and Microsoft has announced no plan for one, so
+supporting it means money arithmetic on a portable wide type. That was
+measured: the software 256-bit integer costs about 3 microseconds per
+settlement against effectively free for the hardware type, 94x, so it is not
+the instrument. The portable path that IS used -- `mulDivI64`, a 64x64->128
+through 32-bit halves -- is compiled on every platform and checked against the
+hardware one, so if `cl` support is ever wanted, the arithmetic underneath it
+already works and is tested.
 
 One durability note. A checkpoint's rename is made durable on POSIX by
 syncing the directory afterwards; Windows has no directory handle and orders
