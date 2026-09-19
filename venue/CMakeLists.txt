@@ -50,9 +50,35 @@ target_include_directories(flox-venue
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
+# The TLS gateway's header is installed and includes <openssl/...>, so the
+# target has to say so. It did not: OpenSSL was found inside the tests block
+# and linked to one test, which is why nothing in this tree noticed -- a
+# consumer who took flox::venue through find_package and included
+# tls_gateway.h got undefined SSL_* symbols and no indication why.
+#
+# Declared here instead, PUBLIC, because it is the header that needs it and
+# the header is part of the installed surface. Without OpenSSL the gateway
+# cannot be built at all, so the header is excluded from the install rather
+# than shipped broken.
+if(FLOX_VENUE_PERIMETER)
+  find_package(OpenSSL)
+  if(OpenSSL_FOUND)
+    set(FLOX_VENUE_TLS ON)
+  else()
+    set(FLOX_VENUE_TLS OFF)
+    message(STATUS "OpenSSL not found: the venue's TLS gateway is not built or installed")
+  endif()
+else()
+  set(FLOX_VENUE_TLS OFF)
+endif()
+
 if(FLOX_VENUE_PERIMETER)
   target_link_libraries(flox-venue PUBLIC ${FLOX} simdjson::simdjson)
   target_compile_definitions(flox-venue PUBLIC FLOX_VENUE_PERIMETER=1)
+  if(FLOX_VENUE_TLS)
+    target_link_libraries(flox-venue PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(flox-venue PUBLIC FLOX_VENUE_TLS=1)
+  endif()
 else()
   target_link_libraries(flox-venue PUBLIC ${FLOX})
 endif()
@@ -82,7 +108,14 @@ install(TARGETS flox-venue
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+if(FLOX_VENUE_TLS)
+  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+else()
+  # A header whose dependency is not there is worse installed than absent: the
+  # consumer discovers it at link time with no hint of the cause.
+  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+          PATTERN "tls_gateway.h" EXCLUDE)
+endif()
 
 install(EXPORT flox-venueTargets
         NAMESPACE flox::
@@ -142,11 +175,9 @@ endif()
     list(LENGTH FLOX_VENUE_DROPPED _n_dropped)
     message(STATUS "FLOX_VENUE_PERIMETER=OFF: ${_n_dropped} tests need the perimeter: ${FLOX_VENUE_DROPPED}")
   endif()
-  # The TLS gateway needs OpenSSL; the rest of the module does not. Keep the
-  # heavy dependency optional (same posture as connectors/) so a plain build of
-  # the venue stays dependency-free.
-  find_package(OpenSSL)
-  if(NOT OpenSSL_FOUND)
+  # The dependency is declared on the target now (see above), so a test that
+  # uses the gateway needs nothing special -- it comes through flox-venue.
+  if(NOT FLOX_VENUE_TLS)
     list(REMOVE_ITEM FLOX_VENUE_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_venue_tls.cpp)
     message(STATUS "OpenSSL not found -- skipping venue TLS gateway test")
   endif()
@@ -157,9 +188,6 @@ endif()
       PRIVATE flox-venue GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
     if(TARGET Threads::Threads)
       target_link_libraries(${test_name} PRIVATE Threads::Threads)
-    endif()
-    if(test_name STREQUAL "test_venue_tls" AND OpenSSL_FOUND)
-      target_link_libraries(${test_name} PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     endif()
     add_test(NAME ${test_name} COMMAND ${test_name})
   endforeach()
