@@ -50,7 +50,13 @@ struct SymbolConfig
   Volume maxOrderNotional{};  // 0 = unchecked (fat-finger max notional, limit orders)
   bool halted{false};
   TriggerRef triggerRef{TriggerRef::Last};
-  DurationNs lastLookWindowNs{};        // 0 = last look disabled venue-wide
+  DurationNs lastLookWindowNs{};  // 0 = last look disabled venue-wide
+  // How long a client order id stays reserved against reuse. 0 = forever,
+  // which is what the venue always did and what it still does unless an
+  // operator says otherwise. Past the window an old id is accepted again --
+  // exchanges scope client order id uniqueness to the trading day, so that is
+  // the honest bound, and it has to be stated rather than discovered.
+  int64_t clOrdIdWindowNs{0};
   bool lastLookAcceptOnTimeout{false};  // window elapses with no decision -> accept vs reject
   // Symmetric price tolerance. When set, the VENUE decides whether the price
   // moved too far during the hold, and it applies the same threshold in both
@@ -1371,12 +1377,21 @@ class MatchingEngine
       h = mix(h, 0xB007U);
       h = mix(h, acct);
       const auto& seen = clientOrderIds_.at(acct);
-      std::vector<uint64_t> ids(seen.begin(), seen.end());
-      std::sort(ids.begin(), ids.end());
-      for (uint64_t id : ids)
+      // Both halves, in order and each sorted. No separator between them: for
+      // every state the engine can actually reach, the concatenation and the
+      // rotation moment below already tell two different splits apart, and a
+      // marker that no reachable state needs is untested weight.
+      for (uint32_t g = 0; g < 2; ++g)
       {
-        h = mix(h, id);
+        const auto& gen = g == 0 ? seen.cur : seen.prev;
+        std::vector<uint64_t> ids(gen.begin(), gen.end());
+        std::sort(ids.begin(), ids.end());
+        for (uint64_t id : ids)
+        {
+          h = mix(h, id);
+        }
       }
+      h = mix(h, static_cast<uint64_t>(seen.rotatedAtNs));
     }
 
     if (ledger_ != nullptr)
@@ -1577,23 +1592,29 @@ class MatchingEngine
     for (uint64_t acct : sortedKeys(clientOrderIds_))
     {
       const auto& seen = clientOrderIds_.at(acct);
-      std::vector<uint64_t> ids(seen.begin(), seen.end());
-      std::sort(ids.begin(), ids.end());
-      RestoreClOrdIds batch{};
-      batch.account = acct;
-      for (uint64_t id : ids)
+      for (uint32_t g = 0; g < 2; ++g)
       {
-        batch.ids[batch.count++] = id;
-        if (batch.count == kClOrdIdBatch)
+        const auto& gen = g == 0 ? seen.cur : seen.prev;
+        std::vector<uint64_t> ids(gen.begin(), gen.end());
+        std::sort(ids.begin(), ids.end());
+        RestoreClOrdIds batch{};
+        batch.account = acct;
+        batch.generation = g;
+        for (uint64_t id : ids)
+        {
+          batch.ids[batch.count++] = id;
+          if (batch.count == kClOrdIdBatch)
+          {
+            out.append(InboundCommand{batch}, ts);
+            batch = RestoreClOrdIds{};
+            batch.account = acct;
+            batch.generation = g;
+          }
+        }
+        if (batch.count > 0)
         {
           out.append(InboundCommand{batch}, ts);
-          batch = RestoreClOrdIds{};
-          batch.account = acct;
         }
-      }
-      if (batch.count > 0)
-      {
-        out.append(InboundCommand{batch}, ts);
       }
     }
 
@@ -1784,9 +1805,10 @@ class MatchingEngine
         return false;
       }
       auto& seen = clientOrderIds_[r->account];
+      auto& gen = r->generation == 0 ? seen.cur : seen.prev;
       for (uint32_t i = 0; i < r->count; ++i)
       {
-        seen.insert(r->ids[i]);
+        gen.insert(r->ids[i]);
       }
       return true;
     }
@@ -2343,7 +2365,8 @@ class MatchingEngine
     if (o.clientOrderId != 0)
     {
       auto& seen = clientOrderIds_[o.accountId];
-      if (!seen.insert(o.clientOrderId).second)
+      rotateClOrdIds(seen, now_.raw());
+      if (seen.prev.count(o.clientOrderId) != 0 || !seen.cur.insert(o.clientOrderId).second)
       {
         sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateClientOrderId, o.accountId, o.clientOrderId});
         return;
@@ -3815,12 +3838,42 @@ class MatchingEngine
   }
 
   // ---- linear-perp clearing ----
+  struct ClOrdIdWindow
+  {
+    std::unordered_set<uint64_t> cur;
+    std::unordered_set<uint64_t> prev;
+    int64_t rotatedAtNs{0};
+  };
+
   struct Position
   {
     int64_t qtyRaw{0};    // signed contracts (Quantity raw)
     int64_t entryRaw{0};  // average entry price (Price raw)
     Amount margin{0};     // posted position margin (quote raw), reserved in the ledger
   };
+
+  // Past the window the older half goes and the newer takes its place. Done
+  // on touch rather than on a timer: the engine has no timer, and an account
+  // nobody is trading does not need its window rolled.
+  void rotateClOrdIds(ClOrdIdWindow& w, int64_t nowNs) const
+  {
+    if (cfg_.clOrdIdWindowNs <= 0)
+    {
+      return;  // unbounded: what it always did
+    }
+    if (w.rotatedAtNs == 0)
+    {
+      w.rotatedAtNs = nowNs;
+      return;
+    }
+    if (nowNs - w.rotatedAtNs < cfg_.clOrdIdWindowNs)
+    {
+      return;
+    }
+    w.prev = std::move(w.cur);
+    w.cur.clear();
+    w.rotatedAtNs = nowNs;
+  }
 
   static int64_t iabs64(int64_t v) { return v < 0 ? -v : v; }
 
@@ -5203,7 +5256,22 @@ class MatchingEngine
   // clientOrderId dedup index, per account. Window = the engine session
   // (uptime); rotation/compaction is a future checkpoint concern -- see
   // docs/venue/matching.md. Rebuilt naturally by journal replay.
-  std::unordered_map<uint64_t, std::unordered_set<uint64_t>> clientOrderIds_;
+  // Client order ids the account has already used, in two generations.
+  //
+  // It used to be one set that was never pruned. A client repeating the SAME
+  // id is rejected at O(1) and costs nothing, which is the case the dedup
+  // exists for -- but a client with a broken id generator pours in DISTINCT
+  // ids, and every one of them stayed for the life of the process: memory,
+  // snapshot size, checkpoint pause and recovery time all growing without a
+  // bound. Measured: a million ids on one account is ~35 MiB of set.
+  //
+  // Rotating halves rather than a timestamp per id: an id survives between one
+  // and two windows, memory is bounded by two windows of distinct ids, and no
+  // per-id time has to be stored or serialized. Exchanges scope client order
+  // id uniqueness to the trading day, so a day is the honest window -- but the
+  // default is 0, meaning unbounded, so this changes nothing until an operator
+  // asks for it.
+  std::unordered_map<uint64_t, ClOrdIdWindow> clientOrderIds_;
 
   // Snapshot-only records seen (and dropped) on the live submit path.
   uint64_t droppedSnapshotRecords_{0};

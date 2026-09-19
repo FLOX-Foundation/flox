@@ -127,6 +127,34 @@ The direct setters on the engine remain for pre-start wiring. On a running
 engine they apply immediately and ride nothing: a restart reverts them and a
 replica replaying the journal never sees the change. Use the command.
 
+### Client order ids and how long they are reserved
+
+A repeated `clientOrderId` from the same account is refused
+(`DuplicateClientOrderId`). That is what the check exists for: a client that
+retries after an ambiguous disconnect must not get two executions.
+
+The ids were remembered forever, and that is fine for the case above -- a
+repeat of the SAME id costs nothing. It is not fine for a client whose id
+generator is broken and pours in DISTINCT ids: every one of them stayed for
+the life of the process, growing memory, snapshot size, checkpoint pause and
+recovery time with no bound. A million ids on one account is about 35 MiB.
+
+`SymbolConfig::clOrdIdWindowNs` bounds it. The default is 0, meaning forever,
+so nothing changes until an operator sets it.
+
+| | |
+|---|---|
+| within the window | the id is reserved; a repeat is refused |
+| past it | the id is free again |
+
+The window is kept as two rotating halves rather than a timestamp per id, so
+an id survives **between one and two windows** -- never less than the window,
+sometimes more. Memory is bounded by two windows of distinct ids.
+
+Exchanges scope client order id uniqueness to the trading day, so a day is the
+honest setting. Say it out loud to clients rather than letting them discover
+it: past the window, an old id is accepted again.
+
 ### Correcting a position by hand
 
 The venue's books and an external record of the same positions drift for
