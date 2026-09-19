@@ -27,13 +27,9 @@
 
 #include <gtest/gtest.h>
 
-#if !defined(_WIN32)
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
-
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -152,18 +148,16 @@ std::vector<InboundCommand> childCommands()
 
 }  // namespace
 
-// A shard dies mid-stream via _exit (no stop(), no flush of the tail); a new
+// A shard dies mid-stream without stop(), without flushing the tail; a new
 // shard on the same journal must recover the intact prefix and then behave
-// exactly like a reference engine that was fed that prefix directly.
+// exactly like a reference engine fed that prefix directly.
 //
-// POSIX only, and not for want of effort: the test needs a child that is an
-// exact copy of this process at this instant and then dies without unwinding.
-// Windows has no fork, and CreateProcess starts a fresh program rather than
-// continuing this one, so the same scenario would have to be built a
-// different way -- a second binary, a shared journal path, an agreed point to
-// die at. Worth doing; not worth faking. The other eight tests in this file
-// cover recovery from a journal written cleanly, and they run everywhere.
-#if !defined(_WIN32)
+// The death happens in a separate binary (venue_journal_writer), not a fork.
+// The fork version worked and was POSIX-only: Windows has no fork, and
+// CreateProcess starts a fresh program rather than continuing this one. A
+// platform switch here would leave the Windows half running only where nobody
+// executes it by hand, so both platforms use the binary -- the harder half of
+// the scenario gets exercised everywhere instead of nowhere.
 TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
 {
   const std::string path = tmpPath("venue_recovery_procdeath", ".bin");
@@ -172,33 +166,55 @@ TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
   const auto cmds = childCommands();
   const size_t half = cmds.size() / 2;
 
-  const pid_t pid = fork();
-  ASSERT_GE(pid, 0);
-  if (pid == 0)
+  // The helper writes the same stream this test expects -- both take it from
+  // support/recovery_scenario.h, because two copies would drift and the drift
+  // would read as a recovery bug.
+  // The quoting is not cosmetic. std::system runs the string through cmd.exe
+  // on Windows, and cmd strips the first and last quote of a command line
+  // that begins with one -- so `"prog" "arg"` arrives as `prog" "arg` and it
+  // answers "The filename, directory name, or volume label syntax is
+  // incorrect". Wrapping the whole thing in one more pair is the documented
+  // way round it. POSIX shells need no such thing and do not mind it either.
+  const std::string inner = std::string("\"") + FLOX_JOURNAL_WRITER + "\" \"" + path + "\"";
+#if defined(_WIN32)
+  const std::string cmd = "\"" + inner + "\"";
+#else
+  const std::string cmd = inner;
+#endif
+  const std::string cleanMarker = path + ".clean";
+  std::remove(cleanMarker.c_str());
+  const int rc = std::system(cmd.c_str());
+  (void)rc;  // it dies on purpose; what it left behind is the subject
+
+  // It ran at all. Without this the next assertion reports "0 records, wanted
+  // 22" whether the helper died mid-stream or was never launched -- and on
+  // Windows it was never launched, because of the quoting above.
   {
-    // Child: a real shard (journal Sync::Full so every appended record survives
-    // the death), killed without any clean shutdown.
-    Ledger led;
-    auto shard = std::make_unique<SequencedShard<>>(cfg(), path);
-    shard->engine().setLedger(&led, VENUE_ACCT);
-    HashSink sink;
-    shard->subscribeOutbound(&sink);
-    shard->start();
-    for (size_t i = 0; i < half; ++i)
+    std::FILE* journal = std::fopen(path.c_str(), "rb");
+    const bool wrote = journal != nullptr;
+    if (journal != nullptr)
     {
-      shard->submit(cmds[i]);
+      std::fclose(journal);
     }
-    shard->flush();  // the first half is guaranteed journaled
-    for (size_t i = half; i < cmds.size(); ++i)
-    {
-      shard->submit(cmds[i]);
-    }
-    _exit(0);  // hard death: no stop(), consumer possibly mid-record
+    ASSERT_TRUE(wrote) << "the helper left no journal at all: it did not run. Command was: " << cmd;
   }
 
-  int status = 0;
-  ASSERT_EQ(::waitpid(pid, &status, 0), pid);
-  ASSERT_TRUE(WIFEXITED(status));
+  // It really died. The helper registers an atexit handler that writes this
+  // marker, and _exit / TerminateProcess skip atexit -- so the marker being
+  // absent is the proof that nothing tidied up on the way out. Without this
+  // the test passes against a helper that shuts down cleanly, and then it is
+  // testing recovery from a tidy journal, which the eight tests above already
+  // cover.
+  {
+    std::FILE* marker = std::fopen(cleanMarker.c_str(), "rb");
+    const bool exitedCleanly = marker != nullptr;
+    if (marker != nullptr)
+    {
+      std::fclose(marker);
+      std::remove(cleanMarker.c_str());
+    }
+    ASSERT_FALSE(exitedCleanly) << "the helper left main normally: this is no longer a death";
+  }
 
   // The journal holds an intact prefix: at least the flushed half, never more
   // than what was submitted, with strictly increasing non-zero timestamps.
@@ -268,7 +284,6 @@ TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
 
 // The core O_TRUNC regression: constructing a shard on an existing journal
 // must not erase it -- the restart replays it and keeps appending.
-#endif  // !_WIN32
 
 TEST(VenueRecovery, RestartPreservesAndReplaysJournal)
 {
