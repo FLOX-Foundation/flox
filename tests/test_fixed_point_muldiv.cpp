@@ -60,8 +60,11 @@ TEST(FixedPointMulDiv, TheProductThatDoesNotFitAnInt64IsExact)
 // kind of wrong that shows up as a PnL nobody can explain.
 TEST(FixedPointMulDiv, EverySignCombinationAgreesWithTheHardwarePath)
 {
-  const int64_t values[] = {1, -1, 7, -7, 100'000'000, -100'000'000,
-                            6'000'000'000'000LL, -6'000'000'000'000LL};
+  // Values whose products fit: what is under test here is the SIGN, and
+  // overflow is covered by build above. Leaving 6e12 in made a checked build
+  // abort on the pair whose quotient exceeds int64 -- correctly, and not on
+  // the question this test is asking.
+  const int64_t values[] = {1, -1, 7, -7, 100'000'000, -100'000'000};
   for (int64_t a : values)
   {
     for (int64_t b : values)
@@ -78,7 +81,10 @@ TEST(FixedPointMulDiv, EverySignCombinationAgreesWithTheHardwarePath)
 TEST(FixedPointMulDiv, RandomValuesAgreeWithTheHardwarePath)
 {
   std::mt19937_64 rng(20260919);
-  std::uniform_int_distribution<int64_t> wide(kMin / 4, kMax / 4);
+  // Deliberately inside the range whose product fits: overflow is covered
+  // above, by build, and mixing it in here would abort a checked build on a
+  // random draw rather than on purpose.
+  std::uniform_int_distribution<int64_t> wide(-4'000'000'000LL, 4'000'000'000LL);
   std::uniform_int_distribution<int64_t> small(-1'000'000'000LL, 1'000'000'000LL);
 
   for (int i = 0; i < 20000; ++i)
@@ -95,22 +101,52 @@ TEST(FixedPointMulDiv, RandomValuesAgreeWithTheHardwarePath)
   }
 }
 
-// Saturation rather than wrapping, and the same answer from both paths. A
-// wrapped quotient is a number that looks plausible; a saturated one is
-// obviously at the edge.
+// Overflow behaves differently by build, and both halves are the contract.
+//
+// With scale checks on (debug, and CI's sanitizer jobs) the assert fires
+// before saturation gets a chance: a quotient past int64 is a programming
+// error and the build says so. With them off it saturates -- defined, at the
+// edge, and obviously at the edge rather than wrapped into a plausible
+// number. The first version of this test asserted only the second half, and
+// aborted every checked build it met.
+#if FLOX_SCALE_CHECKS
+TEST(FixedPointMulDivDeathTest, AQuotientPastTheEdgeTrapsWhenChecksAreOn)
+{
+  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  // The two paths word it differently, and truthfully so: the hardware one
+  // forms a 128-bit intermediate and trips while narrowing it, the portable
+  // one never forms one and trips on the quotient. Matching the word they
+  // share keeps the test about the trap rather than about the phrasing.
+  EXPECT_DEATH({ (void)mulDivI64(kMax, kMax, 1); }, "overflow");
+  EXPECT_DEATH({ (void)mulDivI64Portable(kMax, kMax, 1); }, "overflow");
+}
+#else
 TEST(FixedPointMulDiv, AQuotientPastTheEdgeSaturatesTheSameWayInBothPaths)
 {
   EXPECT_EQ(mulDivI64Portable(kMax, kMax, 1), mulDivI64(kMax, kMax, 1));
   EXPECT_EQ(mulDivI64Portable(kMax, 2, 1), mulDivI64(kMax, 2, 1));
   EXPECT_EQ(mulDivI64Portable(kMin, 2, 1), mulDivI64(kMin, 2, 1));
   EXPECT_EQ(mulDivI64Portable(kMin, -1, 1), mulDivI64(kMin, -1, 1));
+  EXPECT_EQ(mulDivI64(kMax, kMax, 1), kMax) << "it wrapped instead of stopping at the edge";
 }
+#endif
 
-// A zero divisor has no representable answer, and the two paths must agree on
-// what they do about it rather than each improvising.
+// A zero divisor has no representable answer, and the two builds answer
+// differently on purpose: checked says so and stops, release hands back the
+// saturated value both paths agree on. Either way the two paths must not
+// improvise separately.
+#if FLOX_SCALE_CHECKS
+TEST(FixedPointMulDivDeathTest, AZeroDivisorTrapsInBothPathsWhenChecksAreOn)
+{
+  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  EXPECT_DEATH({ (void)mulDivI64(5, 7, 0); }, "division by zero");
+  EXPECT_DEATH({ (void)mulDivI64Portable(5, 7, 0); }, "division by zero");
+}
+#else
 TEST(FixedPointMulDiv, AZeroDivisorIsHandledIdenticallyByBothPaths)
 {
   EXPECT_EQ(mulDivI64Portable(0, 0, 0), mulDivI64(0, 0, 0));
   EXPECT_EQ(mulDivI64Portable(5, 7, 0), mulDivI64(5, 7, 0));
   EXPECT_EQ(mulDivI64Portable(-5, 7, 0), mulDivI64(-5, 7, 0));
 }
+#endif
