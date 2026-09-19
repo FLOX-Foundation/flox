@@ -113,9 +113,9 @@ static_assert(std::variant_size_v<InboundCommand> == 35,
 // unchecked reader and be decoded at the wrong offsets -- the exact failure
 // the separate numbering exists to prevent.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 6;
+inline constexpr uint8_t kRecordVersion = 8;
 #else
-inline constexpr uint8_t kRecordVersion = 5;
+inline constexpr uint8_t kRecordVersion = 7;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
@@ -130,47 +130,45 @@ inline constexpr uint8_t kRecordStamp = kVersionedMark | kRecordVersion;
 // size of every journaled body, in tag order.
 consteval uint64_t bodyLayoutFingerprint()
 {
-  constexpr size_t kSizes[] = {
-      sizeof(NewOrder),
-      sizeof(CancelOrder),
-      sizeof(ModifyOrder),
-      sizeof(MassCancel),
-      sizeof(Quote),
-      sizeof(LastLookDecision),
-      sizeof(SetMark),
-      sizeof(ApplyFunding),
-      sizeof(AdminCmd),
-      sizeof(Deposit),
-      sizeof(Withdraw),
-      sizeof(ListInstrument),
-      sizeof(SetBands),
-      sizeof(TimeTick),
-      sizeof(SetTriggerRef),
-      sizeof(SnapshotBegin),
-      sizeof(RestoreOrder),
-      sizeof(RestoreStop),
-      sizeof(RestorePeg),
-      sizeof(RestoreHeld),
-      sizeof(RestorePosition),
-      sizeof(RestoreMmpCfg),
-      sizeof(RestoreClOrdIds),
-      sizeof(SnapshotEnd),
-      sizeof(RestoreReservation),
-      sizeof(RestoreBalance),
-      sizeof(RestoreMmpFills),
-      sizeof(SetStpGroup),
-      sizeof(SetFundingSchedule),
-      sizeof(RestoreFunding),
-      sizeof(ForceClosePosition),
-      sizeof(RestoreOrderStp),
-      sizeof(SetAdmissionProfile),
-      sizeof(SetRiskLimits),
-      sizeof(AdjustPosition),
-  };
-  uint64_t h = 1469598103934665603ULL;
-  for (const size_t s : kSizes)
+  // Sizes taken from the variant itself, not from a list written out below.
+  // The list used to be hand-maintained in declaration order, which coupled it
+  // to the variant by POSITION: reorder the alternatives and every size paired
+  // with the wrong tag, silently, because both lists still looked complete.
+  // A list is data, not knowledge -- so it is derived.
+  //
+  // Folded in TAG order. That is what makes this a property of the format
+  // rather than of the variant's current shape: rearrange the type and the
+  // value does not move, because the bytes on disk do not move either.
+  constexpr size_t kN = std::variant_size_v<InboundCommand>;
+  struct Entry
   {
-    h ^= static_cast<uint64_t>(s);
+    uint8_t tag;
+    size_t size;
+  };
+  Entry entries[kN]{};
+  [&]<size_t... I>(std::index_sequence<I...>)
+  {
+    ((entries[I] = Entry{kWireTag[I], sizeof(std::variant_alternative_t<I, InboundCommand>)}), ...);
+  }(std::make_index_sequence<kN>{});
+
+  for (size_t i = 1; i < kN; ++i)
+  {
+    const Entry key = entries[i];
+    size_t j = i;
+    while (j > 0 && entries[j - 1].tag > key.tag)
+    {
+      entries[j] = entries[j - 1];
+      --j;
+    }
+    entries[j] = key;
+  }
+
+  uint64_t h = 1469598103934665603ULL;
+  for (const Entry& e : entries)
+  {
+    h ^= static_cast<uint64_t>(e.tag);
+    h *= 1099511628211ULL;
+    h ^= static_cast<uint64_t>(e.size);
     h *= 1099511628211ULL;
   }
   return h;
@@ -181,12 +179,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0xc2deabb811fc7ab5ULL,
+static_assert(bodyLayoutFingerprint() == 0x0eba116790e7c32cULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0xefdec4e946deaf9dULL,
+static_assert(bodyLayoutFingerprint() == 0x5ec6ebb7add94a84ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
@@ -289,7 +287,10 @@ class Journal
   // exactly; the stamp names the format the body was written in.
   void append(const InboundCommand& c, int64_t tsNs)
   {
-    const uint8_t tag = static_cast<uint8_t>(c.index());
+    // The alternative's own tag, not its position in the variant. See
+    // kWireTag: the two used to be the same thing, which made reordering the
+    // variant a silent re-read of every old journal.
+    const uint8_t tag = wireTagOf(c);
     std::visit(
         [&](const auto& v)
         {
@@ -458,6 +459,13 @@ class Journal
   }
 
   // Expected body size for a variant tag, or 0 if the tag is unknown.
+  // Public so a test can hold the decoder to the invariant that makes
+  // reordering safe: the size expected for a tag is the size of the
+  // alternative that owns it.
+ public:
+  static uint32_t expectedBodySizeForTag(uint8_t tag) { return expectedBodySize(tag); }
+
+ private:
   static uint32_t expectedBodySize(uint8_t tag)
   {
     switch (tag)

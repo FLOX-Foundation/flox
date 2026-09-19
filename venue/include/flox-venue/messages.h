@@ -603,12 +603,16 @@ struct SnapshotEnd
   int64_t haltUntilNs{0};  // pending timed (LULD) halt deadline (0 = none)
 };
 
-// Journal tags are the variant indices: append-only, never reorder.
-// (SetTriggerRef postdates TimeTick, hence its position at the tail; the
-// snapshot-only records postdate SetTriggerRef; RestoreBalance/RestoreMmpFills
-// and the live SetStpGroup command postdate the original snapshot block, so
-// live and snapshot-only tags interleave past tag 24. SetFundingSchedule (live)
-// and RestoreFunding (snapshot-only) are the newest pair, tags 28 and 29.)
+// The order below is the variant's own and carries no promise: journal tags
+// are explicit (see kWireTag), so alternatives may be reordered freely. The
+// history of WHY the order looks as it does is still worth keeping, because it
+// explains why live and snapshot-only tags interleave: SetTriggerRef postdates
+// TimeTick; the snapshot-only block postdates SetTriggerRef;
+// RestoreBalance/RestoreMmpFills and the live SetStpGroup postdate that block;
+// SetFundingSchedule (live) and RestoreFunding (snapshot-only) came as a pair.
+//
+// What is still append-only is the TAG SPACE: a tag that has been on disk may
+// never be reused for a different command.
 // Force-close a perp position from OUTSIDE the engine. Isolated margin lets the
 // engine decide for itself (it sees one symbol and the collateral behind it),
 // but a portfolio-margin model decides on the whole basket and lives above the
@@ -671,33 +675,104 @@ using InboundCommand =
                  ForceClosePosition, RestoreOrderStp, SetAdmissionProfile, SetRiskLimits,
                  AdjustPosition>;
 
-inline constexpr size_t kFirstSnapshotTag = 15;
-inline constexpr size_t kLastContiguousSnapshotTag = 24;
-static_assert(std::is_same_v<std::variant_alternative_t<kFirstSnapshotTag, InboundCommand>,
-                             SnapshotBegin>,
-              "kFirstSnapshotTag must index SnapshotBegin");
-static_assert(std::is_same_v<std::variant_alternative_t<kLastContiguousSnapshotTag, InboundCommand>,
-                             RestoreReservation>,
-              "kLastContiguousSnapshotTag must index RestoreReservation");
+// The wire tag of each alternative, by its position in the variant.
+//
+// It used to BE the position: `tag = c.index()`. That made the variant's
+// declaration order a format promise, and the promise could only be kept by a
+// rule written in a comment -- append only, never reorder. Break it and an old
+// journal is not rejected, it is re-read as DIFFERENT commands, which is the
+// worst failure a format can have.
+//
+// The numbers below are the ones already on disk, so nothing moves today. What
+// changes is that they are now written down instead of inferred, and the
+// variant can be reordered freely: the tag travels with the alternative rather
+// than with its position.
+inline constexpr uint8_t kWireTag[] = {
+    0,   // NewOrder
+    1,   // CancelOrder
+    2,   // ModifyOrder
+    3,   // MassCancel
+    4,   // Quote
+    5,   // LastLookDecision
+    6,   // SetMark
+    7,   // ApplyFunding
+    8,   // AdminCmd
+    9,   // Deposit
+    10,  // Withdraw
+    11,  // ListInstrument
+    12,  // SetBands
+    13,  // TimeTick
+    14,  // SetTriggerRef
+    15,  // SnapshotBegin
+    16,  // RestoreOrder
+    17,  // RestoreStop
+    18,  // RestorePeg
+    19,  // RestoreHeld
+    20,  // RestorePosition
+    21,  // RestoreMmpCfg
+    22,  // RestoreClOrdIds
+    23,  // SnapshotEnd
+    24,  // RestoreReservation
+    25,  // RestoreBalance
+    26,  // RestoreMmpFills
+    27,  // SetStpGroup
+    28,  // SetFundingSchedule
+    29,  // RestoreFunding
+    30,  // ForceClosePosition
+    31,  // RestoreOrderStp
+    32,  // SetAdmissionProfile
+    33,  // SetRiskLimits
+    34,  // AdjustPosition
+};
+static_assert(std::size(kWireTag) == std::variant_size_v<InboundCommand>,
+              "every alternative needs a wire tag, and only alternatives have one");
 
-// Snapshot-only records are forbidden in live traffic; the engine's submit
-// dispatcher drops them and recovery applies them through a dedicated path.
-// Tags [kFirstSnapshotTag, kLastContiguousSnapshotTag] are the original
-// contiguous snapshot block; appended alternatives past it interleave live
-// commands with snapshot-only records, so membership is explicit from there.
+// Two alternatives sharing a tag would make one unreadable and the other
+// ambiguous, and nothing at runtime could tell which had been written.
+consteval bool wireTagsAreUnique()
+{
+  for (size_t a = 0; a < std::size(kWireTag); ++a)
+  {
+    for (size_t b = a + 1; b < std::size(kWireTag); ++b)
+    {
+      if (kWireTag[a] == kWireTag[b])
+      {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+static_assert(wireTagsAreUnique(), "two InboundCommand alternatives share a wire tag");
+
+inline uint8_t wireTagOf(const InboundCommand& c) noexcept
+{
+  return kWireTag[c.index()];
+}
+
+// Snapshot-only records, by TAG rather than by a range of variant positions.
+// The range was the same conflation in another place: reordering the variant
+// silently changed which records a client was allowed to send.
+inline constexpr uint8_t kSnapshotOnlyTags[] = {15, 16, 17, 18, 19, 20, 21,
+                                                22, 23, 24, 25, 26, 29};
+
 inline bool isSnapshotRecord(const InboundCommand& c) noexcept
 {
-  const size_t i = c.index();
-  // A snapshot-only record that this predicate does not recognise is treated
-  // as live traffic: accepted from a client, journaled into the live stream,
-  // and replayed as a command. The contiguous range covers the original block;
-  // everything appended since has to be named.
+  // A snapshot-only record this predicate does not recognise is treated as
+  // live traffic: accepted from a client, journaled into the live stream, and
+  // replayed as a command.
   static_assert(std::variant_size_v<InboundCommand> == 35,
-                "new InboundCommand alternative: if it is snapshot-only, name it here -- "
-                "otherwise it is treated as live traffic a client may send");
-  return (i >= kFirstSnapshotTag && i <= kLastContiguousSnapshotTag) ||
-         std::holds_alternative<RestoreBalance>(c) || std::holds_alternative<RestoreMmpFills>(c) ||
-         std::holds_alternative<RestoreFunding>(c);
+                "new InboundCommand alternative: if it is snapshot-only, add its tag to "
+                "kSnapshotOnlyTags -- otherwise it is treated as live traffic a client may send");
+  const uint8_t tag = wireTagOf(c);
+  for (const uint8_t t : kSnapshotOnlyTags)
+  {
+    if (t == tag)
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ---- Outbound events ------------------------------------------------------

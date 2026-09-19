@@ -916,6 +916,13 @@ TEST(VenueCheckpoint, ForeignFormatVersionFallsBackForSnapshotsAndRefusesForSegm
 
   // Restamp the newest snapshot as a version this build does not read. One
   // byte: the format stamp of its first record.
+  //
+  // Derived from kRecordVersion, never a literal. A hand-written number here
+  // becomes OUR version the next time the format moves, and the test then
+  // passes for the wrong reason -- which is exactly what happened when the
+  // wire tags were made explicit and the version went past the number this
+  // line used to name.
+  const uint8_t kForeignVersion = static_cast<uint8_t>(kRecordVersion + 1);
   const auto readAll = [](const std::string& p)
   {
     std::ifstream in(p, std::ios::binary);
@@ -932,7 +939,7 @@ TEST(VenueCheckpoint, ForeignFormatVersionFallsBackForSnapshotsAndRefusesForSegm
   ASSERT_GT(pristineSnap.size(), Journal::kHeaderSize);
   {
     std::vector<char> restamped = pristineSnap;
-    restamped[8] = static_cast<char>(kVersionedMark | 7);
+    restamped[8] = static_cast<char>(kVersionedMark | kForeignVersion);
     writeAll(snapB, restamped);
   }
 
@@ -959,7 +966,7 @@ TEST(VenueCheckpoint, ForeignFormatVersionFallsBackForSnapshotsAndRefusesForSegm
   ASSERT_GT(pristineSeg.size(), Journal::kHeaderSize);
   {
     std::vector<char> restamped = pristineSeg;
-    restamped[8] = static_cast<char>(kVersionedMark | 7);
+    restamped[8] = static_cast<char>(kVersionedMark | kForeignVersion);
     writeAll(seg, restamped);
 
     Ledger led3;
@@ -980,7 +987,9 @@ TEST(VenueCheckpoint, ForeignFormatVersionFallsBackForSnapshotsAndRefusesForSegm
       what = e.what();
     }
     EXPECT_TRUE(refused) << "a segment in an unreadable format was replayed anyway";
-    EXPECT_NE(what.find("format version 7"), std::string::npos) << what;
+    EXPECT_NE(what.find("format version " + std::to_string(kForeignVersion)),
+              std::string::npos)
+        << what;
     writeAll(seg, pristineSeg);
   }
 
