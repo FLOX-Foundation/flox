@@ -5,9 +5,17 @@
 # CI when contributors forget to re-run the generators after editing
 # the canonical input.
 #
-# Install (one-time, per checkout):
+# Install (one-time, per checkout) -- two lines, both needed:
 #
 #     git config core.hooksPath scripts
+#     git config merge.ours.driver true
+#
+# The second one is what keeps mcp/flox_mcp/data/docs.fts.sqlite out of merge
+# conflicts: .gitattributes marks it merge=ours, git needs the driver declared
+# before it will honour that, and scripts/post-rewrite rebuilds the index after
+# a rebase so the one that survives describes the right docs. Without it every
+# two branches that touch docs/ conflict on a 3.3 MiB binary neither of them
+# wrote by hand.
 #
 # After that this fires on every `git commit`. To skip in an emergency:
 # `git commit --no-verify` (don't make a habit of it; CI catches drift

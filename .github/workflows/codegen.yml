@@ -1,7 +1,16 @@
 name: codegen
 
 on:
+  # Same split ci.yml uses, and for the same reason. A feature branch has an
+  # open PR, so an unrestricted push trigger checks every commit twice: once
+  # for the push and once for the pull_request, on identical bytes. Measured
+  # on 2026-09-19: 15 push runs against 11 pull_request runs in one day.
+  #
+  # main and audit-* get the push trigger because pushes there are PR merges
+  # into a branch nothing opens a PR against -- without it those commits are
+  # never checked on their own.
   push:
+    branches: [main, 'audit-*']
   pull_request:
 
 concurrency:
