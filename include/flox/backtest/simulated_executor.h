@@ -514,7 +514,9 @@ class SimulatedExecutor : public IOrderExecutor
   {
     return _icebergPriorityMode;
   }
-  void setIcebergPriorityModeByName(const std::string& name) noexcept;
+  // Builds a lowercased copy of the name, which allocates for anything past
+  // the small-string buffer.
+  void setIcebergPriorityModeByName(const std::string& name);
   // Diagnostic: remaining hidden quantity for an iceberg order, or 0
   // if none.
   int64_t icebergHiddenRemainingRaw(OrderId id) const

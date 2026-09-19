@@ -36,7 +36,10 @@ class MmapBarWriter : public IMarketDataSubscriber
   MmapBarWriter& operator=(const MmapBarWriter&) = delete;
 
   SubscriberId id() const override { return _subscriberId; }
-  void onBar(const BarEvent& event) noexcept override;
+  // The base declares onBar without noexcept, so this one added the promise
+  // voluntarily -- and cannot keep it: the body inserts into a map and grows
+  // a vector under a lock, any of which can throw.
+  void onBar(const BarEvent& event) override;
 
   void flush();
 

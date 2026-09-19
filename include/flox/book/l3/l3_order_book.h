@@ -270,7 +270,10 @@ class L3OrderBook
     }
   }
 
-  L3Snapshot exportSnapshot() const noexcept
+  // Not noexcept: the snapshot is built by growing a vector, which allocates.
+  // Claiming noexcept over an allocation does not remove the failure, it
+  // converts it from an exception into std::terminate.
+  L3Snapshot exportSnapshot() const
   {
     L3Snapshot snap;
     for (Index i = 0; i < MaxOrders; ++i)
