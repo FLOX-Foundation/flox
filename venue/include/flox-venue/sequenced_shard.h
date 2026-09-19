@@ -268,8 +268,17 @@ class SequencedShard
   // Producer side (gateway). Returns the ingress sequence number.
   // `recvMonoNs` is the steady-clock moment the producer took the command off
   // the wire; pass 0 when there is no wire (tests, replay drivers).
+  // Returns kSubmitRejected without enqueueing when the shard has failed: the
+  // consumer would only drop it, and queueing work for a shard that cannot
+  // apply it hides the failure behind a growing backlog.
+  static constexpr int64_t kSubmitRejected = -1;
+
   int64_t submit(const InboundCommand& cmd, int64_t recvMonoNs = 0)
   {
+    if (failed())
+    {
+      return kSubmitRejected;
+    }
     InboundCommandEvent ev{cmd};
     ev.recvMonoNs = recvMonoNs;
     ev.ingressMonoNs = venueMonoNs();
@@ -291,6 +300,24 @@ class SequencedShard
     outbound_.stop();
     waitCheckpointPublish();  // a checkpoint in flight publishes before shutdown
     journal_.flush();
+  }
+
+  // The shard stopped applying because a command threw part-way through. Its
+  // journal is the authority from here: restart and recover rather than trust
+  // what is in memory.
+  bool failed() const noexcept { return failed_.load(std::memory_order_acquire); }
+
+  // Timestamp of the command that failed, or 0 if none has.
+  int64_t failedAtTs() const noexcept { return failedAtTs_.load(std::memory_order_acquire); }
+
+  void noteApplyFailure(int64_t ts, const char* why) noexcept
+  {
+    failedAtTs_.store(ts, std::memory_order_release);
+    failed_.store(true, std::memory_order_release);
+    std::fprintf(stderr,
+                 "flox-venue: ERROR shard for symbol %u stopped applying at ts=%lld: %s; "
+                 "in-memory state no longer matches the journal, recover from disk\n",
+                 static_cast<unsigned>(symbol_), static_cast<long long>(ts), why ? why : "?");
   }
 
   uint64_t journaled() const noexcept { return journal_.count(); }
@@ -432,11 +459,37 @@ class SequencedShard
 
     void onCommand(const InboundCommandEvent& ev) override
     {
+      if (owner_->failed())
+      {
+        // Already diverged. Anything still in the ingress from before the
+        // failure is dropped rather than journaled: a record appended now
+        // would describe a state transition this engine never made.
+        return;
+      }
       causeRecvMonoNs_ = ev.recvMonoNs;
       causeIngressMonoNs_ = ev.ingressMonoNs;
       const int64_t ts = nextTs();
-      journal_.append(ev.cmd, ts);  // write-ahead, before applying
-      engine_.submit(ev.cmd, ts);   // the SAME timestamp the journal holds
+      // The engine is not transactional: there is no rollback, so a throw
+      // part-way through applying leaves memory holding half a command while
+      // the journal -- written first, deliberately -- holds the whole of it.
+      // Restarting from the journal is correct. Carrying on is not: the shard
+      // would keep serving a state that disagrees with what it would recover
+      // into, and nothing would say so. Stop here instead.
+      try
+      {
+        journal_.append(ev.cmd, ts);  // write-ahead, before applying
+        engine_.submit(ev.cmd, ts);   // the SAME timestamp the journal holds
+      }
+      catch (const std::exception& e)
+      {
+        owner_->noteApplyFailure(ts, e.what());
+        return;
+      }
+      catch (...)
+      {
+        owner_->noteApplyFailure(ts, "unknown exception");
+        return;
+      }
       lastBatchTs_ = ts;
       if (staged_ == nullptr)
       {
@@ -860,6 +913,8 @@ class SequencedShard
   std::function<void(int64_t)> checkpointHook_;
   std::atomic<uint64_t> checkpoints_{0};
   std::atomic<uint64_t> checkpointPublishFailures_{0};
+  std::atomic<bool> failed_{false};
+  std::atomic<int64_t> failedAtTs_{0};
   int64_t lastCheckpointTs_{0};  // consumer thread (and pre-start recovery) only
   // Background snapshot publish: at most one in flight (doCheckpoint waits for
   // the previous). Guarded by ckptMx_ against checkpointNow()/stop() readers.
