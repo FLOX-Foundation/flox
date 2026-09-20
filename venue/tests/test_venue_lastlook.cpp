@@ -6,7 +6,8 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Last-look lifecycle (T016) and clientOrderId dedup (T020).
+ * Last-look lifecycle (T016), clientOrderId dedup (T020), and open-hold
+ * enumeration (T044).
  *
  * Last look: a reject/timeout must RESTORE liquidity -- the maker's displayed
  * qty back onto its price level (tail, as-if re-entered), the taker residual
@@ -15,6 +16,10 @@
  * are owned by the maker account, expire on idle via tick()/TimeTick, resolve
  * deterministically on cancel-while-held, and never count as firm liquidity
  * for a FOK. lastLookWindowNs == 0 disables the feature entirely.
+ *
+ * Open-hold enumeration: hasHold()/forEachHold() give a caller (e.g. one
+ * restoring its own hold set from a checkpoint) identity, not just the
+ * openHolds() count -- two distinct holds must stay distinguishable.
  *
  * clOrdId dedup: per-account, session-window; a resend of a used clientOrderId
  * rejects (DuplicateClientOrderId) whether the original is resting, filled or
@@ -761,6 +766,57 @@ void test_idle_expiry_via_tick()
   CHECK(cap.count<FillRejected>() == 1);
 }
 
+// ---- T044: engine enumerates open holds --------------------------------------
+
+void test_engine_enumerates_open_holds()
+{
+  std::printf("test_engine_enumerates_open_holds\n");
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+  NewOrder mk1 = limit(1, Side::SELL, 100, 5, 1);
+  mk1.lastLook = true;
+  eng.submit(InboundCommand{mk1}, 0);
+  NewOrder mk2 = limit(2, Side::SELL, 101, 5, 2);
+  mk2.lastLook = true;
+  eng.submit(InboundCommand{mk2}, 1);
+  eng.submit(InboundCommand{limit(3, Side::BUY, 100, 2, 3)}, 2);  // hold #1, vs mk1
+  eng.submit(InboundCommand{limit(4, Side::BUY, 101, 2, 4)}, 3);  // hold #2, vs mk2
+  CHECK(cap.count<FillHeld>() == 2);
+  std::vector<uint64_t> ids;
+  for (auto& e : cap.ev)
+  {
+    if (auto* h = std::get_if<FillHeld>(&e))
+    {
+      ids.push_back(h->heldId);
+    }
+  }
+  CHECK(ids.size() == 2 && ids[0] != ids[1]);
+  CHECK(eng.hasHold(ids[0]));
+  CHECK(eng.hasHold(ids[1]));
+  CHECK(!eng.hasHold(999999));  // an id nobody holds
+  int totalSeen = 0;
+  eng.forEachHold([&](const auto&)
+                  { ++totalSeen; });
+  CHECK(totalSeen == 2);
+
+  // Release the first hold (reject). hasHold/forEachHold must reflect exactly
+  // the remaining one -- not just a count, an identity.
+  eng.submit(InboundCommand{LastLookDecision{ids[0], SYM, false, 1}}, 4);
+  CHECK(eng.openHolds() == 1);
+  CHECK(!eng.hasHold(ids[0]));
+  CHECK(eng.hasHold(ids[1]));
+  int seen = 0;
+  uint64_t seenId = 0;
+  eng.forEachHold(
+      [&](const auto& h)
+      {
+        ++seen;
+        seenId = h.id;
+      });
+  CHECK(seen == 1);
+  CHECK(seenId == ids[1]);
+}
+
 void test_window_zero_disables()
 {
   std::printf("test_window_zero_disables\n");
@@ -1255,6 +1311,7 @@ TEST(VenueLastLook, LifecycleSuite)
   test_ownership();
   test_timeout_accept();
   test_idle_expiry_via_tick();
+  test_engine_enumerates_open_holds();
   test_window_zero_disables();
   test_cancel_while_held_conservation();
   test_stp_cancel_while_held_conservation();
