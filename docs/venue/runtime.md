@@ -244,6 +244,15 @@ file written by a build without it holds orders whose reports would name
 nobody, so it is refused rather than read as though the field had always been
 absent.
 
+Versions 9 and 10 were the pair before `Quote` carried `clientOrderId` (7 and 8 were the pair before `FillHeld` named the taker's side). A quote
+is one submission that becomes two resting orders (bid and ask), so it is the
+one command that already splits into children by design; both legs are
+stamped with the same value, so every report on either leg names the quote
+the submitter sent rather than a per-leg id it never chose. A file written by
+a build without the field holds quote-spawned orders whose reports name
+nobody on either leg, so it is refused rather than read as though the field
+had always been absent.
+
 Bumping the version is a deliberate edit, and the build stops you from
 forgetting it. The sizes of all 35 journaled command structs are folded into a
 compile-time fingerprint next to the version constant; adding a field to any of

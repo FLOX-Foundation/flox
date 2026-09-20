@@ -32,6 +32,7 @@
 #include <unistd.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -109,6 +110,66 @@ void test_session()
   uint8_t junk[3] = {0xFF, 0x00, 0x11};
   CHECK(!s.handle(junk, sizeof junk, 2'000'000'000, rej).has_value());  // next window
   CHECK(rej == SessionReject::DecodeError);
+}
+
+// A reject answered before the frame ever reaches the engine (rate limit is
+// the one every acceptor gateway can trip today) used to answer with id 0,
+// symbol 0 and no ClOrdID -- silence dressed up as an exec report, because
+// handle() decoded the command, then threw it away the moment admission
+// failed. The frame DID decode: the client's own id/symbol/clientOrderId were
+// briefly in hand, and RejectEcho is how handle() hands them back instead of
+// dropping them on the floor.
+void test_session_rate_limit_reject_echoes_client_order_id()
+{
+  std::printf("test_session_rate_limit_reject_echoes_client_order_id\n");
+  constexpr uint64_t kClOrdId = 424242;
+  constexpr OrderId kOrderId = 55;
+
+  flox::RateLimitPolicy limits;
+  limits.addBucket("t", 1'000'000'000, 1);  // 1 action / 1s window
+  GatewaySession s(7, [](const uint8_t* p, size_t n)
+                   { return SbeOrderEntryCodec::decode(p, n); }, limits);
+  s.authenticate(true);
+
+  NewOrder o = mk(kOrderId, Side::BUY, 100, 1);
+  o.clientOrderId = kClOrdId;
+  std::vector<uint8_t> buf;
+  SbeOrderEntryCodec::encode(InboundCommand{o}, buf);
+
+  SessionReject rej{};
+  RejectEcho echo{};
+  CHECK(s.handle(buf.data(), buf.size(), 1000, rej, &echo).has_value());  // 1st: admitted
+
+  // 2nd within the same window: rate-limited, but it DID decode -- echo must
+  // carry the order the client actually sent, not zeros.
+  CHECK(!s.handle(buf.data(), buf.size(), 1000, rej, &echo).has_value());
+  CHECK(rej == SessionReject::RateLimited);
+  CHECK(echo.id == kOrderId);
+  CHECK(echo.symbol == SYM);
+  CHECK(echo.clientOrderId == kClOrdId);
+
+  // Answered on the wire exactly like an engine-side reject: OrderRejected
+  // built from `echo` carries clientOrderId as the trailing field of the
+  // encoded block (schema v4 appended it after `seq`; see
+  // ClientOrderId.TheBinaryReportCarriesItWithoutDisplacingTheSequence for
+  // the same technique).
+  const OutboundEvent ev{
+      OrderRejected{echo.id, echo.symbol, RejectReason::RateLimited, s.account(), echo.clientOrderId}};
+  std::vector<uint8_t> wire;
+  SbeOrderEntryCodec::encode(ev, wire, /*seq=*/0);
+  uint64_t wireClOrdId = 0;
+  std::memcpy(&wireClOrdId, wire.data() + wire.size() - sizeof(wireClOrdId), sizeof(wireClOrdId));
+  CHECK(wireClOrdId == kClOrdId);
+
+  // A reject with nothing decoded (DecodeError) has nothing to echo: id 0,
+  // symbol 0, no clientOrderId -- unchanged from before this existed.
+  uint8_t junk[3] = {0xFF, 0x00, 0x11};
+  RejectEcho junkEcho{1, 2, 3};  // seeded non-zero so a no-op would be caught
+  CHECK(!s.handle(junk, sizeof junk, 2'000'000'000, rej, &junkEcho).has_value());
+  CHECK(rej == SessionReject::DecodeError);
+  CHECK(junkEcho.id == 0);
+  CHECK(junkEcho.symbol == 0);
+  CHECK(junkEcho.clientOrderId == 0);
 }
 
 void test_tcp_gateway()
@@ -801,6 +862,7 @@ void test_ws_cancel_on_disconnect()
 TEST(Network, EngineSuite)
 {
   test_session();
+  test_session_rate_limit_reject_echoes_client_order_id();
   test_session_account_binding();
   test_gateway_binds_account();
   test_logon();

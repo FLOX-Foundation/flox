@@ -369,12 +369,13 @@ class WsGateway
                 const uint8_t* p, size_t n)
   {
     SessionReject rej{};
+    RejectEcho echo{};
     // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
     // ++clock_ frame counter never advanced time -> permanent bans.
     const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                               std::chrono::steady_clock::now().time_since_epoch())
                               .count();
-    auto cmd = session.handle(p, n, nowNs, rej);
+    auto cmd = session.handle(p, n, nowNs, rej, &echo);
     if (cmd)
     {
       cod.track(*cmd);
@@ -382,8 +383,12 @@ class WsGateway
     }
     else if (rej != SessionReject::None && registry_ != nullptr)
     {
+      // RateLimited decoded fine before admission turned it away, so `echo`
+      // carries the client's own id/symbol/clientOrderId; the other reasons
+      // (DecodeError, Unauthenticated) never had a command to take them from.
       registry_->send(session.account(),
-                      OutboundEvent{OrderRejected{0, 0, toRejectReason(rej), session.account()}});
+                      OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
+                                                  session.account(), echo.clientOrderId}});
     }
   }
 

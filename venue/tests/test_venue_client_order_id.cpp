@@ -224,6 +224,104 @@ TEST(ClientOrderId, ARejectCarriesItToo)
   EXPECT_EQ(tag(wire, 11), std::to_string(kClientId));
 }
 
+// A Quote is the one InboundCommand that already splits into children by
+// design: one submission becomes two resting orders (bid, ask), each with
+// its own venue OrderID. Real reason this matters: a submitter that split a
+// parent order into venue-level children has exactly one name for the
+// parent and two different venue ids for the results, and today (before this
+// carries clientOrderId) it is reduced to matching the two reports by symbol
+// and timing -- guessing.
+TEST(ClientOrderId, AQuoteSplitIntoTwoLegsSharesOneClOrdIdWithDifferentOrderIds)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  constexpr OrderId kBidId = 8001;
+  constexpr OrderId kAskId = 8002;
+  Quote q;
+  q.bidId = kBidId;
+  q.askId = kAskId;
+  q.symbol = SYM;
+  q.bidPrice = px(99.0);
+  q.bidQty = qty(1);
+  q.askPrice = px(101.0);
+  q.askQty = qty(1);
+  q.accountId = 1;
+  q.clientOrderId = kClientId;
+  eng.submit(InboundCommand{q}, 1);
+
+  const OrderAccepted* bid = nullptr;
+  const OrderAccepted* ask = nullptr;
+  for (const auto& e : cap.ev)
+  {
+    if (const auto* a = std::get_if<OrderAccepted>(&e))
+    {
+      if (a->id == kBidId)
+      {
+        bid = a;
+      }
+      if (a->id == kAskId)
+      {
+        ask = a;
+      }
+    }
+  }
+  ASSERT_NE(bid, nullptr);
+  ASSERT_NE(ask, nullptr);
+  EXPECT_NE(bid->id, ask->id) << "two different venue order ids -- the whole point of a split";
+  EXPECT_EQ(bid->clientOrderId, kClientId);
+  EXPECT_EQ(ask->clientOrderId, kClientId) << "one ClOrdID names both children of the split";
+
+  const std::string bidWire = FixCodec::encode(OutboundEvent{*bid});
+  const std::string askWire = FixCodec::encode(OutboundEvent{*ask});
+  EXPECT_EQ(tag(bidWire, 11), std::to_string(kClientId));
+  EXPECT_EQ(tag(askWire, 11), std::to_string(kClientId));
+  EXPECT_EQ(tag(bidWire, 37), std::to_string(kBidId));
+  EXPECT_EQ(tag(askWire, 37), std::to_string(kAskId));
+  EXPECT_NE(tag(bidWire, 37), tag(askWire, 37)) << "different OrderIDs, same ClOrdID -- normal for a split";
+}
+
+// A quote's clientOrderId is checked once, for the pair -- not once per leg
+// (that would refuse the ask leg for repeating the bid leg's just-registered
+// id). Confirms the once-per-quote check still catches a GENUINE resend: a
+// second, unrelated quote reusing the same clOrdId is refused exactly like a
+// resent NewOrder would be, and neither of its legs reach the book.
+TEST(ClientOrderId, AQuoteResendUnderTheSameClOrdIdIsRefusedNotAccepted)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  Quote first;
+  first.bidId = 9001;
+  first.askId = 9002;
+  first.symbol = SYM;
+  first.bidPrice = px(99.0);
+  first.bidQty = qty(1);
+  first.askPrice = px(101.0);
+  first.askQty = qty(1);
+  first.accountId = 1;
+  first.clientOrderId = kClientId;
+  eng.submit(InboundCommand{first}, 1);
+
+  cap.ev.clear();
+  Quote resend = first;
+  resend.bidId = 9101;  // different venue ids, same clOrdId -> a resend, not a split
+  resend.askId = 9102;
+  eng.submit(InboundCommand{resend}, 2);
+
+  bool refused = false;
+  for (const auto& e : cap.ev)
+  {
+    if (const auto* r = std::get_if<OrderRejected>(&e))
+    {
+      refused = refused || r->reason == RejectReason::DuplicateClientOrderId;
+    }
+    EXPECT_EQ(std::get_if<OrderAccepted>(&e), nullptr)
+        << "the resend's legs must not reach the book";
+  }
+  EXPECT_TRUE(refused);
+}
+
 // The binary path carries the same value, and appending it must not disturb
 // the sequence number that was appended before it. Reading seq from the last
 // eight bytes of the block was the shortcut that this append broke.

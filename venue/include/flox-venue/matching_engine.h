@@ -2363,7 +2363,29 @@ class MatchingEngine
     return out;
   }
 
-  void onNew(NewOrder o)
+  // True if `clOrdId` was already used by `account` inside the dedup window
+  // (see rotateClOrdIds) and the caller must therefore refuse the submission;
+  // false and newly registered otherwise. clOrdId 0 means "not set" and is
+  // exempt. Factored out of onNew so a Quote -- one submission that becomes
+  // two child orders (see onQuote) -- can register its clientOrderId ONCE for
+  // both legs instead of racing itself: the second leg's onNew would
+  // otherwise find the first leg's insert already sitting in `cur` and refuse
+  // a submission that never repeated anything.
+  bool clOrdIdDuplicate(uint64_t account, uint64_t clOrdId)
+  {
+    if (clOrdId == 0)
+    {
+      return false;
+    }
+    auto& seen = clientOrderIds_[account];
+    rotateClOrdIds(seen, now_.raw());
+    return seen.prev.count(clOrdId) != 0 || !seen.cur.insert(clOrdId).second;
+  }
+
+  // `clOrdIdChecked` is true only for the two calls onQuote makes on behalf
+  // of one Quote's legs: the dedup registration already happened once, for
+  // the quote as a whole, before either leg was built.
+  void onNew(NewOrder o, bool clOrdIdChecked = false)
   {
     // Entitlement first: an order the counterparty may not send should not
     // consume a clientOrderId, link an OCO group or reach any later gate.
@@ -2377,18 +2399,12 @@ class MatchingEngine
     // docs/venue/matching.md). Registered on receipt, BEFORE any other gate:
     // a resend of an already-seen clOrdId must reject deterministically even
     // when the first instance has long filled or canceled -- that is the whole
-    // point (double execution after an ambiguous disconnect). clientOrderId 0
-    // means "not set" and is never deduplicated. Replay-safe: the index is
-    // rebuilt by the same submits during journal replay.
-    if (o.clientOrderId != 0)
+    // point (double execution after an ambiguous disconnect). Replay-safe: the
+    // index is rebuilt by the same submits during journal replay.
+    if (!clOrdIdChecked && clOrdIdDuplicate(o.accountId, o.clientOrderId))
     {
-      auto& seen = clientOrderIds_[o.accountId];
-      rotateClOrdIds(seen, now_.raw());
-      if (seen.prev.count(o.clientOrderId) != 0 || !seen.cur.insert(o.clientOrderId).second)
-      {
-        sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateClientOrderId, o.accountId, o.clientOrderId});
-        return;
-      }
+      sink_(OrderRejected{o.id, o.symbol, RejectReason::DuplicateClientOrderId, o.accountId, o.clientOrderId});
+      return;
     }
     if (o.ocoGroup > 0)
     {
@@ -3336,6 +3352,20 @@ class MatchingEngine
       sink_(OrderRejected{q.bidId, q.symbol, RejectReason::NotOrderOwner, q.accountId});
       return;
     }
+    // clientOrderId dedup for the quote AS A WHOLE, registered once, before
+    // either leg is built: a quote is one submission naming two children, not
+    // two submissions, so it consumes one dedup slot. Checking it per-leg
+    // through onNew would make the quote refuse its own second leg -- the
+    // first leg's insert would already be sitting in `cur` by the time the
+    // second one asked. A genuine resend (this account replaying the same
+    // clOrdId) is still refused, same as any other duplicate, and the prior
+    // quote is left resting untouched.
+    if (clOrdIdDuplicate(q.accountId, q.clientOrderId))
+    {
+      sink_(OrderRejected{q.bidId, q.symbol, RejectReason::DuplicateClientOrderId, q.accountId,
+                          q.clientOrderId});
+      return;
+    }
     rejectHoldsFor(q.bidId);  // a replaced quote may carry open holds
     rejectHoldsFor(q.askId);
     if (auto ro = book_.cancel(q.bidId))
@@ -3371,7 +3401,13 @@ class MatchingEngine
       b.tif = q.tif;
       b.visibleQuantity = q.visibleQuantity;
       b.expiryNs = q.expiryNs;
-      onNew(b);
+      // The name the submitter gave the QUOTE, not a per-leg id it never
+      // chose -- both legs carry it so their reports can be told apart from
+      // any other order and joined back to each other. The dedup slot for
+      // this value was already consumed above, once, for the quote as a
+      // whole -- skip it here.
+      b.clientOrderId = q.clientOrderId;
+      onNew(b, /*clOrdIdChecked=*/true);
     }
     if (q.askQty.raw() > 0)
     {
@@ -3390,7 +3426,8 @@ class MatchingEngine
       a.tif = q.tif;
       a.visibleQuantity = q.visibleQuantity;
       a.expiryNs = q.expiryNs;
-      onNew(a);
+      a.clientOrderId = q.clientOrderId;
+      onNew(a, /*clOrdIdChecked=*/true);
     }
   }
 

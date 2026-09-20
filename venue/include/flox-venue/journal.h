@@ -120,10 +120,14 @@ static_assert(std::variant_size_v<InboundCommand> == 35,
 // produces a different exec-report stream than the same file replayed by the
 // previous one, and an operator pairing a file with the reports recovered
 // from it reads that off one number.
+// 9/10 -> 11/12: Quote gained clientOrderId (see docs/venue/runtime.md). A file
+// written by a build without it holds quote-spawned orders whose reports name
+// nobody on either leg, so it is refused rather than read as though the field
+// had always been absent.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 10;
+inline constexpr uint8_t kRecordVersion = 12;
 #else
-inline constexpr uint8_t kRecordVersion = 9;
+inline constexpr uint8_t kRecordVersion = 11;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
@@ -187,12 +191,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0x0eba116790e7c32cULL,
+static_assert(bodyLayoutFingerprint() == 0x3651e7e477354404ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0x5ec6ebb7add94a84ULL,
+static_assert(bodyLayoutFingerprint() == 0x70158dbaaad1aafcULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");

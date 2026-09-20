@@ -88,6 +88,47 @@ inline const char* toString(SessionReject r) noexcept
   return "?";
 }
 
+// Identifying fields of a command refused before it reached the engine (a
+// session-level admission reject: rate limit today). The engine's own
+// OrderRejected always carries these off the order it refused; a router
+// reject answered with id 0 / symbol 0 / no clOrdId (silence dressed up as an
+// exec report) because handle() decoded the command, stamped it, then threw
+// it away the moment admission failed -- so the fields it should have echoed
+// were briefly in hand and never carried out. This is that hand-off.
+struct RejectEcho
+{
+  OrderId id{0};
+  SymbolId symbol{0};
+  uint64_t clientOrderId{0};
+};
+
+// The subset of InboundCommand a client submits that a rate limit can catch
+// (see actionOf) and that name an order worth echoing back. Anything else
+// (money moves, admin/market commands) answers with a zeroed echo, same as
+// before this existed.
+inline RejectEcho rejectEchoOf(const InboundCommand& c) noexcept
+{
+  if (const auto* n = std::get_if<NewOrder>(&c))
+  {
+    return RejectEcho{n->id, n->symbol, n->clientOrderId};
+  }
+  if (const auto* x = std::get_if<CancelOrder>(&c))
+  {
+    return RejectEcho{x->id, x->symbol, 0};
+  }
+  if (const auto* m = std::get_if<ModifyOrder>(&c))
+  {
+    return RejectEcho{m->id, m->symbol, 0};
+  }
+  if (const auto* q = std::get_if<Quote>(&c))
+  {
+    // A quote names two ids; bidId is the one OrderRejected already uses
+    // elsewhere for a whole-quote refusal (see MatchingEngine::onQuote).
+    return RejectEcho{q->bidId, q->symbol, q->clientOrderId};
+  }
+  return RejectEcho{};
+}
+
 // An account field as the commands spell it: `accountId` on the order-flow and
 // balance commands, `account` on the per-account configuration ones.
 template <class T>
@@ -166,12 +207,22 @@ class GatewaySession
     return false;
   }
 
-  // Decode + admission-control one inbound frame. Returns the command to submit,
-  // or nullopt with `out` set to the rejection reason.
+  // Decode + admission-control one inbound frame. Returns the command to
+  // submit, or nullopt with `out` set to the rejection reason. `echo`, when
+  // given, is filled with the refused command's own id/symbol/clientOrderId
+  // for a reject the caller answers on the wire (RateLimited: the frame DID
+  // decode, so there is a real order to echo) and left zeroed for one where
+  // there never was a command to take them from (Unauthenticated,
+  // DecodeError). Optional and defaulted so every existing caller that only
+  // wants the reason keeps compiling unchanged.
   std::optional<InboundCommand> handle(const uint8_t* p, size_t n, int64_t nowNs,
-                                       SessionReject& out)
+                                       SessionReject& out, RejectEcho* echo = nullptr)
   {
     out = SessionReject::None;
+    if (echo != nullptr)
+    {
+      *echo = RejectEcho{};
+    }
     if (!authed_)
     {
       out = SessionReject::Unauthenticated;
@@ -191,6 +242,10 @@ class GatewaySession
     if (account_ != 0)
     {
       stampAccount(*cmd, account_);
+    }
+    if (echo != nullptr)
+    {
+      *echo = rejectEchoOf(*cmd);
     }
     if (!limits_.tryConsume(actionOf(*cmd), nowNs))
     {
