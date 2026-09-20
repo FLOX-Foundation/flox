@@ -200,8 +200,47 @@ This balances latency (busy-spin) with CPU usage (sleep) based on deployment env
 Note what backoff does **not** do: a consumer never blocks. Even at its
 laziest, ADAPTIVE wakes on a 100 μs sleep — ten thousand times a second, per
 consumer, with nothing to do. On a 14-core machine one idle consumer thread
-costs about 0.14 of a core. That is the right trade for one bus on hardware it
-owns, and the wrong one for a process holding hundreds.
+costs about 0.15–0.2 of a core. That is the right trade for one bus on
+hardware it owns, and the wrong one for a process holding hundreds.
+
+## Parking: the consumer that blocks
+
+```cpp
+bus.subscribe(&listener, /*required=*/true, ConsumerWaitMode::PARKED);
+```
+
+A parked consumer waits on a condition variable and is woken by the
+publisher. Active waiting stays the default; parking is per consumer, so one
+bus can carry both.
+
+Measured on 14 cores (4096-slot ring, ADAPTIVE backoff for the active case):
+
+| | idle CPU per consumer | wake-up after 2 ms idle | worst wake-up |
+|---|---|---|---|
+| active | ~0.2 core, always | ~10 μs | ~35 μs |
+| parked | 0 | ~38 μs | ~1.2 ms |
+
+That is the whole trade: parking gives back the core and costs roughly 4× on
+a typical wake-up, with a tail that belongs to the scheduler rather than to
+the bus. Publishing itself does not get slower — a bus with no parked
+consumer pays one predictable branch, and a publisher that finds nobody
+sleeping pays one atomic load.
+
+**When to park:** many buses in one process (a venue with hundreds of
+shards); a machine shared with anything else; consumers whose work is
+measured in milliseconds anyway — persistence, reporting, anything that
+already touches a disk or a socket.
+
+**When not to:** one bus on hardware it owns, where the burning core IS the
+product; the matching path of a latency-sensitive instrument.
+
+How the wake-up cannot be lost: the consumer raises the waiter count *before*
+its last look at the ring, with a sequentially consistent fence on both
+sides, and holds the park mutex across the look and the wait — so a publisher
+that misses the count cannot also be missed by the look, and one that sees it
+cannot slip its notify into the gap. A timed wait sits under both as a net
+(50 ms), which nothing is expected to reach: a test fails if wake-ups start
+arriving on its schedule.
 
 ## Consumers without a thread of their own
 
@@ -221,6 +260,9 @@ while (running) {
 ```
 
 Which shape to take:
+
+These two are separate decisions: a consumer stepped from outside (below)
+does its own waiting, so `WaitMode` applies to consumers the bus runs itself.
 
 | | thread per consumer (default) | stepped from outside |
 |---|---|---|

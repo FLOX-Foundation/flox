@@ -16385,6 +16385,11 @@
         },
         {
           "kind": "method",
+          "name": "park",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "pollConsumer",
           "parent": "EventBus"
         },
@@ -16431,6 +16436,11 @@
         {
           "kind": "method",
           "name": "setOwnConsumerThreads",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "setParkProbe",
           "parent": "EventBus"
         },
         {
@@ -16496,6 +16506,11 @@
         {
           "kind": "method",
           "name": "waitConsumed",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "wakeParked",
           "parent": "EventBus"
         },
         {
