@@ -380,6 +380,36 @@ replay-visible), and an automatic record/byte threshold on the current
 segment checked by `sweepOnce()` -- the idle sweeper thread when one is armed,
 otherwise whoever drives the shard (`CheckpointConfig`).
 
+### A shard with no threads of its own
+
+```cpp
+shard.setOwnThreads(false);   // before start(): nothing is spawned
+shard.setCheckpointLane(&lane);
+while (running)
+{
+  bool any = false;
+  for (auto& s : myShards)
+  {
+    any |= s->pollOnce();     // matching consumer, then outbound subscribers
+    any |= s->sweepOnce();    // hold expiry and the checkpoint threshold
+  }
+  if (!any) backoff.pause();
+}
+```
+
+A shard owns three threads by default: the matching consumer, the outbound
+subscribers and the idle sweeper. That is the right shape for a shard on a
+machine it owns, and an impossible one for a process holding hundreds --
+three thousand threads on fourteen cores is a scheduler problem before it is
+a trading system. Turned off, the shard spawns nothing and does nothing
+unless somebody steps it; everything those threads used to do is a call.
+
+Two rules, and nothing detects a breach of either: one thread steps one shard
+at a time (it is the ring's single reader), and a shard with its own threads
+must not also be stepped. `flush()`, and therefore `checkpointNow()` and
+`stop()`, step for themselves when the shard has no threads -- otherwise they
+would wait for a consumer that does not exist.
+
 ### The pause when shards share a thread
 
 A shard that owns a thread pays its pause alone, and that is what the pause
