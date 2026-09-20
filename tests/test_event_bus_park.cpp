@@ -16,7 +16,11 @@
 // cost nothing.
 
 #include <gtest/gtest.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/resource.h>
+#endif
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -105,11 +109,27 @@ ParkTestEvent ev(int v)
 // measures is what the bus spent.
 milliseconds cpuUsed()
 {
+#ifdef _WIN32
+  FILETIME creation{}, exit{}, kernel{}, user{};
+  if (GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user) == 0)
+  {
+    return milliseconds(0);
+  }
+  const auto toNs = [](const FILETIME& ft)
+  {
+    ULARGE_INTEGER v{};
+    v.LowPart = ft.dwLowDateTime;
+    v.HighPart = ft.dwHighDateTime;
+    return nanoseconds(static_cast<int64_t>(v.QuadPart) * 100);  // 100 ns ticks
+  };
+  return duration_cast<milliseconds>(toNs(kernel) + toNs(user));
+#else
   rusage ru{};
   getrusage(RUSAGE_SELF, &ru);
   const auto us = seconds(ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) +
                   microseconds(ru.ru_utime.tv_usec + ru.ru_stime.tv_usec);
   return duration_cast<milliseconds>(us);
+#endif
 }
 
 // Busy-wait for the counter: the sleeping version below notices a delivery
@@ -126,20 +146,6 @@ bool spinFor(const std::atomic<int>& what, int target, milliseconds budget)
     }
   }
   return true;
-}
-
-bool waitFor(const std::atomic<int>& what, int target, milliseconds budget)
-{
-  const auto deadline = steady_clock::now() + budget;
-  while (steady_clock::now() < deadline)
-  {
-    if (what.load(std::memory_order_acquire) >= target)
-    {
-      return true;
-    }
-    std::this_thread::sleep_for(microseconds(200));
-  }
-  return what.load(std::memory_order_acquire) >= target;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,11 +203,15 @@ TEST(EventBusPark, NoWakeUpIsLost)
   const auto t0 = steady_clock::now();
   for (int i = 0; i < kRounds; ++i)
   {
-    std::this_thread::sleep_for(microseconds(50 + (i % 37) * 3));
+    // Spin rather than sleep: sleep_for's granularity is milliseconds on some
+    // platforms, and this test measures microseconds.
+    const auto until = steady_clock::now() + microseconds(50 + (i % 37) * 3);
+    while (steady_clock::now() < until)
+    {
+    }
     const auto sent = steady_clock::now();
     bus.publish(ev(i));
-    ASSERT_TRUE(waitFor(c.count, i + 1, milliseconds(2000)))
-        << "wake-up lost at round " << i;
+    ASSERT_TRUE(spinFor(c.count, i + 1, milliseconds(2000))) << "wake-up lost at round " << i;
     const auto took = duration_cast<microseconds>(steady_clock::now() - sent);
     worst = took > worst ? took : worst;
   }
@@ -254,7 +264,7 @@ TEST(EventBusPark, AWakeUpLandingExactlyOnTheSleepIsNotLost)
     ParkTestEvent probe = ev(i);
     probe.sentNs = nowNs();
     bus.publish(probe);
-    ASSERT_TRUE(waitFor(sink.count, ++expected, milliseconds(2000)))
+    ASSERT_TRUE(spinFor(sink.count, ++expected, milliseconds(2000)))
         << "consumer never woke at round " << i;
 
     if (sink.worstNs.load() > duration_cast<nanoseconds>(milliseconds(40)).count())
@@ -322,7 +332,7 @@ TEST(EventBusPark, APublishInsideTheSleepWindowStillWakesTheConsumer)
     wake.sentNs = nowNs();
     bus.publish(wake);
     expected += 2;  // the wake event and the one the probe publishes
-    ASSERT_TRUE(waitFor(sink.count, expected, milliseconds(2000)))
+    ASSERT_TRUE(spinFor(sink.count, expected, milliseconds(2000)))
         << "the consumer slept through a publish made inside its sleep window, round " << i;
   }
 
