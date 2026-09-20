@@ -27,6 +27,10 @@ class EventBus : public ISubsystem;
 | `flush()`               | Waits until all published events are consumed by **required** consumers. |
 | `consumerCount()`       | Returns number of registered consumers.                         |
 | `enableDrainOnStop()`   | Ensures remaining events are dispatched before shutdown.        |
+| `setOwnConsumerThreads(bool)` | Before `start()`. `false` spawns no consumer threads: you step them. |
+| `pollConsumer(i)`       | One step over consumer `i`; `false` means nothing was there. One stepper per consumer. |
+| `drainConsumer(i)`      | Hands consumer `i` everything left in the ring, uncapped.        |
+| `consumerFailed(i)`     | The listener threw; the slot is out of service and steps on it do nothing. |
 
 ## PublishResult
 

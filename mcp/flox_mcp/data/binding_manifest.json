@@ -16310,6 +16310,11 @@
         },
         {
           "kind": "method",
+          "name": "consumerFailed",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "consumerHealth",
           "parent": "EventBus"
         },
@@ -16326,6 +16331,21 @@
         {
           "kind": "method",
           "name": "do_publish",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "drainConsumer",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "drainConsumerSlot",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "drainSlot",
           "parent": "EventBus"
         },
         {
@@ -16365,6 +16385,21 @@
         },
         {
           "kind": "method",
+          "name": "ownConsumerThreads",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "pollConsumer",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "pollOnce",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "publish",
           "parent": "EventBus"
         },
@@ -16400,6 +16435,11 @@
         },
         {
           "kind": "method",
+          "name": "setOwnConsumerThreads",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "setupOptimalConfiguration",
           "parent": "EventBus"
         },
@@ -16421,6 +16461,11 @@
         {
           "kind": "method",
           "name": "stats",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "stepConsumer",
           "parent": "EventBus"
         },
         {

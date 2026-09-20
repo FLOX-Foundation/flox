@@ -9,6 +9,7 @@
 
 #include <benchmark/benchmark.h>
 #include <atomic>
+#include <chrono>
 #include <thread>
 #include <vector>
 
@@ -54,6 +55,23 @@ class NoOpListener : public BenchEvent::Listener
     ++count;
   }
   std::atomic<int64_t> count{0};
+};
+
+int64_t nowNs()
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+// Stamps the moment the handler was entered, so the publisher can read how
+// long the consumer took to notice -- from the far end of its backoff, not
+// from a spin it never left.
+class StampingListener : public BenchEvent::Listener
+{
+ public:
+  void onEvent(const BenchEvent&) override { gotNs.store(nowNs(), std::memory_order_release); }
+  std::atomic<int64_t> gotNs{0};
 };
 
 }  // namespace
@@ -324,5 +342,51 @@ static void BM_EventBus_EndToEndLatency(benchmark::State& state)
   state.SetItemsProcessed(state.iterations());
 }
 BENCHMARK(BM_EventBus_EndToEndLatency)->Iterations(100'000);
+
+// =============================================================================
+// Wake-from-idle latency: publish -> handler entry, after the consumer has
+// been idle long enough to reach the far end of its backoff. This is the
+// number a parked consumer would have to beat, and the one an active wait
+// buys with a burning core.
+// =============================================================================
+
+static void BM_EventBus_IdleWakeLatency(benchmark::State& state)
+{
+  flox::EventBus<flox::BenchEvent, 4096, 4> bus;
+  StampingListener listener;
+
+  bus.subscribe(&listener);
+  bus.start();
+
+  flox::BenchEvent event{};
+  int64_t total = 0;
+  int64_t worst = 0;
+  int64_t n = 0;
+
+  for (auto _ : state)
+  {
+    // Long enough for ADAPTIVE to walk through its spins and yields into the
+    // sleeping tiers.
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    listener.gotNs.store(0, std::memory_order_release);
+
+    const int64_t t0 = nowNs();
+    bus.publish(event);
+    int64_t got = 0;
+    while ((got = listener.gotNs.load(std::memory_order_acquire)) == 0)
+    {
+    }
+    const int64_t d = got - t0;
+    total += d;
+    worst = d > worst ? d : worst;
+    ++n;
+  }
+
+  bus.stop();
+
+  state.counters["wake_ns"] = n != 0 ? double(total) / double(n) : 0.0;
+  state.counters["wake_max_ns"] = double(worst);
+}
+BENCHMARK(BM_EventBus_IdleWakeLatency)->Iterations(300)->UseRealTime();
 
 BENCHMARK_MAIN();
