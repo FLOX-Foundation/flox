@@ -27,6 +27,9 @@
  *    across an initiator restart through the sidecar;
  *  - the last-look surface: 150=U with 20001/20002, and 150=H when the held
  *    fill does not stand.
+ *  - sessionDown(): the five reasons a session is not up (Connecting,
+ *    Refused, LogonRejected, Lost, HeartbeatMissed) each reproduced by its
+ *    own scenario, distinct from loggedOn() and from each other.
  */
 #include "flox-venue/fix_codec.h"
 #include "flox-venue/fix_session.h"
@@ -1004,6 +1007,137 @@ void test_submit_to_wire_latency()
   CHECK(sunk > 0);
 }
 
+// (9) sessionDown() right after connect(), before any reply: the ordinary
+// transient state on the way up, not a fault.
+void test_session_down_reports_connecting_before_logon_reply()
+{
+  std::printf("test_session_down_reports_connecting_before_logon_reply\n");
+  Venue v;
+  auto gw = v.gateway(1);
+  const int port = gw->start(0, v.handler());
+  CHECK(port > 0);
+
+  Client c;
+  CHECK(c.connect(port));
+  CHECK(c.initiator.connect(wallNs()));
+  const auto down = c.initiator.sessionDown();
+  CHECK(down.reason == fix::SessionDownReason::Connecting);
+  CHECK(!c.initiator.loggedOn());
+
+  c.tcp.close();
+  gw->stop();
+}
+
+// (10) Nothing is listening on the port: the Logon can never reach the wire.
+// This is what an operator means by "the socket is unreachable" -- and it is
+// not the same fault as an acceptor that replies with an explicit rejection:
+// this one clears on its own once the network heals, a rejection does not.
+void test_session_down_reports_refused_when_socket_is_unreachable()
+{
+  std::printf("test_session_down_reports_refused_when_socket_is_unreachable\n");
+  Venue v;
+  auto gw = v.gateway(1);
+  const int port = gw->start(0, v.handler());
+  CHECK(port > 0);
+  gw->stop();  // free the port; nothing accepts on it from here on
+
+  Client c;
+  CHECK(!c.connect(port));
+  CHECK(!c.initiator.connect(wallNs()));
+  const auto down = c.initiator.sessionDown();
+  CHECK(down.reason == fix::SessionDownReason::Refused);
+}
+
+// (11) The venue's own reject path (MsgSeqNum too low on Logon) reproduced
+// over the wire: a stale session reconnects without restoring the sequence
+// counters the acceptor still expects, so the reply is an explicit Logout
+// naming the reason, not a Logon reply.
+void test_session_down_reports_logon_rejected_with_reason()
+{
+  std::printf("test_session_down_reports_logon_rejected_with_reason\n");
+  Venue v;
+  auto gw = v.gateway(1);
+  const int port = gw->start(0, v.handler());
+  CHECK(port > 0);
+
+  Client c;
+  CHECK(c.logon(port));
+  c.tcp.close();  // hard disconnect, no Logout: the venue keeps its session state
+
+  fix::FixInitiatorConfig cfg2 = Client::defaults();
+  cfg2.resetSeqNumOnLogon = false;  // reconnect without restoring the venue's expected seq
+  Client c2(cfg2);
+  CHECK(c2.connect(port));
+  CHECK(c2.initiator.connect(wallNs()));
+  bool alive = true;
+  CHECK(c2.pump(
+      [&c2]
+      { return c2.initiator.sessionDown().reason == fix::SessionDownReason::LogonRejected; },
+      3000, &alive));
+  const auto down = c2.initiator.sessionDown();
+  CHECK(down.reason == fix::SessionDownReason::LogonRejected);
+  CHECK(down.text.find("MsgSeqNum too low") != std::string::npos);
+  CHECK(!alive);
+  CHECK(!c2.initiator.loggedOn());
+
+  gw->stop();
+}
+
+// (12) A session that was up and is deliberately closed: Lost, not one of the
+// never-got-up reasons, and the text is the reason the caller gave.
+void test_session_down_reports_lost_after_logout()
+{
+  std::printf("test_session_down_reports_lost_after_logout\n");
+  Venue v;
+  auto gw = v.gateway(1);
+  const int port = gw->start(0, v.handler());
+  CHECK(port > 0);
+
+  Client c;
+  CHECK(c.logon(port));
+  CHECK(c.initiator.logout("operator requested", wallNs()));
+  const auto down = c.initiator.sessionDown();
+  CHECK(down.reason == fix::SessionDownReason::Lost);
+  CHECK(down.text == "operator requested");
+
+  c.tcp.close();
+  gw->stop();
+}
+
+// (13) Silence from the counterparty past 1.2 * HeartBtInt twice over: our
+// own TestRequest goes unanswered and the session ends. Driven entirely by
+// the timestamps handed to onTick(), not by real elapsed time -- the test
+// never sleeps through the two grace windows it needs.
+void test_session_down_reports_heartbeat_missed()
+{
+  std::printf("test_session_down_reports_heartbeat_missed\n");
+  Venue v;
+  auto gw = v.gateway(1);
+  const int port = gw->start(0, v.handler());
+  CHECK(port > 0);
+
+  Client c;
+  CHECK(c.logon(port));
+  const int64_t hbNs =
+      static_cast<int64_t>(c.initiator.negotiatedHeartBtIntSec()) * 1'000'000'000LL;
+  int64_t now = wallNs();
+
+  // We stop reading the socket from here on, so nothing the venue sends moves
+  // the initiator's inbound clock -- exactly what missed heartbeats look like
+  // from inside the endpoint.
+  CHECK(c.initiator.onTick(now));   // well within HeartBtInt
+  now += hbNs + hbNs / 5;           // 1.2 * HeartBtInt of inbound silence
+  CHECK(c.initiator.onTick(now));   // our TestRequest goes out
+  now += hbNs + hbNs / 5;           // TestRequest unanswered for another 1.2x
+  CHECK(!c.initiator.onTick(now));  // session declared dead
+
+  const auto down = c.initiator.sessionDown();
+  CHECK(down.reason == fix::SessionDownReason::HeartbeatMissed);
+
+  c.tcp.close();
+  gw->stop();
+}
+
 }  // namespace
 
 TEST(FixInitiator, AgainstVenueAcceptor)
@@ -1016,6 +1150,11 @@ TEST(FixInitiator, AgainstVenueAcceptor)
   test_reconnect_continues_sequence_through_sidecar();
   test_cancel_and_replace_round_trip();
   test_submit_to_wire_latency();
+  test_session_down_reports_connecting_before_logon_reply();
+  test_session_down_reports_refused_when_socket_is_unreachable();
+  test_session_down_reports_logon_rejected_with_reason();
+  test_session_down_reports_lost_after_logout();
+  test_session_down_reports_heartbeat_missed();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
 }

@@ -196,6 +196,34 @@ class FixInitiatorSidecar
   }
 };
 
+// Why the session is not up, for an operator paging on an incident and for
+// an automaton that changes state on this flag -- the two audiences want
+// different things from the same signal. A dropped TCP path recovers on its
+// own; a rejected Logon does not, and retrying it unchanged just burns the
+// same rejection again.
+enum class SessionDownReason : uint8_t
+{
+  Connecting,       // Logon sent, no reply yet
+  Refused,          // never reached a working session: the Logon could not be
+                    // sent, the reply never came within logonTimeoutNs, or a
+                    // pre-Logon reply made no sense
+  LogonRejected,    // the counterparty answered Logon with an explicit
+                    // Logout; text carries their reason (tag 58)
+  Lost,             // the session was up and is now down: Logout exchanged,
+                    // ours or theirs, or a sequence fault after Logon
+  HeartbeatMissed,  // our TestRequest went unanswered past the grace window
+};
+
+// sessionDown() snapshot: the reason, when it last changed, and the last
+// refusal/logout text seen for it (empty when the reason carries none).
+// Safe to read from a thread other than the one driving onFrame()/onTick().
+struct SessionDown
+{
+  SessionDownReason reason{SessionDownReason::Connecting};
+  int64_t sinceNs{0};
+  std::string text;
+};
+
 class FixInitiator
 {
  public:
@@ -238,6 +266,16 @@ class FixInitiator
     return seq_;
   }
 
+  // Why the session is currently not up -- irrelevant while loggedOn() is
+  // true, since loggedOn() is the up/down signal proper; this just explains
+  // a false answer to an operator or a reconnect policy. Safe from another
+  // thread the same way seqState() is.
+  SessionDown sessionDown()
+  {
+    std::lock_guard<std::mutex> lk(m_);
+    return sessionDown_;
+  }
+
   const FixInitiatorConfig& config() const noexcept { return cfg_; }
   bool loggedOn() const noexcept { return loggedOn_; }
   uint32_t negotiatedHeartBtIntSec() const noexcept
@@ -276,7 +314,12 @@ class FixInitiator
     {
       fields.emplace_back(20003, *cfg_.cancelOnDisconnect ? "Y" : "N");
     }
-    return sendAdminLocked("A", fields, nowNs);
+    const bool sent = sendAdminLocked("A", fields, nowNs);
+    // A Logon that never left is the same "unreachable" an operator means by
+    // a dead socket; one that went out just has no reply yet.
+    setSessionDown(sent ? SessionDownReason::Connecting : SessionDownReason::Refused,
+                   sent ? std::string{} : std::string{"Logon could not be sent"}, nowNs);
+    return sent;
   }
 
   // ---- application sends ----
@@ -322,7 +365,12 @@ class FixInitiator
     std::lock_guard<std::mutex> lk(m_);
     if (!loggedOn_)
     {
-      return nowNs - logonSentNs_ < cfg_.logonTimeoutNs;
+      if (nowNs - logonSentNs_ < cfg_.logonTimeoutNs)
+      {
+        return true;
+      }
+      setSessionDown(SessionDownReason::Refused, "Logon reply timed out", nowNs);
+      return false;
     }
     if (nowNs - lastOutNs_ >= hbNs_)
     {
@@ -339,6 +387,7 @@ class FixInitiator
       }
       else if (nowNs - testReqNs_ >= grace)
       {
+        setSessionDown(SessionDownReason::HeartbeatMissed, "TestRequest unanswered", nowNs);
         return false;  // TestRequest unanswered for another 1.2 intervals
       }
     }
@@ -370,7 +419,10 @@ class FixInitiator
     {
       if (type == "5")
       {
-        return Verdict::Disconnect;  // Logon refused, reason in 58
+        // Logon refused, reason in 58: an explicit answer, not a timeout or a
+        // dead transport, so it gets its own reason rather than Refused.
+        setSessionDown(SessionDownReason::LogonRejected, fieldStr(f, 58), nowNs);
+        return Verdict::Disconnect;
       }
       if (type != "A")
       {
@@ -439,6 +491,8 @@ class FixInitiator
         logoutSent_ = true;
         sendAdminLocked("5", {}, nowNs);  // confirming Logout
       }
+      // The session was up: this is a session loss, not a Logon-time refusal.
+      setSessionDown(SessionDownReason::Lost, fieldStr(f, 58), nowNs);
       return Verdict::Disconnect;
     }
     if (type == "A")
@@ -636,6 +690,11 @@ class FixInitiator
       return true;
     }
     logoutSent_ = true;
+    // A session that never reached loggedOn_ was never up to lose: whatever
+    // sent us here before that point is a Refused-class failure to raise the
+    // session, not a Lost one. Once up, our own Logout is as much a loss of
+    // the session as one the counterparty sends.
+    setSessionDown(loggedOn_ ? SessionDownReason::Lost : SessionDownReason::Refused, reason, nowNs);
     return sendAdminLocked("5", {{58, reason}}, nowNs);
   }
 
@@ -683,6 +742,11 @@ class FixInitiator
     }
   }
 
+  void setSessionDown(SessionDownReason reason, const std::string& text, int64_t nowNs)
+  {
+    sessionDown_ = SessionDown{reason, nowNs, text};
+  }
+
   static std::string fieldStr(Fields& f, int tag)
   {
     const auto it = f.find(tag);
@@ -703,6 +767,7 @@ class FixInitiator
   std::mutex m_;
   FixSeqState seq_;
   std::deque<Logged> log_;
+  SessionDown sessionDown_;
 
   int64_t hbNs_{0};
   int64_t lastInNs_{0};

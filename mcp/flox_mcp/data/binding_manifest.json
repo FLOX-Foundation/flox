@@ -12979,6 +12979,11 @@
           "name": "SeqTag"
         },
         {
+          "header": "include/flox/connector/fix/fix_initiator.h",
+          "kind": "type",
+          "name": "SessionDown"
+        },
+        {
           "header": "include/flox/connector/fix/fix_client_codec.h",
           "kind": "type",
           "name": "SessionReject"
@@ -16955,6 +16960,11 @@
         },
         {
           "kind": "method",
+          "name": "sessionDown",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
           "name": "setReportHandler",
           "parent": "FixInitiator"
         },
@@ -16966,6 +16976,11 @@
         {
           "kind": "method",
           "name": "setSeqObserver",
+          "parent": "FixInitiator"
+        },
+        {
+          "kind": "method",
+          "name": "setSessionDown",
           "parent": "FixInitiator"
         },
         {
