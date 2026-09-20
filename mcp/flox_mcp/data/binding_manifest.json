@@ -13379,6 +13379,11 @@
           "name": "VolumeTag"
         },
         {
+          "header": "include/flox/util/eventing/wake_set.h",
+          "kind": "type",
+          "name": "WakeSet"
+        },
+        {
           "header": "include/flox/backtest/walk_forward.h",
           "kind": "type",
           "name": "WalkForwardConfig"
@@ -16310,6 +16315,11 @@
         },
         {
           "kind": "method",
+          "name": "consumerHasPending",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "consumerHealth",
           "parent": "EventBus"
         },
@@ -16445,6 +16455,11 @@
         },
         {
           "kind": "method",
+          "name": "setWakeSet",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "setupOptimalConfiguration",
           "parent": "EventBus"
         },
@@ -16511,6 +16526,16 @@
         {
           "kind": "method",
           "name": "wakeParked",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "wakeSet",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "wakeWaiters",
           "parent": "EventBus"
         },
         {
@@ -25532,6 +25557,26 @@
           "kind": "method",
           "name": "fromRaw",
           "parent": "VolumeTag"
+        },
+        {
+          "kind": "method",
+          "name": "parkUnless",
+          "parent": "WakeSet"
+        },
+        {
+          "kind": "method",
+          "name": "setProbe",
+          "parent": "WakeSet"
+        },
+        {
+          "kind": "method",
+          "name": "waiters",
+          "parent": "WakeSet"
+        },
+        {
+          "kind": "method",
+          "name": "wake",
+          "parent": "WakeSet"
         },
         {
           "kind": "method",

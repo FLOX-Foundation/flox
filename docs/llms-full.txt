@@ -20272,6 +20272,11 @@ cannot slip its notify into the gap. A timed wait sits under both as a net
 (50 ms), which nothing is expected to reach: a test fails if wake-ups start
 arriving on its schedule.
 
+Parking is per consumer, and the condition variable belongs to one bus. That
+is enough while a consumer IS a thread and nothing more; a thread stepping
+consumers across many buses needs a wait point that does not belong to any of
+them — see [one wait point over many buses](#one-wait-point-over-many-buses).
+
 ## Consumers without a thread of their own
 
 ```cpp
@@ -20323,6 +20328,90 @@ The rules for stepping consumers yourself:
 - **Drain before stop.** `drainConsumer(i)` hands over what is left in the
   ring; `stop()` also does it for you when `enableDrainOnStop()` is set and
   nobody owns a consumer thread.
+
+### One wait point over many buses
+
+A thread stepping consumers across many buses cannot block on any single one
+of them without going deaf to the rest, so `WaitMode::PARKED` does nothing
+for it and it has to spin — the cost parking exists to remove, moved up a
+level and left there.
+
+`WakeSet` is the wait point such a thread is missing: one condition variable,
+one mutex, one waiter count, however many rings hang off it. Point every bus
+the thread steps at the same set, and a publisher into any of them wakes it.
+
+```cpp
+flox::WakeSet set;
+
+for (auto& bus : buses) {
+  bus->setOwnConsumerThreads(false);
+  bus->setWakeSet(&set);          // both before start()
+  bus->subscribe(&listener);
+  bus->start();
+}
+
+while (running) {
+  bool any = false;
+  for (auto& bus : buses) {
+    for (uint32_t i = 0; i < bus->consumerCount(); ++i) {
+      any |= bus->pollConsumer(i);
+    }
+  }
+  if (any) continue;
+  // The last look at every ring, taken inside the set's discipline.
+  set.parkUnless([&] {
+    for (auto& bus : buses) {
+      for (uint32_t i = 0; i < bus->consumerCount(); ++i) {
+        if (bus->consumerHasPending(i)) return true;
+      }
+    }
+    return false;
+  });
+}
+```
+
+`parkUnless` takes the predicate rather than being called after a check
+because the check has to happen *inside* the set's discipline: the window
+between a waiter's last look and it raising its hand is exactly where a
+wake-up gets lost. Same rules as `park()` — the count goes up before the
+look, with a sequentially consistent fence on either side, and the mutex is
+held across both the look and the wait. The predicate therefore runs under
+that mutex: keep it to `consumerHasPending`, and never deliver from it.
+
+`consumerHasPending(i)` is the look `pollConsumer(i)` starts with, without
+the delivery. It reads the stepping driver's own cursor, so it belongs to
+whoever steps that consumer and to nobody else.
+
+Measured on 14 cores, one thread over N buses, 1024-slot rings, ADAPTIVE
+backoff for the spinning case (the numbers for one consumer on its own thread
+are in [Parking](#parking-the-consumer-that-blocks) above):
+
+| buses on the thread | idle CPU, backoff | idle CPU, wake set |
+|---|---|---|
+| 1 | 0.11 core | 0 |
+| 3 | 0.11 core | 0 |
+| 16 | 0.11 core | 0 |
+| 64 | 0.12 core | 0 |
+
+The backoff figure is flat because it is one thread either way — that is the
+point of stepping — and it is the whole thread, idle, forever. Wake-up
+latency, publish to handler entry after 2 ms of quiet, same run:
+
+| wait | wake-up | worst |
+|---|---|---|
+| backoff, 3 buses | 9.1 μs | 51 μs |
+| backoff, 16 buses | 10.8 μs | 101 μs |
+| wake set, 3 buses | 5.7 μs | 9.8 μs |
+| wake set, 16 buses | 5.9 μs | 28 μs |
+
+So the set is not a latency trade here, unlike parking a single consumer: a
+thread that has to walk N rings before it can find anything is slower at
+noticing than one that is woken and told to look. The tail behaves better for
+the same reason.
+
+A bus nobody points at a set is untouched: `setWakeSet` is what turns the
+wake-up on, the publish path reads one flag covering both it and parked
+consumers, and a bus with neither pays one predictable branch.
 
 ## Multiple Consumers
 
