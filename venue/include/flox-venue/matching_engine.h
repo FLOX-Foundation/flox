@@ -4550,7 +4550,7 @@ class MatchingEngine
         (fill < maker.leaves) ? (maker.leaves - fill)
                               : ((maker.peak < maker.hidden) ? maker.peak : maker.hidden);
     sink_(FillHeld{id, cfg_.id, maker.id, taker.id, maker.price, fill, displayAfter,
-                   maker.accountId, taker.accountId});
+                   maker.accountId, taker.accountId, h.takerSide});
     // NOTE: the maker stays tracked (orderAccount_/byAccount_) even when the
     // hold empties its displayed size and fillBest removes it from the book --
     // the id is still live (a reject restores it) and mass-cancel paths must

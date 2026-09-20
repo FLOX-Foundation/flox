@@ -621,24 +621,30 @@ TEST(VenueRecovery, PreviousFormatVersionIsRefusedByNameInsteadOfSilentlyTruncat
 
 TEST(VenueRecovery, UnknownFormatVersionNamesTheVersionItFound)
 {
-  const std::string path = tmpPath("venue_journal_v9", ".bin");
+  // Derived from kRecordVersion, never a literal: this test wrote version 9
+  // by hand and stayed green only until the format reached 9, at which point
+  // it would have asserted that this build refuses its own records. Two up,
+  // not one: the number one above belongs to the other scale mode (the test
+  // below owns that case), so the next generation of THIS format is +2.
+  const unsigned foreign = static_cast<unsigned>(kRecordVersion) + 2u;
+  const std::string path = tmpPath("venue_journal_vnext", ".bin");
 
   std::vector<uint8_t> bytes;
   NewOrder o = limit(1, Side::BUY, 100.0, 1.0, 1);
   appendHandMade(bytes, 1, kRecordStamp, 0, &o, sizeof(NewOrder));
   o.id = 2;
-  appendHandMade(bytes, 2, kVersionedMark | 9, 0, &o, sizeof(NewOrder));
+  appendHandMade(bytes, 2, static_cast<int>(kVersionedMark | foreign), 0, &o, sizeof(NewOrder));
   writeFile(path, bytes);
 
   try
   {
     Journal::loadTimed(path);
-    ADD_FAILURE() << "a version 9 record was accepted";
+    ADD_FAILURE() << "a version " << foreign << " record was accepted";
   }
   catch (const JournalFormatError& e)
   {
     const std::string what = e.what();
-    EXPECT_NE(what.find("format version 9"), std::string::npos) << what;
+    EXPECT_NE(what.find("format version " + std::to_string(foreign)), std::string::npos) << what;
     EXPECT_NE(what.find("record 1"), std::string::npos) << what;  // and where
   }
   std::remove(path.c_str());
@@ -651,7 +657,11 @@ TEST(VenueRecovery, UnknownFormatVersionNamesTheVersionItFound)
 TEST(VenueRecovery, TheOtherScaleModeIsADifferentFormatVersion)
 {
   const std::string path = tmpPath("venue_journal_xm", ".bin");
-  const unsigned other = (kRecordVersion == 1) ? 2u : 1u;
+  // The two numbers move by two and stay adjacent: the unchecked build is
+  // odd, the checked one the even number above it. Derived, so it names the
+  // OTHER scale mode rather than whatever version happened to be free.
+  const unsigned other = (kRecordVersion % 2 == 1) ? static_cast<unsigned>(kRecordVersion) + 1u
+                                                   : static_cast<unsigned>(kRecordVersion) - 1u;
 
   std::vector<uint8_t> bytes;
   NewOrder o = limit(1, Side::BUY, 100.0, 1.0, 1);

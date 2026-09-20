@@ -112,10 +112,18 @@ static_assert(std::variant_size_v<InboundCommand> == 35,
 // just vacated, and a checked journal would then pass the version test in an
 // unchecked reader and be decoded at the wrong offsets -- the exact failure
 // the separate numbering exists to prevent.
+//
+// 9/10: FillHeld carries the taker's side. Nothing journaled changed size --
+// the fingerprint below is still the one 7/8 stood for, and proves it -- but
+// the number moves anyway, because it names the format GENERATION a build
+// speaks rather than the body sizes alone: a journal replayed by this build
+// produces a different exec-report stream than the same file replayed by the
+// previous one, and an operator pairing a file with the reports recovered
+// from it reads that off one number.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 8;
+inline constexpr uint8_t kRecordVersion = 10;
 #else
-inline constexpr uint8_t kRecordVersion = 7;
+inline constexpr uint8_t kRecordVersion = 9;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.

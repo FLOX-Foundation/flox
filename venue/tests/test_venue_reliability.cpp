@@ -237,7 +237,8 @@ void test_event_hash_covers_fields()
     s.displayQty = Quantity::fromDouble(2);
     CHECK(changes(a, s));
   }
-  // FillHeld: the appended makerDisplayAfter (public-feed sync) must be folded.
+  // FillHeld: the appended makerDisplayAfter (public-feed sync) and the
+  // appended taker side must be folded.
   {
     FillHeld f{5, 1, 10, 11, Price::fromDouble(100), Quantity::fromDouble(2),
                Quantity::fromDouble(3)};
@@ -246,6 +247,9 @@ void test_event_hash_covers_fields()
     CHECK(changes(f, s));
     s = f;
     s.qty = Quantity::fromDouble(4);
+    CHECK(changes(f, s));
+    s = f;
+    s.takerSide = Side::SELL;
     CHECK(changes(f, s));
   }
   // FillRejected: the appended makerId/price/qty (taker-facing report) fold in.

@@ -54,11 +54,17 @@
   gave none. A submitter reconciles reports against the name it chose, and on
   a reject there may be no other name to reconcile against. Appended after
   `seq`, so a version-3 reader skips it via blockLength.
+
+  Version 6: FillHeld (17) gained a trailing `takerSide` field (EnumU8,
+  sinceVersion="6"): the side of the aggressor whose hit is being held. A
+  client had to rebuild it by remembering the side of every order it placed
+  and matching the hold back to one of them; the venue has had it all along.
+  Appended after `seq`, so a version-5 reader skips it via blockLength.
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.oe"
                    id="92"
-                   version="5"
+                   version="6"
                    semanticVersion="1.0"
                    description="Flox venue order entry + execution reports"
                    byteOrder="littleEndian">
@@ -222,7 +228,8 @@
 
   <!-- Last look: a fill is held pending the maker's decision. heldId is the
        handle a LastLookDecision answers with. makerDisplayAfter is the maker's
-       displayed remaining after the held qty left the book (public feed sync). -->
+       displayed remaining after the held qty left the book (public feed sync).
+       takerSide is the aggressor's side; the maker's is the opposite one. -->
   <sbe:message name="FillHeld" id="17">
     <field name="heldId"            id="1" type="OrderId"/>
     <field name="symbol"            id="2" type="Symbol"/>
@@ -231,7 +238,8 @@
     <field name="price"             id="5" type="PriceRaw"/>
     <field name="qty"               id="6" type="QtyRaw"/>
     <field name="makerDisplayAfter" id="7" type="QtyRaw"/>
-    <field name="seq"     id="8" type="SeqNum" sinceVersion="1"/>
+    <field name="seq"       id="8" type="SeqNum" sinceVersion="1"/>
+    <field name="takerSide" id="9" type="EnumU8" sinceVersion="6"/>
   </sbe:message>
 
   <!-- Last look: the held fill was rejected (or timed out). Carries the

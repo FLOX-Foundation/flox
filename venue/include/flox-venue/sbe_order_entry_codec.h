@@ -62,7 +62,14 @@ class SbeOrderEntryCodec
   //    sinceVersion=4): the identifier the submitter gave the order, 0 when it
   //    gave none. Appended after `seq`, so an older reader skips it via
   //    blockLength exactly as it does for seq.
-  static constexpr uint16_t kVersion = 5;
+  // Schema version 6:
+  //  - FillHeld gained a trailing `takerSide` (EnumU8, sinceVersion=6): the
+  //    side of the aggressor whose hit is being held. A client had to rebuild
+  //    it from the maker's own accept report; the engine has had it all along.
+  //    Appended after `seq` (a version-5 frame's shorter blockLength simply
+  //    has no side), which is why seqOffsetIn now knows about this template
+  //    too -- `seq` stopped being the last field of the FillHeld block.
+  static constexpr uint16_t kVersion = 6;
 
   enum class InTmpl : uint16_t
   {
@@ -117,7 +124,7 @@ class SbeOrderEntryCodec
   static constexpr uint16_t kBlockRejected = 29;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockReplaced = 45;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockTriggered = 28;
-  static constexpr uint16_t kBlockFillHeld = 60;
+  static constexpr uint16_t kBlockFillHeld = 61;  // v6: + trailing takerSide (u8)
   static constexpr uint16_t kBlockFillRejected = 52;
   static constexpr uint16_t kBlockSnapshotRequired = 8;
   static constexpr uint16_t kBlockSnapshotEndV1 = 28;  // pre-lastSeq layout (schema v1)
@@ -389,6 +396,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, fh->qty.raw());
       sbe::putI64(out, fh->makerDisplayAfter.raw());
       sbe::putU64(out, seq);
+      sbe::putU8(out, static_cast<uint8_t>(fh->takerSide));
     }
     else if (const auto* fr = std::get_if<FillRejected>(&ev))
     {
@@ -446,7 +454,8 @@ class SbeOrderEntryCodec
   // Where `seq` sits inside the root block. It was appended at version 1, so
   // it ends the version-1 block -- and that stopped being the end of the block
   // when version 4 appended clOrdId after it on the five order-report
-  // templates. Reading the last eight bytes was the old shortcut; it silently
+  // templates, and again when version 6 appended takerSide after it on
+  // FillHeld. Reading the last eight bytes was the old shortcut; it silently
   // returned a client's order id as a sequence number the moment a v4 frame
   // arrived, which is what the delivery tests caught. The frame says which
   // version it is, so that is what decides.
@@ -457,7 +466,8 @@ class SbeOrderEntryCodec
         (h.templateId == u16(OutTmpl::Accepted) || h.templateId == u16(OutTmpl::Executed) ||
          h.templateId == u16(OutTmpl::Canceled) || h.templateId == u16(OutTmpl::Rejected) ||
          h.templateId == u16(OutTmpl::Replaced));
-    const uint16_t trailing = hasClOrdIdAfterSeq ? 16 : 8;
+    const bool hasTakerSideAfterSeq = h.version >= 6 && h.templateId == u16(OutTmpl::FillHeld);
+    const uint16_t trailing = hasClOrdIdAfterSeq ? 16 : (hasTakerSideAfterSeq ? 9 : 8);
     return h.blockLength >= trailing ? static_cast<uint16_t>(h.blockLength - trailing) : 0;
   }
 

@@ -162,7 +162,6 @@ struct ScriptedVenue
     NewOrder mk = limit(id, side, price, 5, kMaker);
     mk.lastLook = true;
     submit(InboundCommand{mk});
-    maker.placed(id, side);
   }
 
   void letTheMakerAnswer()

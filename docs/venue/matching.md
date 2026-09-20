@@ -431,9 +431,10 @@ Before the first trade there is no reference price, so no band exists yet.
 `lastLookWindowNs > 0` enables last look venue-wide; `0` disables it entirely
 (the matcher hook is never installed, so a `lastLook`-flagged order fills like
 any other maker). When an aggressor hits a resting `lastLook` maker, the hit
-size is reserved OUT of the book, `FillHeld` is emitted (with `heldId` and the
-maker's `makerDisplayAfter` for the public feed), and the maker has the window
-to answer with `LastLookDecision{heldId, accept}`.
+size is reserved OUT of the book, `FillHeld` is emitted (with `heldId`, the
+maker's `makerDisplayAfter` for the public feed, and `takerSide` -- the
+aggressor's side, the maker's being the opposite one), and the maker has the
+window to answer with `LastLookDecision{heldId, accept}`.
 
 - **Ownership.** Only the maker account that owns the held quote may decide;
   any other account gets `OrderRejected{NotOrderOwner}` and the hold stands.
@@ -496,6 +497,9 @@ to answer with `LastLookDecision{heldId, accept}`.
   hold/accept/reject the published depth equals the matching book.
 - **Wire.** SBE templates 17 (`FillHeld`) / 18 (`FillRejected`) in
   `order-entry-sbe.xml`; REST/JSON `{"type":"fillHeld"|"fillRejected", ...}`.
+  `FillHeld`'s `takerSide` is appended after `seq` at schema version 6, so a
+  version-5 reader skips it via `blockLength` and a reader looking for `seq`
+  goes by the frame's own version rather than by the last eight bytes.
   FIX has no honest ExecType for a pending held fill, so `FillHeld` uses the
   documented custom value `150=U` and `FillRejected` uses `150=H` (Trade
   Cancel), both with custom tags `20001=heldId`, `20002=makerId`.

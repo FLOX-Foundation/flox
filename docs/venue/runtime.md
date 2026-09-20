@@ -229,17 +229,23 @@ existed be named as version 0 rather than misread.
 A scale-checked build (`FLOX_SCALE_CHECKS`, the default without `NDEBUG`) is a
 different format under this rule, not a debugging variant of the same one. It
 widens `Decimal`, so `sizeof(Price)` goes 8 to 16 and every body holding a price
-or a quantity moves its fields. Those layouts carry version 4 and version 3
+or a quantity moves its fields. Those layouts carry version 10 and version 9
 respectively, so a journal from a debug venue is refused by name in a release
 one rather than read at the wrong offsets.
 
-Versions 1 and 2 were the same pair before order records carried the
-identifier the submitter gave the order. A file written by a build without it
-holds orders whose reports would name nobody, so it is refused rather than
-read as though the field had always been absent.
+The pair moves by two on every format change, never by one: bumping both by
+one would hand the unchecked build the number the checked build just left, and
+a checked journal would then pass the version test in an unchecked reader --
+the failure the separate numbering exists to prevent.
+
+Earlier pairs are refused, not converted. Versions 1 and 2 were the pair
+before order records carried the identifier the submitter gave the order: a
+file written by a build without it holds orders whose reports would name
+nobody, so it is refused rather than read as though the field had always been
+absent.
 
 Bumping the version is a deliberate edit, and the build stops you from
-forgetting it. The sizes of all 34 journaled command structs are folded into a
+forgetting it. The sizes of all 35 journaled command structs are folded into a
 compile-time fingerprint next to the version constant; adding a field to any of
 them fails that assertion with the reason, instead of surfacing months later as
 a length that does not add up during someone's recovery.
