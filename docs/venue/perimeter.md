@@ -311,6 +311,53 @@ the newline that never arrives.
 Deploy the control plane on an internal interface: it has no authentication of
 its own, so anything able to reach it can move every risk limit on the venue.
 
+### Verbs the deployment adds
+
+The built-in verbs are not the whole vocabulary. `ControlApi::registerMethod`
+puts a handler of your own on the same surface, and nothing in `ControlServer`
+or `TcpControlServer` changes: the registered verb is reached through the
+existing accept loop and line framing.
+
+```cpp
+api.registerMethod("parkInstrument",
+                   [](const ControlRequest& req)
+                   {
+                     SymbolId sym{};
+                     if (!req.symbolField("symbol", sym))
+                     {
+                       return ControlApi::err("bad_field");
+                     }
+                     if (!req.registry().get(sym))
+                     {
+                       return ControlApi::err("unknown_symbol");
+                     }
+                     req.forward(InboundCommand{AdminCmd{sym, AdminAction::Halt}});
+                     return ControlApi::ok();
+                   });
+```
+
+The handler reads its arguments through `ControlRequest`, which carries the
+same accessors the built-in verbs use -- so a field nobody named stays absent
+there too -- plus the two things a verb needs from the venue: `registry()` to
+validate against, and `forward()` for the journaling rule. A handler that
+changes engine state forwards the record that reproduces the change on replay;
+a handler that only reads forwards nothing, exactly as `snapshotNow` and `get`
+forward nothing.
+
+Registration happens at wiring time, before a server accepts on that api:
+`handle()` reads the table without a lock. It refuses an empty name, an empty
+handler, a name a built-in verb already answers
+(`ControlApi::kBuiltinMethods`), and a second registration of a name already
+taken -- a verb that silently replaced another, or that a built-in silently
+shadowed, sends operator traffic to a handler other than the one whose name
+was typed.
+
+A name nobody answers comes back named:
+`{"ok":false,"error":"unknown_method","method":"parkInstrument"}`. A bare
+`unknown_method` reads the same for a typo, a registration that never ran, and
+a request that reached the wrong process. The echoed name is caller input, so
+it is cut at 64 characters and escaped before it travels in the response.
+
 ## Observability
 
 `Metrics` counts orders, trades, rejects by reason, and fills. `Gauges`
