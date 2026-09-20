@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "flox-venue/checkpoint_lane.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
@@ -74,6 +75,13 @@ struct CheckpointConfig
   // the corresponding threshold.
   uint64_t maxSegmentRecords{1'000'000};
   uint64_t maxSegmentBytes{256ULL << 20};
+  // Per-shard spread on those thresholds, in percent (0 = off, the default).
+  // The thresholds are the same for every shard, so equally loaded shards
+  // cross them together and their pauses arrive together -- which matters
+  // only once shards share a driver, and costs nothing to prevent: each shard
+  // takes its own cut below the configured threshold, deterministically from
+  // its symbol, re-rolled after every checkpoint.
+  unsigned triggerJitterPct{0};
   // Snapshot+journal generations kept on disk after a checkpoint (>= 1). The
   // pre-checkpoint single-file journal counts as the oldest generation and is
   // deleted once `retainGenerations` snapshot generations exist.
@@ -206,6 +214,8 @@ class SequencedShard
   {
     ingress_.enableDrainOnStop();
     outbound_.enableDrainOnStop();
+    jitterState_ = 0x9E3779B97F4A7C15ULL ^ static_cast<uint64_t>(symbol_);
+    rollThresholds();
     if (journalSync == Journal::Sync::Group)
     {
       consumer_.enableGroupCommit();
@@ -231,6 +241,37 @@ class SequencedShard
   // session-layer sidecars at the same durability point -- e.g. the FIX
   // session sidecar (FixSessionSidecar::write to
   // FixSessionSidecar::pathFor(journal base), i.e. `<base>.fixsessions`).
+  // The lane this shard takes its checkpoint pauses on, shared with every
+  // other shard driven by the same thread. nullptr (the default) means the
+  // shard pauses whenever it likes, which is right when it owns a thread.
+  // Set before start().
+  void setCheckpointLane(CheckpointLane* lane) noexcept { lane_ = lane; }
+
+  // Automatic checkpoints that found the lane, or their own previous
+  // snapshot, still busy. The shard asks again at its next boundary.
+  uint64_t checkpointsSkippedBusy() const noexcept
+  {
+    return checkpointsSkippedBusy_.load(std::memory_order_acquire);
+  }
+
+  // Every pause this shard has taken for a checkpoint, added up. One shard on
+  // one thread cares about the last one; a thread carrying several cares about
+  // the total, because that is how long it was not matching anything.
+  int64_t checkpointPauseTotalNs() const noexcept
+  {
+    return checkpointPauseTotalNs_.load(std::memory_order_acquire);
+  }
+
+  // The thresholds this shard actually uses, after its jitter cut.
+  uint64_t effectiveMaxSegmentRecords() const noexcept
+  {
+    return effMaxRecords_.load(std::memory_order_relaxed);
+  }
+  uint64_t effectiveMaxSegmentBytes() const noexcept
+  {
+    return effMaxBytes_.load(std::memory_order_relaxed);
+  }
+
   // Keep it fast: matching is paused for its duration. Set before start().
   void onCheckpoint(std::function<void(int64_t boundaryTs)> hook)
   {
@@ -305,9 +346,9 @@ class SequencedShard
     // snapshot itself runs on the consumer thread at the next command
     // boundary, and the TimeTick nudge guarantees one on a quiet symbol.
     if (((checkpointCfg_.maxSegmentRecords > 0 &&
-          journal_.count() >= checkpointCfg_.maxSegmentRecords) ||
+          journal_.count() >= effMaxRecords_.load(std::memory_order_relaxed)) ||
          (checkpointCfg_.maxSegmentBytes > 0 &&
-          journal_.bytes() >= checkpointCfg_.maxSegmentBytes)) &&
+          journal_.bytes() >= effMaxBytes_.load(std::memory_order_relaxed))) &&
         !checkpointRequested_.exchange(true, std::memory_order_acq_rel))
     {
       submit(InboundCommand{TimeTick{symbol_}});
@@ -388,6 +429,9 @@ class SequencedShard
     // of the last command submitted before this call -- otherwise a lagging
     // consumer would snapshot an earlier boundary (correct but surprising).
     ingress_.flush();
+    // Somebody is waiting for the answer, so this one waits for the lane
+    // instead of skipping when it is busy.
+    checkpointMandatory_.store(true, std::memory_order_release);
     checkpointRequested_.store(true, std::memory_order_release);
     submit(InboundCommand{TimeTick{symbol_}});
     ingress_.flush();  // the boundary ran: clone taken, background publish spawned
@@ -730,7 +774,7 @@ class SequencedShard
       return;
     }
     checkpointRequested_.store(false, std::memory_order_release);
-    doCheckpoint(boundaryTs);
+    doCheckpoint(boundaryTs, checkpointMandatory_.exchange(false, std::memory_order_acq_rel));
   }
 
   // Consumer thread only. ASYNCHRONOUS checkpoint: under the pause only the
@@ -750,15 +794,48 @@ class SequencedShard
   // and ts's) after it, reproducing the state; the snapshot only ever appears
   // atomically via rename. A failed background publish logs a WARN and leaves
   // the same recoverable layout.
-  void doCheckpoint(int64_t ts)
+  void doCheckpoint(int64_t ts, bool mandatory)
   {
     if (ts <= lastCheckpointTs_)
     {
       return;  // repeated request inside one boundary: state already on disk
     }
-    // No snapshot queue: at most one background publish in flight -- a new
-    // checkpoint first waits for the previous one to finish.
-    waitCheckpointPublish();
+    // No snapshot queue: at most one background publish in flight. What
+    // differs between the two kinds of request is what to do when the
+    // previous one has not finished, or when another shard on this driver is
+    // in its own pause.
+    //
+    // An automatic checkpoint SKIPS. Waiting here would put a disk wait
+    // inside the pause -- and under a shared driver, every shard behind this
+    // one waits for that disk too. The threshold that triggered it has not
+    // gone away, so the sweep asks again within its next interval. A skipped
+    // checkpoint is a snapshot not taken, never a record not written: the
+    // journal is untouched and recovery replays further, which is exactly
+    // what it does between any two checkpoints.
+    //
+    // A checkpoint asked for by name waits, because somebody is waiting for
+    // the answer.
+    if (mandatory)
+    {
+      waitCheckpointPublish();
+      if (lane_ != nullptr)
+      {
+        lane_->enterBlocking();
+      }
+    }
+    else
+    {
+      if (publishInFlight())
+      {
+        noteCheckpointSkipped();
+        return;
+      }
+      if (lane_ != nullptr && !lane_->tryEnter())
+      {
+        noteCheckpointSkipped();
+        return;
+      }
+    }
     const auto pause0 = std::chrono::steady_clock::now();
     auto clone = consumer_.engine().cloneForSnapshot(Book{bookProto_});
     journal_.flush();
@@ -769,12 +846,37 @@ class SequencedShard
     {
       checkpointHook_(ts);  // sidecar persistence rides the same boundary (consumer thread)
     }
-    lastCheckpointPauseNs_.store(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                     std::chrono::steady_clock::now() - pause0)
-                                     .count(),
-                                 std::memory_order_release);
-    auto publish = [this, ts, cl = std::move(clone)]() mutable -> bool
+    const int64_t pauseNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now() - pause0)
+                                .count();
+    lastCheckpointPauseNs_.store(pauseNs, std::memory_order_release);
+    checkpointPauseTotalNs_.fetch_add(pauseNs, std::memory_order_relaxed);
+    if (lane_ != nullptr)
     {
+      // How long the DRIVER was stopped, by anybody on it. Per-shard pauses
+      // do not add up to anything an operator can act on once shards share a
+      // thread.
+      lane_->notePause(pauseNs);
+    }
+    // The next threshold is a fresh cut, so shards that drifted into step
+    // during this segment do not stay there.
+    rollThresholds();
+    auto publish = [this, ts, lane = lane_, cl = std::move(clone)]() mutable -> bool
+    {
+      // Whatever happens below, the lane is handed back: it covers the
+      // snapshot write as well as the pause, so that one lane means one
+      // snapshot on the disk at a time and one publish thread, not seventy.
+      struct LaneGuard
+      {
+        CheckpointLane* l;
+        ~LaneGuard()
+        {
+          if (l != nullptr)
+          {
+            l->leave();
+          }
+        }
+      } laneGuard{lane};
       const std::string snap = snapshotPath(journalPath_, ts);
       // Everything below runs on a task whose result is only ever waited on,
       // never got: an exception escaping here would be stored in the future
@@ -827,6 +929,70 @@ class SequencedShard
     std::fprintf(stderr, "flox-venue: WARN checkpoint publish failed for %s: %s\n", snap.c_str(),
                  why ? why : "?");
     return false;
+  }
+
+  // Is the previous snapshot still being written? Asked instead of waited on
+  // by every automatic checkpoint.
+  bool publishInFlight()
+  {
+    std::shared_future<bool> f;
+    {
+      std::lock_guard<std::mutex> lk(ckptMx_);
+      f = ckptPending_;
+    }
+    return f.valid() && f.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+  }
+
+  void noteCheckpointSkipped() noexcept
+  {
+    checkpointsSkippedBusy_.fetch_add(1, std::memory_order_release);
+    if (lane_ != nullptr)
+    {
+      lane_->noteSkipped();
+    }
+  }
+
+  // Deterministic per-shard cut below the configured thresholds. Deterministic
+  // because a venue that checkpoints at different points on every run is a
+  // venue whose recoveries cannot be compared; per-shard because the whole
+  // point is that two shards must not cross their thresholds together.
+  static uint64_t splitmix64(uint64_t& state) noexcept
+  {
+    state += 0x9E3779B97F4A7C15ULL;
+    uint64_t z = state;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+  }
+
+  static uint64_t cut(uint64_t threshold, unsigned pct, uint64_t r) noexcept
+  {
+    if (threshold == 0 || pct == 0)
+    {
+      return threshold;
+    }
+    const unsigned capped = pct > 90 ? 90 : pct;
+    // Up to `capped` percent off, never to zero: a threshold of zero means
+    // "disabled" everywhere else in this file and must not appear by accident.
+    const uint64_t span = threshold / 100 * capped;
+    const uint64_t off = span == 0 ? 0 : r % (span + 1);
+    const uint64_t v = threshold - off;
+    return v == 0 ? 1 : v;
+  }
+
+  // Written on the consumer thread (after a checkpoint) and read by whoever
+  // sweeps -- the sweeper thread, or an external driver. Atomic and relaxed:
+  // the reader wants a threshold, not a particular one, and reading the
+  // previous segment's cut one sweep longer costs a sweep interval of delay
+  // on a checkpoint request.
+  void rollThresholds() noexcept
+  {
+    effMaxRecords_.store(cut(checkpointCfg_.maxSegmentRecords, checkpointCfg_.triggerJitterPct,
+                             splitmix64(jitterState_)),
+                         std::memory_order_relaxed);
+    effMaxBytes_.store(cut(checkpointCfg_.maxSegmentBytes, checkpointCfg_.triggerJitterPct,
+                           splitmix64(jitterState_)),
+                       std::memory_order_relaxed);
   }
 
   // Wait for the in-flight background snapshot publish, if any. Safe from any
@@ -935,6 +1101,12 @@ class SequencedShard
   // when there is one, the external driver when there is not.
   int64_t lastSweepNs_{0};
   std::atomic<bool> checkpointRequested_{false};
+  std::atomic<bool> checkpointMandatory_{false};
+  std::atomic<uint64_t> checkpointsSkippedBusy_{0};
+  CheckpointLane* lane_{nullptr};
+  uint64_t jitterState_{0};
+  std::atomic<uint64_t> effMaxRecords_{0};
+  std::atomic<uint64_t> effMaxBytes_{0};
   std::function<void(int64_t)> checkpointHook_;
   std::atomic<uint64_t> checkpoints_{0};
   std::atomic<uint64_t> checkpointPublishFailures_{0};
@@ -946,6 +1118,7 @@ class SequencedShard
   std::mutex ckptMx_;
   std::shared_future<bool> ckptPending_;
   std::atomic<int64_t> lastCheckpointPauseNs_{0};
+  std::atomic<int64_t> checkpointPauseTotalNs_{0};
   uint64_t recovered_{0};
   uint64_t recoveredSnapshot_{0};
   bool ready_{false};

@@ -357,9 +357,9 @@ step):
    retention window (`CheckpointConfig::retainGenerations`, default 2). The
    pre-checkpoint single file `<base>` is the oldest generation and is read
    as one during recovery until enough snapshot generations exist. At most
-   one publish is in flight: the next checkpoint waits for the previous one
-   (no snapshot queue). `checkpointNow()` still returns only once the new
-   generation is on disk.
+   one publish is in flight; what the next checkpoint does about that depends
+   on who asked (see the lane below). `checkpointNow()` still returns only
+   once the new generation is on disk.
 
 Crash window of the asynchronous publish: between the rotation and the
 background rename the disk holds "segment `ts` exists, snapshot `ts` absent
@@ -377,10 +377,58 @@ snapshot at all, recovery replays the full retained history from scratch.
 Triggers: `SequencedShard::checkpointNow()` (surfaced as the control-plane
 `snapshotNow` verb -- deliberately NOT journaled, a snapshot must never be
 replay-visible), and an automatic record/byte threshold on the current
-segment checked by the idle sweeper (`CheckpointConfig`; automatic
-checkpoints therefore require the sweeper armed).
+segment checked by `sweepOnce()` -- the idle sweeper thread when one is armed,
+otherwise whoever drives the shard (`CheckpointConfig`).
 
-The consumer pause is the clone alone (`lastCheckpointPauseNs()` gauges it);
+### The pause when shards share a thread
+
+A shard that owns a thread pays its pause alone, and that is what the pause
+was priced for. A thread driving many shards pays every one of them, and the
+automatic trigger is the segment's size -- so equally loaded shards reach it
+together and the pauses arrive together. Three things keep that from
+multiplying:
+
+- **A lane.** `setCheckpointLane(&lane)` gives a group of shards one
+  `CheckpointLane`, held from the start of the pause until the snapshot has
+  been written. Two shards on a lane never pause at the same time, and at most
+  one snapshot per lane is being written, which also caps the threads the
+  publishes spawn. Shards on different lanes are independent; a shard with no
+  lane behaves as it always did.
+- **Automatic checkpoints skip rather than wait.** If the lane is taken, or
+  this shard's own previous snapshot is still being written, the automatic
+  checkpoint is skipped and counted (`checkpointsSkippedBusy()`,
+  `CheckpointLane::skipped()`); the threshold has not gone away, so the next
+  sweep asks again. Waiting would put a disk wait inside the pause, and under
+  a shared driver every shard behind this one would wait for that disk too. A
+  skipped checkpoint is a snapshot not taken, never a record not written:
+  recovery simply replays further. `checkpointNow()` waits instead of
+  skipping -- somebody is waiting for the answer.
+- **Jittered triggers.** `CheckpointConfig::triggerJitterPct` (0 = off, the
+  default) gives each shard its own cut below the configured threshold,
+  derived from its symbol and re-rolled after every checkpoint. Deterministic,
+  so a venue's checkpoints land where they landed last run.
+
+What to watch: `CheckpointLane::pauseTotalNs()` and `pauseMaxNs()` -- how long
+the driver was stopped, by anybody on it, which is the number per-shard gauges
+cannot give. A `skipped()` count that keeps climbing on one shard while others
+checkpoint fine is a shard being crowded out.
+
+Measured with `bench_venue_checkpoint_lane` (14 cores, one thread feeding all
+shards, 5000-order books, one checkpoint round each):
+
+| shards | driver stopped | worst single pause | snapshots | skipped |
+|---|---|---|---|---|
+| 1, no lane | 1.5 ms | 0.8 ms | 2 | 0 |
+| 1, lane | 1.4 ms | 0.8 ms | 2 | 0 |
+| 70, no lane | 153.9 ms | 66.8 ms | 70 | 0 |
+| 70, lane | 39.8 ms | 19.0 ms | 55 | 274 |
+
+The lane does not make a checkpoint cheaper; it spreads checkpoints in time,
+so fewer of them land inside any given window and none of them wait for a disk
+inside the pause.
+
+The consumer pause is the clone alone (`lastCheckpointPauseNs()` gauges it,
+`checkpointPauseTotalNs()` adds them up);
 `test_venue_checkpoint` measures both the clone pause and the old synchronous
 serialize time on a 100k-order book rather than guessing (the clone is a
 small fraction of the serialize+fsync cost). Snapshot-only `Restore*` records
