@@ -34,7 +34,6 @@
 #include "flox-venue/messages.h"
 
 #include <cstdint>
-#include <unordered_map>
 #include <vector>
 
 namespace flox::venue::script
@@ -63,11 +62,6 @@ class ScriptedMaker
  public:
   ScriptedMaker(uint64_t account, MakerPolicy policy) : account_(account), policy_(policy) {}
 
-  // An order this maker placed. It has to be told, because FillHeld does not
-  // carry the maker's side and "adverse" has no meaning without it: a seller
-  // is hurt by a rising price and a buyer by a falling one.
-  void placed(OrderId id, Side side) { side_[id] = side; }
-
   // Every outbound event the venue produced. Holds are remembered; prints
   // move the reference the decision will be measured against.
   void observe(const OutboundEvent& e)
@@ -84,7 +78,13 @@ class ScriptedMaker
       {
         return;  // somebody else's hold
       }
-      open_.push_back(Hold{h->heldId, h->makerId, h->price.raw()});
+      // The maker's side is the opposite of the aggressor's, and the hold
+      // carries the aggressor's. This used to be told to the maker order by
+      // order through a placed() call, because the report did not say: a map
+      // of sides that grew with every quote, and a hold whose maker was not
+      // in it could not be judged at all.
+      const Side makerSide = h->takerSide == Side::BUY ? Side::SELL : Side::BUY;
+      open_.push_back(Hold{h->heldId, h->makerId, h->price.raw(), makerSide});
     }
   }
 
@@ -141,6 +141,7 @@ class ScriptedMaker
     uint64_t heldId{};
     OrderId makerId{};
     int64_t heldPriceRaw{};
+    Side makerSide{};
   };
 
   bool moved(const Hold& h) const { return havePrice_ && lastPriceRaw_ != h.heldPriceRaw; }
@@ -154,19 +155,13 @@ class ScriptedMaker
     {
       return false;
     }
-    const auto it = side_.find(h.makerId);
-    if (it == side_.end())
-    {
-      return false;  // not ours to judge
-    }
-    return it->second == Side::SELL ? lastPriceRaw_ > h.heldPriceRaw
-                                    : lastPriceRaw_ < h.heldPriceRaw;
+    return h.makerSide == Side::SELL ? lastPriceRaw_ > h.heldPriceRaw
+                                     : lastPriceRaw_ < h.heldPriceRaw;
   }
 
   uint64_t account_{};
   MakerPolicy policy_{MakerPolicy::AcceptAlways};
   SymbolId symbol_{1};
-  std::unordered_map<OrderId, Side> side_;
   std::vector<Hold> open_;
   int64_t lastPriceRaw_{0};
   bool havePrice_{false};

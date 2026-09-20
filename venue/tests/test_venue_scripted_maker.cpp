@@ -110,7 +110,6 @@ struct Harness
     NewOrder mk = limit(makerId, makerSide, quote, 1, kMaker);
     mk.lastLook = true;
     submit(InboundCommand{mk});
-    maker.placed(makerId, makerSide);
 
     const Side takerSide = makerSide == Side::SELL ? Side::BUY : Side::SELL;
     submit(InboundCommand{limit(nextId++, takerSide, quote, 1, kTaker)});

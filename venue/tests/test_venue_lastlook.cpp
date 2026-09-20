@@ -26,6 +26,7 @@
 #include "flox-venue/market_data.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
+#include "flox-venue/sbe_order_entry_codec.h"
 #include "flox-venue/sequenced_shard.h"
 #include "support/tmp_path.h"
 
@@ -197,6 +198,58 @@ void test_prorata_lastlook_rejected()
   ok.lastLook = true;
   ptEng.submit(InboundCommand{ok}, 1);
   CHECK(bookAt(ptEng.book(), Side::SELL, 100) == qty(5));
+}
+
+// ---- T043: the hold names the aggressor's side -----------------------------
+
+// The engine knows which side hit the quote -- it is the taker's own side,
+// and the hold record has carried it since holds existed. The report did not,
+// so anything acting on a hold rebuilt it from the maker's accept and could
+// not judge a hold for a maker it had never seen. One byte, already in hand.
+//
+// Both directions, because a field filled from a constant is right half the
+// time: a BUY aggressor lifting a non-firm offer, and a SELL aggressor
+// hitting a non-firm bid.
+void test_held_fill_names_the_taker_side()
+{
+  std::printf("test_held_fill_names_the_taker_side\n");
+
+  auto heldSideOf = [](Side makerSide, Side takerSide)
+  {
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    NewOrder mk = limit(1, makerSide, 100, 5, 1);
+    mk.lastLook = true;
+    eng.submit(InboundCommand{mk}, 0);
+    eng.submit(InboundCommand{limit(2, takerSide, 100, 3, 2)}, 1);
+    const FillHeld* h = cap.lastHeld();
+    CHECK(h != nullptr);
+    return h == nullptr ? Side{} : h->takerSide;
+  };
+
+  CHECK(heldSideOf(Side::SELL, Side::BUY) == Side::BUY);
+  CHECK(heldSideOf(Side::BUY, Side::SELL) == Side::SELL);
+
+  // And it reaches a client: appended to the FillHeld root block, after the
+  // sequence number, which a reader must still find where the frame's own
+  // version says it is.
+  for (Side taker : {Side::BUY, Side::SELL})
+  {
+    FillHeld f{};
+    f.heldId = 5;
+    f.symbol = SYM;
+    f.makerId = 1;
+    f.takerId = 2;
+    f.price = px(100);
+    f.qty = qty(3);
+    f.takerSide = taker;
+
+    std::vector<uint8_t> buf;
+    SbeOrderEntryCodec::encode(OutboundEvent{f}, buf, /*seq=*/77);
+    CHECK(buf.size() == sbe::kHeaderSize + SbeOrderEntryCodec::kBlockFillHeld);
+    CHECK(buf.back() == static_cast<uint8_t>(taker));
+    CHECK(SbeOrderEntryCodec::seqOf(buf.data(), buf.size()) == 77u);
+  }
 }
 
 // ---- T016: reject restores the book ----------------------------------------
@@ -1189,6 +1242,7 @@ void test_clordid_dedup_survives_replay()
 TEST(VenueLastLook, LifecycleSuite)
 {
   test_prorata_lastlook_rejected();
+  test_held_fill_names_the_taker_side();
   test_reject_restores_book();
   test_quote_carries_lastlook();
   test_symmetric_price_tolerance();

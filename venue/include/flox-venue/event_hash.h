@@ -143,6 +143,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->makerDisplayAfter.raw()));
     h = mix(h, x->makerAccount);
     h = mix(h, x->takerAccount);
+    h = mix(h, static_cast<uint64_t>(x->takerSide));
   }
   else if (const auto* x = std::get_if<FillRejected>(&e))
   {

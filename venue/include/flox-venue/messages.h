@@ -894,6 +894,15 @@ struct FillHeld  // last-look: a fill is held pending the maker's decision
   Quantity makerDisplayAfter{};
   uint64_t makerAccount{0};  // appended: delivery routing (both parties get the report)
   uint64_t takerAccount{0};
+  // Side of the aggressor that caused the hold. Appended -- wire codecs place
+  // it after the fields above.
+  //
+  // The engine has it (it is the taker's own side) and used to keep it to
+  // itself, so anything acting on a hold had to rebuild it: remember the
+  // maker's side from its OrderAccepted, hold a map of sides for orders that
+  // may never be hit, and refuse a hold whose maker it never saw. The maker's
+  // side is the opposite of this one, so the byte answers all three.
+  Side takerSide{};
 };
 
 struct FillRejected  // last-look: the held fill was rejected (or timed out)
