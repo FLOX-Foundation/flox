@@ -384,6 +384,26 @@ class MatchingEngine
   // Open last-look holds (approximate cross-thread gauge for the idle sweeper).
   uint64_t openHolds() const noexcept { return heldOpen_.load(std::memory_order_relaxed); }
 
+  // Whether a hold with this id is currently open. Read-only, and -- unlike
+  // openHolds(), which reads an atomic mirror -- backed directly by held_
+  // (an unordered_map, not synchronized): call only from the thread the
+  // engine belongs to.
+  bool hasHold(uint64_t heldId) const { return held_.contains(heldId); }
+
+  // Enumerate every open hold as fn(const Held&), in unspecified order. Lets
+  // an external component (e.g. one restoring its own hold set from a
+  // checkpoint) verify identity, not just count. Read-only; same
+  // thread-ownership rule as hasHold().
+  template <class Fn>
+  void forEachHold(Fn&& fn) const
+  {
+    for (const auto& [hid, h] : held_)
+    {
+      (void)hid;
+      fn(h);
+    }
+  }
+
   void setFeeSchedule(flox::FeeSchedule fees)
   {
     fees_ = std::move(fees);
