@@ -350,12 +350,12 @@ BENCHMARK(BM_EventBus_EndToEndLatency)->Iterations(100'000);
 // buys with a burning core.
 // =============================================================================
 
-static void BM_EventBus_IdleWakeLatency(benchmark::State& state)
+static void idleWakeLatency(benchmark::State& state, flox::ConsumerWaitMode mode)
 {
   flox::EventBus<flox::BenchEvent, 4096, 4> bus;
   StampingListener listener;
 
-  bus.subscribe(&listener);
+  bus.subscribe(&listener, /*required=*/true, mode);
   bus.start();
 
   flox::BenchEvent event{};
@@ -387,6 +387,44 @@ static void BM_EventBus_IdleWakeLatency(benchmark::State& state)
   state.counters["wake_ns"] = n != 0 ? double(total) / double(n) : 0.0;
   state.counters["wake_max_ns"] = double(worst);
 }
+
+// Active waiting: the consumer is somewhere in its backoff when the event
+// lands, so this is what the burning core buys.
+static void BM_EventBus_IdleWakeLatency(benchmark::State& state)
+{
+  idleWakeLatency(state, flox::ConsumerWaitMode::ACTIVE);
+}
 BENCHMARK(BM_EventBus_IdleWakeLatency)->Iterations(300)->UseRealTime();
+
+// Parked: the consumer is blocked, and the publisher has to wake it. The
+// difference between the two is the price of the mode, and it is the number
+// to look at before making parking anybody's default.
+static void BM_EventBus_IdleWakeLatency_Parked(benchmark::State& state)
+{
+  idleWakeLatency(state, flox::ConsumerWaitMode::PARKED);
+}
+BENCHMARK(BM_EventBus_IdleWakeLatency_Parked)->Iterations(300)->UseRealTime();
+
+// Publish cost with a parked consumer attached: the publisher now has a
+// wake-up to do. Compared against BM_EventBus_PublishLatency, which has an
+// active consumer and never wakes anybody.
+static void BM_EventBus_PublishLatency_ParkedConsumer(benchmark::State& state)
+{
+  flox::EventBus<flox::BenchEvent, 4096, 4> bus;
+  NoOpListener listener;
+
+  bus.subscribe(&listener, /*required=*/true, flox::ConsumerWaitMode::PARKED);
+  bus.start();
+
+  flox::BenchEvent event{};
+  for (auto _ : state)
+  {
+    bus.publish(event);
+  }
+
+  bus.stop();
+  state.SetItemsProcessed(state.iterations());
+}
+BENCHMARK(BM_EventBus_PublishLatency_ParkedConsumer)->Iterations(1'000'000);
 
 BENCHMARK_MAIN();

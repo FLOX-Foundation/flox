@@ -19,7 +19,7 @@ class EventBus : public ISubsystem;
 
 | Method                  | Description                                                     |
 | ----------------------- | --------------------------------------------------------------- |
-| `subscribe(listener, required)` | Registers a consumer. `required=true` (default) gates publishing. Returns `bool`. |
+| `subscribe(listener, required, wait)` | Registers a consumer. `required=true` (default) gates publishing. `wait` is `ConsumerWaitMode::ACTIVE` (default, spins) or `PARKED` (blocks, publisher wakes it). Returns `bool`. |
 | `publish(event)`        | Publishes event to ring buffer, returns sequence number (-1 if stopped). |
 | `tryPublish(event, timeout)` | Publishes with timeout. Returns `{PublishResult, seq}`. |
 | `start()` / `stop()`    | Starts or stops all consumer threads.                           |

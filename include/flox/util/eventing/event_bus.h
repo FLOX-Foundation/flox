@@ -53,6 +53,25 @@ struct ListenerType<pool::Handle<T>>
   using type = typename T::Listener;
 };
 
+// How a consumer waits when its ring is empty.
+//
+// ACTIVE is the historical behaviour and the default: spin, yield, then short
+// sleeps (see BusyBackoff). It never blocks, which is why an idle consumer
+// still costs about a fifth of a core -- the right trade for one bus on
+// hardware it owns, and the wrong one for a process holding hundreds of them.
+//
+// PARKED blocks on a condition variable and is woken by the publisher. It
+// costs nothing while idle and pays for that in wake-up latency.
+//
+// Deliberately not a member of the bus template: a process wires shards,
+// feeds and sinks of several bus types to one decision, and a per
+// instantiation enum would make that decision untypeable.
+enum class ConsumerWaitMode : uint8_t
+{
+  ACTIVE,
+  PARKED
+};
+
 template <typename Event,
           size_t CapacityPow2 = config::DEFAULT_EVENTBUS_CAPACITY,
           size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS>
@@ -97,6 +116,9 @@ class EventBus : public ISubsystem
   };
 #endif
 
+  // Named here too, because most callers reach it through a bus type.
+  using WaitMode = ConsumerWaitMode;
+
   using ConsumerRunnerFn = void (*)(EventBus*, uint32_t, void*, bool, BackoffMode);
   // One step over a consumer, with the listener type erased: returns true if
   // it delivered anything. This is what lets something other than a dedicated
@@ -111,6 +133,7 @@ class EventBus : public ISubsystem
     ConsumerStepFn stepper{nullptr};
     ConsumerDrainFn drainer{nullptr};
     bool required{true};  // influence on gating
+    WaitMode wait{WaitMode::ACTIVE};
     // Step state. Owned by whoever steps this consumer -- its own thread, or
     // an executor -- and never touched concurrently, exactly like the ring's
     // single-reader contract it implements. It lives here rather than in a
@@ -324,10 +347,10 @@ class EventBus : public ISubsystem
   EventBus(const EventBus&) = delete;
   EventBus& operator=(const EventBus&) = delete;
 
-  bool subscribe(Listener* listener, bool required = true)
+  bool subscribe(Listener* listener, bool required = true, WaitMode wait = WaitMode::ACTIVE)
   {
     return subscribeImpl(listener, &runConsumer<Listener>, &stepConsumer<Listener>,
-                         &drainConsumerSlot<Listener>, required);
+                         &drainConsumerSlot<Listener>, required, wait);
   }
 
   // Subscribe with a concrete type. The consumer loop is instantiated
@@ -335,10 +358,10 @@ class EventBus : public ISubsystem
   // run over published events. L only needs the handler methods the Event's
   // dispatcher calls; deriving from Listener is not required.
   template <typename L>
-  bool subscribeStatic(L* listener, bool required = true)
+  bool subscribeStatic(L* listener, bool required = true, WaitMode wait = WaitMode::ACTIVE)
   {
     return subscribeImpl(listener, &runConsumer<L>, &stepConsumer<L>, &drainConsumerSlot<L>,
-                         required);
+                         required, wait);
   }
 
   // ---- driving consumers from outside ----
@@ -379,6 +402,21 @@ class EventBus : public ISubsystem
       return;
     }
     _consumers[i].drainer(this, i);
+  }
+
+  // Test seam for the one race parking has to survive: a publish landing
+  // between a consumer's last empty look at the ring and it raising its hand.
+  // That window is a couple of hundred nanoseconds wide and sits inside
+  // park(), so no test can aim at it from outside -- and an untestable
+  // correctness claim is a claim nobody checks. The hook is called inside
+  // park(), at exactly that instant, and a test publishes from it.
+  //
+  // Null by default: one predictable branch on the parked path, nothing at
+  // all on the active one.
+  void setParkProbe(void (*probe)(void*), void* user) noexcept
+  {
+    _parkProbe = probe;
+    _parkProbeUser = user;
   }
 
   // The listener threw and the slot is out of service. A driver stepping many
@@ -558,6 +596,16 @@ class EventBus : public ISubsystem
       _monitorThread.reset();
     }
 
+    // _running is already false, so a parked consumer is waiting for an event
+    // that will never come. Joining it below would wait out its net instead.
+    if (_anyParked)
+    {
+      {
+        std::lock_guard<std::mutex> lk(_parkMx);
+      }
+      _parkCv.notify_all();
+    }
+
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -732,6 +780,10 @@ class EventBus : public ISubsystem
     }
 
     _publishCount.fetch_add(count, std::memory_order_relaxed);
+    if (_anyParked)
+    {
+      wakeParked();
+    }
     return lastSeq;
   }
 
@@ -861,7 +913,7 @@ class EventBus : public ISubsystem
 
  private:
   bool subscribeImpl(void* listener, ConsumerRunnerFn runner, ConsumerStepFn stepper,
-                     ConsumerDrainFn drainer, bool required)
+                     ConsumerDrainFn drainer, bool required, WaitMode wait)
   {
     if (!listener)
     {
@@ -882,6 +934,15 @@ class EventBus : public ISubsystem
     _consumers[idx].stepper = stepper;
     _consumers[idx].drainer = drainer;
     _consumers[idx].required = required;
+    _consumers[idx].wait = wait;
+    if (wait == WaitMode::PARKED)
+    {
+      // Read on the publish path. A plain bool set before start(), so a bus
+      // with no parked consumer pays one predictable load and nothing else --
+      // the parking machinery must not slow down the buses that do not use
+      // it.
+      _anyParked = true;
+    }
     _consumers[idx].next = -1;
     _consumers[idx].failed.store(false, std::memory_order_relaxed);
     _consumers[idx].seq.store(-1, std::memory_order_relaxed);
@@ -1040,6 +1101,58 @@ class EventBus : public ISubsystem
     return true;
   }
 
+  // Block until somebody publishes, the bus stops, or the safety net expires.
+  //
+  // The race this has to survive is the one every parked consumer has: the
+  // ring looks empty, and a publish lands in the instant between looking and
+  // sleeping. Two things close it. The waiter count is incremented BEFORE the
+  // last look, with a sequentially consistent fence on either side (here and
+  // on the publish path), so a publisher that misses the count cannot also be
+  // missed by the look. And the mutex is held across the look and the wait,
+  // so a publisher that sees the count cannot slip its notify in between.
+  //
+  // The timed wait is a net under both of those, not the mechanism: a missed
+  // wake-up costs one net interval instead of forever. Nothing is expected to
+  // rely on it, and a test asserts exactly that by failing if wake-ups start
+  // arriving on the net's schedule.
+  void park(uint32_t i)
+  {
+    if (_parkProbe != nullptr)
+    {
+      // Before the mutex and before the hand goes up: the exact instant a
+      // publisher can miss this consumer. See setParkProbe().
+      _parkProbe(_parkProbeUser);
+    }
+    std::unique_lock<std::mutex> lk(_parkMx);
+    _parkWaiters.fetch_add(1, std::memory_order_seq_cst);
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    const int64_t want = _consumers[i].next + 1;
+    const size_t idx = size_t(want) & Mask;
+    if (_published[idx].load(std::memory_order_acquire) != want &&
+        _running.load(std::memory_order_acquire))
+    {
+      _parkCv.wait_for(lk, kParkNetInterval);
+    }
+    _parkWaiters.fetch_sub(1, std::memory_order_relaxed);
+  }
+
+  // Wake whoever is parked. Called after a publish and on the way down.
+  void wakeParked()
+  {
+    // The fence pairs with the one in park(): between them, a publisher that
+    // reads no waiters is guaranteed to have made its event visible to a
+    // consumer that is about to take its last look.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    if (_parkWaiters.load(std::memory_order_seq_cst) == 0)
+    {
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> lk(_parkMx);
+    }
+    _parkCv.notify_all();
+  }
+
   // Everything still published for this consumer, no run cap, no waiting.
   // Taken on the way down when the bus was told to drain on stop: the events
   // are already in the ring and the producer is gone, so the only question is
@@ -1119,6 +1232,7 @@ class EventBus : public ISubsystem
   void consumerLoop(uint32_t i, L* l, bool, BackoffMode backoffMode)
   {
     BusyBackoff backoff(backoffMode);
+    const bool parked = _consumers[i].wait == WaitMode::PARKED;
     while (_running.load(std::memory_order_acquire))
     {
       const bool worked = pollOnce<L>(i, l);
@@ -1129,6 +1243,10 @@ class EventBus : public ISubsystem
       if (worked)
       {
         backoff.reset();
+      }
+      else if (parked)
+      {
+        park(i);
       }
       else
       {
@@ -1331,6 +1449,10 @@ class EventBus : public ISubsystem
     _published[idx].store(seq, std::memory_order_release);
 
     _publishCount.fetch_add(1, std::memory_order_relaxed);
+    if (_anyParked)
+    {
+      wakeParked();
+    }
     return {PublishResult::SUCCESS, seq};
   }
 
@@ -1417,6 +1539,18 @@ class EventBus : public ISubsystem
 
   bool _drainOnStop{false};
   bool _ownConsumerThreads{true};
+  // Set at subscribe time, read on the publish path: a bus nobody parks on
+  // must not pay for parking.
+  bool _anyParked{false};
+  // A missed wake-up costs one of these, not forever. Long on purpose: it is
+  // a net, and a net that catches things often is a mechanism nobody meant to
+  // build.
+  static constexpr auto kParkNetInterval = std::chrono::milliseconds(50);
+  alignas(64) std::atomic<uint32_t> _parkWaiters{0};
+  void (*_parkProbe)(void*){nullptr};
+  void* _parkProbeUser{nullptr};
+  std::mutex _parkMx;
+  std::condition_variable _parkCv;
   BackoffMode _backoffMode{config::defaultBackoffMode};
 
   // Monitoring counters (relaxed ordering -- advisory only)

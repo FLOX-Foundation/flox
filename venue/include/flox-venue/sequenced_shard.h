@@ -232,7 +232,7 @@ class SequencedShard
   // called before start().
   bool subscribeOutbound(IEngineEventListener* l, bool required = true)
   {
-    return outbound_.subscribe(l, required);
+    return outbound_.subscribe(l, required, waitMode_);
   }
 
   // Checkpoint hook: runs on the consumer thread after each checkpoint
@@ -241,6 +241,14 @@ class SequencedShard
   // session-layer sidecars at the same durability point -- e.g. the FIX
   // session sidecar (FixSessionSidecar::write to
   // FixSessionSidecar::pathFor(journal base), i.e. `<base>.fixsessions`).
+  // How this shard's consumers wait when there is nothing to do. Active
+  // waiting is the default and the right answer for a shard on a machine it
+  // owns: it is the lowest latency there is. It is the wrong answer for a
+  // process holding hundreds of shards, where the idle spinning is the whole
+  // CPU budget. Set before start() and before subscribing outbound
+  // consumers -- it applies to the subscriptions taken after it.
+  void setWaitMode(flox::ConsumerWaitMode mode) noexcept { waitMode_ = mode; }
+
   // The lane this shard takes its checkpoint pauses on, shared with every
   // other shard driven by the same thread. nullptr (the default) means the
   // shard pauses whenever it likes, which is right when it owns a thread.
@@ -287,7 +295,7 @@ class SequencedShard
     // history.
     recovered_ = recoverAll();
     outbound_.start();  // must be live before the matching thread publishes
-    ingress_.subscribe(&consumer_, true);
+    ingress_.subscribe(&consumer_, true, waitMode_);
     ingress_.start();
     if (idleSweepNs_ > 0)
     {
@@ -1104,6 +1112,7 @@ class SequencedShard
   std::atomic<bool> checkpointMandatory_{false};
   std::atomic<uint64_t> checkpointsSkippedBusy_{0};
   CheckpointLane* lane_{nullptr};
+  flox::ConsumerWaitMode waitMode_{flox::ConsumerWaitMode::ACTIVE};
   uint64_t jitterState_{0};
   std::atomic<uint64_t> effMaxRecords_{0};
   std::atomic<uint64_t> effMaxBytes_{0};
