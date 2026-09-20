@@ -277,10 +277,14 @@ TEST(VenueCheckpointLane, SkippedCheckpointCostsASnapshotNotARecord)
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     skipped = s->checkpointsSkippedBusy();
-    lane.leave();
 
-    liveHash = s->engine().stateHash();
+    // Stop BEFORE reading the engine, and hold the lane until after: stop()
+    // joins the consumer, so the state is read by the only thread left, and a
+    // lane still taken means the drain cannot slip a checkpoint in and put a
+    // snapshot on the disk that the assertions below say is not there.
     s->stop();
+    liveHash = s->engine().stateHash();
+    lane.leave();
   }
   ASSERT_GT(skipped, 0u);
 
@@ -291,9 +295,9 @@ TEST(VenueCheckpointLane, SkippedCheckpointCostsASnapshotNotARecord)
   {
     auto s2 = std::make_unique<SequencedShard<>>(cfg(1), base, MatchingBook{}, Journal::Sync::Off,
                                                  stepClock(), /*idleSweepIntervalNs*/ 0, ck);
-    s2->start();
-    EXPECT_EQ(s2->engine().stateHash(), liveHash);
+    s2->start();  // recovery happens here, on this thread
     s2->stop();
+    EXPECT_EQ(s2->engine().stateHash(), liveHash);
   }
   cleanFiles(base);
 }
