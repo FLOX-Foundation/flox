@@ -263,8 +263,14 @@ class SequencedShard
   }
 
   // The thresholds this shard actually uses, after its jitter cut.
-  uint64_t effectiveMaxSegmentRecords() const noexcept { return effMaxRecords_; }
-  uint64_t effectiveMaxSegmentBytes() const noexcept { return effMaxBytes_; }
+  uint64_t effectiveMaxSegmentRecords() const noexcept
+  {
+    return effMaxRecords_.load(std::memory_order_relaxed);
+  }
+  uint64_t effectiveMaxSegmentBytes() const noexcept
+  {
+    return effMaxBytes_.load(std::memory_order_relaxed);
+  }
 
   // Keep it fast: matching is paused for its duration. Set before start().
   void onCheckpoint(std::function<void(int64_t boundaryTs)> hook)
@@ -339,8 +345,10 @@ class SequencedShard
     // threshold. Only requests (exchange guards against re-requesting); the
     // snapshot itself runs on the consumer thread at the next command
     // boundary, and the TimeTick nudge guarantees one on a quiet symbol.
-    if (((checkpointCfg_.maxSegmentRecords > 0 && journal_.count() >= effMaxRecords_) ||
-         (checkpointCfg_.maxSegmentBytes > 0 && journal_.bytes() >= effMaxBytes_)) &&
+    if (((checkpointCfg_.maxSegmentRecords > 0 &&
+          journal_.count() >= effMaxRecords_.load(std::memory_order_relaxed)) ||
+         (checkpointCfg_.maxSegmentBytes > 0 &&
+          journal_.bytes() >= effMaxBytes_.load(std::memory_order_relaxed))) &&
         !checkpointRequested_.exchange(true, std::memory_order_acq_rel))
     {
       submit(InboundCommand{TimeTick{symbol_}});
@@ -972,12 +980,19 @@ class SequencedShard
     return v == 0 ? 1 : v;
   }
 
+  // Written on the consumer thread (after a checkpoint) and read by whoever
+  // sweeps -- the sweeper thread, or an external driver. Atomic and relaxed:
+  // the reader wants a threshold, not a particular one, and reading the
+  // previous segment's cut one sweep longer costs a sweep interval of delay
+  // on a checkpoint request.
   void rollThresholds() noexcept
   {
-    effMaxRecords_ = cut(checkpointCfg_.maxSegmentRecords, checkpointCfg_.triggerJitterPct,
-                         splitmix64(jitterState_));
-    effMaxBytes_ =
-        cut(checkpointCfg_.maxSegmentBytes, checkpointCfg_.triggerJitterPct, splitmix64(jitterState_));
+    effMaxRecords_.store(cut(checkpointCfg_.maxSegmentRecords, checkpointCfg_.triggerJitterPct,
+                             splitmix64(jitterState_)),
+                         std::memory_order_relaxed);
+    effMaxBytes_.store(cut(checkpointCfg_.maxSegmentBytes, checkpointCfg_.triggerJitterPct,
+                           splitmix64(jitterState_)),
+                       std::memory_order_relaxed);
   }
 
   // Wait for the in-flight background snapshot publish, if any. Safe from any
@@ -1090,8 +1105,8 @@ class SequencedShard
   std::atomic<uint64_t> checkpointsSkippedBusy_{0};
   CheckpointLane* lane_{nullptr};
   uint64_t jitterState_{0};
-  uint64_t effMaxRecords_{0};
-  uint64_t effMaxBytes_{0};
+  std::atomic<uint64_t> effMaxRecords_{0};
+  std::atomic<uint64_t> effMaxBytes_{0};
   std::function<void(int64_t)> checkpointHook_;
   std::atomic<uint64_t> checkpoints_{0};
   std::atomic<uint64_t> checkpointPublishFailures_{0};
