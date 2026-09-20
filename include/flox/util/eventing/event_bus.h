@@ -29,6 +29,7 @@
 #include "flox/log/log.h"
 #include "flox/util/base/sanitizer.h"
 #include "flox/util/concurrency/jthread.h"
+#include "flox/util/eventing/wake_set.h"
 #include "flox/util/memory/pool.h"
 #include "flox/util/performance/busy_backoff.h"
 #include "flox/util/performance/profile.h"
@@ -404,6 +405,52 @@ class EventBus : public ISubsystem
     _consumers[i].drainer(this, i);
   }
 
+  // Is there anything published for consumer i right now? Exactly the look
+  // pollConsumer() starts with, without the delivery: this is what a thread
+  // stepping many consumers asks about all of them before it goes to sleep.
+  //
+  // Reads the stepping driver's own cursor, so it is for the driver of this
+  // consumer to call and nobody else -- the same single-reader contract as
+  // pollConsumer().
+  bool consumerHasPending(uint32_t i) const noexcept
+  {
+    if (i >= _consumerCount.load(std::memory_order_acquire))
+    {
+      return false;
+    }
+    const ConsumerSlot& slot = _consumers[i];
+    if (slot.failed.load(std::memory_order_relaxed))
+    {
+      return false;  // out of service: it will never have work again
+    }
+    const int64_t want = slot.next + 1;
+    const size_t idx = size_t(want) & Mask;
+    return _published[idx].load(std::memory_order_acquire) == want;
+  }
+
+  // ---- one wait point over many buses ----
+  //
+  // WaitMode::PARKED gives a consumer thread somewhere to sleep, and that is
+  // as far as it goes: the condition variable belongs to this bus. A thread
+  // stepping consumers across many buses (see setOwnConsumerThreads) cannot
+  // block on any one of them, so without this it has nowhere to sleep and
+  // spins -- the exact cost parking exists to remove, moved up one level.
+  //
+  // Point every such bus at one WakeSet and the publisher wakes the set
+  // instead. Must be set before start(); a bus with no set behaves exactly as
+  // it did before there were any.
+  void setWakeSet(WakeSet* set) noexcept
+  {
+    if (_running.load(std::memory_order_acquire))
+    {
+      return;  // same rule as subscribe(): the publish path is fixed at start
+    }
+    _wakeSet = set;
+    _wakeOnPublish = _anyParked || (set != nullptr);
+  }
+
+  WakeSet* wakeSet() const noexcept { return _wakeSet; }
+
   // Test seam for the one race parking has to survive: a publish landing
   // between a consumer's last empty look at the ring and it raising its hand.
   // That window is a couple of hundred nanoseconds wide and sits inside
@@ -605,6 +652,13 @@ class EventBus : public ISubsystem
       }
       _parkCv.notify_all();
     }
+    // A driver parked on a shared set is in the same position, except that
+    // its other buses may still be running: the set is woken, it looks again,
+    // and this bus simply has nothing more for it.
+    if (_wakeSet != nullptr)
+    {
+      _wakeSet->wake();
+    }
 
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < n; ++i)
@@ -780,9 +834,9 @@ class EventBus : public ISubsystem
     }
 
     _publishCount.fetch_add(count, std::memory_order_relaxed);
-    if (_anyParked)
+    if (_wakeOnPublish)
     {
-      wakeParked();
+      wakeWaiters();
     }
     return lastSeq;
   }
@@ -942,6 +996,7 @@ class EventBus : public ISubsystem
       // the parking machinery must not slow down the buses that do not use
       // it.
       _anyParked = true;
+      _wakeOnPublish = true;
     }
     _consumers[idx].next = -1;
     _consumers[idx].failed.store(false, std::memory_order_relaxed);
@@ -1134,6 +1189,20 @@ class EventBus : public ISubsystem
       _parkCv.wait_for(lk, kParkNetInterval);
     }
     _parkWaiters.fetch_sub(1, std::memory_order_relaxed);
+  }
+
+  // Everything a publish has to wake, in the order it was added. Reached
+  // through a single flag, so the buses that wake nobody stay untouched.
+  void wakeWaiters()
+  {
+    if (_anyParked)
+    {
+      wakeParked();
+    }
+    if (_wakeSet != nullptr)
+    {
+      _wakeSet->wake();
+    }
   }
 
   // Wake whoever is parked. Called after a publish and on the way down.
@@ -1449,9 +1518,9 @@ class EventBus : public ISubsystem
     _published[idx].store(seq, std::memory_order_release);
 
     _publishCount.fetch_add(1, std::memory_order_relaxed);
-    if (_anyParked)
+    if (_wakeOnPublish)
     {
-      wakeParked();
+      wakeWaiters();
     }
     return {PublishResult::SUCCESS, seq};
   }
@@ -1542,6 +1611,11 @@ class EventBus : public ISubsystem
   // Set at subscribe time, read on the publish path: a bus nobody parks on
   // must not pay for parking.
   bool _anyParked{false};
+  // The shared wait point, if this bus was pointed at one. Not owned.
+  WakeSet* _wakeSet{nullptr};
+  // _anyParked || _wakeSet: the single load the publish path makes, so that a
+  // bus with neither pays one predictable branch and nothing else.
+  bool _wakeOnPublish{false};
   // A missed wake-up costs one of these, not forever. Long on purpose: it is
   // a net, and a net that catches things often is a mechanism nobody meant to
   // build.
