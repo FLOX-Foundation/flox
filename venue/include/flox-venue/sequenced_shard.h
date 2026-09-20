@@ -241,6 +241,36 @@ class SequencedShard
   // session-layer sidecars at the same durability point -- e.g. the FIX
   // session sidecar (FixSessionSidecar::write to
   // FixSessionSidecar::pathFor(journal base), i.e. `<base>.fixsessions`).
+  // Who runs this shard's consumers.
+  //
+  // By default the shard owns three threads -- the matching consumer, the
+  // outbound subscribers and the idle sweeper -- which is the right shape for
+  // a shard on a machine it owns. A process holding hundreds of shards cannot
+  // afford three threads each, so it turns this off and calls pollOnce() and
+  // sweepOnce() from a thread of its own, over as many shards as it likes.
+  //
+  // Set before start(). With threads off, nothing runs unless somebody steps
+  // it: a shard nobody steps accepts commands and matches none of them.
+  void setOwnThreads(bool own) noexcept { ownThreads_ = own; }
+  bool ownThreads() const noexcept { return ownThreads_; }
+
+  // One pass over this shard: the matching consumer, then every outbound
+  // subscriber. Returns true if anything was delivered -- a driver that gets
+  // false from every shard it owns is the one that should wait.
+  //
+  // Only for a shard with setOwnThreads(false), and only from one thread at a
+  // time: this is the ring's single reader.
+  bool pollOnce()
+  {
+    bool any = ingress_.pollConsumer(0);
+    const uint32_t n = outbound_.consumerCount();
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      any = outbound_.pollConsumer(i) || any;
+    }
+    return any;
+  }
+
   // How this shard's consumers wait when there is nothing to do. Active
   // waiting is the default and the right answer for a shard on a machine it
   // owns: it is the lowest latency there is. It is the wrong answer for a
@@ -294,10 +324,12 @@ class SequencedShard
     // reconnecting clients reconcile via snapshots, not a re-broadcast of
     // history.
     recovered_ = recoverAll();
+    outbound_.setOwnConsumerThreads(ownThreads_);
+    ingress_.setOwnConsumerThreads(ownThreads_);
     outbound_.start();  // must be live before the matching thread publishes
     ingress_.subscribe(&consumer_, true, waitMode_);
     ingress_.start();
-    if (idleSweepNs_ > 0)
+    if (idleSweepNs_ > 0 && ownThreads_)
     {
       startIdleSweeper();
     }
@@ -376,8 +408,20 @@ class SequencedShard
     return true;
   }
 
+  // Waits until everything submitted so far has been matched and published.
+  //
+  // With no threads of its own the shard has to be stepped to get there, and
+  // the caller of flush() is the only thread that can be doing it -- an
+  // executor calling flush() on one of its own shards would be waiting for
+  // itself. So flush() steps.
   void flush()
   {
+    if (!ownThreads_)
+    {
+      while (pollOnce())
+      {
+      }
+    }
     ingress_.flush();
     outbound_.flush();
   }
@@ -385,7 +429,7 @@ class SequencedShard
   void stop()
   {
     stopIdleSweeper();
-    ingress_.flush();
+    flush();
     ingress_.stop();
     outbound_.flush();
     outbound_.stop();
@@ -436,13 +480,13 @@ class SequencedShard
     // Drain FIRST: the request must be observed no earlier than the boundary
     // of the last command submitted before this call -- otherwise a lagging
     // consumer would snapshot an earlier boundary (correct but surprising).
-    ingress_.flush();
+    flush();
     // Somebody is waiting for the answer, so this one waits for the lane
     // instead of skipping when it is busy.
     checkpointMandatory_.store(true, std::memory_order_release);
     checkpointRequested_.store(true, std::memory_order_release);
     submit(InboundCommand{TimeTick{symbol_}});
-    ingress_.flush();  // the boundary ran: clone taken, background publish spawned
+    flush();  // the boundary ran: clone taken, background publish spawned
     waitCheckpointPublish();
     return checkpoints_.load(std::memory_order_acquire) > before;
   }
@@ -1113,6 +1157,7 @@ class SequencedShard
   std::atomic<uint64_t> checkpointsSkippedBusy_{0};
   CheckpointLane* lane_{nullptr};
   flox::ConsumerWaitMode waitMode_{flox::ConsumerWaitMode::ACTIVE};
+  bool ownThreads_{true};
   uint64_t jitterState_{0};
   std::atomic<uint64_t> effMaxRecords_{0};
   std::atomic<uint64_t> effMaxBytes_{0};
