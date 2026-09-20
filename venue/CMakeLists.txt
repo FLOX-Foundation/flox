@@ -91,6 +91,9 @@ if(FLOX_BUILD_BENCHMARKS)
   add_executable(bench_venue_generated_flow
                  ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/bench_generated_flow.cpp)
   target_link_libraries(bench_venue_generated_flow PRIVATE flox-venue)
+  add_executable(bench_venue_checkpoint_lane
+                 ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/bench_checkpoint_lane.cpp)
+  target_link_libraries(bench_venue_checkpoint_lane PRIVATE flox-venue)
   # Sockets: perimeter only.
   if(FLOX_VENUE_PERIMETER)
     add_executable(bench_venue_md_decoder_seam
