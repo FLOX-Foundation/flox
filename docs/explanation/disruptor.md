@@ -73,22 +73,30 @@ _published[seq & Mask].store(seq);  // Signal consumers
 
 ### Consuming
 
-Each consumer runs in a dedicated thread:
+Consuming is one step; running it forever is a separate decision:
 
 ```cpp
-while (running) {
-  // Wait for next sequence
-  while (_published[seq & Mask] != seq) {
-    backoff.pause();
+// The step: everything published and contiguous right now, up to a run cap.
+// Returns false when there was nothing for this consumer.
+bool pollOnce(i, listener) {
+  while (_published[seq & Mask] == seq && run < maxRun) {
+    listener->onTrade(_storage[seq & Mask]);  // dispatch
+    ++seq; ++run;
   }
+  if (nothing) return false;
+  _consumers[i].seq.store(last);              // progress, published once
+  return true;
+}
 
-  // Process event
-  listener->onTrade(_storage[seq & Mask]);
-
-  // Advance sequence
-  _consumers[i].seq.store(seq);
+// The default way to keep taking it: one thread per consumer.
+while (running) {
+  if (!pollOnce(i, listener)) backoff.pause();
 }
 ```
+
+By default each consumer gets that thread. See
+[Consumers without a thread of their own](#consumers-without-a-thread-of-their-own)
+for when to take the step yourself.
 
 ## Sequence Gating
 
@@ -188,6 +196,61 @@ BusyBackoff backoff(BackoffMode::ADAPTIVE);  // Default
 - Sleep 100μs and reset to medium level
 
 This balances latency (busy-spin) with CPU usage (sleep) based on deployment environment.
+
+Note what backoff does **not** do: a consumer never blocks. Even at its
+laziest, ADAPTIVE wakes on a 100 μs sleep — ten thousand times a second, per
+consumer, with nothing to do. On a 14-core machine one idle consumer thread
+costs about 0.14 of a core. That is the right trade for one bus on hardware it
+owns, and the wrong one for a process holding hundreds.
+
+## Consumers without a thread of their own
+
+```cpp
+bus.setOwnConsumerThreads(false);   // before start()
+bus.subscribe(&listener);
+bus.start();                        // spawns nothing
+
+// Your thread, your cadence, across as many consumers and buses as you like.
+while (running) {
+  bool any = false;
+  for (uint32_t i = 0; i < bus.consumerCount(); ++i) {
+    any |= bus.pollConsumer(i);
+  }
+  if (!any) backoff.pause();
+}
+```
+
+Which shape to take:
+
+| | thread per consumer (default) | stepped from outside |
+|---|---|---|
+| when | one bus on a machine it owns; latency is the budget | many buses in one process; threads are the budget |
+| idle cost | ~0.14 core per consumer, always | one waiting thread, however many consumers |
+| latency | the measured numbers below | plus the time to get round to this consumer |
+| who waits | the consumer | you, after every consumer came back empty |
+
+Measured on 14 cores (publish to handler entry, 4096-slot ring, ADAPTIVE):
+
+| | hot (consumer already spinning) | after 2 ms idle |
+|---|---|---|
+| latency | ~170 ns | ~9.3 μs |
+
+The rules for stepping consumers yourself:
+
+- **One stepper per consumer at a time.** `pollConsumer(i)` is the ring's
+  single reader; two threads on one index is the same bug as two consumers
+  sharing a gating slot, and nothing detects it.
+- **Do not mix.** A consumer with its own thread must not also be stepped.
+- **A slot can fail without taking you with it.** If a listener throws, that
+  consumer is marked failed (`consumerFailed(i)`, and `DEAD` to the health
+  layer), further steps on it do nothing, and every other consumer keeps
+  going. Stepping many consumers means one bad handler must not stop the rest.
+- **Health is progress, not presence.** A consumer nobody steps while work is
+  pending reports `STALLED` after `stallThreshold` — the same as a consumer
+  whose thread is stuck.
+- **Drain before stop.** `drainConsumer(i)` hands over what is left in the
+  ring; `stop()` also does it for you when `enableDrainOnStop()` is set and
+  nobody owns a consumer thread.
 
 ## Multiple Consumers
 

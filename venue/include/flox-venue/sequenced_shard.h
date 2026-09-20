@@ -285,6 +285,48 @@ class SequencedShard
     return ingress_.publish(std::move(ev));
   }
 
+  // One sweep: request a checkpoint if the segment has grown past its
+  // threshold, and nudge expiry if holds are open and the interval has
+  // passed. Cheap and non-blocking -- both arms end in submit(), which
+  // publishes to the ingress ring.
+  //
+  // Takes no time argument on purpose: the clock is the shard's own (the
+  // sequencer clock, which is what makes the sweep replay deterministically),
+  // and it is read only when there is actually something to expire, so a
+  // caller sweeping hundreds of shards does not pay a clock read per shard
+  // per pass.
+  //
+  // Returns true if it submitted anything.
+  bool sweepOnce()
+  {
+    bool submitted = false;
+    // Checkpoint auto-trigger: the current segment crossed its record/byte
+    // threshold. Only requests (exchange guards against re-requesting); the
+    // snapshot itself runs on the consumer thread at the next command
+    // boundary, and the TimeTick nudge guarantees one on a quiet symbol.
+    if (((checkpointCfg_.maxSegmentRecords > 0 &&
+          journal_.count() >= checkpointCfg_.maxSegmentRecords) ||
+         (checkpointCfg_.maxSegmentBytes > 0 &&
+          journal_.bytes() >= checkpointCfg_.maxSegmentBytes)) &&
+        !checkpointRequested_.exchange(true, std::memory_order_acq_rel))
+    {
+      submit(InboundCommand{TimeTick{symbol_}});
+      submitted = true;
+    }
+    if (consumer_.engine().openHolds() == 0)
+    {
+      return submitted;
+    }
+    const int64_t now = sweepClock_();
+    if (now - lastSweepNs_ < idleSweepNs_)
+    {
+      return submitted;
+    }
+    lastSweepNs_ = now;
+    submit(InboundCommand{TimeTick{symbol_}});
+    return true;
+  }
+
   void flush()
   {
     ingress_.flush();
@@ -850,40 +892,20 @@ class SequencedShard
   // The consumer thread stamps and journals it like any other command, so the
   // sweep replays deterministically. The engine's openHolds() gauge keeps the
   // journal free of ticks when nothing is pending.
+  //
+  // The work is one call, and the thread below is only a way to call it. A
+  // process holding hundreds of shards drives sweepOnce() from whatever it
+  // already has going round -- see startIdleSweeper() for the default shape.
   void startIdleSweeper()
   {
     sweepStop_.store(false, std::memory_order_release);
     sweeper_ = makeThread(
         "venue.shard.sweeper", [this]
         {
-          int64_t lastSweep = 0;
           while (!sweepStop_.load(std::memory_order_acquire))
           {
             std::this_thread::sleep_for(std::chrono::microseconds(200));
-            // Checkpoint auto-trigger: the current segment crossed its
-            // record/byte threshold. Only requests (exchange guards against
-            // re-requesting); the snapshot itself runs on the consumer thread
-            // at the next command boundary, and the TimeTick nudge guarantees
-            // one on a quiet symbol.
-            if (((checkpointCfg_.maxSegmentRecords > 0 &&
-                  journal_.count() >= checkpointCfg_.maxSegmentRecords) ||
-                 (checkpointCfg_.maxSegmentBytes > 0 &&
-                  journal_.bytes() >= checkpointCfg_.maxSegmentBytes)) &&
-                !checkpointRequested_.exchange(true, std::memory_order_acq_rel))
-            {
-              submit(InboundCommand{TimeTick{symbol_}});
-            }
-            if (consumer_.engine().openHolds() == 0)
-            {
-              continue;
-            }
-            const int64_t now = sweepClock_();
-            if (now - lastSweep < idleSweepNs_)
-            {
-              continue;
-            }
-            lastSweep = now;
-            submit(InboundCommand{TimeTick{symbol_}});
+            sweepOnce();
           } });
   }
 
@@ -909,6 +931,9 @@ class SequencedShard
   int64_t idleSweepNs_{0};
   std::thread sweeper_;
   std::atomic<bool> sweepStop_{false};
+  // Sweep cursor. Private to whoever calls sweepOnce(): the sweeper thread
+  // when there is one, the external driver when there is not.
+  int64_t lastSweepNs_{0};
   std::atomic<bool> checkpointRequested_{false};
   std::function<void(int64_t)> checkpointHook_;
   std::atomic<uint64_t> checkpoints_{0};

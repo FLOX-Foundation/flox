@@ -983,6 +983,86 @@ void test_shard_idle_sweeper()
 
 // ---- T020: clientOrderId dedup ----------------------------------------------
 
+// ---- T041: the sweep is a call; the thread is only one way to make it ------
+
+void test_shard_sweep_without_a_sweeper_thread()
+{
+  std::printf("test_shard_sweep_without_a_sweeper_thread\n");
+  const std::string path = tmpPath("venue_lastlook_sweep_once", ".bin");
+  std::remove(path.c_str());
+
+  auto now = std::make_shared<std::atomic<int64_t>>(1000);
+  SequencedShard<>::TimeSource clk = [now]
+  { return now->load(); };
+
+  std::atomic<int> fillHeld{0};
+  std::atomic<int> fillRejected{0};
+  struct Sink : IEngineEventListener
+  {
+    std::atomic<int>* held{nullptr};
+    std::atomic<int>* rejected{nullptr};
+    void onEngineEvent(const EngineEventMsg& e) override
+    {
+      if (std::get_if<FillHeld>(&e.event))
+      {
+        held->fetch_add(1);
+      }
+      if (std::get_if<FillRejected>(&e.event))
+      {
+        rejected->fetch_add(1);
+      }
+    }
+  } sink;
+  sink.held = &fillHeld;
+  sink.rejected = &fillRejected;
+
+  {
+    // No sweeper thread at all: a process holding hundreds of shards drives
+    // the sweep from whatever it already has going round.
+    auto shard = std::make_unique<SequencedShard<>>(cfg(/*window*/ 5000), path, MatchingBook{},
+                                                    Journal::Sync::Off, clk,
+                                                    /*idleSweepIntervalNs*/ 0);
+    shard->subscribeOutbound(&sink);
+    shard->start();
+    NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
+    mk.lastLook = true;
+    shard->submit(InboundCommand{mk});
+    shard->submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)});
+    shard->flush();
+    CHECK(fillHeld.load() == 1);
+    CHECK(fillRejected.load() == 0);
+
+    // Nothing sweeps on its own, so nothing expires however long we wait.
+    now->store(1'000'000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CHECK(fillRejected.load() == 0);
+
+    // One call does what the thread would have done.
+    CHECK(shard->sweepOnce());
+    shard->flush();
+    CHECK(fillRejected.load() == 1);
+
+    // Nothing left to expire: the sweep says so instead of submitting ticks.
+    CHECK(!shard->sweepOnce());
+    shard->stop();
+  }
+
+  // Same journal as the threaded sweeper writes: the tick went through the
+  // ingress path, so the expiry replays.
+  const auto records = Journal::loadTimed(path);
+  int ticks = 0;
+  for (const auto& [ts, cmd] : records)
+  {
+    (void)ts;
+    if (std::get_if<TimeTick>(&cmd))
+    {
+      ++ticks;
+    }
+  }
+  CHECK(ticks == 1);
+  std::remove(path.c_str());
+}
+
 void test_clordid_dedup()
 {
   std::printf("test_clordid_dedup\n");
@@ -1126,6 +1206,7 @@ TEST(VenueLastLook, LifecycleSuite)
   test_stp_cancel_while_held_conservation();
   test_fok_vs_lastlook();
   test_shard_idle_sweeper();
+  test_shard_sweep_without_a_sweeper_thread();
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   EXPECT_EQ(g_failures, 0);
 }

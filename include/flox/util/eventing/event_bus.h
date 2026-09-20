@@ -98,16 +98,34 @@ class EventBus : public ISubsystem
 #endif
 
   using ConsumerRunnerFn = void (*)(EventBus*, uint32_t, void*, bool, BackoffMode);
+  // One step over a consumer, with the listener type erased: returns true if
+  // it delivered anything. This is what lets something other than a dedicated
+  // thread drive a consumer -- see pollConsumer().
+  using ConsumerStepFn = bool (*)(EventBus*, uint32_t);
+  using ConsumerDrainFn = void (*)(EventBus*, uint32_t);
 
   struct ConsumerSlot
   {
     void* listener{nullptr};
     ConsumerRunnerFn runner{nullptr};
-    bool required{true};                       // influence on gating
-    alignas(64) std::atomic<int64_t> seq{-1};  // last handled seq
+    ConsumerStepFn stepper{nullptr};
+    ConsumerDrainFn drainer{nullptr};
+    bool required{true};  // influence on gating
+    // Step state. Owned by whoever steps this consumer -- its own thread, or
+    // an executor -- and never touched concurrently, exactly like the ring's
+    // single-reader contract it implements. It lives here rather than in a
+    // loop's stack frame so that the step can be a call.
+    int64_t next{-1};                          // last handled seq, driver's private copy
+    size_t maxRun{kMaxConsumeRun};             // run cap, resolved at start()
+    bool dropBehind{false};                    // resolved at start()
+    alignas(64) std::atomic<int64_t> seq{-1};  // last handled seq, published
     std::optional<jthread> thread{};
-    uint32_t coreIndex{0};                   // index for core distribution
-    std::atomic<bool> alive{false};          // loop entered and not exited
+    uint32_t coreIndex{0};  // index for core distribution
+    // Set when the listener threw: the slot is out of service, whoever drives
+    // it stops driving it, and health reports it dead. Deliberately NOT "the
+    // loop is running": a consumer stepped by a shared executor has no loop of
+    // its own to be inside, and liveness there is progress, not presence.
+    std::atomic<bool> failed{false};
     std::atomic<uint64_t> droppedBehind{0};  // events skipped by drop-behind
   };
 
@@ -123,7 +141,7 @@ class EventBus : public ISubsystem
   {
     HEALTHY,
     STALLED,  // no progress for stallThreshold while work is pending
-    DEAD      // loop exited (handler threw) while the bus is running
+    DEAD      // the handler threw; the slot is out of service
   };
 
   enum class DeadConsumerPolicy : uint8_t
@@ -211,7 +229,7 @@ class EventBus : public ISubsystem
       auto& book = _healthBook[i];
       ConsumerHealth next = ConsumerHealth::HEALTHY;
 
-      if (!_consumers[i].alive.load(std::memory_order_acquire))
+      if (_consumers[i].failed.load(std::memory_order_acquire))
       {
         next = ConsumerHealth::DEAD;
       }
@@ -308,7 +326,8 @@ class EventBus : public ISubsystem
 
   bool subscribe(Listener* listener, bool required = true)
   {
-    return subscribeImpl(listener, &runConsumer<Listener>, required);
+    return subscribeImpl(listener, &runConsumer<Listener>, &stepConsumer<Listener>,
+                         &drainConsumerSlot<Listener>, required);
   }
 
   // Subscribe with a concrete type. The consumer loop is instantiated
@@ -318,7 +337,56 @@ class EventBus : public ISubsystem
   template <typename L>
   bool subscribeStatic(L* listener, bool required = true)
   {
-    return subscribeImpl(listener, &runConsumer<L>, required);
+    return subscribeImpl(listener, &runConsumer<L>, &stepConsumer<L>, &drainConsumerSlot<L>,
+                         required);
+  }
+
+  // ---- driving consumers from outside ----
+  //
+  // By default every consumer gets a thread of its own, which is the right
+  // shape for one bus on a machine it owns and the wrong one for a process
+  // holding hundreds of them: the threads cost more than the work. Turn this
+  // off and start() spawns nothing; whoever owns the process steps the
+  // consumers itself -- one thread over many of them, across many buses --
+  // and decides when to wait. Must be set before start().
+  void setOwnConsumerThreads(bool own) { _ownConsumerThreads = own; }
+  bool ownConsumerThreads() const noexcept { return _ownConsumerThreads; }
+
+  // One step over consumer i: returns true if it delivered anything, false if
+  // the ring held nothing for it. The caller that gets false everywhere is
+  // the caller that should wait.
+  //
+  // Only for a bus with setOwnConsumerThreads(false): stepping a consumer
+  // that also has its own thread is two readers on one cursor.
+  bool pollConsumer(uint32_t i)
+  {
+    if (i >= _consumerCount.load(std::memory_order_acquire) ||
+        _consumers[i].failed.load(std::memory_order_relaxed))
+    {
+      return false;
+    }
+    return _consumers[i].stepper(this, i);
+  }
+
+  // Everything still published for consumer i, uncapped. The externally
+  // driven counterpart of drain-on-stop: call it before stop() if the
+  // listener is owed what is left in the ring.
+  void drainConsumer(uint32_t i)
+  {
+    if (i >= _consumerCount.load(std::memory_order_acquire) ||
+        _consumers[i].failed.load(std::memory_order_relaxed))
+    {
+      return;
+    }
+    _consumers[i].drainer(this, i);
+  }
+
+  // The listener threw and the slot is out of service. A driver stepping many
+  // consumers uses this to stop stepping this one; checkHealth() reports the
+  // same thing as DEAD.
+  bool consumerFailed(uint32_t i) const noexcept
+  {
+    return i < MaxConsumers && _consumers[i].failed.load(std::memory_order_acquire);
   }
 
   void start() override
@@ -329,19 +397,43 @@ class EventBus : public ISubsystem
     }
 
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
-    _active.store(n, std::memory_order_relaxed);
 
+    // Resolved once, here, because they depend on the health config, which is
+    // fixed before start(): a consumer's run cap and whether it may skip.
+    const auto startedAt = std::chrono::steady_clock::now();
     for (uint32_t i = 0; i < n; ++i)
+    {
+      // The stall clock starts now. Left at the epoch it reads as "no progress
+      // since 1970", so the first sweep after the first publish calls a
+      // consumer stalled before it has had any time at all -- which a consumer
+      // thread hid by being faster than the first sweep, and a consumer
+      // stepped from outside does not.
+      _healthBook[i] = HealthBook{};
+      _healthBook[i].lastChange = startedAt;
+      auto& slot = _consumers[i];
+      slot.next = -1;
+      slot.failed.store(false, std::memory_order_relaxed);
+      slot.dropBehind = !slot.required && _healthCfg.dropBehindOptional;
+      // Drop-behind lag is only examined at the top of a step, so cap the run
+      // for such consumers: with an uncapped run the consumer re-checks only
+      // after consuming the whole backlog and the lag never looks large. The
+      // required hot path keeps the full run.
+      slot.maxRun = slot.dropBehind ? std::max<size_t>(1, _healthCfg.dropBehindSlack / 2)
+                                    : kMaxConsumeRun;
+    }
+
+    // Somebody else may be stepping these consumers (see pollConsumer), in
+    // which case there is nothing to spawn and nothing to wait for. The
+    // health monitor below is orthogonal and still applies.
+    _active.store(_ownConsumerThreads ? n : 0, std::memory_order_relaxed);
+
+    for (uint32_t i = 0; _ownConsumerThreads && i < n; ++i)
     {
       auto* l = _consumers[i].listener;
       auto runner = _consumers[i].runner;
       auto required = _consumers[i].required;
       auto coreIdx = _consumers[i].coreIndex;
       auto backoffMode = _backoffMode;
-
-      // Preset before the thread exists so a health sweep between start()
-      // and the loop entry cannot misread a starting consumer as dead.
-      _consumers[i].alive.store(true, std::memory_order_release);
 
       _consumers[i].thread.emplace([this, i, l, runner, required, coreIdx, backoffMode]
                                    {
@@ -472,6 +564,21 @@ class EventBus : public ISubsystem
       _consumers[i].thread.reset();
     }
 
+    // Externally driven bus: the drain a consumer thread would have taken on
+    // its way out has nobody to take it, so stop() takes it here. Sound only
+    // because the driver is required to have stopped stepping by now -- the
+    // same requirement as a thread being joined above.
+    if (!_ownConsumerThreads && _drainOnStop)
+    {
+      for (uint32_t i = 0; i < n; ++i)
+      {
+        if (!_consumers[i].failed.load(std::memory_order_relaxed))
+        {
+          _consumers[i].drainer(this, i);
+        }
+      }
+    }
+
     for (size_t i = 0; i < CapacityPow2; ++i)
     {
       if (_constructed[i].exchange(0, std::memory_order_acq_rel))
@@ -496,6 +603,7 @@ class EventBus : public ISubsystem
     for (uint32_t i = 0; i < n; ++i)
     {
       _consumers[i].seq.store(-1, std::memory_order_relaxed);
+      _consumers[i].next = -1;
       _gating[i].v.store(_consumers[i].required ? -1 : INT64_MAX, std::memory_order_relaxed);
     }
   }
@@ -752,7 +860,8 @@ class EventBus : public ISubsystem
 #endif
 
  private:
-  bool subscribeImpl(void* listener, ConsumerRunnerFn runner, bool required)
+  bool subscribeImpl(void* listener, ConsumerRunnerFn runner, ConsumerStepFn stepper,
+                     ConsumerDrainFn drainer, bool required)
   {
     if (!listener)
     {
@@ -770,7 +879,11 @@ class EventBus : public ISubsystem
     }
     _consumers[idx].listener = listener;
     _consumers[idx].runner = runner;
+    _consumers[idx].stepper = stepper;
+    _consumers[idx].drainer = drainer;
     _consumers[idx].required = required;
+    _consumers[idx].next = -1;
+    _consumers[idx].failed.store(false, std::memory_order_relaxed);
     _consumers[idx].seq.store(-1, std::memory_order_relaxed);
     _consumers[idx].coreIndex = idx;  // Store index for core distribution
     _gating[idx].v.store(required ? -1 : INT64_MAX, std::memory_order_relaxed);
@@ -783,199 +896,248 @@ class EventBus : public ISubsystem
     self->consumerLoop(i, static_cast<L*>(obj), required, mode);
   }
 
+  // The listener type is known only at subscribe(); these carry it to a
+  // caller that has nothing but an index.
+  template <typename L>
+  static bool stepConsumer(EventBus* self, uint32_t i)
+  {
+    return self->pollOnce<L>(i, static_cast<L*>(self->_consumers[i].listener));
+  }
+
+  template <typename L>
+  static void drainConsumerSlot(EventBus* self, uint32_t i)
+  {
+    self->drainSlot<L>(i, static_cast<L*>(self->_consumers[i].listener));
+  }
+
   // The whole consume loop, monomorphic in the subscriber type. For
   // L = Listener this is exactly the historical virtual path; for a concrete
   // L (via subscribeStatic) dispatch resolves statically and the handler
   // inlines into the batched run.
-  struct AliveGuard
-  {
-    std::atomic<bool>& flag;
-    ~AliveGuard() { flag.store(false, std::memory_order_release); }
-  };
-
+  // ---- the step ----
+  //
+  // One step over one consumer: everything published and contiguous right
+  // now, up to the run cap, handed to the listener, progress published once
+  // at the end. Returns false when the ring holds nothing for this consumer.
+  //
+  // The wait is deliberately NOT in here. That is the whole point of the
+  // split: a thread that owns one consumer waits however it likes, while a
+  // thread stepping many of them may only wait after every one of them came
+  // back empty. Before the split there was no way to express the second.
+  //
+  // Single-reader, like the ring it reads: one consumer is stepped by one
+  // thread at a time. Two threads stepping the same index is the same bug as
+  // two consumers sharing a gating slot, and neither is detected here.
   template <typename L>
-  void consumerLoop(uint32_t i, L* l, bool required, BackoffMode backoffMode)
+  bool pollOnce(uint32_t i, L* l)
   {
-    // alive is preset by start(); the guard clears it on any exit path.
-    AliveGuard aliveGuard{_consumers[i].alive};
-    BusyBackoff backoff(backoffMode);
-    int64_t next = -1;
+    ConsumerSlot& slot = _consumers[i];
+    const bool required = slot.required;
+    int64_t next = slot.next;
 
-    const bool dropBehind = !required && _healthCfg.dropBehindOptional;
-    // Drop-behind lag is only examined at the loop top, so cap the batch run
-    // for such consumers: with an uncapped run the consumer re-checks only
-    // after consuming the whole backlog and the lag never looks large. The
-    // required hot path keeps the full run and zero extra loads.
-    const size_t maxRun =
-        dropBehind ? std::max<size_t>(1, _healthCfg.dropBehindSlack / 2) : kMaxConsumeRun;
-
-    while (_running.load(std::memory_order_acquire))
+    // Optional consumers may fall arbitrarily far behind; without
+    // drop-behind they stall the publisher at the reclaim fence. Jump to
+    // the head, publish the skipped range as consumed (the events are
+    // never delivered here -- reclaim only needs to know nobody will read
+    // them) and account every skipped event.
+    if (slot.dropBehind)
     {
-      // Optional consumers may fall arbitrarily far behind; without
-      // drop-behind they stall the publisher at the reclaim fence. Jump to
-      // the head, publish the skipped range as consumed (the events are
-      // never delivered here -- reclaim only needs to know nobody will read
-      // them) and account every skipped event.
-      if (dropBehind)
+      const int64_t head = _next.load(std::memory_order_acquire);
+      if (head - next > static_cast<int64_t>(_healthCfg.dropBehindSlack))
       {
-        const int64_t head = _next.load(std::memory_order_acquire);
-        if (head - next > static_cast<int64_t>(_healthCfg.dropBehindSlack))
-        {
-          const int64_t target = head - 1;
-          _consumers[i].droppedBehind.fetch_add(static_cast<uint64_t>(target - next),
-                                                std::memory_order_relaxed);
-          next = target;
-          _consumers[i].seq.store(next, std::memory_order_release);
-        }
+        const int64_t target = head - 1;
+        slot.droppedBehind.fetch_add(static_cast<uint64_t>(target - next),
+                                     std::memory_order_relaxed);
+        next = target;
+        slot.next = next;
+        slot.seq.store(next, std::memory_order_release);
       }
+    }
 
-      const int64_t seq = next + 1;
-      const size_t idx = size_t(seq) & Mask;
-
-      while (_published[idx].load(std::memory_order_acquire) != seq)
-      {
-        if (!_running.load(std::memory_order_relaxed))
-        {
-          break;
-        }
-        backoff.pause();
-      }
-
-      if (!_running.load(std::memory_order_relaxed))
+    // Batch effect: consume the whole contiguous published run and publish
+    // progress once at its end, instead of two release stores per event. The
+    // run is bounded so producers waiting on the wrap never starve for
+    // progress longer than maxRun events.
+    int64_t last = next;
+    int64_t cur = next + 1;
+    uint64_t delivered = 0;
+    size_t run = 0;
+    while (run < slot.maxRun)
+    {
+      const size_t cidx = size_t(cur) & Mask;
+      if (_published[cidx].load(std::memory_order_acquire) != cur)
       {
         break;
       }
-
-      // Batch effect: consume the whole contiguous published run and
-      // publish progress once at its end, instead of two release stores
-      // per event. The run is bounded so producers waiting on the wrap
-      // never starve for progress longer than kMaxConsumeRun events.
-      int64_t last = next;
-      int64_t cur = seq;
-      uint64_t delivered = 0;
-      size_t run = 0;
-      while (run < maxRun)
+      // Value 1 = valid event, value 0 = reclaimed. Only a constructed
+      // slot is dispatched: anything else would read stale memory from a
+      // previous wrap-around. Relaxed is enough: the construction store is
+      // ordered before the slot stamp acquired above.
+      if (_constructed[cidx].load(std::memory_order_relaxed) == 1)
       {
-        const size_t cidx = size_t(cur) & Mask;
-        if (_published[cidx].load(std::memory_order_acquire) != cur)
+        FLOX_PROFILE_SCOPE("Disruptor::deliver");
+        try
         {
-          break;
+          EventDispatcher<Event>::dispatch(slot_ref(cidx), *l);
         }
-
-        // Value 1 = valid event, value 0 = reclaimed. Only a constructed
-        // slot is dispatched: anything else would read stale memory from a
-        // previous wrap-around. Relaxed is enough: the construction store is
-        // ordered before the slot stamp acquired above.
-        if (_constructed[cidx].load(std::memory_order_relaxed) == 1)
+        catch (...)
         {
-          FLOX_PROFILE_SCOPE("Disruptor::deliver");
-          try
+          // Publish progress up to the previous event and take the slot out
+          // of service. Swallowing would keep a broken handler in the loop;
+          // rethrowing would terminate the process. And the failure stays on
+          // the slot rather than on whoever is stepping it, because under a
+          // shared executor that is every other consumer on the same thread.
+          // A dead REQUIRED consumer stalls gating by design -- checkHealth()
+          // surfaces it and applies the configured policy.
+          slot.next = last;
+          slot.seq.store(last, std::memory_order_release);
+          if (required)
           {
-            EventDispatcher<Event>::dispatch(slot_ref(cidx), *l);
+            _gating[i].v.store(last, std::memory_order_release);
           }
-          catch (...)
+          slot.failed.store(true, std::memory_order_release);
+          if (delivered != 0)
           {
-            // Publish progress up to the previous event and die loudly.
-            // Swallowing would keep a broken handler in the loop; rethrowing
-            // would terminate the process. A dead REQUIRED consumer stalls
-            // gating by design -- checkHealth() surfaces it and applies the
-            // configured policy.
-            _consumers[i].seq.store(last, std::memory_order_release);
-            if (required)
-            {
-              _gating[i].v.store(last, std::memory_order_release);
-            }
-            FLOX_LOG_ERROR("EventBus consumer " << i << ": handler threw, consumer is dead");
-            return;
+            _consumeCount.fetch_add(delivered, std::memory_order_relaxed);
           }
-          ++delivered;
+          FLOX_LOG_ERROR("EventBus consumer " << i << ": handler threw, consumer is dead");
+          return delivered != 0;
         }
-
-        last = cur;
-        ++cur;
-        ++run;
+        ++delivered;
       }
-
-      // End of everything that was available: the consumer has drained the
-      // ring for now. A listener that batches work -- amortising an fsync, a
-      // syscall, a flush -- needs exactly this edge, because it is the moment
-      // where waiting longer buys nothing. Opt-in: a dispatcher without the
-      // hook compiles to nothing.
-      if (delivered != 0)
-      {
-        if constexpr (requires { EventDispatcher<Event>::endOfBatch(*l); })
-        {
-          EventDispatcher<Event>::endOfBatch(*l);
-        }
-      }
-
-      _consumers[i].seq.store(last, std::memory_order_release);
-      if (required)
-      {
-        _gating[i].v.store(last, std::memory_order_release);
-      }
-      if (delivered != 0)
-      {
-        _consumeCount.fetch_add(delivered, std::memory_order_relaxed);
-      }
-
-      next = last;
-      backoff.reset();
+      last = cur;
+      ++cur;
+      ++run;
     }
 
-    if (_drainOnStop)
+    if (last == next)
     {
-      int64_t seq = _consumers[i].seq.load(std::memory_order_relaxed);
-      uint64_t delivered = 0;
+      return false;  // nothing for this consumer: the one case worth waiting on
+    }
 
-      // The drain owes the listener the same batch contract as the loop above.
-      // A listener that batches -- amortising an fsync, a durability barrier,
-      // a flush -- commits what it was handed only on this edge, so a drain
-      // that dispatches without it applies the events and never lets them out.
-      const auto endBatch = [&]
+    // End of everything that was available: the consumer has drained the
+    // ring for now. A listener that batches work -- amortising an fsync, a
+    // syscall, a flush -- needs exactly this edge, because it is the moment
+    // where waiting longer buys nothing. Opt-in: a dispatcher without the
+    // hook compiles to nothing.
+    if (delivered != 0)
+    {
+      if constexpr (requires { EventDispatcher<Event>::endOfBatch(*l); })
       {
-        if (delivered == 0)
-        {
-          return;
-        }
-        delivered = 0;
-        if constexpr (requires { EventDispatcher<Event>::endOfBatch(*l); })
-        {
-          EventDispatcher<Event>::endOfBatch(*l);
-        }
-      };
+        EventDispatcher<Event>::endOfBatch(*l);
+      }
+    }
+    slot.seq.store(last, std::memory_order_release);
+    if (required)
+    {
+      _gating[i].v.store(last, std::memory_order_release);
+    }
+    if (delivered != 0)
+    {
+      _consumeCount.fetch_add(delivered, std::memory_order_relaxed);
+    }
+    slot.next = last;
+    return true;
+  }
 
-      for (;;)
+  // Everything still published for this consumer, no run cap, no waiting.
+  // Taken on the way down when the bus was told to drain on stop: the events
+  // are already in the ring and the producer is gone, so the only question is
+  // whether the listener gets them.
+  template <typename L>
+  void drainSlot(uint32_t i, L* l)
+  {
+    ConsumerSlot& slot = _consumers[i];
+    const bool required = slot.required;
+    int64_t seq = slot.seq.load(std::memory_order_relaxed);
+    uint64_t delivered = 0;
+    // The drain owes the listener the same batch contract as the step above.
+    // A listener that batches -- amortising an fsync, a durability barrier,
+    // a flush -- commits what it was handed only on this edge, so a drain
+    // that dispatches without it applies the events and never lets them out.
+    const auto endBatch = [&]
+    {
+      if (delivered == 0)
       {
-        const int64_t want = seq + 1;
-        const size_t idx = size_t(want) & Mask;
-        if (_published[idx].load(std::memory_order_acquire) != want)
+        return;
+      }
+      delivered = 0;
+      if constexpr (requires { EventDispatcher<Event>::endOfBatch(*l); })
+      {
+        EventDispatcher<Event>::endOfBatch(*l);
+      }
+    };
+    for (;;)
+    {
+      const int64_t want = seq + 1;
+      const size_t idx = size_t(want) & Mask;
+      if (_published[idx].load(std::memory_order_acquire) != want)
+      {
+        break;
+      }
+      if (_constructed[idx].load(std::memory_order_acquire) == 1)
+      {
+        FLOX_PROFILE_SCOPE("Disruptor::drain_deliver");
+        try
         {
+          EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
+        }
+        catch (...)
+        {
+          // Same rule as the step, and it matters more here: the drain can
+          // run on the thread that called stop(), and an exception escaping
+          // into a shutdown path takes the process with it.
+          slot.failed.store(true, std::memory_order_release);
+          FLOX_LOG_ERROR("EventBus consumer " << i << ": handler threw during drain");
           break;
         }
-
-        if (_constructed[idx].load(std::memory_order_acquire) == 1)
-        {
-          FLOX_PROFILE_SCOPE("Disruptor::drain_deliver");
-          EventDispatcher<Event>::dispatch(slot_ref(idx), *l);
-          _consumeCount.fetch_add(1, std::memory_order_relaxed);
-          ++delivered;
-        }
-
-        _consumers[i].seq.store(want, std::memory_order_release);
-        _gating[i].v.store(required ? want : INT64_MAX, std::memory_order_release);
-
-        seq = want;
-
-        // Bounded like the run above, so a long drain does not leave a
-        // batching listener holding an unbounded backlog.
-        if (delivered == kMaxConsumeRun)
-        {
-          endBatch();
-        }
+        _consumeCount.fetch_add(1, std::memory_order_relaxed);
+        ++delivered;
       }
+      slot.seq.store(want, std::memory_order_release);
+      _gating[i].v.store(required ? want : INT64_MAX, std::memory_order_release);
+      seq = want;
+      // Bounded like the run above, so a long drain does not leave a
+      // batching listener holding an unbounded backlog.
+      if (delivered == kMaxConsumeRun)
+      {
+        endBatch();
+      }
+    }
+    endBatch();
+    slot.next = seq;
+  }
 
-      endBatch();
+  // The whole consume loop, monomorphic in the subscriber type. For
+  // L = Listener this is exactly the historical virtual path; for a concrete
+  // L (via subscribeStatic) dispatch resolves statically and the handler
+  // inlines into the batched run.
+  //
+  // What is left of it after the split is the part that was never about
+  // consuming: deciding when to wait.
+  template <typename L>
+  void consumerLoop(uint32_t i, L* l, bool, BackoffMode backoffMode)
+  {
+    BusyBackoff backoff(backoffMode);
+    while (_running.load(std::memory_order_acquire))
+    {
+      const bool worked = pollOnce<L>(i, l);
+      if (_consumers[i].failed.load(std::memory_order_relaxed))
+      {
+        return;  // out of service: waiting for it to recover is waiting forever
+      }
+      if (worked)
+      {
+        backoff.reset();
+      }
+      else
+      {
+        backoff.pause();
+      }
+    }
+    if (_drainOnStop)
+    {
+      drainSlot<L>(i, l);
     }
   }
 
@@ -1254,6 +1416,7 @@ class EventBus : public ISubsystem
   std::optional<jthread> _monitorThread{};
 
   bool _drainOnStop{false};
+  bool _ownConsumerThreads{true};
   BackoffMode _backoffMode{config::defaultBackoffMode};
 
   // Monitoring counters (relaxed ordering -- advisory only)
