@@ -241,6 +241,7 @@ class TcpGateway
         continue;  // session-layer verb (resend / snapshot), fully handled
       }
       SessionReject rej{};
+      RejectEcho echo{};
       // Real monotonic nanoseconds: the rate-limit windows are wall-clock. A
       // per-connection frame counter (the old ++clock_) never advanced time, so
       // the Nth command was limited regardless of elapsed time and the ban was
@@ -248,7 +249,7 @@ class TcpGateway
       const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now().time_since_epoch())
                                 .count();
-      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej);
+      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej, &echo);
       if (cmd)
       {
         cod.track(*cmd);
@@ -256,12 +257,16 @@ class TcpGateway
       }
       else if (rej != SessionReject::None && registry_ != nullptr)
       {
-        // A rejected frame answers with a sequenced exec-report reject (id 0:
-        // for a non-decodable frame there is no order id to echo) instead of
-        // the old silence.
+        // A rejected frame answers with a sequenced exec-report reject instead
+        // of the old silence. A frame that never decoded (DecodeError) or was
+        // never looked at (Unauthenticated) has no order to name -- echo is
+        // zeroed for those. RateLimited decoded fine before admission turned
+        // it away, so `echo` carries the id/symbol/clientOrderId the client
+        // itself chose -- the same fields any other reject on this order would
+        // carry.
         registry_->send(session.account(),
-                        OutboundEvent{OrderRejected{0, 0, toRejectReason(rej),
-                                                    session.account()}});
+                        OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
+                                                    session.account(), echo.clientOrderId}});
       }
     }
     if (writer != nullptr)

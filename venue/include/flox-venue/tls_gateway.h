@@ -470,12 +470,13 @@ class TlsGateway
         continue;  // session-layer verb (resend / snapshot), fully handled
       }
       SessionReject rej{};
+      RejectEcho echo{};
       // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
       // ++clock_ frame counter never advanced time -> permanent bans.
       const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now().time_since_epoch())
                                 .count();
-      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej);
+      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej, &echo);
       if (cmd)
       {
         cod.track(*cmd);
@@ -483,11 +484,14 @@ class TlsGateway
       }
       else if (rej != SessionReject::None && registry_ != nullptr)
       {
-        // A rejected frame answers with a sequenced exec-report reject (id 0)
-        // instead of the old silence -- same policy as TcpGateway.
+        // A rejected frame answers with a sequenced exec-report reject instead
+        // of the old silence -- same policy as TcpGateway. RateLimited decoded
+        // fine before admission turned it away, so `echo` carries the client's
+        // own id/symbol/clientOrderId; the other reasons never had a command
+        // to take them from.
         registry_->send(session.account(),
-                        OutboundEvent{OrderRejected{0, 0, toRejectReason(rej),
-                                                    session.account()}});
+                        OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
+                                                    session.account(), echo.clientOrderId}});
       }
     }
     if (writer != nullptr)

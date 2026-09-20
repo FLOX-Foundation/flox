@@ -120,8 +120,17 @@ struct Quote  // two-sided market-maker quote (replace prior quote on this symbo
   bool postOnly{false};
   bool reduceOnly{false};
   TimeInForce tif{TimeInForce::GTC};
-  Quantity visibleQuantity{};  // iceberg peak per leg (0 = show the whole leg)
+  Quantity visibleQuantity{};  // iceberg peak per leg (0 = show the visible leg)
   SeqNanos expiryNs{};         // GTD expiry for both legs (0 = none)
+  // Appended field: a quote is one submission that becomes two resting
+  // orders (bidId, askId), so it is the one InboundCommand that already
+  // splits into children by design. Both legs are stamped with this same
+  // value (see MatchingEngine::onQuote), so every report on either leg
+  // carries the name the submitter gave the QUOTE, not a per-leg id it
+  // never chose -- otherwise a submitter reconciling two reports that carry
+  // two different venue order ids and no shared name of its own has nothing
+  // to join them on but symbol and timing.
+  uint64_t clientOrderId{0};
 };
 
 struct LastLookDecision  // maker accepts or rejects a held last-look fill
