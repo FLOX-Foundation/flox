@@ -162,9 +162,18 @@ limits (`luldBps`+`luldHaltNs`, `maxOrderQty`+`maxOrderNotional`,
 flags (`halted`, `open`, `delisted`) must be written as `true` or
 `false`. Anything unparseable, non-finite or past the fixed-point
 range answers `{"ok":false,"error":"bad_field"}`; `minPrice` above
-`maxPrice` answers `bad_band`. `TcpControlServer` listens on
-loopback only, caps a request line at 1 MiB, and has no
-authentication of its own.
+`maxPrice` answers `bad_band`. An unknown verb answers
+`{"ok":false,"error":"unknown_method","method":"<name>"}`.
+`TcpControlServer` listens on loopback only, caps a request line at
+1 MiB, and has no authentication of its own.
+
+`ControlApi::registerMethod(name, handler)` adds a verb of your own
+to the same surface with no change to `ControlServer` or
+`TcpControlServer`. The handler takes a `ControlRequest` -- the
+built-ins' own field accessors, plus `registry()` and `forward()` --
+and follows the same rule: a change to engine state forwards the
+journaled record, a read forwards nothing. Built-in names and
+already-taken names are refused.
 
 ## Multi-agent demo
 
