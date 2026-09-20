@@ -15975,11 +15975,6 @@
         },
         {
           "kind": "method",
-          "name": "initTable",
-          "parent": "Crc32"
-        },
-        {
-          "kind": "method",
           "name": "absDiff",
           "parent": "CryptoswapCurve"
         },
