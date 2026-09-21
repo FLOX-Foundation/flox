@@ -383,6 +383,25 @@ thousand lines shared with everything else.
 | `engine/expiry_pegs.inl` | GTD expiry, pegged orders, OCO |
 | `engine/last_look.inl` | holds: create, resolve, expire, and their statistics |
 
+Conduct -- what a submission is allowed to be, and what happens to an order
+once it rests -- is not a section of the template but a set of ordinary
+classes beside it. They hold the state and reach the decisions; the engine
+keeps the loops, because those are what need the book, the ledger and the
+sink. Each one is a header of its own, small enough to read in a sitting and
+testable without an engine (`venue/tests/test_venue_engine_conduct.cpp`).
+
+| Component | What it owns |
+|---|---|
+| `engine/clordid_window.h` | `ClOrdIdWindow`: the per-account clientOrderId dedup index, in two rotating generations, and the verdict on a resend |
+| `engine/stp.h` | `StpState`: self-trade-prevention modes of resting orders, the scope two accounts are compared in, and the verdict on a self-matching auction pair |
+| `engine/expiry.h` | `ExpiryBook`: GTD deadlines, and which orders are due at a given sequencer time |
+| `engine/pegs.h` | `PegBook`: peg specs, the order a reprice pass walks them in, and the peg target for a given book |
+| `engine/mmp.h` | `MmpState`: per-account fill windows, the breach list, and the re-arm after a pull |
+| `engine/sorted_keys.h` | `sortedKeysOf`: the canonical key traversal every hash and snapshot section uses |
+
+Each component serializes and hashes its own fields, so a snapshot section and
+its digest are written in one place rather than three.
+
 The public surface is unchanged by the layout, and
 `venue/tests/support/engine_surface.h` says so at compile time.
 

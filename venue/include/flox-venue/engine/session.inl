@@ -352,18 +352,16 @@ void MatchingEngine<Book>::runAuction()
     const uint64_t bClOrd = bid->clientOrderId;
     const uint64_t aClOrd = ask->clientOrderId;
     // Self-trade prevention. An auction has no aggressor -- both legs are
-    // resting -- so the mode is read off each order and applied from the
-    // requester's point of view: its counterparty is the "oldest" leg (it is
-    // resting) and its own order is the "newest". When both legs ask, the
-    // cancellations union, which needs no precedence rule between modes and
-    // lands the same way whichever order the book hands them to us in.
+    // resting -- so the verdict is reached from the two recorded modes rather
+    // than from an aggressor's (StpState::auctionVerdict); what is left here
+    // is carrying it out against the book.
     if (stpScope(bAcct) == stpScope(aAcct))
     {
-      const STPMode bidStp = stpOf(bidId);
-      const STPMode askStp = stpOf(askId);
-      if (bidStp != STPMode::None || askStp != STPMode::None)
+      const StpState::AuctionVerdict v =
+          StpState::auctionVerdict(stpOf(bidId), stpOf(askId));
+      if (v.engaged)
       {
-        if (bidStp == STPMode::Decrement || askStp == STPMode::Decrement)
+        if (v.decrement)
         {
           // Trim both legs by the overlap; no print, and whatever is left of
           // the larger leg stays in the auction.
@@ -371,28 +369,11 @@ void MatchingEngine<Book>::runAuction()
           decrementForStp(askId, fill);
           continue;
         }
-        bool killBid = false, killAsk = false;
-        if (bidStp == STPMode::CancelOldest || bidStp == STPMode::CancelBoth)
-        {
-          killAsk = true;
-        }
-        if (bidStp == STPMode::CancelNewest || bidStp == STPMode::CancelBoth)
-        {
-          killBid = true;
-        }
-        if (askStp == STPMode::CancelOldest || askStp == STPMode::CancelBoth)
-        {
-          killBid = true;
-        }
-        if (askStp == STPMode::CancelNewest || askStp == STPMode::CancelBoth)
-        {
-          killAsk = true;
-        }
-        if (killBid)
+        if (v.cancelBid)
         {
           cancelForStp(bidId, bAcct);
         }
-        if (killAsk)
+        if (v.cancelAsk)
         {
           cancelForStp(askId, aAcct);
         }

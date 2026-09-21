@@ -8,6 +8,12 @@
  */
 #pragma once
 
+#include "flox-venue/engine/clordid_window.h"
+#include "flox-venue/engine/expiry.h"
+#include "flox-venue/engine/mmp.h"
+#include "flox-venue/engine/pegs.h"
+#include "flox-venue/engine/sorted_keys.h"
+#include "flox-venue/engine/stp.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/ledger.h"
@@ -423,13 +429,6 @@ class MatchingEngine
   void chargeFee(OrderId id, uint64_t acct, double feeD, bool maker);
 
   // ---- linear-perp clearing ----
-  struct ClOrdIdWindow
-  {
-    std::unordered_set<uint64_t> cur;
-    std::unordered_set<uint64_t> prev;
-    int64_t rotatedAtNs{0};
-  };
-
   struct Position
   {
     int64_t qtyRaw{0};    // signed contracts (Quantity raw)
@@ -438,7 +437,6 @@ class MatchingEngine
   };
 
   // engine/clearing.inl
-  void rotateClOrdIds(ClOrdIdWindow& w, int64_t nowNs) const;
   static int64_t iabs64(int64_t v);
   Amount consumeOrderIM(OrderId orderId, int64_t qtyRaw);
   void releaseOrderIM(OrderId orderId, int64_t qtyRaw, uint64_t acct);
@@ -564,7 +562,8 @@ class MatchingEngine
 
   std::unordered_map<uint64_t, std::unordered_set<OrderId>> byAccount_;
 
-  std::unordered_map<OrderId, SeqNanos> expiry_;  // GTD: orderId -> expiry, sequencer time
+  // GTD deadlines: which resting or conditional orders are due, and when.
+  ExpiryBook expiry_;
 
   std::unordered_map<OrderId, uint64_t> orderOco_;  // orderId -> OCO group
 
@@ -572,19 +571,13 @@ class MatchingEngine
 
   std::vector<std::pair<uint64_t, OrderId>> ocoPending_;  // (group, winner) collected while matching
 
-  struct Peg
-  {
-    Side side;
-    PegRef ref;
-    int64_t offsetRaw;
-  };
+  // Peg specs and the price each one should track (re-priced each submit).
+  PegBook pegs_;
 
-  std::unordered_map<OrderId, Peg> pegged_;  // orderId -> peg spec (re-priced each submit)
-
-  // orderId -> self-trade-prevention mode, for orders that asked for one. Only
-  // the auction uncross and a modify re-entry read it: continuous matching
-  // takes the mode off the aggressor. Sparse -- STPMode::None is absent.
-  std::unordered_map<OrderId, STPMode> orderStp_;
+  // Self-trade-prevention modes of resting orders, and the auction verdict.
+  // Only the auction uncross and a modify re-entry read the modes: continuous
+  // matching takes the mode off the aggressor inside the matcher.
+  StpState stp_;
 
   // account -> admission profile. Empty table and absent entries both mean
   // "everything permitted", so an engine that was never given profiles behaves
@@ -599,26 +592,9 @@ class MatchingEngine
 
   bool feesEnabled_{false};
 
-  struct MmpCfg
-  {
-    Quantity qtyLimit{};
-    DurationNs windowNs{};
-  };
-
-  std::unordered_map<uint64_t, MmpCfg> mmpCfg_;
-
-  // Sliding fill window per account with an incrementally maintained sum, so a
-  // breach check is O(1) amortised rather than an O(n) rescan of the deque on
-  // every fill (an active MM inside the window would otherwise be O(n^2)).
-  struct MmpWindow
-  {
-    std::deque<std::pair<SeqNanos, Quantity>> fills;
-    int64_t sumRaw{0};  // running sum of fills.second.raw()
-  };
-
-  std::unordered_map<uint64_t, MmpWindow> mmpFills_;
-
-  std::vector<uint64_t> mmpBreached_;
+  // Market-maker protection: per-account fill windows and the breach list the
+  // submit boundary drains.
+  MmpState mmp_;
 
   CreditCheck credit_;
 
@@ -640,25 +616,9 @@ class MatchingEngine
   // sweeper); the engine itself never reads it for logic.
   std::atomic<uint64_t> heldOpen_{0};
 
-  // clientOrderId dedup index, per account. Window = the engine session
-  // (uptime); rotation/compaction is a future checkpoint concern -- see
-  // docs/venue/matching.md. Rebuilt naturally by journal replay.
-  // Client order ids the account has already used, in two generations.
-  //
-  // It used to be one set that was never pruned. A client repeating the SAME
-  // id is rejected at O(1) and costs nothing, which is the case the dedup
-  // exists for -- but a client with a broken id generator pours in DISTINCT
-  // ids, and every one of them stayed for the life of the process: memory,
-  // snapshot size, checkpoint pause and recovery time all growing without a
-  // bound. Measured: a million ids on one account is ~35 MiB of set.
-  //
-  // Rotating halves rather than a timestamp per id: an id survives between one
-  // and two windows, memory is bounded by two windows of distinct ids, and no
-  // per-id time has to be stored or serialized. Exchanges scope client order
-  // id uniqueness to the trading day, so a day is the honest window -- but the
-  // default is 0, meaning unbounded, so this changes nothing until an operator
-  // asks for it.
-  std::unordered_map<uint64_t, ClOrdIdWindow> clientOrderIds_;
+  // clientOrderId dedup index, per account, in two rotating generations (see
+  // engine/clordid_window.h). Rebuilt naturally by journal replay.
+  ClOrdIdWindow clOrdIds_;
 
   // Snapshot-only records seen (and dropped) on the live submit path.
   uint64_t droppedSnapshotRecords_{0};

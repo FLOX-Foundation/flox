@@ -113,7 +113,7 @@ void MatchingEngine<Book>::createHeld(const RestingOrder& maker, Quantity fill, 
   // Capture it here, where the mode is still in hand.
   if (taker.stp != STPMode::None)
   {
-    orderStp_[taker.id] = taker.stp;
+    stp_.track(taker.id, taker.stp);
   }
   h.takerTif = taker.tif;
   h.takerType = taker.type;
@@ -438,7 +438,7 @@ void MatchingEngine<Book>::restoreTakerHeld(const Held& h)
       trackResting(h.taker, h.takerAccount, stpOf(h.taker));
       if (h.takerTif == TimeInForce::GTD && static_cast<bool>(h.takerExpiryNs))
       {
-        expiry_[h.taker] = h.takerExpiryNs;
+        expiry_.set(h.taker, h.takerExpiryNs);
       }
       sink_(OrderAccepted{h.taker, cfg_.id, h.takerSide, h.takerPrice, h.qty, true, h.qty,
                           h.takerAccount, h.takerClientOrderId});

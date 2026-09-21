@@ -95,7 +95,7 @@ bool MatchingEngine<Book>::onStop(const NewOrder& o)
   // for a price that may never come.
   if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
   {
-    expiry_[o.id] = o.expiryNs;
+    expiry_.set(o.id, o.expiryNs);
   }
   sink_(OrderAccepted{o.id, o.symbol, o.side, o.triggerPrice, o.quantity, false, Quantity{},
                       o.accountId, o.clientOrderId});  // pending, not on book

@@ -106,8 +106,7 @@ uint64_t MatchingEngine<Book>::ownerOf(OrderId id) const noexcept
 template <class Book>
 STPMode MatchingEngine<Book>::stpOf(OrderId id) const
 {
-  auto it = orderStp_.find(id);
-  return it == orderStp_.end() ? STPMode::None : it->second;
+  return stp_.modeOf(id);
 }
 
 // Self-trade-prevention scope: the firm group if the account is in one, else
@@ -116,13 +115,7 @@ STPMode MatchingEngine<Book>::stpOf(OrderId id) const
 template <class Book>
 uint64_t MatchingEngine<Book>::stpScope(uint64_t account) const
 {
-  const auto& groups = matcher_.stpGroups();
-  if (groups.empty())
-  {
-    return account;
-  }
-  auto it = groups.find(account);
-  return it == groups.end() ? account : it->second;
+  return StpState::scopeOf(matcher_.stpGroups(), account);
 }
 
 // Cancel one leg of a self-matching auction pair, with the same discipline
@@ -171,14 +164,7 @@ void MatchingEngine<Book>::trackResting(OrderId id, uint64_t account, STPMode st
 {
   orderAccount_[id] = account;
   byAccount_[account].insert(id);
-  if (stp != STPMode::None)
-  {
-    orderStp_[id] = stp;
-  }
-  else
-  {
-    orderStp_.erase(id);  // an id can be reused after the previous order left
-  }
+  stp_.track(id, stp);
 }
 
 template <class Book>
@@ -197,8 +183,8 @@ void MatchingEngine<Book>::forgetOrder(OrderId id)
   orderAccount_.erase(it);
   expiry_.erase(id);
   unlinkOco(id);
-  pegged_.erase(id);
-  orderStp_.erase(id);
+  pegs_.erase(id);
+  stp_.forget(id);
 }
 
 // Remove an order from its OCO group, keeping orderOco_ and ocoMembers_ in

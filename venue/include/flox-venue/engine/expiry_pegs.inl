@@ -30,16 +30,7 @@ void MatchingEngine<Book>::expireOrders()
     return;
   }
   std::vector<OrderId> due;
-  // order: the due orders are id-sorted below, before any expiry is
-  // published
-  for (const auto& [id, exp] : expiry_)
-  {
-    if (now_ >= exp)
-    {
-      due.push_back(id);
-    }
-  }
-  std::sort(due.begin(), due.end());  // deterministic expiry/event order (layout-independent)
+  expiry_.collectDue(now_, due);  // which orders are due, and in what order
   for (OrderId id : due)
   {
     expiry_.erase(id);
@@ -69,46 +60,16 @@ int64_t MatchingEngine<Book>::pegTargetRaw(Side side, PegRef ref, int64_t offset
 {
   const auto bb = book_.bestBid();
   const auto ba = book_.bestAsk();
-  const int64_t last =
-      hasLast_ ? lastPrice_.raw() : ((cfg_.minPrice.raw() + cfg_.maxPrice.raw()) / 2);
-  int64_t refRaw;
-  switch (ref)
-  {
-    case PegRef::Bid:
-      refRaw = bb ? bb->raw() : (ba ? ba->raw() : last);
-      break;
-    case PegRef::Ask:
-      refRaw = ba ? ba->raw() : (bb ? bb->raw() : last);
-      break;
-    case PegRef::Mid:
-      refRaw = (bb && ba) ? (bb->raw() + ba->raw()) / 2 : (bb ? bb->raw() : (ba ? ba->raw() : last));
-      break;
-    default:
-      return 0;
-  }
-  int64_t target = refRaw + offsetRaw;
-  const int64_t tick = cfg_.tickSize.raw();
-  if (tick > 0)
-  {
-    target = target / tick * tick;  // align down to tick
-  }
-  if (side == Side::BUY && ba && target >= ba->raw())
-  {
-    target = ba->raw() - tick;  // never cross
-  }
-  if (side == Side::SELL && bb && target <= bb->raw())
-  {
-    target = bb->raw() + tick;
-  }
-  if (cfg_.minPrice.raw() > 0 && target < cfg_.minPrice.raw())
-  {
-    target = cfg_.minPrice.raw();
-  }
-  if (cfg_.maxPrice.raw() > 0 && target > cfg_.maxPrice.raw())
-  {
-    target = cfg_.maxPrice.raw();
-  }
-  return target;
+  PegBook::Market m;
+  m.hasBid = bb.has_value();
+  m.bidRaw = bb ? bb->raw() : 0;
+  m.hasAsk = ba.has_value();
+  m.askRaw = ba ? ba->raw() : 0;
+  m.lastRaw = hasLast_ ? lastPrice_.raw() : ((cfg_.minPrice.raw() + cfg_.maxPrice.raw()) / 2);
+  m.tickRaw = cfg_.tickSize.raw();
+  m.minPriceRaw = cfg_.minPrice.raw();
+  m.maxPriceRaw = cfg_.maxPrice.raw();
+  return PegBook::targetRaw(side, ref, offsetRaw, m);
 }
 
 // Re-price pegged orders to track the book at each submit boundary. Repricing
@@ -117,31 +78,20 @@ int64_t MatchingEngine<Book>::pegTargetRaw(Side side, PegRef ref, int64_t offset
 template <class Book>
 void MatchingEngine<Book>::repeg()
 {
-  if (pegged_.empty())
+  if (pegs_.empty())
   {
     return;
   }
   std::vector<OrderId> ids;
-  ids.reserve(pegged_.size());
-  // order: the pegged ids are sorted below -- a reprice reads the book
-  // prior reprices in this pass already moved
-  for (const auto& [id, p] : pegged_)
-  {
-    ids.push_back(id);
-  }
-  // Deterministic order: a peg reprice reads the book that PRIOR pegs in this
-  // pass already mutated, so the processing order is state-affecting. Sort by id
-  // so the outcome does not depend on pegged_ (unordered_map) layout -- same
-  // layout-independence standard as the ADL/liquidation paths.
-  std::sort(ids.begin(), ids.end());
+  pegs_.sortedIds(ids);  // which pegs are repriced, and in what order
   for (OrderId id : ids)
   {
-    auto pit = pegged_.find(id);
-    if (pit == pegged_.end())
+    const PegBook::Peg* spec = pegs_.find(id);
+    if (spec == nullptr)
     {
       continue;
     }
-    const Peg pg = pit->second;
+    const PegBook::Peg pg = *spec;
     // A peg reprice releases and re-reserves buying power at the new price;
     // an open hold against the old price/reservation would settle against a
     // reservation that no longer covers it -- resolve holds first.
@@ -155,7 +105,7 @@ void MatchingEngine<Book>::repeg()
     auto ro = book_.cancel(id);
     if (!ro)
     {
-      pegged_.erase(id);
+      pegs_.erase(id);
       continue;  // already filled / gone
     }
     const int64_t target = pegTargetRaw(pg.side, pg.ref, pg.offsetRaw);
@@ -181,7 +131,7 @@ void MatchingEngine<Book>::repeg()
       if (!reserveFunds(synth))  // cannot fund the reprice -> drop the peg
       {
         forgetOrder(id);
-        pegged_.erase(id);
+        pegs_.erase(id);
         sink_(OrderCanceled{id, cfg_.id, CancelReason::UserRequested, ro->accountId, ro->clientOrderId});
         continue;
       }

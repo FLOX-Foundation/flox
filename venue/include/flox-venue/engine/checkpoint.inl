@@ -126,21 +126,8 @@ uint64_t MatchingEngine<Book>::stateHash() const
     h = mix(h, p.allowedTif);
     h = mix(h, static_cast<uint64_t>(p.deny));
   }
-  for (OrderId id : sortedKeys(orderStp_))
-  {
-    h = mix(h, 0xB00CU);
-    h = mix(h, static_cast<uint64_t>(id));
-    h = mix(h, static_cast<uint64_t>(orderStp_.at(id)));
-  }
-  for (OrderId id : sortedKeys(pegged_))
-  {
-    const Peg& p = pegged_.at(id);
-    h = mix(h, 0xB003U);
-    h = mix(h, id);
-    h = mix(h, static_cast<uint64_t>(p.side));
-    h = mix(h, static_cast<uint64_t>(p.ref));
-    h = mix(h, static_cast<uint64_t>(p.offsetRaw));
-  }
+  h = stp_.hashInto(h);
+  h = pegs_.hashInto(h);
 
   for (uint64_t hid : sortedKeys(held_))
   {
@@ -195,34 +182,7 @@ uint64_t MatchingEngine<Book>::stateHash() const
     h = mixAmount(h, p.margin);
   }
 
-  for (uint64_t acct : sortedKeys(mmpCfg_))
-  {
-    const MmpCfg& c = mmpCfg_.at(acct);
-    h = mix(h, 0xB006U);
-    h = mix(h, acct);
-    h = mix(h, static_cast<uint64_t>(c.qtyLimit.raw()));
-    h = mix(h, static_cast<uint64_t>(c.windowNs.count()));
-  }
-
-  // MMP sliding-window fills, deque (time) order. An EMPTY window contributes
-  // nothing, so it is indistinguishable from absence -- which also keeps
-  // pre-window-serialization snapshots (that restored windows empty) hashing
-  // identically when the windows really were empty.
-  for (uint64_t acct : sortedKeys(mmpFills_))
-  {
-    const MmpWindow& w = mmpFills_.at(acct);
-    if (w.fills.empty())
-    {
-      continue;
-    }
-    h = mix(h, 0xB00AU);
-    h = mix(h, acct);
-    for (const auto& [ts, q] : w.fills)
-    {
-      h = mix(h, static_cast<uint64_t>(ts.raw()));
-      h = mix(h, static_cast<uint64_t>(q.raw()));
-    }
-  }
+  h = mmp_.hashInto(h);
 
   // Firm-group STP table (feeds matching decisions, journaled as SetStpGroup).
   if (const auto& groups = matcher_.stpGroups(); !groups.empty())
@@ -235,27 +195,7 @@ uint64_t MatchingEngine<Book>::stateHash() const
     }
   }
 
-  for (uint64_t acct : sortedKeys(clientOrderIds_))
-  {
-    h = mix(h, 0xB007U);
-    h = mix(h, acct);
-    const auto& seen = clientOrderIds_.at(acct);
-    // Both halves, in order and each sorted. No separator between them: for
-    // every state the engine can actually reach, the concatenation and the
-    // rotation moment below already tell two different splits apart, and a
-    // marker that no reachable state needs is untested weight.
-    for (uint32_t g = 0; g < 2; ++g)
-    {
-      const auto& gen = g == 0 ? seen.cur : seen.prev;
-      std::vector<uint64_t> ids(gen.begin(), gen.end());
-      std::sort(ids.begin(), ids.end());
-      for (uint64_t id : ids)
-      {
-        h = mix(h, id);
-      }
-    }
-    h = mix(h, static_cast<uint64_t>(seen.rotatedAtNs));
-  }
+  h = clOrdIds_.hashInto(h);
 
   if (ledger_ != nullptr)
   {
@@ -420,68 +360,9 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
     }
   }
 
-  for (uint64_t acct : sortedKeys(mmpCfg_))
-  {
-    const MmpCfg& c = mmpCfg_.at(acct);
-    out.append(InboundCommand{RestoreMmpCfg{acct, c.qtyLimit, c.windowNs}}, ts);
-  }
+  mmp_.writeSnapshot(out, ts);
 
-  // MMP sliding-window fills, exact, in deque (time) order -- a maker one
-  // fill from its limit stays one fill from it across recovery.
-  for (uint64_t acct : sortedKeys(mmpFills_))
-  {
-    const MmpWindow& w = mmpFills_.at(acct);
-    if (w.fills.empty())
-    {
-      continue;
-    }
-    RestoreMmpFills batch{};
-    batch.account = acct;
-    for (const auto& [fts, q] : w.fills)
-    {
-      batch.tsNs[batch.count] = fts.raw();  // wire batch: raw ticks
-      batch.qtyRaw[batch.count] = q.raw();
-      if (++batch.count == kMmpFillBatch)
-      {
-        out.append(InboundCommand{batch}, ts);
-        batch = RestoreMmpFills{};
-        batch.account = acct;
-      }
-    }
-    if (batch.count > 0)
-    {
-      out.append(InboundCommand{batch}, ts);
-    }
-  }
-
-  for (uint64_t acct : sortedKeys(clientOrderIds_))
-  {
-    const auto& seen = clientOrderIds_.at(acct);
-    for (uint32_t g = 0; g < 2; ++g)
-    {
-      const auto& gen = g == 0 ? seen.cur : seen.prev;
-      std::vector<uint64_t> ids(gen.begin(), gen.end());
-      std::sort(ids.begin(), ids.end());
-      RestoreClOrdIds batch{};
-      batch.account = acct;
-      batch.generation = g;
-      for (uint64_t id : ids)
-      {
-        batch.ids[batch.count++] = id;
-        if (batch.count == kClOrdIdBatch)
-        {
-          out.append(InboundCommand{batch}, ts);
-          batch = RestoreClOrdIds{};
-          batch.account = acct;
-          batch.generation = g;
-        }
-      }
-      if (batch.count > 0)
-      {
-        out.append(InboundCommand{batch}, ts);
-      }
-    }
-  }
+  clOrdIds_.writeSnapshot(out, ts);
 
   book_.forEachOrder(
       [&](const RestingOrder& o)
@@ -499,16 +380,9 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
     out.append(InboundCommand{RestoreStop{o, trig}}, ts);
   }
 
-  for (OrderId id : sortedKeys(pegged_))
-  {
-    const Peg& p = pegged_.at(id);
-    out.append(InboundCommand{RestorePeg{id, p.side, p.ref, p.offsetRaw}}, ts);
-  }
+  pegs_.writeSnapshot(out, ts);
 
-  for (OrderId id : sortedKeys(orderStp_))
-  {
-    out.append(InboundCommand{RestoreOrderStp{id, static_cast<uint8_t>(orderStp_.at(id))}}, ts);
-  }
+  stp_.writeSnapshot(out, ts);
 
   for (uint64_t acct : sortedKeys(positions_))
   {
@@ -589,18 +463,16 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.orderOco_ = orderOco_;
   e.ocoMembers_ = ocoMembers_;
   e.ocoPending_ = ocoPending_;  // empty at a command boundary; copied for completeness
-  e.pegged_ = pegged_;
-  e.orderStp_ = orderStp_;
+  e.pegs_ = pegs_;
+  e.stp_ = stp_;
   e.admission_ = admission_;
   e.fees_ = fees_;
   e.feesEnabled_ = feesEnabled_;
-  e.mmpCfg_ = mmpCfg_;
-  e.mmpFills_ = mmpFills_;
-  e.mmpBreached_ = mmpBreached_;
+  e.mmp_ = mmp_;
   e.held_ = held_;
   e.heldSeq_ = heldSeq_;
   e.heldOpen_.store(e.held_.size(), std::memory_order_relaxed);
-  e.clientOrderIds_ = clientOrderIds_;
+  e.clOrdIds_ = clOrdIds_;
   e.reserve_ = reserve_;
   e.positions_ = positions_;
   e.auctionMode_ = auctionMode_;
@@ -642,15 +514,7 @@ template <class Book>
 template <class Map>
 std::vector<typename Map::key_type> MatchingEngine<Book>::sortedKeys(const Map& m)
 {
-  std::vector<typename Map::key_type> keys;
-  keys.reserve(m.size());
-  for (const auto& [k, v] : m)
-  {
-    (void)v;
-    keys.push_back(k);
-  }
-  std::sort(keys.begin(), keys.end());
-  return keys;
+  return sortedKeysOf(m);
 }
 
 }  // namespace flox::venue

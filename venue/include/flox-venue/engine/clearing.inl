@@ -184,30 +184,6 @@ Amount MatchingEngine<Book>::unrealizedPnlRaw(uint64_t account, Price mark) cons
          sign;
 }
 
-// Past the window the older half goes and the newer takes its place. Done
-// on touch rather than on a timer: the engine has no timer, and an account
-// nobody is trading does not need its window rolled.
-template <class Book>
-void MatchingEngine<Book>::rotateClOrdIds(ClOrdIdWindow& w, int64_t nowNs) const
-{
-  if (cfg_.clOrdIdWindowNs <= 0)
-  {
-    return;  // unbounded: what it always did
-  }
-  if (w.rotatedAtNs == 0)
-  {
-    w.rotatedAtNs = nowNs;
-    return;
-  }
-  if (nowNs - w.rotatedAtNs < cfg_.clOrdIdWindowNs)
-  {
-    return;
-  }
-  w.prev = std::move(w.cur);
-  w.cur.clear();
-  w.rotatedAtNs = nowNs;
-}
-
 template <class Book>
 int64_t MatchingEngine<Book>::iabs64(int64_t v)
 {

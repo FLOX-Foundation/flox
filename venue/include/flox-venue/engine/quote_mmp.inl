@@ -25,7 +25,7 @@ namespace flox::venue
 template <class Book>
 void MatchingEngine<Book>::setMmp(uint64_t account, Quantity qtyLimit, DurationNs windowNs)
 {
-  mmpCfg_[account] = MmpCfg{qtyLimit, windowNs};
+  mmp_.configure(account, qtyLimit, windowNs);
 }
 
 template <class Book>
@@ -134,7 +134,7 @@ void MatchingEngine<Book>::onTradeObserved(const Trade& t)
 {
   // Hot path: skip the per-trade hash lookups entirely unless MMP or OCO is
   // actually in use (the common case is neither).
-  if (!mmpCfg_.empty())
+  if (mmp_.armed())
   {
     mmpAdd(t.makerAccount, t.quantity);
     mmpAdd(t.takerAccount, t.quantity);
@@ -157,45 +157,19 @@ void MatchingEngine<Book>::onTradeObserved(const Trade& t)
 template <class Book>
 void MatchingEngine<Book>::mmpAdd(uint64_t account, Quantity qty)
 {
-  auto cfg = mmpCfg_.find(account);
-  if (cfg == mmpCfg_.end())
-  {
-    return;
-  }
-  auto& w = mmpFills_[account];
-  w.fills.emplace_back(now_, qty);
-  w.sumRaw += qty.raw();
-  while (!w.fills.empty() && w.fills.front().first <= now_ - cfg->second.windowNs)
-  {
-    w.sumRaw -= w.fills.front().second.raw();
-    w.fills.pop_front();
-  }
-  if (w.sumRaw >= cfg->second.qtyLimit.raw())  // sum >= limit
-  {
-    bool queued = false;
-    for (uint64_t a : mmpBreached_)
-    {
-      queued |= (a == account);
-    }
-    if (!queued)
-    {
-      mmpBreached_.push_back(account);
-    }
-  }
+  mmp_.add(account, qty, now_);
 }
 
 template <class Book>
 void MatchingEngine<Book>::mmpEnforce()
 {
-  for (uint64_t acc : mmpBreached_)
+  for (uint64_t acc : mmp_.breached())
   {
     cancelAllForAccount(acc);
-    auto& w = mmpFills_[acc];  // re-arm: drop the window and its running sum
-    w.fills.clear();
-    w.sumRaw = 0;
+    mmp_.rearm(acc);
     sink_(MmpTriggered{acc, cfg_.id});
   }
-  mmpBreached_.clear();
+  mmp_.clearBreached();
 }
 
 }  // namespace flox::venue

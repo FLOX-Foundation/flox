@@ -451,23 +451,17 @@ FillLimit MatchingEngine<Book>::pairFillLimit(uint64_t makerAcct, Side makerSide
 }
 
 // True if `clOrdId` was already used by `account` inside the dedup window
-// (see rotateClOrdIds) and the caller must therefore refuse the submission;
-// false and newly registered otherwise. clOrdId 0 means "not set" and is
-// exempt. Factored out of onNew so a Quote -- one submission that becomes
-// two child orders (see onQuote) -- can register its clientOrderId ONCE for
-// both legs instead of racing itself: the second leg's onNew would
-// otherwise find the first leg's insert already sitting in `cur` and refuse
-// a submission that never repeated anything.
+// (see engine/clordid_window.h) and the caller must therefore refuse the
+// submission; false and newly registered otherwise. Factored out of onNew so
+// a Quote -- one submission that becomes two child orders (see onQuote) --
+// can register its clientOrderId ONCE for both legs instead of racing
+// itself: the second leg's onNew would otherwise find the first leg's insert
+// already sitting in the current generation and refuse a submission that
+// never repeated anything.
 template <class Book>
 bool MatchingEngine<Book>::clOrdIdDuplicate(uint64_t account, uint64_t clOrdId)
 {
-  if (clOrdId == 0)
-  {
-    return false;
-  }
-  auto& seen = clientOrderIds_[account];
-  rotateClOrdIds(seen, now_.raw());
-  return seen.prev.count(clOrdId) != 0 || !seen.cur.insert(clOrdId).second;
+  return clOrdIds_.duplicate(account, clOrdId, now_.raw(), cfg_.clOrdIdWindowNs);
 }
 
 // `clOrdIdChecked` is true only for the two calls onQuote makes on behalf
@@ -597,7 +591,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     // an iceberg's peak was never load-bearing for price discovery -- the one
     // thing the peak does is limit what the public feed sees, and that is
     // exactly what a book entry built without it gives away. A good-till-date
-    // order that never reaches expiry_ never expires at all, in the auction
+    // order that never reaches the expiry book never expires at all, in the auction
     // or after it.
     RestingOrder ro{o.id, o.accountId, restPx, o.quantity, o.side};
     ro.clientOrderId = o.clientOrderId;
@@ -614,11 +608,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     trackResting(o.id, o.accountId, o.stp);
     if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
     {
-      expiry_[o.id] = o.expiryNs;
+      expiry_.set(o.id, o.expiryNs);
     }
     if (o.peg != PegRef::None)
     {
-      pegged_[o.id] = {o.side, o.peg, o.pegOffsetRaw};
+      pegs_.set(o.id, PegBook::Peg{o.side, o.peg, o.pegOffsetRaw});
     }
     sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, ro.leaves, o.accountId, o.clientOrderId});
     return;
@@ -672,11 +666,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     trackResting(o.id, o.accountId, o.stp);
     if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
     {
-      expiry_[o.id] = o.expiryNs;
+      expiry_.set(o.id, o.expiryNs);
     }
     if (o.peg != PegRef::None)
     {
-      pegged_[o.id] = {o.side, o.peg, o.pegOffsetRaw};
+      pegs_.set(o.id, PegBook::Peg{o.side, o.peg, o.pegOffsetRaw});
     }
     // Public feed shows only the displayed peak (ro.leaves); the hidden iceberg
     // reserve (out.leaves - ro.leaves) is not leaked. Non-iceberg: they match.

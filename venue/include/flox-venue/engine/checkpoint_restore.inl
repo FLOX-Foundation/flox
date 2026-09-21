@@ -75,11 +75,7 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
   }
   if (const auto* r = std::get_if<RestoreOrderStp>(&cmd))
   {
-    const auto mode = static_cast<STPMode>(r->mode);
-    if (mode != STPMode::None)
-    {
-      orderStp_[r->id] = mode;
-    }
+    stp_.restore(r->id, static_cast<STPMode>(r->mode));
     return true;
   }
   if (const auto* r = std::get_if<RestorePeg>(&cmd))
@@ -88,7 +84,7 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
     {
       return false;  // a peg spec must reference a restored resting order
     }
-    pegged_[r->id] = Peg{r->side, r->ref, r->offsetRaw};
+    pegs_.set(r->id, PegBook::Peg{r->side, r->ref, r->offsetRaw});
     return true;
   }
   if (const auto* r = std::get_if<RestoreHeld>(&cmd))
@@ -101,24 +97,12 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
   }
   if (const auto* r = std::get_if<RestoreMmpCfg>(&cmd))
   {
-    // Fill windows arrive separately as RestoreMmpFills records (exact
-    // restore); a snapshot without them restores the windows empty.
-    mmpCfg_[r->account] = MmpCfg{r->qtyLimit, r->windowNs};
+    mmp_.restoreCfg(r->account, r->qtyLimit, r->windowNs);
     return true;
   }
   if (const auto* r = std::get_if<RestoreMmpFills>(&cmd))
   {
-    if (r->count > kMmpFillBatch)
-    {
-      return false;
-    }
-    auto& w = mmpFills_[r->account];
-    for (uint32_t i = 0; i < r->count; ++i)
-    {
-      w.fills.emplace_back(SeqNanos::fromRaw(r->tsNs[i]), Quantity::fromRaw(r->qtyRaw[i]));
-      w.sumRaw += r->qtyRaw[i];
-    }
-    return true;
+    return mmp_.restoreFills(*r);
   }
   if (const auto* r = std::get_if<RestoreBalance>(&cmd))
   {
@@ -138,12 +122,7 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
     {
       return false;
     }
-    auto& seen = clientOrderIds_[r->account];
-    auto& gen = r->generation == 0 ? seen.cur : seen.prev;
-    for (uint32_t i = 0; i < r->count; ++i)
-    {
-      gen.insert(r->ids[i]);
-    }
+    clOrdIds_.restore(r->account, r->generation, r->ids, r->count);
     return true;
   }
   if (const auto* r = std::get_if<RestoreFunding>(&cmd))
@@ -179,8 +158,7 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
 template <class Book>
 SeqNanos MatchingEngine<Book>::expiryOf(OrderId id) const
 {
-  auto it = expiry_.find(id);
-  return it == expiry_.end() ? SeqNanos{} : it->second;
+  return expiry_.expiryOf(id);
 }
 
 template <class Book>
@@ -259,7 +237,7 @@ bool MatchingEngine<Book>::applyRestoreOrder(const RestoreOrder& r)
   trackResting(r.id, r.accountId, STPMode::None);  // set by the RestoreOrderStp that follows
   if (static_cast<bool>(r.expiryNs))
   {
-    expiry_[r.id] = r.expiryNs;
+    expiry_.set(r.id, r.expiryNs);
   }
   if (r.ocoGroup > 0)
   {
