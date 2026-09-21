@@ -134,17 +134,17 @@ int64_t MatchingEngine<Book>::iabs64(int64_t v)
 template <class Book>
 Amount MatchingEngine<Book>::consumeOrderIM(OrderId orderId, int64_t qtyRaw)
 {
-  auto it = reserve_.find(orderId);
-  if (it == reserve_.end())
+  Reservation* r = credit_.find(orderId);
+  if (r == nullptr)
   {
     return 0;
   }
-  Amount im = imForRaw(qtyRaw, it->second.limitPriceRaw);
-  if (im > it->second.reservedRaw)
+  Amount im = imForRaw(qtyRaw, r->limitPriceRaw);
+  if (im > r->reservedRaw)
   {
-    im = it->second.reservedRaw;
+    im = r->reservedRaw;
   }
-  it->second.reservedRaw -= im;
+  r->reservedRaw -= im;
   return im;
 }
 
@@ -152,17 +152,17 @@ Amount MatchingEngine<Book>::consumeOrderIM(OrderId orderId, int64_t qtyRaw)
 template <class Book>
 void MatchingEngine<Book>::releaseOrderIM(OrderId orderId, int64_t qtyRaw, uint64_t acct)
 {
-  auto it = reserve_.find(orderId);
-  if (it == reserve_.end())
+  Reservation* r = credit_.find(orderId);
+  if (r == nullptr)
   {
     return;
   }
-  Amount im = imForRaw(qtyRaw, it->second.limitPriceRaw);
-  if (im > it->second.reservedRaw)
+  Amount im = imForRaw(qtyRaw, r->limitPriceRaw);
+  if (im > r->reservedRaw)
   {
-    im = it->second.reservedRaw;
+    im = r->reservedRaw;
   }
-  it->second.reservedRaw -= im;
+  r->reservedRaw -= im;
   if (im > 0)
   {
     ledger_->release(acct, cfg_.quoteAsset, im);

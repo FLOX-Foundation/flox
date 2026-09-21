@@ -151,23 +151,7 @@ void MatchingEngine<Book>::forgetOrder(OrderId id)
 template <class Book>
 void MatchingEngine<Book>::releaseReservationPro(OrderId id, int64_t fromQtyRaw, int64_t toQtyRaw)
 {
-  if (ledger_ == nullptr || fromQtyRaw <= 0 || toQtyRaw >= fromQtyRaw)
-  {
-    return;
-  }
-  auto it = reserve_.find(id);
-  if (it == reserve_.end())
-  {
-    return;
-  }
-  const Amount freed = static_cast<Amount>(static_cast<__int128>(it->second.reservedRaw) *
-                                           (fromQtyRaw - toQtyRaw) / fromQtyRaw);
-  if (freed <= 0)
-  {
-    return;
-  }
-  ledger_->release(it->second.account, it->second.asset, freed);
-  it->second.reservedRaw -= freed;
+  credit_.releaseReservationPro(id, fromQtyRaw, toQtyRaw, ledger_);
 }
 
 template <class Book>

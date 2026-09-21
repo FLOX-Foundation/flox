@@ -37,7 +37,7 @@ void MatchingEngine<Book>::onQuote(const Quote& q)
   }
   if (admissionDenies(q.accountId, AdmissionDeny::DenyQuote))
   {
-    ++admissionRejects_;
+    credit_.countAdmissionReject();
     sink_(OrderRejected{q.bidId, q.symbol, RejectReason::QuoteNotPermitted, q.accountId});
     return;
   }

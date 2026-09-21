@@ -23,85 +23,31 @@ namespace flox::venue
 template <class Book>
 void MatchingEngine<Book>::setCreditCheck(CreditCheck c)
 {
-  credit_ = std::move(c);
+  credit_.setCreditCheck(std::move(c));
 }
 
-// Admission profile of one account. A default-constructed profile clears the
-// entry (back to "everything permitted"), which keeps the table canonical
-// for the checkpoint state hash.
 template <class Book>
 void MatchingEngine<Book>::setAdmissionProfile(uint64_t account, const AdmissionProfile& p)
 {
-  if (p.allowedTypes == 0 && p.allowedTif == 0 && p.deny == 0)
-  {
-    admission_.erase(account);
-    return;
-  }
-  admission_[account] = p;
+  credit_.setAdmissionProfile(account, p);
 }
 
 template <class Book>
 const std::unordered_map<uint64_t, AdmissionProfile>& MatchingEngine<Book>::admissionProfiles() const noexcept
 {
-  return admission_;
+  return credit_.admissionProfiles();
 }
 
-// Orders refused because the sender was not entitled to send them. Non-zero
-// means a counterparty is sending what it may not -- visible immediately
-// rather than a week later as a position nobody can explain.
 template <class Book>
 uint64_t MatchingEngine<Book>::admissionRejects() const noexcept
 {
-  return admissionRejects_;
+  return credit_.admissionRejects();
 }
 
-// Instrument conformance for a conditional order: the trigger is a price and
-// the size is a size, so tick, band and lot apply exactly as they do to a
-// resting limit. State and duplicate checks already ran before this point.
 template <class Book>
 RejectReason MatchingEngine<Book>::validateConditional(const NewOrder& o) const
 {
-  if (o.quantity.raw() <= 0)
-  {
-    return RejectReason::InvalidQuantity;
-  }
-  if (!cfg_.lotSize.isZero() && (o.quantity.raw() % cfg_.lotSize.raw()) != 0)
-  {
-    return RejectReason::InvalidQuantity;
-  }
-  const int64_t trig = o.triggerPrice.raw();
-  if (trig > 0)
-  {
-    if (!cfg_.tickSize.isZero() && (trig % cfg_.tickSize.raw()) != 0)
-    {
-      return RejectReason::InvalidPrice;
-    }
-    if (!cfg_.minPrice.isZero() && trig < cfg_.minPrice.raw())
-    {
-      return RejectReason::InvalidPrice;
-    }
-    if (!cfg_.maxPrice.isZero() && trig > cfg_.maxPrice.raw())
-    {
-      return RejectReason::InvalidPrice;
-    }
-  }
-  // A stop-LIMIT also carries the limit price it will rest at.
-  if (o.type == OrderType::STOP_LIMIT || o.type == OrderType::TAKE_PROFIT_LIMIT)
-  {
-    if (!cfg_.tickSize.isZero() && (o.price.raw() % cfg_.tickSize.raw()) != 0)
-    {
-      return RejectReason::InvalidPrice;
-    }
-    if (!cfg_.minPrice.isZero() && o.price.raw() < cfg_.minPrice.raw())
-    {
-      return RejectReason::InvalidPrice;
-    }
-    if (!cfg_.maxPrice.isZero() && o.price.raw() > cfg_.maxPrice.raw())
-    {
-      return RejectReason::InvalidPrice;
-    }
-  }
-  return RejectReason::None;
+  return credit_.validateConditional(o, cfg_);
 }
 
 template <class Book>
@@ -212,55 +158,18 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
 // Entitlement gate. Every admission path consults this before anything else
 // decides the order's fate, so a counterparty cannot reach the book through
 // a path that forgot to ask. Declared in scripts/check_gate_reachability.py,
-// which fails the build if a path stops calling it.
+// which fails the build if a path stops calling it. The rules live in
+// engine::Credit; the auction flag is the engine's, so it is handed over.
 template <class Book>
 RejectReason MatchingEngine<Book>::admissionGate(const NewOrder& o) const
 {
-  auto it = admission_.find(o.accountId);
-  if (it == admission_.end())
-  {
-    return RejectReason::None;  // no profile: everything permitted
-  }
-  const AdmissionProfile& p = it->second;
-  if (p.allowedTypes != 0 && (p.allowedTypes & (1u << static_cast<uint32_t>(o.type))) == 0)
-  {
-    return RejectReason::OrderTypeNotPermitted;
-  }
-  // Tested before the TIF list so the answer names the policy rather than the
-  // field: "you may not leave an order resting" tells the counterparty what
-  // to change, "this time in force is not allowed" leaves it guessing which
-  // of the allowed ones is safe.
-  //
-  // Refused on admission, not killed on the way out: an order that could rest
-  // must never be accepted from a counterparty that does not track resting
-  // orders. POST_ONLY exists only to rest; GTC and GTD outlive the message
-  // that carried them.
-  //
-  // A call auction rests EVERYTHING it admits -- there is no matching to be
-  // immediate about, so an IOC accumulates like any other order and sits in
-  // the book until the uncross. A counterparty that does not track resting
-  // orders therefore cannot participate in one at all: its order would sit
-  // there for the length of the auction while it believes the order either
-  // filled or died on arrival, and at the uncross it can trade against that
-  // counterparty's own other side.
-  if ((p.deny & AdmissionDeny::DenyResting) != 0 &&
-      (session_.auction() || o.tif == TimeInForce::GTC || o.tif == TimeInForce::GTD ||
-       o.tif == TimeInForce::POST_ONLY || o.postOnly))
-  {
-    return RejectReason::RestingNotPermitted;
-  }
-  if (p.allowedTif != 0 && (p.allowedTif & (1u << static_cast<uint32_t>(o.tif))) == 0)
-  {
-    return RejectReason::TimeInForceNotPermitted;
-  }
-  return RejectReason::None;
+  return credit_.admissionGate(o, session_.auction());
 }
 
 template <class Book>
 bool MatchingEngine<Book>::admissionDenies(uint64_t account, uint8_t bit) const
 {
-  auto it = admission_.find(account);
-  return it != admission_.end() && (it->second.deny & bit) != 0;
+  return credit_.admissionDenies(account, bit);
 }
 
 template <class Book>
@@ -335,43 +244,15 @@ int64_t MatchingEngine<Book>::restingReduceOnlyRaw(uint64_t account, Side side, 
   return sum;
 }
 
-// How much of one leg's prospective fill the perp risk limits still allow,
-// measured against the position the account holds RIGHT NOW. `reason` names
-// the limit that cut it (meaningful only when the result is below `want`).
+// legFillLimit against the position the account holds RIGHT NOW (plus
+// whatever a dry run has already planned for it). Resolving the position is
+// the engine's half; the limits themselves are engine::Credit's.
 template <class Book>
 int64_t MatchingEngine<Book>::legFillLimit(uint64_t account, Side side, bool reduceOnly, int64_t want,
                                            CancelReason& reason, int64_t posDeltaRaw) const
 {
   const int64_t posQ = clearing_.positionQty(account) + posDeltaRaw;
-  int64_t allowed = want;
-  if (reduceOnly)
-  {
-    // A reduce-only order may only close what is open on the other side. Its
-    // reserved IM is 0 by construction, so any part of it that opened a
-    // position would open it with NO margin at all.
-    const int64_t reducible = (side == Side::BUY && posQ < 0)    ? -posQ
-                              : (side == Side::SELL && posQ > 0) ? posQ
-                                                                 : 0;
-    if (reducible < allowed)
-    {
-      allowed = reducible;
-      reason = CancelReason::ReduceOnlyNotReducing;
-    }
-  }
-  if (!cfg_.maxPositionQty.isZero())
-  {
-    // Room left before the RESULTING position breaches the cap. Checking the
-    // incoming order alone (the admission gate) lets several orders, each
-    // under the cap, settle into a position past it.
-    const int64_t room =
-        (side == Side::BUY) ? cfg_.maxPositionQty.raw() - posQ : cfg_.maxPositionQty.raw() + posQ;
-    if (room < allowed)
-    {
-      allowed = room;
-      reason = CancelReason::PositionLimitExceeded;
-    }
-  }
-  return allowed < 0 ? 0 : allowed;
+  return credit_.legFillLimit(posQ, side, reduceOnly, want, reason, cfg_);
 }
 
 // Fill-time risk re-check for one prospective bite (see the FillLimit hook).
@@ -417,34 +298,10 @@ FillLimit MatchingEngine<Book>::pairFillLimit(uint64_t makerAcct, Side makerSide
                                               uint64_t takerAcct, Side takerSide, bool takerReduceOnly, Quantity want,
                                               int64_t makerPosDeltaRaw, int64_t takerPosDeltaRaw) const
 {
-  FillLimit out;
-  out.qty = want;
-  out.makerQty = want;
-  out.takerQty = want;
-  CancelReason makerReason = CancelReason::ReduceOnlyNotReducing;
-  CancelReason takerReason = CancelReason::ReduceOnlyNotReducing;
-  const int64_t makerAllowed = legFillLimit(makerAcct, makerSide, makerReduceOnly, want.raw(),
-                                            makerReason, makerPosDeltaRaw);
-  const int64_t takerAllowed = legFillLimit(takerAcct, takerSide, takerReduceOnly, want.raw(),
-                                            takerReason, takerPosDeltaRaw);
-  out.makerQty = Quantity::fromRaw(makerAllowed);
-  out.takerQty = Quantity::fromRaw(takerAllowed);
-  // The maker is the leg reported as blocked when both are: it is the one the
-  // matcher can act on (pull it from the book) without killing an aggressor
-  // that may still trade elsewhere.
-  if (makerAllowed <= takerAllowed)
-  {
-    out.qty = out.makerQty;
-    out.makerBlocked = makerAllowed <= 0;
-    out.reason = makerReason;
-  }
-  else
-  {
-    out.qty = out.takerQty;
-    out.takerBlocked = takerAllowed <= 0;
-    out.reason = takerReason;
-  }
-  return out;
+  const int64_t makerPosQ = clearing_.positionQty(makerAcct) + makerPosDeltaRaw;
+  const int64_t takerPosQ = clearing_.positionQty(takerAcct) + takerPosDeltaRaw;
+  return credit_.pairFillLimit(makerPosQ, makerSide, makerReduceOnly, takerPosQ, takerSide,
+                               takerReduceOnly, want, cfg_);
 }
 
 // True if `clOrdId` was already used by `account` inside the dedup window
@@ -469,9 +326,9 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
 {
   // Entitlement first: an order the counterparty may not send should not
   // consume a clientOrderId, link an OCO group or reach any later gate.
-  if (const RejectReason r = admissionGate(o); r != RejectReason::None)
+  if (const RejectReason r = credit_.admissionGate(o, session_.auction()); r != RejectReason::None)
   {
-    ++admissionRejects_;
+    credit_.countAdmissionReject();
     sink_(OrderRejected{o.id, o.symbol, r, o.accountId, o.clientOrderId});
     return;
   }
@@ -530,7 +387,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     // trigger) and a quantity, and both must obey the instrument -- an
     // off-tick or out-of-band trigger, or a sub-lot size, used to be parked
     // happily and only surfaced when the stop fired.
-    if (const RejectReason r = validateConditional(o); r != RejectReason::None)
+    if (const RejectReason r = credit_.validateConditional(o, cfg_); r != RejectReason::None)
     {
       sink_(OrderRejected{o.id, o.symbol, r, o.accountId, o.clientOrderId});
       return;
@@ -564,11 +421,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     sink_(OrderRejected{o.id, o.symbol, r, o.accountId, o.clientOrderId});
     return;
   }
-  if (!reserveFunds(o))
+  if (!credit_.reserveFunds(o, cfg_, ledger_))
   {
-    sink_(OrderRejected{o.id, o.symbol, creditReason_, o.accountId, o.clientOrderId});
-    creditReason_ = RejectReason::InsufficientFunds;  // reset for the next order
-    return;                                           // pre-trade buying-power (ledger reservation or credit hook)
+    sink_(OrderRejected{o.id, o.symbol, credit_.creditReason(), o.accountId, o.clientOrderId});
+    credit_.resetCreditReason();  // reset for the next order
+    return;                       // pre-trade buying-power (ledger reservation or credit hook)
   }
   committed = true;  // past all reject gates: the order will match/rest, and any
                      // OCO resolution is now owned by processOco / forgetOrder.

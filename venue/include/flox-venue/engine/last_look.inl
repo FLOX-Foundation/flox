@@ -153,36 +153,24 @@ void MatchingEngine<Book>::releaseHeldLeg(OrderId id, Quantity qty)
   {
     return;
   }
-  auto it = reserve_.find(id);
-  if (it == reserve_.end())
+  Reservation* r = credit_.find(id);
+  if (r == nullptr)
   {
     return;
   }
-  Amount rel;
-  if (cfg_.linearPerp)
+  Amount rel = credit_.backingFor(*r, qty, cfg_);
+  if (rel > r->reservedRaw)
   {
-    rel = imForRaw(qty.raw(), it->second.limitPriceRaw);
-  }
-  else if (it->second.side == Side::BUY)
-  {
-    rel = notionalRaw(it->second.limitPriceRaw, qty.raw(), cfg_.priceScale, cfg_.qtyScale);
-  }
-  else
-  {
-    rel = amountOf(qty);
-  }
-  if (rel > it->second.reservedRaw)
-  {
-    rel = it->second.reservedRaw;
+    rel = r->reservedRaw;
   }
   if (rel > 0)
   {
-    ledger_->release(it->second.account, it->second.asset, rel);
+    ledger_->release(r->account, r->asset, rel);
   }
-  it->second.reservedRaw -= rel;
-  if (it->second.reservedRaw <= 0 && !book_.contains(id))
+  r->reservedRaw -= rel;
+  if (r->reservedRaw <= 0 && !book_.contains(id))
   {
-    reserve_.erase(it);
+    credit_.erase(id);
     forgetOrder(id);
   }
 }
