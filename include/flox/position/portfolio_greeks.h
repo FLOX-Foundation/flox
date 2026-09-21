@@ -14,9 +14,11 @@
 #include "flox/position/position_group.h"
 #include "flox/pricing/greeks.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <vector>
 
 // Portfolio-level greeks across mixed legs (perp + option on the same or
 // different underlyings). For each open position:
@@ -62,8 +64,25 @@ class PortfolioGreeksAggregator
     PortfolioGreeks acc;
     _vegaByTenor = {0.0, 0.0, 0.0};
 
-    for (const auto& [pid, pos] : positions.positions())
+    // order: std::unordered_map enumerates in hash-bucket order, which is a
+    // property of the standard library, not of the data -- libc++ and
+    // libstdc++ walk the same positions in different orders. Summing the
+    // per-position doubles below in that order would make the aggregate
+    // greeks depend on which library built the binary. Collecting the ids
+    // and sorting them first fixes the fold order so a backtest reproduces
+    // bit-for-bit across machines.
+    std::vector<PositionId> orderedIds;
+    orderedIds.reserve(positions.positions().size());
+    // order: sorted below before the fold, so the order is not observable
+    for (const auto& entry : positions.positions())
     {
+      orderedIds.push_back(entry.first);
+    }
+    std::sort(orderedIds.begin(), orderedIds.end());
+
+    for (PositionId pid : orderedIds)
+    {
+      const auto& pos = positions.positions().at(pid);
       if (pos.closed)
       {
         continue;

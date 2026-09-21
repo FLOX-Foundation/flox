@@ -670,6 +670,7 @@ class MultiModePositionTracker : public IPositionManager
   int64_t closeAcrossSymbol(const Order& order, int64_t remaining)
   {
     std::vector<PositionId> ids;
+    // order: sorted below, before use -- see the comment above this method
     for (const auto& [pid, pos] : _groups->positions())
     {
       if (!pos.closed && pos.symbol == order.symbol)

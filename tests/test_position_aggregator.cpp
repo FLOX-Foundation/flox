@@ -9,6 +9,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <vector>
+
 #include "flox/execution/multi_execution_listener.h"
 #include "flox/position/multi_mode_position_tracker.h"
 #include "flox/position/position_group.h"
@@ -1031,6 +1034,47 @@ TEST(GroupedQueryTest, GetOpenPositionsBySymbol)
 
   auto positions200 = gt.getOpenPositions(200);
   EXPECT_EQ(positions200.size(), 1);
+}
+
+// W32-T012: getOpenPositions() and forEachOpen() used to hand positions out
+// in whatever order _positions (a std::unordered_map<PositionId, ...>)
+// happened to enumerate them -- hash-bucket order, a property of the
+// standard library rather than of the data. Both are fixed to sort by
+// PositionId first. Sixteen-plus spread-out ids so the map's own bucket
+// order (checked below) is not already ascending, or this test would pass
+// vacuously.
+TEST(GroupedQueryTest, GetOpenPositionsAndForEachOpenAreOrderedByPositionId)
+{
+  PositionGroupTracker gt;
+  for (OrderId orderId = 1; orderId <= 20; ++orderId)
+  {
+    gt.openPosition(orderId, 100, Side::BUY, Price::fromDouble(100.0),
+                    Quantity::fromDouble(1.0));
+  }
+
+  std::vector<PositionId> nativeOrder;
+  for (const auto& [pid, pos] : gt.positions())
+  {
+    nativeOrder.push_back(pid);
+  }
+  ASSERT_FALSE(std::is_sorted(nativeOrder.begin(), nativeOrder.end()))
+      << "unordered_map<PositionId, IndividualPosition> enumerated positions "
+         "in ascending id order on this build; this test needs a larger or "
+         "differently spread id set to stay meaningful";
+
+  auto openPositions = gt.getOpenPositions(100);
+  ASSERT_EQ(openPositions.size(), 20u);
+  std::vector<PositionId> fromGetOpen;
+  for (const auto* p : openPositions)
+  {
+    fromGetOpen.push_back(p->positionId);
+  }
+  EXPECT_TRUE(std::is_sorted(fromGetOpen.begin(), fromGetOpen.end()));
+
+  std::vector<PositionId> fromForEach;
+  gt.forEachOpen([&fromForEach](const IndividualPosition& p)
+                 { fromForEach.push_back(p.positionId); });
+  EXPECT_TRUE(std::is_sorted(fromForEach.begin(), fromForEach.end()));
 }
 
 TEST(ReconcileConvenienceTest, ReconcileWithTracker)
