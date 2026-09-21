@@ -89,12 +89,13 @@ inline const char* toString(SessionReject r) noexcept
 }
 
 // Identifying fields of a command refused before it reached the engine (a
-// session-level admission reject: rate limit today). The engine's own
-// OrderRejected always carries these off the order it refused; a router
-// reject answered with id 0 / symbol 0 / no clOrdId (silence dressed up as an
-// exec report) because handle() decoded the command, stamped it, then threw
-// it away the moment admission failed -- so the fields it should have echoed
-// were briefly in hand and never carried out. This is that hand-off.
+// session-level admission reject: rate limit, an unauthenticated frame, a
+// frame that did not decode). The engine's own OrderRejected always carries
+// these off the order it refused; a session reject answered with id 0 /
+// symbol 0 / no clOrdId (silence dressed up as an exec report) because
+// handle() threw the frame away the moment admission failed -- so the fields
+// it should have echoed were briefly in hand and never carried out. This is
+// that hand-off.
 struct RejectEcho
 {
   OrderId id{0};
@@ -127,6 +128,48 @@ inline RejectEcho rejectEchoOf(const InboundCommand& c) noexcept
     return RejectEcho{q->bidId, q->symbol, q->clientOrderId};
   }
   return RejectEcho{};
+}
+
+// ClOrdID (FIX tag 11) read straight out of a frame that did NOT decode.
+//
+// A refusal with no identity in it is worse than useless to the client: it has
+// nothing to match the refusal against, so it waits out its timeout and
+// resends -- and the resend is refused again, this time as a duplicate
+// ClOrdID. One refusal becomes two and the second one is unexplainable. A
+// tag=value frame stays readable when it is not decodable (an unknown
+// MsgType, a field the codec refuses, a truncated tail), so the identifier
+// the client chose is usually still right there in the bytes.
+//
+// Deliberately narrow: only a numeric ClOrdID at a field boundary, because
+// the echo is a uint64 and a wrong identifier is worse than none -- it points
+// the client at an order it did not send.
+inline uint64_t clientOrderIdFromRaw(const uint8_t* p, size_t n) noexcept
+{
+  constexpr uint8_t kSoh = 0x01;
+  for (size_t i = 0; i + 3 <= n; ++i)
+  {
+    if (p[i] != '1' || p[i + 1] != '1' || p[i + 2] != '=')
+    {
+      continue;
+    }
+    if (i != 0 && p[i - 1] != kSoh)
+    {
+      continue;  // "411=..." is tag 411, not tag 11
+    }
+    uint64_t v = 0;
+    size_t digits = 0;
+    for (size_t j = i + 3; j < n && p[j] != kSoh; ++j)
+    {
+      if (p[j] < '0' || p[j] > '9' || digits == 19)
+      {
+        return 0;  // not a number, or too long to be one: echo nothing
+      }
+      v = v * 10 + static_cast<uint64_t>(p[j] - '0');
+      ++digits;
+    }
+    return digits == 0 ? 0 : v;
+  }
+  return 0;
 }
 
 // An account field as the commands spell it: `accountId` on the order-flow and
@@ -209,12 +252,17 @@ class GatewaySession
 
   // Decode + admission-control one inbound frame. Returns the command to
   // submit, or nullopt with `out` set to the rejection reason. `echo`, when
-  // given, is filled with the refused command's own id/symbol/clientOrderId
-  // for a reject the caller answers on the wire (RateLimited: the frame DID
-  // decode, so there is a real order to echo) and left zeroed for one where
-  // there never was a command to take them from (Unauthenticated,
-  // DecodeError). Optional and defaulted so every existing caller that only
-  // wants the reason keeps compiling unchanged.
+  // given, names the frame that was refused, for EVERY reason -- the client
+  // has to be able to match a refusal to the order it sent, and which of the
+  // venue's own admission rules tripped is not something it can use to do
+  // that. Where the identity comes from:
+  //
+  //   frame decoded  -> the command's own id / symbol / clientOrderId
+  //   frame did not  -> ClOrdID scraped out of the raw bytes if one is
+  //                     legible there (clientOrderIdFromRaw), zeros if not
+  //
+  // Optional and defaulted so every existing caller that only wants the
+  // reason keeps compiling unchanged.
   std::optional<InboundCommand> handle(const uint8_t* p, size_t n, int64_t nowNs,
                                        SessionReject& out, RejectEcho* echo = nullptr)
   {
@@ -226,12 +274,20 @@ class GatewaySession
     if (!authed_)
     {
       out = SessionReject::Unauthenticated;
+      // A frame sent before logon is still a frame about an order. It is
+      // decoded here only to name it in the refusal -- nothing is stamped,
+      // charged or submitted.
+      nameFrame(echo, p, n);
       return std::nullopt;
     }
     auto cmd = decode_(p, n);
     if (!cmd)
     {
       out = SessionReject::DecodeError;
+      if (echo != nullptr)
+      {
+        echo->clientOrderId = clientOrderIdFromRaw(p, n);
+      }
       return std::nullopt;
     }
     // Authorization: a session bound to a real account may only act as that
@@ -256,6 +312,23 @@ class GatewaySession
   }
 
  private:
+  // Identity to answer a refusal with when the frame was never admitted far
+  // enough to produce a command: decode it for the echo if it decodes, read
+  // the ClOrdID out of the bytes if it does not.
+  void nameFrame(RejectEcho* echo, const uint8_t* p, size_t n) const
+  {
+    if (echo == nullptr)
+    {
+      return;
+    }
+    if (auto cmd = decode_(p, n))
+    {
+      *echo = rejectEchoOf(*cmd);
+      return;
+    }
+    echo->clientOrderId = clientOrderIdFromRaw(p, n);
+  }
+
   // Force `a` onto every account-bearing command so the session can only ever
   // act as its own authenticated account. Admin and market commands (SetMark,
   // ApplyFunding) carry no account and are left untouched.

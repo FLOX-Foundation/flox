@@ -383,9 +383,9 @@ class WsGateway
     }
     else if (rej != SessionReject::None && registry_ != nullptr)
     {
-      // RateLimited decoded fine before admission turned it away, so `echo`
-      // carries the client's own id/symbol/clientOrderId; the other reasons
-      // (DecodeError, Unauthenticated) never had a command to take them from.
+      // Same policy as TcpGateway: the refusal names the frame it refused for
+      // every reason -- `echo` comes from the decoded command, or from the
+      // ClOrdID legible in the raw bytes when the frame did not decode.
       registry_->send(session.account(),
                       OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
                                                   session.account(), echo.clientOrderId}});

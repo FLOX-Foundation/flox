@@ -258,12 +258,12 @@ class TcpGateway
       else if (rej != SessionReject::None && registry_ != nullptr)
       {
         // A rejected frame answers with a sequenced exec-report reject instead
-        // of the old silence. A frame that never decoded (DecodeError) or was
-        // never looked at (Unauthenticated) has no order to name -- echo is
-        // zeroed for those. RateLimited decoded fine before admission turned
-        // it away, so `echo` carries the id/symbol/clientOrderId the client
-        // itself chose -- the same fields any other reject on this order would
-        // carry.
+        // of the old silence, and it NAMES the frame it refused whatever the
+        // reason: `echo` carries the id/symbol/clientOrderId the client chose
+        // when the frame decoded, and the ClOrdID read out of the raw bytes
+        // when it did not. A refusal the client cannot match to an order is
+        // one it waits out and resends, and the resend comes back as a
+        // duplicate ClOrdID.
         registry_->send(session.account(),
                         OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
                                                     session.account(), echo.clientOrderId}});

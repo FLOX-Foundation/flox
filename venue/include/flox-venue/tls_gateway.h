@@ -485,10 +485,10 @@ class TlsGateway
       else if (rej != SessionReject::None && registry_ != nullptr)
       {
         // A rejected frame answers with a sequenced exec-report reject instead
-        // of the old silence -- same policy as TcpGateway. RateLimited decoded
-        // fine before admission turned it away, so `echo` carries the client's
-        // own id/symbol/clientOrderId; the other reasons never had a command
-        // to take them from.
+        // of the old silence -- same policy as TcpGateway, and it names the
+        // frame it refused for every reason (GatewaySession::handle fills
+        // `echo` from the decoded command, or from the ClOrdID legible in the
+        // raw bytes when the frame did not decode).
         registry_->send(session.account(),
                         OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
                                                     session.account(), echo.clientOrderId}});

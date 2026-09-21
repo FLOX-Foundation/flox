@@ -70,9 +70,20 @@ engine sink -> registry.route(event) -> AccountStream (per account)
   connection loop attaches the bound account on connect and detaches on
   disconnect. Without a registry a gateway stays in the embedded per-frame
   responder mode.
-- **Rejects are not silent**: a frame that fails decode / admission answers
-  with a sequenced `OrderRejected` (id 0, reason `MalformedMessage` /
-  `RateLimited` / `Unauthenticated`) on the session's own stream.
+- **Rejects are not silent, and they name the frame they refused**: a frame
+  that fails decode or admission answers with a sequenced `OrderRejected`
+  (reason `MalformedMessage` / `RateLimited` / `Unauthenticated`) on the
+  session's own stream, carrying the id, symbol and ClOrdID of the command it
+  refused. When the frame did not decode there is no command to take them
+  from, so the ClOrdID is read out of the raw bytes instead
+  (`clientOrderIdFromRaw`: tag 11 at a field boundary, numeric only -- a
+  wrong identifier points the client at an order it never sent, which is
+  worse than none).
+
+    The zeros this replaced cost the client twice. It could not match the
+    refusal to anything it had sent, so it waited out its timeout and
+    resent -- and the resend was refused again, as a duplicate ClOrdID. One
+    refusal became two, and the second one explained nothing.
 - `TlsGateway` supports delivery mode too. OpenSSL forbids CONCURRENT
   `SSL_read`/`SSL_write` on one `SSL*`, not serialized use: each connection
   carries a mutex over its `SSL*`, the read loop takes it only for the
