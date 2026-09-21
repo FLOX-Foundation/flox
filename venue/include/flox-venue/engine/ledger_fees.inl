@@ -35,6 +35,8 @@ void MatchingEngine<Book>::setLedger(Ledger* ledger, uint64_t venueAccount)
 {
   ledger_ = ledger;
   venueAccount_ = venueAccount;
+  // One place either is set, so the component's mirror cannot drift from it.
+  clearing_.setLedger(ledger, venueAccount);
 }
 
 // Client reconnect reconciliation: the account's live resting orders and perp
@@ -89,14 +91,7 @@ typename MatchingEngine<Book>::AccountSnapshot MatchingEngine<Book>::snapshotAcc
 template <class Book>
 Amount MatchingEngine<Book>::totalPositionMargin() const
 {
-  Amount t = 0;
-  // order: not observable -- Amount sum of posted margin
-  for (const auto& [acct, p] : positions_)
-  {
-    (void)acct;
-    t += p.margin;
-  }
-  return t;
+  return clearing_.totalPositionMargin();
 }
 
 // Trades that printed but could not be settled without creating value, so
@@ -414,19 +409,19 @@ void MatchingEngine<Book>::settleTrade(const Trade& t)
     // A position is EXPOSURE, not cash: it is what reduce-only, the position
     // cap and open interest are computed from, and none of those are money
     // questions. So a ledgerless perp still tracks positions -- only the
-    // settlement (PnL, margin, fees) is skipped. Leaving positions_ empty
+    // settlement (PnL, margin, fees) is skipped. Leaving the positions empty
     // here is what used to make reduce-only reject unconditionally, degrade
     // the position cap to a per-order cap, and publish open interest as a
     // flat zero.
     if (cfg_.linearPerp)
     {
       const bool takerBuys = (t.takerSide == Side::BUY);
-      updatePerpPosition(takerBuys ? t.takerAccount : t.makerAccount,
-                         takerBuys ? t.takerId : t.makerId, true, t.quantity.raw(),
-                         t.price.raw());
-      updatePerpPosition(takerBuys ? t.makerAccount : t.takerAccount,
-                         takerBuys ? t.makerId : t.takerId, false, t.quantity.raw(),
-                         t.price.raw());
+      clearing_.updatePerpPosition(takerBuys ? t.takerAccount : t.makerAccount,
+                                   takerBuys ? t.takerId : t.makerId, true, t.quantity.raw(),
+                                   t.price.raw());
+      clearing_.updatePerpPosition(takerBuys ? t.makerAccount : t.takerAccount,
+                                   takerBuys ? t.makerId : t.takerId, false, t.quantity.raw(),
+                                   t.price.raw());
     }
     emitFees(t);  // no settlement: fee events only
     return;

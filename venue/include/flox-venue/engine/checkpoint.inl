@@ -52,13 +52,7 @@ uint64_t MatchingEngine<Book>::stateHash() const
     h = mix(h, 0xB00AU);
     h = mix(h, 1U);
   }
-  if (fundingRateRaw_ != 0 || fundingIntervalNs_.count() != 0 || nextFundingNs_.raw() != 0)
-  {
-    h = mix(h, 0xB00BU);
-    h = mix(h, static_cast<uint64_t>(fundingRateRaw_));
-    h = mix(h, static_cast<uint64_t>(fundingIntervalNs_.count()));
-    h = mix(h, static_cast<uint64_t>(nextFundingNs_.raw()));
-  }
+  h = clearing_.hashFunding(h);
   h = mix(h, hasLast_ ? 1U : 0U);
   h = mix(h, static_cast<uint64_t>(lastPrice_.raw()));
   h = mix(h, hasMark_ ? 1U : 0U);
@@ -172,15 +166,7 @@ uint64_t MatchingEngine<Book>::stateHash() const
     h = mixAmount(h, r.reservedRaw);
   }
 
-  for (uint64_t acct : sortedKeys(positions_))
-  {
-    const Position& p = positions_.at(acct);
-    h = mix(h, 0xB005U);
-    h = mix(h, acct);
-    h = mix(h, static_cast<uint64_t>(p.qtyRaw));
-    h = mix(h, static_cast<uint64_t>(p.entryRaw));
-    h = mixAmount(h, p.margin);
-  }
+  h = clearing_.hashPositions(h);
 
   h = mmp_.hashInto(h);
 
@@ -323,14 +309,7 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   {
     out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::Delist}}, ts);
   }
-  // Funding state: written only when there is any, so an engine with none
-  // produces the same file it did before the record existed (and that file
-  // still loads -- see RestoreFunding).
-  if (fundingRateRaw_ != 0 || fundingIntervalNs_.count() != 0 || nextFundingNs_.raw() != 0)
-  {
-    out.append(InboundCommand{RestoreFunding{fundingRateRaw_, nextFundingNs_, fundingIntervalNs_}},
-               ts);
-  }
+  clearing_.writeFunding(out, ts);
 
   if (ledger_ != nullptr)
   {
@@ -384,11 +363,7 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
 
   stp_.writeSnapshot(out, ts);
 
-  for (uint64_t acct : sortedKeys(positions_))
-  {
-    const Position& p = positions_.at(acct);
-    out.append(InboundCommand{RestorePosition{acct, p.qtyRaw, p.entryRaw, p.margin}}, ts);
-  }
+  clearing_.writePositions(out, ts);
 
   for (uint64_t hid : sortedKeys(held_))
   {
@@ -474,16 +449,13 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.heldOpen_.store(e.held_.size(), std::memory_order_relaxed);
   e.clOrdIds_ = clOrdIds_;
   e.reserve_ = reserve_;
-  e.positions_ = positions_;
+  e.clearing_.copyStateFrom(clearing_);
   e.auctionMode_ = auctionMode_;
   e.haltUntil_ = haltUntil_;
   e.closed_ = closed_;
   e.lastStatus_ = lastStatus_;
   e.lastStatusUntil_ = lastStatusUntil_;
   e.statusPublished_ = statusPublished_;
-  e.fundingRateRaw_ = fundingRateRaw_;
-  e.fundingIntervalNs_ = fundingIntervalNs_;
-  e.nextFundingNs_ = nextFundingNs_;
   // order: not observable -- a keyed copy into the clone's own map; the
   // resulting (account -> group) mapping is the same set either way
   for (const auto& [acct, grp] : matcher_.stpGroups())
@@ -497,7 +469,7 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   }
   else
   {
-    e.venueAccount_ = venueAccount_;
+    e.setLedger(nullptr, venueAccount_);  // no ledger: carry the venue account across
   }
   return c;
 }

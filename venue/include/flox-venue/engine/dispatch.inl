@@ -23,7 +23,27 @@ namespace flox::venue
 template <class Book>
 MatchingEngine<Book>::MatchingEngine(SymbolConfig cfg, EventSink sink, Book book,
                                      MatchPolicy policy)
-    : cfg_(cfg), sink_(std::move(sink)), matcher_(policy), book_(std::move(book))
+    : cfg_(cfg),
+      sink_(std::move(sink)),
+      matcher_(policy),
+      book_(std::move(book)),
+      // Clearing delegates back the three things it cannot reach: the order
+      // reservation a fill's initial margin moves out of, the release of an
+      // unneeded reservation on a reducing fill, and the resting orders of an
+      // account about to be liquidated. Captureless lambdas, so these are
+      // plain function pointers -- no vtable on the fill path.
+      clearing_(cfg_, sink_,
+                engine::Clearing::Hooks{
+                    this,
+                    [](void* c, OrderId id, int64_t qtyRaw)
+                    { return static_cast<MatchingEngine*>(c)->consumeOrderIM(id, qtyRaw); },
+                    [](void* c, OrderId id, int64_t qtyRaw, uint64_t acct)
+                    { static_cast<MatchingEngine*>(c)->releaseOrderIM(id, qtyRaw, acct); },
+                    [](void* c, uint64_t acct)
+                    {
+                      static_cast<MatchingEngine*>(c)->cancelAllForAccount(
+                          acct, CancelReason::Liquidation);
+                    }})
 {
   assert(scalesValid(cfg_.priceScale, cfg_.qtyScale));
   // Wrap the user sink to observe the trade stream (last price for stops,

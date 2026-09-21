@@ -8,7 +8,14 @@
  */
 #pragma once
 
-// MatchingEngine<Book>: linear-perp clearing -- positions, funding, liquidation, ADL.
+// MatchingEngine<Book>: the engine's side of linear-perp clearing.
+//
+// The clearing itself -- positions, funding, liquidation, ADL -- is
+// engine::Clearing (engine/clearing.h), a plain class the engine owns. What
+// is left in this fragment is the seam: the published methods, which stay on
+// the engine and forward; the order-reservation moves clearing hands back
+// (consumeOrderIM / releaseOrderIM read reserve_); and the perp settlement
+// path, which is a clearing call plus the fee charge.
 //
 // Included only from flox-venue/matching_engine.h, which declares every member
 // defined here. Including it directly gives a fragment with no class to attach
@@ -24,62 +31,29 @@ namespace flox::venue
 template <class Book>
 int64_t MatchingEngine<Book>::positionQty(uint64_t account) const
 {
-  auto it = positions_.find(account);
-  return it == positions_.end() ? 0 : it->second.qtyRaw;
+  return clearing_.positionQty(account);
 }
 
 template <class Book>
 Price MatchingEngine<Book>::positionEntry(uint64_t account) const
 {
-  auto it = positions_.find(account);
-  return it == positions_.end() ? Price{} : Price::fromRaw(it->second.entryRaw);
+  return clearing_.positionEntry(account);
 }
 
 // Open interest: the long side of the perp positions the engine tracks for
-// this symbol. Every contract has a long and a short leg, so the long side is
-// the open interest; summing signed quantities would give zero. Integer sum
-// over an unordered map -- addition is associative, so the result does not
-// depend on the map's layout.
+// this symbol.
 template <class Book>
 Quantity MatchingEngine<Book>::openInterest() const
 {
-  int64_t oi = 0;
-  // order: not observable -- int64 sum of the long legs
-  for (const auto& [acct, p] : positions_)
-  {
-    (void)acct;
-    if (p.qtyRaw > 0)
-    {
-      oi += p.qtyRaw;
-    }
-  }
-  return Quantity::fromRaw(oi);
+  return clearing_.openInterest();
 }
 
-// Next funding boundary, in sequencer time. A schedule set by the operator
-// (SetFundingSchedule) is a FACT: it is engine state, hashed, checkpointed
-// and advanced by each ApplyFunding, so what the feed publishes is what the
-// venue will actually settle on. With no schedule set the value falls back to
-// the historical derivation from (now, SymbolConfig::fundingIntervalNs) --
-// a computation over startup config, kept so an engine that never learned a
-// schedule behaves exactly as it did before the command existed. 0 = neither
-// a schedule nor a configured interval, i.e. the venue does not fund this
-// instrument.
+// Next funding boundary, in sequencer time. The engine supplies the clock;
+// the calendar is clearing's.
 template <class Book>
 SeqNanos MatchingEngine<Book>::nextFundingNs() const noexcept
 {
-  if (static_cast<bool>(nextFundingNs_))
-  {
-    return nextFundingNs_;
-  }
-  if (cfg_.fundingIntervalNs.count() <= 0)
-  {
-    return SeqNanos{};
-  }
-  // Boundary alignment is modular math on one domain's raw ticks; the result
-  // is restated as the same domain.
-  return SeqNanos::fromRaw((now_.raw() / cfg_.fundingIntervalNs.count() + 1) *
-                           cfg_.fundingIntervalNs.count());
+  return clearing_.nextFundingNs(now_);
 }
 
 // The live funding interval: the operator-set schedule when there is one,
@@ -87,27 +61,23 @@ SeqNanos MatchingEngine<Book>::nextFundingNs() const noexcept
 template <class Book>
 int64_t MatchingEngine<Book>::fundingIntervalNs() const noexcept
 {
-  return (fundingIntervalNs_.count() > 0 ? fundingIntervalNs_ : cfg_.fundingIntervalNs).count();
+  return clearing_.fundingIntervalNs();
 }
 
-// Last funding rate the engine applied, at kFundingRateScale. Carried by the
-// checkpoint (RestoreFunding), so a restored engine publishes the real rate
-// instead of 0 until the next ApplyFunding.
+// Last funding rate the engine applied, at kFundingRateScale.
 template <class Book>
 int64_t MatchingEngine<Book>::fundingRateRaw() const noexcept
 {
-  return fundingRateRaw_;
+  return clearing_.fundingRateRaw();
 }
 
 // Operator-set funding calendar. Sequenced as SetFundingSchedule in
 // production (journaled, replayed, checkpointed); this direct setter is the
-// pre-start wiring / recovery path, like setStpGroup. A non-positive interval
-// or boundary clears the schedule, dropping back to the config derivation.
+// pre-start wiring / recovery path, like setStpGroup.
 template <class Book>
 void MatchingEngine<Book>::setFundingSchedule(DurationNs intervalNs, SeqNanos nextFundingNs)
 {
-  fundingIntervalNs_ = intervalNs.count() > 0 ? intervalNs : DurationNs{};
-  nextFundingNs_ = nextFundingNs.raw() > 0 ? nextFundingNs : SeqNanos{};
+  clearing_.setFundingSchedule(intervalNs, nextFundingNs);
   // The calendar is a published field, so a change is news -- but only for an
   // instrument the engine has a mark for. Publishing before the first SetMark
   // would break the feed's standing promise that an unmarked instrument gets
@@ -119,38 +89,13 @@ void MatchingEngine<Book>::setFundingSchedule(DurationNs intervalNs, SeqNanos ne
   }
 }
 
-// Apply a funding payment (perps): each position transfers |notional|*rate
-// to/from the clearing pool -- longs pay when rate > 0. `mark` values the leg.
+// Apply a funding payment (perps). The transfers, the schedule step and the
+// liquidation sweep they can trigger are clearing's; the feed update is the
+// engine's, and it goes out on both paths exactly as it always did.
 template <class Book>
 void MatchingEngine<Book>::applyFunding(double rate, Price mark)
 {
-  // The rate is known whether or not there is a ledger to settle against, and
-  // it is what the derivatives feed publishes -- record it before the early
-  // return, or a venue running without a bound ledger would never publish one.
-  fundingRateRaw_ = static_cast<int64_t>(rate * static_cast<double>(kFundingRateScale));
-  advanceFundingSchedule();
-  if (ledger_ == nullptr)
-  {
-    publishDerivatives(mark);
-    return;
-  }
-  // order: not observable -- each account's funding payment is an
-  // independent integer credit; the pool accumulates by addition
-  for (auto& [acct, p] : positions_)
-  {
-    const Amount notional =
-        notionalRaw(mark.raw(), iabs64(p.qtyRaw), cfg_.priceScale, cfg_.qtyScale);
-    const Amount mag = static_cast<Amount>(static_cast<double>(notional) * rate);
-    const Amount signedPay = (p.qtyRaw > 0) ? -mag : mag;  // long pays when rate>0
-    ledger_->credit(acct, cfg_.quoteAsset, signedPay);
-    ledger_->credit(venueAccount_, cfg_.quoteAsset, -signedPay);
-  }
-  // Funding is charged to the wallet (`available`); when a max-leverage payer
-  // has no free collateral, that drives `available` negative, which the
-  // wallet-drag term in checkLiquidations now counts against maintenance
-  // equity -- so an unaffordable funding payment triggers liquidation instead
-  // of accruing silent bad debt.
-  checkLiquidations(mark);
+  clearing_.applyFunding(rate, mark, now_);
   publishDerivatives(mark);
 }
 
@@ -162,7 +107,7 @@ void MatchingEngine<Book>::setMarkPrice(Price mark)
   markPrice_ = mark;
   hasMark_ = true;
   processTriggers();
-  checkLiquidations(mark);
+  clearing_.checkLiquidations(mark);
   // After the consequences, so the published open interest matches the state
   // the mark left behind (a liquidation the mark caused has already closed
   // its position).
@@ -173,15 +118,7 @@ void MatchingEngine<Book>::setMarkPrice(Price mark)
 template <class Book>
 Amount MatchingEngine<Book>::unrealizedPnlRaw(uint64_t account, Price mark) const
 {
-  auto it = positions_.find(account);
-  if (it == positions_.end())
-  {
-    return 0;
-  }
-  const int64_t sign = it->second.qtyRaw > 0 ? 1 : -1;
-  return notionalRaw(mark.raw() - it->second.entryRaw, iabs64(it->second.qtyRaw),
-                     cfg_.priceScale, cfg_.qtyScale) *
-         sign;
+  return clearing_.unrealizedPnlRaw(account, mark);
 }
 
 template <class Book>
@@ -191,7 +128,9 @@ int64_t MatchingEngine<Book>::iabs64(int64_t v)
 }
 
 // Move reserved IM for `qtyRaw` from the order reservation to position margin
-// (stays reserved in the ledger; returns the amount).
+// (stays reserved in the ledger; returns the amount). Called back from
+// clearing on the opening leg of a perp fill: the reservation is the engine's
+// state, not clearing's.
 template <class Book>
 Amount MatchingEngine<Book>::consumeOrderIM(OrderId orderId, int64_t qtyRaw)
 {
@@ -231,104 +170,11 @@ void MatchingEngine<Book>::releaseOrderIM(OrderId orderId, int64_t qtyRaw, uint6
 }
 
 // An operator correction. Not a trade: see the note on AdjustPosition for
-// why no PnL is realized, no fee charged and no margin moved. All this does
-// is make the engine's idea of the position match the one being reconciled
-// against, and say so loudly enough that a reader a week later can tell a
-// correction from a fill.
+// why no PnL is realized, no fee charged and no margin moved.
 template <class Book>
 void MatchingEngine<Book>::onAdjustPosition(const AdjustPosition& a)
 {
-  if (a.qtyDeltaRaw == 0 && a.entryRaw == 0)
-  {
-    sink_(OrderRejected{0, cfg_.id, RejectReason::AdjustmentEmpty, a.accountId, 0});
-    return;
-  }
-  auto it = positions_.find(a.accountId);
-  if (it == positions_.end() && a.entryRaw == 0)
-  {
-    // Opening a position with no entry price would leave every later PnL
-    // computed against zero. Refuse rather than book a number that is wrong
-    // in a way nothing downstream can detect.
-    sink_(OrderRejected{0, cfg_.id, RejectReason::AdjustmentNeedsEntry, a.accountId, 0});
-    return;
-  }
-  Position& p = positions_[a.accountId];
-  p.qtyRaw += a.qtyDeltaRaw;
-  if (a.entryRaw != 0)
-  {
-    p.entryRaw = a.entryRaw;
-  }
-  if (p.qtyRaw == 0)
-  {
-    // Flat is flat: an entry price left behind on a zero position is a
-    // number that means nothing and reads like it means something.
-    p.entryRaw = 0;
-  }
-  PositionAdjusted ev{};
-  ev.account = a.accountId;
-  ev.symbol = cfg_.id;
-  ev.qtyDeltaRaw = a.qtyDeltaRaw;
-  ev.qtyAfterRaw = p.qtyRaw;
-  ev.entryAfterRaw = p.entryRaw;
-  ev.reason = a.reason;
-  std::memcpy(ev.note, a.note, kAdjustNoteLen);
-  sink_(ev);
-}
-
-template <class Book>
-void MatchingEngine<Book>::updatePerpPosition(uint64_t acct, OrderId orderId, bool fillBuy, int64_t qtyRaw,
-                                              int64_t priceRaw)
-{
-  Position& p = positions_[acct];
-  const int64_t fillSign = fillBuy ? 1 : -1;
-  int64_t remaining = qtyRaw;
-
-  const int64_t posSign = (p.qtyRaw > 0) ? 1 : (p.qtyRaw < 0 ? -1 : 0);
-  if (posSign != 0 && posSign != fillSign)
-  {
-    const int64_t reduceQty = std::min<int64_t>(remaining, iabs64(p.qtyRaw));
-    // realized PnL vs entry (long: (price-entry)*qty; short: (entry-price)*qty)
-    if (ledger_ != nullptr)
-    {
-      const Amount pnl =
-          notionalRaw(priceRaw - p.entryRaw, reduceQty, cfg_.priceScale, cfg_.qtyScale) * posSign;
-      ledger_->credit(acct, cfg_.quoteAsset, pnl);
-      ledger_->credit(venueAccount_, cfg_.quoteAsset, -pnl);
-      // release position margin for the reduced portion
-      const Amount relMargin =
-          static_cast<Amount>(static_cast<__int128>(p.margin) * reduceQty / iabs64(p.qtyRaw));
-      ledger_->release(acct, cfg_.quoteAsset, relMargin);
-      p.margin -= relMargin;
-      releaseOrderIM(orderId, reduceQty, acct);
-    }
-    p.qtyRaw += fillSign * reduceQty;  // toward zero
-    remaining -= reduceQty;
-    if (p.qtyRaw == 0)
-    {
-      p.entryRaw = 0;
-    }
-  }
-
-  if (remaining > 0)
-  {
-    const Amount im = (ledger_ != nullptr) ? consumeOrderIM(orderId, remaining) : 0;
-    const int64_t absOld = iabs64(p.qtyRaw);
-    const __int128 num = static_cast<__int128>(absOld) * p.entryRaw +
-                         static_cast<__int128>(remaining) * priceRaw;
-    p.entryRaw = static_cast<int64_t>(num / (absOld + remaining));
-    p.qtyRaw += fillSign * remaining;
-    p.margin += im;
-  }
-
-  if (p.qtyRaw == 0)
-  {
-    if (p.margin > 0 && ledger_ != nullptr)
-    {
-      ledger_->release(acct, cfg_.quoteAsset, p.margin);
-    }
-    p.margin = 0;
-    positions_.erase(acct);
-  }
+  clearing_.adjustPosition(a);
 }
 
 template <class Book>
@@ -339,8 +185,8 @@ void MatchingEngine<Book>::settlePerp(const Trade& t)
   const uint64_t buyerAcct = takerBuys ? t.takerAccount : t.makerAccount;
   const OrderId sellerId = takerBuys ? t.makerId : t.takerId;
   const uint64_t sellerAcct = takerBuys ? t.makerAccount : t.takerAccount;
-  updatePerpPosition(buyerAcct, buyerId, true, t.quantity.raw(), t.price.raw());
-  updatePerpPosition(sellerAcct, sellerId, false, t.quantity.raw(), t.price.raw());
+  clearing_.updatePerpPosition(buyerAcct, buyerId, true, t.quantity.raw(), t.price.raw());
+  clearing_.updatePerpPosition(sellerAcct, sellerId, false, t.quantity.raw(), t.price.raw());
   if (feesEnabled_)
   {
     const double notionalD =
@@ -370,186 +216,8 @@ void MatchingEngine<Book>::onForceClose(const ForceClosePosition& fc)
     sink_(OrderRejected{0, cfg_.id, RejectReason::UnknownOrder, fc.accountId});
     return;
   }
-  if (positions_.find(fc.accountId) == positions_.end())
-  {
-    return;  // nothing open: a no-op, not an error
-  }
-  forceClose(fc.accountId, markPrice_);
-}
-
-// Maintenance-margin sweep: liquidate every position whose equity (posted
-// margin + unrealized PnL) has fallen below the maintenance requirement.
-// Skipped entirely when an external risk owner drives liquidation: two
-// systems closing the same position from different numbers is worse than
-// either doing it alone.
-template <class Book>
-void MatchingEngine<Book>::checkLiquidations(Price mark)
-{
-  if (cfg_.externalLiquidation)
-  {
-    return;
-  }
-  if (ledger_ == nullptr || !cfg_.linearPerp || cfg_.maintenanceMarginBps == 0)
-  {
-    return;
-  }
-  std::vector<uint64_t> toLiq;
-  // order: the breaching accounts are id-sorted below, before forceClose
-  // emits the first Liquidation
-  for (const auto& [acct, p] : positions_)
-  {
-    const Amount uPnl = unrealizedPnlRaw(acct, mark);
-    const Amount notional =
-        notionalRaw(mark.raw(), iabs64(p.qtyRaw), cfg_.priceScale, cfg_.qtyScale);
-    const Amount mmReq = notional * cfg_.maintenanceMarginBps / 10000;
-    // A negative wallet (funding/fees charged to `available` with no free
-    // collateral to absorb them) drags the maintenance-equity check: otherwise
-    // funding could push a max-leverage payer's wallet unboundedly negative
-    // with no liquidation (silent bad debt). A healthy (>=0) wallet stays
-    // isolated from the position, so positive balances never prevent an
-    // otherwise-due liquidation -- the drag only ever tightens the check.
-    const Amount wallet = ledger_->available(acct, cfg_.quoteAsset);
-    const Amount walletDrag = wallet < 0 ? wallet : 0;
-    if (p.margin + uPnl + walletDrag < mmReq)
-    {
-      toLiq.push_back(acct);
-    }
-  }
-  // Deterministic order: forceClose emits Liquidation events (folded into the
-  // determinism hash) and, with ADL on, shared counterparties make the close
-  // order matter -- it must not depend on positions_ (unordered_map) layout.
-  std::sort(toLiq.begin(), toLiq.end());
-  for (uint64_t a : toLiq)
-  {
-    forceClose(a, mark);
-  }
-}
-
-// Force-close a position at the mark price: realize PnL through the clearing
-// pool, return posted margin, and let the insurance fund (venue account) cover
-// any negative-equity (bankruptcy) deficit.
-template <class Book>
-void MatchingEngine<Book>::forceClose(uint64_t acct, Price mark)
-{
-  auto it = positions_.find(acct);
-  if (it == positions_.end())
-  {
-    return;
-  }
-  const Position p = it->second;
-  positions_.erase(it);
-  // Cancel the account's other resting orders first: their initial margin is
-  // locked in `reserved` and is the account's own collateral. Freeing it back
-  // to `available` before the bankruptcy test below ensures a total-equity-
-  // solvent account covers its own shortfall instead of the insurance fund
-  // paying out to it (a mis-socialization invisible to conservation-of-total).
-  cancelAllForAccount(acct, CancelReason::Liquidation);
-  const int64_t sign = p.qtyRaw > 0 ? 1 : -1;
-  const int64_t qtyAbs = iabs64(p.qtyRaw);
-  const Amount uPnl =
-      notionalRaw(mark.raw() - p.entryRaw, qtyAbs, cfg_.priceScale, cfg_.qtyScale) * sign;
-  ledger_->credit(acct, cfg_.quoteAsset, uPnl);
-  ledger_->credit(venueAccount_, cfg_.quoteAsset, -uPnl);
-  if (p.margin > 0)
-  {
-    ledger_->release(acct, cfg_.quoteAsset, p.margin);
-  }
-  bool bankrupt = false;
-  const Amount avail = ledger_->available(acct, cfg_.quoteAsset);
-  Amount deficit = 0;
-  if (avail < 0)
-  {
-    bankrupt = true;
-    deficit = -avail;
-    ledger_->credit(acct, cfg_.quoteAsset, -avail);  // insurance fund tops up to zero
-    ledger_->credit(venueAccount_, cfg_.quoteAsset, avail);
-  }
-  sink_(Liquidation{acct, cfg_.id, Quantity::fromRaw(qtyAbs), mark, bankrupt});
-  if (bankrupt && cfg_.autoDeleverage)
-  {
-    autoDeleverageEngine(sign, deficit, mark);  // claw the deficit back from winners
-  }
-}
-
-// Auto-deleverage the isolated-margin book: recover a bankruptcy deficit from
-// the most profitable opposite-side positions (close at mark, haircut their
-// gain into the insurance fund) instead of socializing it. Same model as the
-// portfolio path (cross_margin.h); every ledger op stays balanced.
-template <class Book>
-void MatchingEngine<Book>::autoDeleverageEngine(int64_t bankruptSign, Amount deficit, Price mark)
-{
-  if (deficit <= 0)
-  {
-    return;
-  }
-  struct Cand
-  {
-    uint64_t acct;
-    Amount uPnl;
-  };
-  std::vector<Cand> cands;
-  // order: candidates are ranked below by (uPnl, acct), a total order, so
-  // the ADL victim does not depend on this traversal
-  for (const auto& [oa, pos] : positions_)
-  {
-    const int64_t s = pos.qtyRaw > 0 ? 1 : (pos.qtyRaw < 0 ? -1 : 0);
-    if (s == 0 || s == bankruptSign)
-    {
-      continue;  // opposite side only
-    }
-    const Amount up =
-        notionalRaw(mark.raw() - pos.entryRaw, pos.qtyRaw, cfg_.priceScale, cfg_.qtyScale);
-    if (up > 0)
-    {
-      cands.push_back({oa, up});
-    }
-  }
-  // Most profitable first; `acct` breaks ties deterministically so the chosen
-  // ADL victim (an emitted Liquidation, folded into the determinism hash) does
-  // not depend on positions_ iteration order or std::sort's instability.
-  std::sort(cands.begin(), cands.end(),
-            [](const Cand& x, const Cand& y)
-            { return x.uPnl != y.uPnl ? x.uPnl > y.uPnl : x.acct < y.acct; });
-
-  Amount remaining = deficit;
-  for (const auto& c : cands)
-  {
-    if (remaining <= 0)
-    {
-      break;
-    }
-    auto it = positions_.find(c.acct);
-    if (it == positions_.end())
-    {
-      continue;
-    }
-    const Position p = it->second;
-    positions_.erase(it);
-    const int64_t qtyAbs = iabs64(p.qtyRaw);
-    const Amount uPnl =
-        notionalRaw(mark.raw() - p.entryRaw, p.qtyRaw, cfg_.priceScale, cfg_.qtyScale);
-    ledger_->credit(c.acct, cfg_.quoteAsset, uPnl);  // realize gain at mark
-    ledger_->credit(venueAccount_, cfg_.quoteAsset, -uPnl);
-    if (p.margin > 0)
-    {
-      ledger_->release(c.acct, cfg_.quoteAsset, p.margin);
-    }
-    const Amount haircut = remaining < uPnl ? remaining : uPnl;
-    // Debit is all-or-nothing and `available` may be below the haircut, so
-    // credit the venue only what is actually confiscated -- otherwise the
-    // unconditional credit against a no-op debit mints money. Uncovered
-    // remainder falls to the insurance fund (normal ADL waterfall).
-    const Amount avail = ledger_->available(c.acct, cfg_.quoteAsset);
-    const Amount taken = std::min<Amount>(haircut, avail > 0 ? avail : 0);
-    if (taken > 0)
-    {
-      ledger_->debit(c.acct, cfg_.quoteAsset, taken);
-      ledger_->credit(venueAccount_, cfg_.quoteAsset, taken);
-    }
-    remaining -= taken;
-    sink_(Liquidation{c.acct, cfg_.id, Quantity::fromRaw(qtyAbs), mark, /*bankrupt*/ false,
-                      /*adl*/ true});
-  }
+  // Nothing open is a no-op, not an error -- forceClose returns on its own.
+  clearing_.forceClose(fc.accountId, markPrice_);
 }
 
 }  // namespace flox::venue
