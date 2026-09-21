@@ -69,7 +69,16 @@ class SbeOrderEntryCodec
   //    Appended after `seq` (a version-5 frame's shorter blockLength simply
   //    has no side), which is why seqOffsetIn now knows about this template
   //    too -- `seq` stopped being the last field of the FillHeld block.
-  static constexpr uint16_t kVersion = 6;
+  // Schema version 7:
+  //  - FillHeld and FillRejected gained a trailing `clOrdId` (u64,
+  //    sinceVersion=7): the identifier the TAKER gave its order, 0 when it
+  //    gave none. A hold's own id names the hold, not the order that caused
+  //    it, so a submitter with a split order had to keep a 37->11 map of its
+  //    own to recognise a hold on one of the children. Appended after `seq`
+  //    on FillRejected and after `takerSide` on FillHeld (a version-6 frame's
+  //    shorter blockLength simply has no id), so seqOffsetIn now knows about
+  //    both templates too.
+  static constexpr uint16_t kVersion = 7;
 
   enum class InTmpl : uint16_t
   {
@@ -124,8 +133,8 @@ class SbeOrderEntryCodec
   static constexpr uint16_t kBlockRejected = 29;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockReplaced = 45;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockTriggered = 28;
-  static constexpr uint16_t kBlockFillHeld = 61;  // v6: + trailing takerSide (u8)
-  static constexpr uint16_t kBlockFillRejected = 52;
+  static constexpr uint16_t kBlockFillHeld = 69;      // v7: + trailing clOrdId (u64)
+  static constexpr uint16_t kBlockFillRejected = 60;  // v7: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockSnapshotRequired = 8;
   static constexpr uint16_t kBlockSnapshotEndV1 = 28;  // pre-lastSeq layout (schema v1)
   static constexpr uint16_t kBlockSnapshotEnd = 36;    // v2: + trailing lastSeq (u64)
@@ -397,6 +406,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, fh->makerDisplayAfter.raw());
       sbe::putU64(out, seq);
       sbe::putU8(out, static_cast<uint8_t>(fh->takerSide));
+      sbe::putU64(out, fh->clientOrderId);
     }
     else if (const auto* fr = std::get_if<FillRejected>(&ev))
     {
@@ -408,6 +418,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, fr->price.raw());
       sbe::putI64(out, fr->qty.raw());
       sbe::putU64(out, seq);
+      sbe::putU64(out, fr->clientOrderId);
     }
     else if (const auto* bu = std::get_if<venue::BalanceUpdate>(&ev))
     {
@@ -454,11 +465,14 @@ class SbeOrderEntryCodec
   // Where `seq` sits inside the root block. It was appended at version 1, so
   // it ends the version-1 block -- and that stopped being the end of the block
   // when version 4 appended clOrdId after it on the five order-report
-  // templates, and again when version 6 appended takerSide after it on
-  // FillHeld. Reading the last eight bytes was the old shortcut; it silently
-  // returned a client's order id as a sequence number the moment a v4 frame
-  // arrived, which is what the delivery tests caught. The frame says which
-  // version it is, so that is what decides.
+  // templates, again when version 6 appended takerSide after it on FillHeld,
+  // and again when version 7 appended clOrdId after THAT on FillHeld (17
+  // bytes trail seq there now) and directly after seq on FillRejected (16,
+  // same width as the order-report templates, just gated by a later version).
+  // Reading the last eight bytes was the old shortcut; it silently returned a
+  // client's order id as a sequence number the moment a v4 frame arrived,
+  // which is what the delivery tests caught. The frame says which version it
+  // is, so that is what decides.
   static constexpr uint16_t seqOffsetIn(const sbe::Header& h)
   {
     const bool hasClOrdIdAfterSeq =
@@ -466,8 +480,21 @@ class SbeOrderEntryCodec
         (h.templateId == u16(OutTmpl::Accepted) || h.templateId == u16(OutTmpl::Executed) ||
          h.templateId == u16(OutTmpl::Canceled) || h.templateId == u16(OutTmpl::Rejected) ||
          h.templateId == u16(OutTmpl::Replaced));
-    const bool hasTakerSideAfterSeq = h.version >= 6 && h.templateId == u16(OutTmpl::FillHeld);
-    const uint16_t trailing = hasClOrdIdAfterSeq ? 16 : (hasTakerSideAfterSeq ? 9 : 8);
+    const bool isFillHeld = h.templateId == u16(OutTmpl::FillHeld);
+    const bool isFillRejected = h.templateId == u16(OutTmpl::FillRejected);
+    uint16_t trailing = 8;
+    if (hasClOrdIdAfterSeq || (isFillRejected && h.version >= 7))
+    {
+      trailing = 16;
+    }
+    else if (isFillHeld && h.version >= 7)
+    {
+      trailing = 17;
+    }
+    else if (isFillHeld && h.version >= 6)
+    {
+      trailing = 9;
+    }
     return h.blockLength >= trailing ? static_cast<uint16_t>(h.blockLength - trailing) : 0;
   }
 
@@ -602,8 +629,8 @@ class SbeOrderEntryCodec
   }
 
  private:
-  static uint16_t u16(InTmpl t) { return static_cast<uint16_t>(t); }
-  static uint16_t u16(OutTmpl t) { return static_cast<uint16_t>(t); }
+  static constexpr uint16_t u16(InTmpl t) { return static_cast<uint16_t>(t); }
+  static constexpr uint16_t u16(OutTmpl t) { return static_cast<uint16_t>(t); }
 };
 
 }  // namespace flox::venue
