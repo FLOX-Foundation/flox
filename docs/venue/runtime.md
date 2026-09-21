@@ -253,6 +253,19 @@ a build without the field holds quote-spawned orders whose reports name
 nobody on either leg, so it is refused rather than read as though the field
 had always been absent.
 
+Versions 11 and 12 were the pair before `FillHeld` and `FillRejected` carried
+the taker's `clientOrderId`. A hold's own id (`heldId`) names the hold, not
+the order that caused it, so a submitter whose order was split into
+venue-level children -- or simply resting under a name of its own choosing --
+had to keep a 37-to-11 map to recognise a hold or its reject on one of them;
+the engine has had the taker's name since the hold was created. Nothing
+journaled changed size at this bump (`FillHeld`/`FillRejected` are outbound
+events, not journaled `InboundCommand` bodies), which is why the fingerprint
+did not move either -- but replaying an existing journal through this build
+still produces a different exec-report stream than the previous one did (the
+hold and its reject now name the taker), so the generation number moves
+anyway, the same reasoning as 7/8 and 9/10.
+
 Bumping the version is a deliberate edit, and the build stops you from
 forgetting it. The sizes of all 35 journaled command structs are folded into a
 compile-time fingerprint next to the version constant; adding a field to any of

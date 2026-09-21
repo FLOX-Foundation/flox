@@ -432,9 +432,10 @@ Before the first trade there is no reference price, so no band exists yet.
 (the matcher hook is never installed, so a `lastLook`-flagged order fills like
 any other maker). When an aggressor hits a resting `lastLook` maker, the hit
 size is reserved OUT of the book, `FillHeld` is emitted (with `heldId`, the
-maker's `makerDisplayAfter` for the public feed, and `takerSide` -- the
-aggressor's side, the maker's being the opposite one), and the maker has the
-window to answer with `LastLookDecision{heldId, accept}`.
+maker's `makerDisplayAfter` for the public feed, `takerSide` -- the
+aggressor's side, the maker's being the opposite one -- and the taker's own
+`clientOrderId`, 0 if it gave none), and the maker has the window to answer
+with `LastLookDecision{heldId, accept}`.
 
 - **Ownership.** Only the maker account that owns the held quote may decide;
   any other account gets `OrderRejected{NotOrderOwner}` and the hold stands.
@@ -470,8 +471,9 @@ window to answer with `LastLookDecision{heldId, accept}`.
     the matching residual reason. The restored taker rests **passively** -- it
     does not re-aggress, so the book may be transiently crossed against the
     rejecting maker until new flow arrives.
-  - `FillRejected{heldId, takerId, makerId, price, qty}` reports what did not
-    happen.
+  - `FillRejected{heldId, takerId, makerId, price, qty, clientOrderId}` reports
+    what did not happen; `clientOrderId` is the taker's own, same rule as
+    `FillHeld`.
 - **Timeout on a quiet symbol.** Hold expiry runs on every submit AND on
   `tick(nowNs)` (idempotent sweep). Under `SequencedShard`, pass
   `idleSweepIntervalNs > 0` to arm the idle sweeper: while holds are open it
@@ -497,12 +499,16 @@ window to answer with `LastLookDecision{heldId, accept}`.
   hold/accept/reject the published depth equals the matching book.
 - **Wire.** SBE templates 17 (`FillHeld`) / 18 (`FillRejected`) in
   `order-entry-sbe.xml`; REST/JSON `{"type":"fillHeld"|"fillRejected", ...}`.
-  `FillHeld`'s `takerSide` is appended after `seq` at schema version 6, so a
-  version-5 reader skips it via `blockLength` and a reader looking for `seq`
-  goes by the frame's own version rather than by the last eight bytes.
+  `FillHeld`'s `takerSide` is appended after `seq` at schema version 6, and
+  both templates gained a trailing `clOrdId` at version 7 (after `takerSide`
+  on `FillHeld`, after `seq` on `FillRejected`), so a version-6 reader skips
+  it via `blockLength` and a reader looking for `seq` goes by the frame's own
+  version rather than by a fixed byte offset.
   FIX has no honest ExecType for a pending held fill, so `FillHeld` uses the
   documented custom value `150=U` and `FillRejected` uses `150=H` (Trade
-  Cancel), both with custom tags `20001=heldId`, `20002=makerId`.
+  Cancel), both with custom tags `20001=heldId`, `20002=makerId`, and tag `11`
+  (`ClOrdID`) carrying the taker's name whenever it gave one -- same rule as
+  every other execution report (see "Client order id dedup" below).
 - Pro-rata instruments do not honour last look (documented matcher scope
   limitation), and admission refuses the combination. If one appears anyway
   (admission bypassed), the pro-rata allocation SKIPS that maker rather than

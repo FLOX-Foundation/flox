@@ -124,10 +124,16 @@ static_assert(std::variant_size_v<InboundCommand> == 35,
 // written by a build without it holds quote-spawned orders whose reports name
 // nobody on either leg, so it is refused rather than read as though the field
 // had always been absent.
+// 11/12 -> 13/14: FillHeld and FillRejected carry the taker's clientOrderId.
+// Nothing journaled changed size -- the fingerprint below is still the one
+// 9/10 stood for, and proves it -- but the number moves anyway, for the same
+// reason it did at 9/10: a journal replayed by this build produces a
+// different exec-report stream (the hold and its reject now name the taker)
+// than the same file replayed by the previous one.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 12;
+inline constexpr uint8_t kRecordVersion = 14;
 #else
-inline constexpr uint8_t kRecordVersion = 11;
+inline constexpr uint8_t kRecordVersion = 13;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.

@@ -55,6 +55,16 @@ SymbolConfig cfg()
   return c;
 }
 
+// Same as cfg(), plus last look armed -- needed for the FillHeld/FillRejected
+// (T050) cases below, which do not exist without a hold.
+SymbolConfig cfgWithLastLook()
+{
+  SymbolConfig c = cfg();
+  c.lastLookWindowNs = DurationNs{1000};
+  c.lastLookAcceptOnTimeout = false;
+  return c;
+}
+
 NewOrder order(OrderId id, uint64_t clOrd, Side side, double price, double quantity,
                uint64_t account = 1)
 {
@@ -342,4 +352,130 @@ TEST(ClientOrderId, TheBinaryReportCarriesItWithoutDisplacingTheSequence)
   uint64_t got = 0;
   std::memcpy(&got, buf.data() + clOrdAt, sizeof got);
   EXPECT_EQ(got, kClientId) << "and the submitter's name is the trailing field";
+}
+
+// T050: a last-look hold and its reject name the TAKER's order, not the
+// maker's and not the venue's own heldId. The maker and taker are given
+// DIFFERENT client ids on purpose (same reasoning as the file header): a
+// report that echoed the maker's name, or 37/heldId, or nothing at all
+// (clientOrderId left 0) would still pass a test that never distinguished
+// them.
+TEST(ClientOrderId, AHeldFillAndItsRejectCarryTheTakersName)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfgWithLastLook(), cap.sink());
+
+  NewOrder maker = order(kVenueId, kOtherClientId, Side::SELL, 100.0, 5);
+  maker.lastLook = true;
+  eng.submit(InboundCommand{maker}, 1);
+
+  constexpr OrderId kTakerId = 6001;
+  eng.submit(InboundCommand{order(kTakerId, kClientId, Side::BUY, 100.0, 3, /*account=*/2)}, 2);
+
+  const auto* heldPtr = cap.first<FillHeld>();
+  ASSERT_NE(heldPtr, nullptr);
+  EXPECT_EQ(heldPtr->takerId, kTakerId);
+  EXPECT_EQ(heldPtr->clientOrderId, kClientId)
+      << "the taker's own name, not the maker's (" << kOtherClientId << ") and not 0";
+
+  const std::string heldWire = FixCodec::encode(OutboundEvent{*heldPtr});
+  EXPECT_EQ(tag(heldWire, 11), std::to_string(kClientId));
+
+  std::vector<uint8_t> heldBuf;
+  SbeOrderEntryCodec::encode(OutboundEvent{*heldPtr}, heldBuf, /*seq=*/1);
+  EXPECT_EQ(heldBuf.size(), sbe::kHeaderSize + SbeOrderEntryCodec::kBlockFillHeld);
+  uint64_t heldClOrd = 0;
+  std::memcpy(&heldClOrd, heldBuf.data() + heldBuf.size() - 8, sizeof heldClOrd);
+  EXPECT_EQ(heldClOrd, kClientId) << "trailing field of the FillHeld root block";
+
+  // Copied by value before the next submit(): cap.ev is a vector, and the
+  // decision below appends to it, which may reallocate and dangle heldPtr.
+  const FillHeld held = *heldPtr;
+
+  // Decided by the MAKER's account (1, the default of order() above) -- only
+  // the account owning the held quote may answer.
+  eng.submit(InboundCommand{LastLookDecision{held.heldId, SYM, /*accept=*/false, 1}}, 3);
+
+  const auto* rejected = cap.first<FillRejected>();
+  ASSERT_NE(rejected, nullptr);
+  EXPECT_EQ(rejected->takerId, kTakerId);
+  EXPECT_EQ(rejected->clientOrderId, kClientId)
+      << "the reject is often the only report a client gets for this fill";
+
+  const std::string rejWire = FixCodec::encode(OutboundEvent{*rejected});
+  EXPECT_EQ(tag(rejWire, 11), std::to_string(kClientId));
+
+  std::vector<uint8_t> rejBuf;
+  SbeOrderEntryCodec::encode(OutboundEvent{*rejected}, rejBuf, /*seq=*/2);
+  EXPECT_EQ(rejBuf.size(), sbe::kHeaderSize + SbeOrderEntryCodec::kBlockFillRejected);
+  uint64_t rejClOrd = 0;
+  std::memcpy(&rejClOrd, rejBuf.data() + rejBuf.size() - 8, sizeof rejClOrd);
+  EXPECT_EQ(rejClOrd, kClientId) << "trailing field of the FillRejected root block";
+}
+
+// An order that gave no name gets no tag on a hold either -- same rule as
+// every other report (AnOrderThatGaveNoNameGetsNoTagRatherThanTheVenuesId
+// above), checked here because a hold has an id of its own (heldId) that a
+// sloppy implementation could echo into 11 instead of leaving it absent.
+TEST(ClientOrderId, AHeldFillFromAnUnnamedTakerClaimsNoTag)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfgWithLastLook(), cap.sink());
+
+  NewOrder maker = order(kVenueId, kOtherClientId, Side::SELL, 100.0, 5);
+  maker.lastLook = true;
+  eng.submit(InboundCommand{maker}, 1);
+  eng.submit(InboundCommand{order(6002, /*clOrd=*/0, Side::BUY, 100.0, 3, /*account=*/2)}, 2);
+
+  const auto* held = cap.first<FillHeld>();
+  ASSERT_NE(held, nullptr);
+  EXPECT_EQ(held->clientOrderId, 0u);
+  const std::string wire = FixCodec::encode(OutboundEvent{*held});
+  EXPECT_TRUE(tag(wire, 11).empty());
+}
+
+// The frame says which version it is, and a reader has to go by ">=", not
+// "==" -- a peer one generation ahead of this build (kVersion + 1, never a
+// literal) still lays FillHeld/FillRejected out exactly as this version does
+// up through clOrdId, so seq and clOrdId must still be found at the same
+// offsets. This is the failure mode "==" would reintroduce: a genuinely
+// forward-compatible frame refused (seq misread as 0) by a reader that only
+// recognised its own exact version number.
+TEST(ClientOrderId, AFrameOneSchemaVersionAheadStillLocatesSeq)
+{
+  FillRejected fr{};
+  fr.heldId = 5;
+  fr.symbol = SYM;
+  fr.takerId = 6001;
+  fr.makerId = kVenueId;
+  fr.price = px(100.0);
+  fr.qty = qty(3);
+  fr.clientOrderId = kClientId;
+
+  std::vector<uint8_t> buf;
+  SbeOrderEntryCodec::encode(OutboundEvent{fr}, buf, /*seq=*/9);
+  ASSERT_GE(buf.size(), sbe::kHeaderSize);
+  const uint16_t foreignVersion = SbeOrderEntryCodec::kVersion + 1;
+  buf[6] = static_cast<uint8_t>(foreignVersion & 0xFF);
+  buf[7] = static_cast<uint8_t>((foreignVersion >> 8) & 0xFF);
+
+  EXPECT_EQ(SbeOrderEntryCodec::seqOf(buf.data(), buf.size()), 9u);
+
+  FillHeld fh{};
+  fh.heldId = 5;
+  fh.symbol = SYM;
+  fh.makerId = kVenueId;
+  fh.takerId = 6001;
+  fh.price = px(100.0);
+  fh.qty = qty(3);
+  fh.takerSide = Side::BUY;
+  fh.clientOrderId = kClientId;
+
+  std::vector<uint8_t> buf2;
+  SbeOrderEntryCodec::encode(OutboundEvent{fh}, buf2, /*seq=*/10);
+  ASSERT_GE(buf2.size(), sbe::kHeaderSize);
+  buf2[6] = static_cast<uint8_t>(foreignVersion & 0xFF);
+  buf2[7] = static_cast<uint8_t>((foreignVersion >> 8) & 0xFF);
+
+  EXPECT_EQ(SbeOrderEntryCodec::seqOf(buf2.data(), buf2.size()), 10u);
 }

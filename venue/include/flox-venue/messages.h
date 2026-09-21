@@ -912,6 +912,14 @@ struct FillHeld  // last-look: a fill is held pending the maker's decision
   // may never be hit, and refuse a hold whose maker it never saw. The maker's
   // side is the opposite of this one, so the byte answers all three.
   Side takerSide{};
+  // The identifier the TAKER gave its order (0 = none). Appended after
+  // takerSide -- wire codecs place it last. A hold's own OrderID (heldId)
+  // names the hold itself, not the order that caused it, so a client that
+  // split a parent order into venue-level children still had to keep a
+  // 37->11 map of its own just to recognise a hold on one of them; the child
+  // leg gave the venue its name at submission and the venue had it in the
+  // Held record all along.
+  uint64_t clientOrderId{0};
 };
 
 struct FillRejected  // last-look: the held fill was rejected (or timed out)
@@ -927,6 +935,11 @@ struct FillRejected  // last-look: the held fill was rejected (or timed out)
   Quantity qty{};
   uint64_t takerAccount{0};  // appended: delivery routing (both parties get the report)
   uint64_t makerAccount{0};
+  // The identifier the TAKER gave its order (0 = none). Appended after
+  // makerAccount -- same reasoning as FillHeld.clientOrderId: the hold's
+  // reject is the report that never gets a second chance, so this is where a
+  // client that named its own order needs the name back most.
+  uint64_t clientOrderId{0};
 };
 
 struct MmpTriggered  // market-maker protection fired: the account was mass-canceled

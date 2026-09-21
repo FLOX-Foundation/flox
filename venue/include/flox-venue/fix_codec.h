@@ -403,6 +403,7 @@ class FixCodec
       // docs/venue/matching.md. The order is still working (39=0); 32/31
       // carry the held size and price.
       add(37, std::to_string(fh->takerId));
+      clOrd(fh->clientOrderId);
       add(55, std::to_string(fh->symbol));
       add(150, "U");  // custom ExecType: fill held pending last look
       add(39, "0");   // OrdStatus New/working -- nothing has executed yet
@@ -417,6 +418,7 @@ class FixCodec
       // honestly onto ExecType=H (Trade Cancel). Same custom tags identify the
       // held fill being cancelled.
       add(37, std::to_string(fr->takerId));
+      clOrd(fr->clientOrderId);
       add(55, std::to_string(fr->symbol));
       add(150, "H");  // ExecType Trade Cancel: the held fill will not stand
       add(39, "0");

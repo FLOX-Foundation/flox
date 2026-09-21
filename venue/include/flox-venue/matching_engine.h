@@ -4607,7 +4607,7 @@ class MatchingEngine
         (fill < maker.leaves) ? (maker.leaves - fill)
                               : ((maker.peak < maker.hidden) ? maker.peak : maker.hidden);
     sink_(FillHeld{id, cfg_.id, maker.id, taker.id, maker.price, fill, displayAfter,
-                   maker.accountId, taker.accountId, h.takerSide});
+                   maker.accountId, taker.accountId, h.takerSide, taker.clientOrderId});
     // NOTE: the maker stays tracked (orderAccount_/byAccount_) even when the
     // hold empties its displayed size and fillBest removes it from the book --
     // the id is still live (a reject restores it) and mass-cancel paths must
@@ -4712,7 +4712,7 @@ class MatchingEngine
       restoreMakerHeld(h);
       restoreTakerHeld(h);
       sink_(FillRejected{h.id, cfg_.id, h.taker, h.maker, h.price, h.qty, h.takerAccount,
-                         h.makerAccount});
+                         h.makerAccount, h.takerClientOrderId});
     }
     // Whichever way the hold resolved: if this was the last hold on a leg and
     // that leg no longer rests, free its leftover reservation and tracking

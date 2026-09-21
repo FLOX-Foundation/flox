@@ -144,6 +144,10 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, x->makerAccount);
     h = mix(h, x->takerAccount);
     h = mix(h, static_cast<uint64_t>(x->takerSide));
+    if (x->clientOrderId != 0)
+    {
+      h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
   }
   else if (const auto* x = std::get_if<FillRejected>(&e))
   {
@@ -156,6 +160,10 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     h = mix(h, static_cast<uint64_t>(x->qty.raw()));
     h = mix(h, x->takerAccount);
     h = mix(h, x->makerAccount);
+    if (x->clientOrderId != 0)
+    {
+      h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
   }
   else if (const auto* x = std::get_if<MmpTriggered>(&e))
   {
