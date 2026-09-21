@@ -72,6 +72,15 @@ jobs:
         cmake --build benchmark-build
         cmake --install benchmark-build
 
+    # FLOX_NATIVE=OFF: CMakeLists.txt defaults Release builds to
+    # -march=native, safe only when the compiling machine is the running
+    # machine. ccache breaks that assumption across runner instances -- a
+    # cache hit can hand this job an object gcc built on a different
+    # runner's CPU, and running it here can SIGILL. x86-64-v3 (this
+    # option's OFF fallback) trades a slim, non-representative amount of
+    # native-ISA headroom for benchmark numbers that don't depend on
+    # which runner in the fleet the job landed on -- ci.yml's ccache jobs
+    # carry the identical flag for the identical reason.
     - name: Configure
       run: |
         cmake -B build -G Ninja \
@@ -79,6 +88,7 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -DFLOX_BUILD_TESTS=ON \
               -DFLOX_BUILD_BENCHMARKS=ON \
@@ -163,6 +173,7 @@ jobs:
         cmake --build benchmark-build
         cmake --install benchmark-build
 
+    # FLOX_NATIVE=OFF: see bench-gcc's identical Configure step.
     - name: Configure
       run: |
         cmake -B build -G Ninja \
@@ -171,6 +182,7 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -DFLOX_BUILD_TESTS=ON \
               -DFLOX_BUILD_BENCHMARKS=ON \

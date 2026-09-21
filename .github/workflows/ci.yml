@@ -310,6 +310,17 @@ jobs:
         cmake --build benchmark-build
         cmake --install benchmark-build
 
+    # FLOX_NATIVE=OFF: CMakeLists.txt defaults Release builds to
+    # -march=native, which is safe only when the machine that compiled an
+    # object is the machine that runs it. ccache breaks that: a cache hit
+    # can hand this job an object gcc built on a *different* runner in an
+    # earlier run, and if that runner's CPU had an instruction this one
+    # lacks, every test linking it dies with SIGILL on startup -- caught
+    # in review as a 100%-cache-hit run where ~250 of 277 tests failed
+    # with "Exception: Illegal". x86-64-v3 (this option's OFF fallback)
+    # is a fixed baseline every runner in the fleet satisfies, so a cached
+    # object is safe to run anywhere. Same reasoning as this flag's other
+    # OFF caller, the distributable wheel build.
     - name: Configure
       run: |
         cmake -B build -G Ninja \
@@ -317,6 +328,7 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -Dpybind11_DIR="$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')" \
               -DFLOX_BUILD_TESTS=ON \
@@ -675,6 +687,10 @@ jobs:
         cmake --build benchmark-build
         cmake --install benchmark-build
 
+    # FLOX_NATIVE=OFF: see linux-gcc's identical Configure step -- ccache
+    # can hand this job an object compiled with -march=native on a
+    # different runner, and running it here can SIGILL. OFF pins to the
+    # x86-64-v3 baseline every runner satisfies.
     - name: Configure
       run: |
         rm -rf build
@@ -684,6 +700,7 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -DFLOX_BUILD_TESTS=ON \
               -DFLOX_BUILD_BENCHMARKS=ON \
@@ -879,6 +896,10 @@ jobs:
         cmake --build benchmark-build
         cmake --install benchmark-build
 
+    # FLOX_NATIVE=OFF: see linux-gcc's identical Configure step -- this is
+    # still a CONFIG:Release build (the sanitizer flags above don't change
+    # that), so it's just as exposed to a ccache hit serving an object
+    # compiled -march=native on a differently-provisioned macOS runner.
     - name: Configure
       run: |
         LZ4_PREFIX=$(brew --prefix lz4)
@@ -888,6 +909,7 @@ jobs:
               -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined" \
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install;$LZ4_PREFIX" \
               -DCMAKE_LIBRARY_PATH="$LZ4_PREFIX/lib" \
               -DCMAKE_INCLUDE_PATH="$LZ4_PREFIX/include" \
@@ -1329,6 +1351,7 @@ jobs:
     # adds its own tests/ subdirectory when that flag is on, so without
     # it the unit_test_* targets never exist for ctest to run -- no
     # workflow set both flags together before this.
+    # FLOX_NATIVE=OFF: see linux-gcc's identical Configure step.
     - name: Configure
       run: |
         cmake -B build -G Ninja \
@@ -1336,6 +1359,7 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH=$HOME/gtest-install \
               -DFLOX_BUILD_CONNECTORS=ON \
               -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF \
@@ -1444,6 +1468,8 @@ jobs:
     - name: ccache zero stats
       run: ccache -z
 
+    # FLOX_NATIVE=OFF on both configures below: see linux-gcc's identical
+    # Configure step.
     - name: Configure without the venue
       run: |
         cmake -B build-without-venue -G Ninja \
@@ -1451,6 +1477,7 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DFLOX_BUILD_VENUE=OFF \
               -DFLOX_BUILD_TESTS=ON \
               -DFLOX_BUILD_DEMO=ON \
@@ -1493,6 +1520,7 @@ jobs:
               -DCMAKE_C_COMPILER_LAUNCHER=ccache \
               -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DFLOX_BUILD_VENUE=ON \
               -DFLOX_VENUE_PERIMETER=OFF \
               -DFLOX_BUILD_TESTS=ON \
