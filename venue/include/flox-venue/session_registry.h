@@ -55,6 +55,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -262,13 +264,27 @@ class SessionRegistry
   // form for this protocol (nothing is sent or logged).
   using Encoder =
       std::function<bool(const OutboundEvent&, uint64_t seq, int64_t tsNs, std::vector<uint8_t>&)>;
-  // One retained outbound event: assigned seq, first-send wall-clock time, and
-  // the protocol-agnostic event itself (re-encoded on resend).
+  // The same job as Encoder, for an event that travels with TEXT the event
+  // itself has no room for -- how long a rate limit still has to run, how long
+  // a ban has left. OrderRejected is the engine's message about an order, and
+  // why a SESSION refused a frame is not a property of any order; growing it
+  // a text field would put session state inside every exec report the engine
+  // ever emits. So the text rides beside the event, and only a protocol with
+  // somewhere to put it (FIX Text 58) is asked for it.
+  //
+  // Optional: without one, a refusal with text falls back to the plain Encoder
+  // and the client gets the reason without the wait, exactly as before.
+  using RejectEncoder = std::function<bool(const OutboundEvent&, std::string_view text,
+                                           uint64_t seq, int64_t tsNs, std::vector<uint8_t>&)>;
+  // One retained outbound event: assigned seq, first-send wall-clock time, the
+  // protocol-agnostic event itself (re-encoded on resend) and the text it was
+  // first sent with, so a resend says the same thing the original did.
   struct Logged
   {
     uint64_t seq;
     int64_t tsNs;
     OutboundEvent event;
+    std::string text;
   };
   // Observed on the producer thread for every event routed to the account
   // while this connection is attached (terminal-event pruning hooks).
@@ -285,7 +301,8 @@ class SessionRegistry
   // thread), which must detach() and stop() it on teardown.
   std::shared_ptr<SessionWriter> attach(uint64_t account, Encoder encoder,
                                         SessionWriter::WriteFn write, SessionWriter::CloseFn close,
-                                        EventObserver observer = {})
+                                        EventObserver observer = {},
+                                        RejectEncoder rejectEncoder = {})
   {
     auto stream = streamOf(account, /*create*/ true);
     auto writer =
@@ -297,6 +314,7 @@ class SessionRegistry
       displaced = std::move(stream->writer);
       stream->writer = writer;
       stream->encoder = std::move(encoder);
+      stream->rejectEncoder = std::move(rejectEncoder);
       stream->observer = std::move(observer);
     }
     if (displaced)
@@ -347,8 +365,12 @@ class SessionRegistry
     }
   }
 
-  // Deliver an event to one specific account (session-level rejects).
-  void send(uint64_t account, const OutboundEvent& e) { deliver(account, e); }
+  // Deliver an event to one specific account (session-level rejects). `text`
+  // is what the reason cannot say on its own -- see RejectEncoder.
+  void send(uint64_t account, const OutboundEvent& e, std::string_view text = {})
+  {
+    deliver(account, e, text);
+  }
 
   enum class ResendResult : uint8_t
   {
@@ -386,7 +408,7 @@ class SessionRegistry
       if (logged.seq >= fromSeq)
       {
         std::vector<uint8_t> frame;
-        if (stream->encoder(logged.event, logged.seq, logged.tsNs, frame))
+        if (encodeInto(*stream, logged.event, logged.text, logged.seq, logged.tsNs, frame))
         {
           stream->writer->enqueue(std::move(frame));
         }
@@ -575,8 +597,9 @@ class SessionRegistry
   {
     std::mutex m;
     uint64_t lastSeq{0};
-    std::deque<Logged> log;  // seq-ascending, events (not frames): re-encoded on resend
-    Encoder encoder;         // sticky across disconnects: offline events keep being logged
+    std::deque<Logged> log;       // seq-ascending, events (not frames): re-encoded on resend
+    Encoder encoder;              // sticky across disconnects: offline events keep being logged
+    RejectEncoder rejectEncoder;  // optional: only a protocol with a text field wants one
     EventObserver observer;
     std::shared_ptr<SessionWriter> writer;  // null while the account is offline
   };
@@ -598,7 +621,19 @@ class SessionRegistry
     return s;
   }
 
-  void deliver(uint64_t account, const OutboundEvent& e)
+  // One place that decides which encoder an event goes through, so live
+  // delivery and a resend of the same event can never disagree.
+  static bool encodeInto(AccountStream& stream, const OutboundEvent& e, std::string_view text,
+                         uint64_t seq, int64_t tsNs, std::vector<uint8_t>& frame)
+  {
+    if (!text.empty() && stream.rejectEncoder)
+    {
+      return stream.rejectEncoder(e, text, seq, tsNs, frame);
+    }
+    return stream.encoder && stream.encoder(e, seq, tsNs, frame);
+  }
+
+  void deliver(uint64_t account, const OutboundEvent& e, std::string_view text = {})
   {
     auto stream = streamOf(account, /*create*/ false);
     if (!stream)
@@ -617,12 +652,12 @@ class SessionRegistry
     std::vector<uint8_t> frame;
     const uint64_t seq = stream->lastSeq + 1;
     const int64_t tsNs = wallClockNs();
-    if (!stream->encoder(e, seq, tsNs, frame))
+    if (!encodeInto(*stream, e, text, seq, tsNs, frame))
     {
       return;  // no wire form for this event on this protocol
     }
     stream->lastSeq = seq;
-    stream->log.push_back(Logged{seq, tsNs, e});
+    stream->log.push_back(Logged{seq, tsNs, e, std::string(text)});
     while (stream->log.size() > cfg_.resendLogCapacity)
     {
       stream->log.pop_front();

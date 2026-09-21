@@ -36,6 +36,7 @@
 #include <ctime>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -246,11 +247,17 @@ class FixCodec
   // origSendingTime (OrigSendingTime 122, the first transmission's 52) -- the
   // reason resends re-encode instead of replaying bytes: 43/122 change
   // BodyLength and CheckSum.
+  // `text` overrides the Text (58) a reject would otherwise carry, for a
+  // refusal whose reason does not say enough on its own -- a rate limit that
+  // has to name the wait, a ban that has to name when it lifts. Ignored by
+  // every other message: there is nothing else 58 would be telling the truth
+  // about.
   static std::string encode(const OutboundEvent& ev, uint64_t seq, const std::string& senderCompId,
                             const std::string& targetCompId, const std::string& sendingTime,
-                            bool possDup = false, const std::string& origSendingTime = {})
+                            bool possDup = false, const std::string& origSendingTime = {},
+                            std::string_view text = {})
   {
-    const std::string bare = encode(ev);
+    const std::string bare = encode(ev, text);
     if (bare.empty())
     {
       return bare;
@@ -295,7 +302,7 @@ class FixCodec
                                   possDup);
   }
 
-  static std::string encode(const OutboundEvent& ev)
+  static std::string encode(const OutboundEvent& ev, std::string_view text = {})
   {
     std::string b;  // body after 35
     auto add = [&](int tag, const std::string& val)
@@ -331,7 +338,7 @@ class FixCodec
       add(39, unknown ? "8" : "0");
       add(434, cr->wasReplace ? "2" : "1");  // CxlRejResponseTo
       add(102, unknown ? "1" : "99");        // CxlRejReason: Unknown order / Other
-      add(58, std::string(toString(cr->reason)));
+      add(58, text.empty() ? std::string(toString(cr->reason)) : std::string(text));
       return frame(b);
     }
 
@@ -384,7 +391,7 @@ class FixCodec
       clOrd(j->clientOrderId);
       add(150, "8");  // Rejected
       add(39, "8");
-      add(58, std::string(toString(j->reason)));
+      add(58, text.empty() ? std::string(toString(j->reason)) : std::string(text));
     }
     else if (const auto* m = std::get_if<OrderModified>(&ev))
     {

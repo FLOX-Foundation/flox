@@ -9,6 +9,7 @@
 #pragma once
 
 #include "flox-venue/messages.h"
+#include "flox/log/log.h"
 #include "flox/util/crypto.h"
 
 #include "flox/execution/rate_limit_policy.h"
@@ -44,6 +45,83 @@ inline flox::RateLimitPolicy::ActionKind actionOf(const InboundCommand& c) noexc
     return flox::RateLimitPolicy::ActionKind::QueryAccount;
   }
   return flox::RateLimitPolicy::ActionKind::Replace;
+}
+
+// How fast a client session may send -- a SETTING of the session, not one
+// venue's published profile.
+//
+// Every session used to be handed RateLimitPolicy::binance_um_futures(): 50
+// order actions per 10 seconds, then a three-minute ban after three refusals.
+// That is one exchange's retail tier wired in as the only answer available.
+// A client bridge that fans one price move out into a burst of amendments is
+// not abusing anything, and against that profile its ordinary traffic is a
+// disconnect followed by three minutes of silence.
+//
+// `off()` is a real answer, not a hole. A venue behind a trusted transport, or
+// one whose admission is budgeted somewhere else, gains nothing from a limiter
+// and loses real flow to one it did not choose. An off policy has no buckets
+// and no ban, so tryConsume admits everything.
+struct SessionRateLimit
+{
+  bool enabled{true};
+  uint32_t actionsPerWindow{50};
+  int64_t windowNs{10'000'000'000LL};
+  uint32_t banAfterRejects{3};  // 0 disables the ban on its own
+  int64_t banNs{180'000'000'000LL};
+
+  static SessionRateLimit off() noexcept
+  {
+    SessionRateLimit l;
+    l.enabled = false;
+    return l;
+  }
+
+  flox::RateLimitPolicy policy() const
+  {
+    flox::RateLimitPolicy p;
+    if (!enabled)
+    {
+      return p;
+    }
+    p.addBucket("session", windowNs, actionsPerWindow);
+    p.setBan(banAfterRejects, banNs);
+    return p;
+  }
+};
+
+// A session put in a rate-limit ban. Announced to the client in the refusal
+// itself and, separately, to whoever runs the venue: a ban is the venue
+// refusing a named client for minutes at a time, and that is an operational
+// event, not a private matter between the limiter and one connection.
+struct SessionBan
+{
+  std::string session;  // the session's own name; empty falls back to the account
+  uint64_t account{0};
+  int64_t untilNs{0};      // on the clock handle() was called with
+  int64_t remainingNs{0};  // how long the client must wait
+};
+
+inline void logSessionBan(const SessionBan& b)
+{
+  FLOX_LOG_WARN("venue.session " << (b.session.empty() ? std::to_string(b.account) : b.session)
+                                 << ": rate-limit ban, " << (b.remainingNs / 1'000'000)
+                                 << " ms to lift");
+}
+
+// The words a rate-limit refusal travels with: what tripped, and how long the
+// client has to wait before trying again. FIX carries it in Text (58).
+//
+// "Rate limited" alone leaves the client choosing between retrying in a
+// millisecond and retrying in three minutes, and the usual choice -- retry at
+// once -- is the one that walks into the ban. A ban that says nothing is worse
+// still: 35=8 with a bare reason reads exactly like one refused order, so the
+// client keeps sending into a session that will refuse everything for the next
+// three minutes.
+inline std::string rateLimitText(bool banned, int64_t retryAfterNs)
+{
+  const int64_t ms = (retryAfterNs + 999'999) / 1'000'000;  // round up: never say 0
+  return std::string(banned ? "RateLimitBanned" : "RateLimited") + ": retry in " +
+         std::to_string(ms) + " ms";
 }
 
 enum class SessionReject : uint8_t
@@ -190,12 +268,23 @@ class GatewaySession
  public:
   using Decoder = std::function<std::optional<InboundCommand>(const uint8_t*, size_t)>;
 
+  using BanObserver = std::function<void(const SessionBan&)>;
+
   GatewaySession(uint64_t account, Decoder decode,
                  flox::RateLimitPolicy limits = flox::RateLimitPolicy::binance_um_futures(),
                  std::string secret = {})
       : account_(account), decode_(std::move(decode)), limits_(std::move(limits)), secret_(std::move(secret))
   {
   }
+
+  // The name this session is known by in the venue's own log (a ban says who
+  // was banned). Empty falls back to the account id.
+  void setName(std::string n) { name_ = std::move(n); }
+  const std::string& name() const noexcept { return name_; }
+
+  // Where a ban is announced on the venue side. Defaults to the log; a
+  // deployment that routes operational events somewhere else replaces it.
+  void setBanObserver(BanObserver o) { banObserver_ = std::move(o); }
 
   void authenticate(bool ok) noexcept { authed_ = ok; }
   bool authenticated() const noexcept { return authed_; }
@@ -261,15 +350,24 @@ class GatewaySession
   //   frame did not  -> ClOrdID scraped out of the raw bytes if one is
   //                     legible there (clientOrderIdFromRaw), zeros if not
   //
-  // Optional and defaulted so every existing caller that only wants the
-  // reason keeps compiling unchanged.
+  // `text`, when given, carries what the reason alone cannot say -- for a
+  // rate limit, how long the client has to wait, and whether it is now in a
+  // ban rather than one refusal. Empty for a reason that speaks for itself.
+  //
+  // Both are optional and defaulted so every existing caller that only wants
+  // the reason keeps compiling unchanged.
   std::optional<InboundCommand> handle(const uint8_t* p, size_t n, int64_t nowNs,
-                                       SessionReject& out, RejectEcho* echo = nullptr)
+                                       SessionReject& out, RejectEcho* echo = nullptr,
+                                       std::string* text = nullptr)
   {
     out = SessionReject::None;
     if (echo != nullptr)
     {
       *echo = RejectEcho{};
+    }
+    if (text != nullptr)
+    {
+      text->clear();
     }
     if (!authed_)
     {
@@ -306,6 +404,23 @@ class GatewaySession
     if (!limits_.tryConsume(actionOf(*cmd), nowNs))
     {
       out = SessionReject::RateLimited;
+      // tryConsume arms the ban on the refusal that reaches the threshold, so
+      // the ban is known here, on the very frame that caused it -- which is
+      // the only frame the client will get an answer to for a while.
+      const bool banned = limits_.banUntilNs() > nowNs;
+      const int64_t retryNs = limits_.retryAfterNs(actionOf(*cmd), nowNs);
+      if (text != nullptr)
+      {
+        *text = rateLimitText(banned, retryNs);
+      }
+      if (banned && limits_.banUntilNs() != announcedBanUntilNs_)
+      {
+        announcedBanUntilNs_ = limits_.banUntilNs();
+        if (banObserver_)
+        {
+          banObserver_(SessionBan{name_, account_, announcedBanUntilNs_, retryNs});
+        }
+      }
       return std::nullopt;
     }
     return cmd;
@@ -365,6 +480,9 @@ class GatewaySession
   Decoder decode_;
   flox::RateLimitPolicy limits_;
   std::string secret_;
+  std::string name_;
+  BanObserver banObserver_{&logSessionBan};
+  int64_t announcedBanUntilNs_{0};  // announce each ban once, not once per refused frame
   bool authed_{false};
   bool cancelOnDisconnect_{false};
 };

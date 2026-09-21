@@ -46,6 +46,18 @@ class WsGateway
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
 
+  // Client rate limit for NEW sessions. A setting, not one venue's published
+  // profile: `SessionRateLimit::off()` turns the limiter off outright, which
+  // is the right answer for a bridge whose ordinary traffic is bursty and for
+  // a venue that budgets admission somewhere else. The default is the profile
+  // this used to hardwire, so an existing deployment is unchanged.
+  void setRateLimit(SessionRateLimit limit) { rateLimit_ = limit; }
+
+  // Encoder for a refusal that travels with text (see
+  // SessionRegistry::RejectEncoder). Without one a rate-limit refusal still
+  // reaches the client, just without the wait it has to observe.
+  void setRejectEncoder(SessionRegistry::RejectEncoder enc) { rejectEncoder_ = std::move(enc); }
+
   // Delivery mode (see TcpGateway::setDelivery). The registry carries
   // fully-framed WebSocket bytes: the gateway wraps `encoder`'s payload in a
   // Text frame, so the single writer thread owns the socket and control
@@ -118,7 +130,8 @@ class WsGateway
     net::writeAll(fd, reinterpret_cast<const uint8_t*>(resp.data()), resp.size());
 
     // 2. Frame loop.
-    GatewaySession session(account_, decoder_);
+    GatewaySession session(account_, decoder_, rateLimit_.policy());
+    session.setName("ws/" + std::to_string(account_));
     session.authenticate(true);
     session.setCancelOnDisconnect(cancelOnDisconnect_.load());
     DisconnectCanceller cod(session.cancelOnDisconnect());
@@ -140,6 +153,24 @@ class WsGateway
         out = ws::buildFrame(ws::Opcode::Text, payload.data(), payload.size());
         return true;
       };
+      // Same wrap for the text-carrying encoder: the registry stores complete
+      // WebSocket frames whichever of the two produced them.
+      SessionRegistry::RejectEncoder wsRejectEncoder;
+      if (rejectEncoder_)
+      {
+        wsRejectEncoder = [enc = rejectEncoder_](const OutboundEvent& e, std::string_view text,
+                                                 uint64_t seq, int64_t tsNs,
+                                                 std::vector<uint8_t>& out) -> bool
+        {
+          std::vector<uint8_t> payload;
+          if (!enc(e, text, seq, tsNs, payload))
+          {
+            return false;
+          }
+          out = ws::buildFrame(ws::Opcode::Text, payload.data(), payload.size());
+          return true;
+        };
+      }
       writer = registry_->attach(
           session.account(), std::move(wsEncoder),
           [fd](const uint8_t* p, size_t n)
@@ -147,7 +178,8 @@ class WsGateway
           [fd]
           { net::shutdownBoth(fd); },
           [&cod](const OutboundEvent& e)
-          { cod.observe(e); });
+          { cod.observe(e); },
+          std::move(wsRejectEncoder));
     }
     const Responder responder =
         (writer != nullptr)
@@ -370,12 +402,13 @@ class WsGateway
   {
     SessionReject rej{};
     RejectEcho echo{};
+    std::string rejectText;
     // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
     // ++clock_ frame counter never advanced time -> permanent bans.
     const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                               std::chrono::steady_clock::now().time_since_epoch())
                               .count();
-    auto cmd = session.handle(p, n, nowNs, rej, &echo);
+    auto cmd = session.handle(p, n, nowNs, rej, &echo, &rejectText);
     if (cmd)
     {
       cod.track(*cmd);
@@ -388,12 +421,15 @@ class WsGateway
       // ClOrdID legible in the raw bytes when the frame did not decode.
       registry_->send(session.account(),
                       OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
-                                                  session.account(), echo.clientOrderId}});
+                                                  session.account(), echo.clientOrderId}},
+                      rejectText);
     }
   }
 
   GatewaySession::Decoder decoder_;
   uint64_t account_{0};
+  SessionRateLimit rateLimit_{};
+  SessionRegistry::RejectEncoder rejectEncoder_;
   Handler handler_;
   SocketAcceptor acceptor_;
   std::atomic<bool> cancelOnDisconnect_{false};

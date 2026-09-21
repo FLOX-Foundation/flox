@@ -8,11 +8,21 @@
  */
 #include "flox-venue/fix_codec.h"
 #include "flox-venue/session.h"
+#include "flox-venue/session_registry.h"
+#include "flox-venue/tcp_gateway.h"
+#include "flox/util/transport.h"
 
 #include <gtest/gtest.h>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <chrono>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -70,11 +80,12 @@ GatewaySession::Decoder fixDecoder()
 // What a gateway puts on the wire for a session-level refusal: the reject
 // built from the echo, encoded through the session's protocol.
 std::unordered_map<int, std::string> wireReject(const RejectEcho& echo, SessionReject reason,
-                                                uint64_t account)
+                                                uint64_t account, std::string_view text = {})
 {
   const OutboundEvent ev{OrderRejected{echo.id, echo.symbol, toRejectReason(reason), account,
                                        echo.clientOrderId}};
-  return fields(FixCodec::encode(ev, /*seq=*/1, "VENUE", "CLIENT", "20260921-00:00:00.000"));
+  return fields(FixCodec::encode(ev, /*seq=*/1, "VENUE", "CLIENT", "20260921-00:00:00.000",
+                                 /*possDup=*/false, /*origSendingTime=*/{}, text));
 }
 
 }  // namespace
@@ -189,4 +200,192 @@ TEST(SessionPerimeter, TheClOrdIdScrapeRefusesWhatItCannotReadAsOne)
 
   const std::string good = field(35, "D") + field(11, "1234");
   EXPECT_EQ(clientOrderIdFromRaw(reinterpret_cast<const uint8_t*>(good.data()), good.size()), 1234u);
+}
+
+// ---------------------------------------------------------------------------
+// The client rate limit is a setting, and a ban does not travel in silence.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+// Drive `count` order actions through a session at one-millisecond spacing,
+// on the policy's own clock. Nothing sleeps: the limiter reads the timestamp
+// it is handed, so a test that measures a window must supply the window, not
+// wait out a real one.
+int admitted(GatewaySession& s, const std::string& frame, int count, int64_t startNs,
+             int64_t stepNs)
+{
+  const auto* p = reinterpret_cast<const uint8_t*>(frame.data());
+  int ok = 0;
+  for (int i = 0; i < count; ++i)
+  {
+    SessionReject rej{};
+    if (s.handle(p, frame.size(), startNs + static_cast<int64_t>(i) * stepNs, rej).has_value())
+    {
+      ++ok;
+    }
+  }
+  return ok;
+}
+
+}  // namespace
+
+// The profile that used to be hardwired -- 50 actions per 10 seconds, then a
+// three-minute ban -- is one exchange's retail tier. For a client bridge that
+// fans a price move out into a burst it is an outage, so the policy has to be
+// something a deployment chooses, including choosing not to have one.
+TEST(SessionPerimeter, TheClientRateLimitIsASettingAndOffIsOneOfItsValues)
+{
+  const std::string frame = newOrderSingle(1);
+
+  {
+    GatewaySession s(7, fixDecoder(), SessionRateLimit::off().policy());
+    s.authenticate(true);
+    // 200 actions inside one second: every one of them admitted.
+    EXPECT_EQ(admitted(s, frame, 200, 1'000'000'000LL, 5'000'000LL), 200);
+  }
+
+  {
+    SessionRateLimit limit;  // the former hardwired shape, now a default
+    EXPECT_EQ(limit.actionsPerWindow, 50u);
+    EXPECT_EQ(limit.windowNs, 10'000'000'000LL);
+    GatewaySession s(7, fixDecoder(), limit.policy());
+    s.authenticate(true);
+    constexpr int64_t kStart = 1'000'000'000LL;
+    constexpr int64_t kStep = 1'000'000LL;  // 1 ms apart: 51 of them span 50 ms
+    EXPECT_EQ(admitted(s, frame, 50, kStart, kStep), 50);
+
+    SessionReject rej{};
+    RejectEcho echo{};
+    std::string text;
+    const int64_t at51 = kStart + 50 * kStep;
+    EXPECT_FALSE(s.handle(reinterpret_cast<const uint8_t*>(frame.data()), frame.size(), at51, rej,
+                          &echo, &text)
+                     .has_value());
+    EXPECT_EQ(rej, SessionReject::RateLimited);
+    // The refusal says what tripped AND how long the window still has to run:
+    // the oldest of the 50 charges ages out 10s after it was made, so ~9.95s.
+    EXPECT_NE(text.find("RateLimited"), std::string::npos) << text;
+    EXPECT_NE(text.find("retry in 9950 ms"), std::string::npos) << text;
+
+    auto w = wireReject(echo, rej, 7, text);
+    EXPECT_EQ(w[58], text);
+  }
+}
+
+// A ban is the venue refusing a client for minutes. Announced twice: to the
+// client, with the time it lifts, and to whoever runs the venue, by name.
+TEST(SessionPerimeter, ABanNamesItsRemainingTimeToTheClientAndItselfToTheLog)
+{
+  SessionRateLimit limit;
+  limit.actionsPerWindow = 1;
+  limit.windowNs = 1'000'000'000LL;
+  limit.banAfterRejects = 2;
+  limit.banNs = 5'000'000'000LL;
+
+  GatewaySession s(7, fixDecoder(), limit.policy());
+  s.setName("tcp/7");
+  s.authenticate(true);
+  std::vector<SessionBan> bans;
+  s.setBanObserver([&bans](const SessionBan& b)
+                   { bans.push_back(b); });
+
+  const std::string frame = newOrderSingle(1);
+  const auto* p = reinterpret_cast<const uint8_t*>(frame.data());
+  constexpr int64_t kStart = 1'000'000'000LL;
+
+  SessionReject rej{};
+  RejectEcho echo{};
+  std::string text;
+  EXPECT_TRUE(s.handle(p, frame.size(), kStart, rej, &echo, &text).has_value());
+
+  // First refusal: the window, not the ban.
+  EXPECT_FALSE(s.handle(p, frame.size(), kStart + 1'000'000, rej, &echo, &text).has_value());
+  EXPECT_NE(text.find("RateLimited:"), std::string::npos) << text;
+  EXPECT_TRUE(bans.empty());
+
+  // Second consecutive refusal arms the ban, and the frame that armed it is
+  // the one the client hears about -- everything after is refused too.
+  const int64_t banAt = kStart + 2'000'000;
+  EXPECT_FALSE(s.handle(p, frame.size(), banAt, rej, &echo, &text).has_value());
+  EXPECT_EQ(text, "RateLimitBanned: retry in 5000 ms");
+  ASSERT_EQ(bans.size(), 1u);
+  EXPECT_EQ(bans[0].session, "tcp/7");
+  EXPECT_EQ(bans[0].account, 7u);
+  EXPECT_EQ(bans[0].remainingNs, 5'000'000'000LL);
+
+  // Still banned two seconds later: the text counts down rather than repeating
+  // itself, and the operational event is not re-announced per refused frame.
+  EXPECT_FALSE(s.handle(p, frame.size(), banAt + 2'000'000'000LL, rej, &echo, &text).has_value());
+  EXPECT_EQ(text, "RateLimitBanned: retry in 3000 ms");
+  EXPECT_EQ(bans.size(), 1u);
+
+  auto w = wireReject(echo, rej, 7, text);
+  EXPECT_EQ(w[58], "RateLimitBanned: retry in 3000 ms");
+}
+
+// The whole path, on a loopback socket: the refusal the gateway puts on the
+// wire carries the wait, not just the word.
+TEST(SessionPerimeter, TheWireRefusalCarriesTheWaitThroughTheGateway)
+{
+  constexpr uint64_t kAccount = 7;
+  SessionRegistry registry;
+  TcpGateway gw(fixDecoder(), kAccount);
+
+  const std::string sender = "VENUE";
+  const std::string target = "CLIENT";
+  gw.setDelivery(&registry,
+                 [sender, target](const OutboundEvent& e, uint64_t seq, int64_t,
+                                  std::vector<uint8_t>& out)
+                 {
+                   const std::string m =
+                       FixCodec::encode(e, seq, sender, target, "20260921-00:00:00.000");
+                   out.assign(m.begin(), m.end());
+                   return !m.empty();
+                 });
+  gw.setRejectEncoder([sender, target](const OutboundEvent& e, std::string_view text, uint64_t seq,
+                                       int64_t, std::vector<uint8_t>& out)
+                      {
+                        const std::string m = FixCodec::encode(
+                            e, seq, sender, target, "20260921-00:00:00.000", false, {}, text);
+                        out.assign(m.begin(), m.end());
+                        return !m.empty(); });
+
+  SessionRateLimit limit;
+  limit.actionsPerWindow = 1;
+  limit.windowNs = 10'000'000'000LL;
+  limit.banAfterRejects = 0;  // one refusal at a time, no ban in this test
+  gw.setRateLimit(limit);
+
+  const int port = gw.start(0, [](const InboundCommand&, const TcpGateway::Responder&, int64_t) {});
+  ASSERT_GT(port, 0);
+
+  const int c = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(c, 0);
+  sockaddr_in a{};
+  a.sin_family = AF_INET;
+  a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  a.sin_port = htons(static_cast<uint16_t>(port));
+  ASSERT_EQ(::connect(c, reinterpret_cast<sockaddr*>(&a), sizeof a), 0);
+  timeval tv{};
+  tv.tv_sec = 5;  // deadline: a refusal that never arrives fails, it does not hang
+  ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+
+  for (uint64_t clOrdId : {1001ULL, 1002ULL})
+  {
+    const std::string m = newOrderSingle(clOrdId, kAccount);
+    ASSERT_TRUE(net::writeFrame(c, reinterpret_cast<const uint8_t*>(m.data()), m.size()));
+  }
+
+  std::vector<uint8_t> reply;
+  ASSERT_TRUE(net::readFrame(c, reply));
+  auto w = fields(std::string(reply.begin(), reply.end()));
+  EXPECT_EQ(w[35], "8");
+  EXPECT_EQ(w[11], "1002");  // the refusal names the order it refused
+  EXPECT_NE(w[58].find("RateLimited: retry in "), std::string::npos) << w[58];
+  EXPECT_NE(w[58], "RateLimited");  // the bare reason is what this replaced
+
+  ::close(c);
+  gw.stop();
 }

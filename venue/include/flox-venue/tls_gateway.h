@@ -32,6 +32,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <utility>
 #include <vector>
 #include "flox/net/socket.h"
@@ -189,6 +190,18 @@ class TlsGateway
   }
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
+
+  // Client rate limit for NEW sessions. A setting, not one venue's published
+  // profile: `SessionRateLimit::off()` turns the limiter off outright, which
+  // is the right answer for a bridge whose ordinary traffic is bursty and for
+  // a venue that budgets admission somewhere else. The default is the profile
+  // this used to hardwire, so an existing deployment is unchanged.
+  void setRateLimit(SessionRateLimit limit) { rateLimit_ = limit; }
+
+  // Encoder for a refusal that travels with text (see
+  // SessionRegistry::RejectEncoder). Without one a rate-limit refusal still
+  // reaches the client, just without the wait it has to observe.
+  void setRejectEncoder(SessionRegistry::RejectEncoder enc) { rejectEncoder_ = std::move(enc); }
 
   // Delivery mode (see TcpGateway::setDelivery): register every connection in
   // `registry` and deliver exec reports through per-session bounded queues.
@@ -380,7 +393,8 @@ class TlsGateway
       SSL_free(ssl);
       return;  // acceptor owns the fd
     }
-    GatewaySession session(account_, decoder_);
+    GatewaySession session(account_, decoder_, rateLimit_.policy());
+    session.setName("tls/" + std::to_string(account_));
     session.authenticate(true);
     session.setCancelOnDisconnect(cancelOnDisconnect_.load());
     DisconnectCanceller cod(session.cancelOnDisconnect());
@@ -399,7 +413,8 @@ class TlsGateway
           [fd]
           { net::shutdownBoth(fd); },
           [&cod](const OutboundEvent& e)
-          { cod.observe(e); });
+          { cod.observe(e); },
+          rejectEncoder_);
     }
     // In delivery mode the responder feeds the same per-session queue as the
     // routed events (single writer owns the SSL*'s write side).
@@ -471,12 +486,13 @@ class TlsGateway
       }
       SessionReject rej{};
       RejectEcho echo{};
+      std::string rejectText;
       // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
       // ++clock_ frame counter never advanced time -> permanent bans.
       const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now().time_since_epoch())
                                 .count();
-      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej, &echo);
+      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej, &echo, &rejectText);
       if (cmd)
       {
         cod.track(*cmd);
@@ -491,7 +507,8 @@ class TlsGateway
         // raw bytes when the frame did not decode).
         registry_->send(session.account(),
                         OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
-                                                    session.account(), echo.clientOrderId}});
+                                                    session.account(), echo.clientOrderId}},
+                        rejectText);
       }
     }
     if (writer != nullptr)
@@ -510,6 +527,8 @@ class TlsGateway
 
   GatewaySession::Decoder decoder_;
   uint64_t account_{0};
+  SessionRateLimit rateLimit_{};
+  SessionRegistry::RejectEncoder rejectEncoder_;
   SSL_CTX* ctx_{nullptr};
   Handler handler_;
   SocketAcceptor acceptor_;

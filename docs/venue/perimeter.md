@@ -40,7 +40,35 @@ connection and the process keeps running.
     replaced had to be extended by hand, and was not: it covered the six
     order-flow commands and missed the ones that move money, close positions
     and set another account's entitlements.
-- **Rate limiting**, per session, via `flox::RateLimitPolicy`.
+- **Rate limiting**, per session, via `flox::RateLimitPolicy` -- and the
+  policy is a SETTING (`SessionRateLimit`, applied with
+  `setRateLimit(...)` on `TcpGateway`, `TlsGateway` and `WsGateway`), not a
+  fixed profile. `SessionRateLimit::off()` is one of its values.
+
+    Every session used to be handed `RateLimitPolicy::binance_um_futures()`:
+    50 order actions per 10 seconds, then a three-minute ban after three
+    refusals. That is one exchange's retail tier wired in as the only answer
+    available. A client bridge that fans a single price move out into a burst
+    of amendments is not abusing anything, and against that profile its
+    ordinary traffic is a disconnect followed by three minutes of silence.
+    The numbers stay the default, so an existing deployment is unchanged.
+
+    **The refusal says how long to wait.** A rate-limit reject carries
+    `RateLimited: retry in <n> ms` in the text (FIX `58`), and once a ban is
+    armed, `RateLimitBanned: retry in <n> ms`. The bare reason left the client
+    choosing between retrying in a millisecond and retrying in three minutes,
+    and the usual choice -- retry at once -- is the one that walks into the
+    ban; a silent ban reads exactly like one refused order, so the client
+    keeps sending into a session that will refuse everything. The text travels
+    beside the event through `SessionRegistry::RejectEncoder` (registered with
+    `setRejectEncoder`): `OrderRejected` is the engine's message about an
+    order, and why a SESSION refused a frame is not a property of any order.
+    Without a reject encoder the refusal still arrives, just without the wait.
+
+    A ban is also announced on the venue's own side, once per ban, through
+    `GatewaySession::setBanObserver` (default: a `WARN` naming the session).
+    Refusing a named client for minutes is an operational event, not a private
+    matter between the limiter and one connection.
 - **Cancel-on-disconnect** optionally pulls the session's resting orders when
   the connection drops.
 
