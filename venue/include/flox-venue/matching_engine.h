@@ -10,6 +10,7 @@
 
 #include "flox-venue/engine/clearing.h"
 #include "flox-venue/engine/clordid_window.h"
+#include "flox-venue/engine/credit.h"
 #include "flox-venue/engine/expiry.h"
 #include "flox-venue/engine/mmp.h"
 #include "flox-venue/engine/pegs.h"
@@ -84,32 +85,12 @@ class MatchingEngine
   // engine/quote_mmp.inl
   void setMmp(uint64_t account, Quantity qtyLimit, DurationNs windowNs);
 
-  // Pre-trade credit / buying-power gate. Returns true if the account may place
-  // the order. A real deployment binds this to the account/balance service.
-  // What an external risk owner is told about an order it must approve. The
-  // old shape (account, side, price, quantity) could not answer a portfolio
-  // question: it did not say WHICH instrument -- the engine knows its own, the
-  // risk layer serves many -- nor whether the order reduces exposure, and a
-  // bare false gave the client no reason for the refusal.
-  struct CreditRequest
-  {
-    OrderId order{};
-    uint64_t account{};
-    SymbolId symbol{};
-    Side side{};
-    OrderType type{};
-    Price price{};
-    Quantity quantity{};
-    bool reduceOnly{false};
-  };
-
-  struct CreditDecision
-  {
-    bool allowed{true};
-    RejectReason reason{RejectReason::InsufficientFunds};  // used when allowed == false
-  };
-
-  using CreditCheck = std::function<CreditDecision(const CreditRequest&)>;
+  // The pre-trade credit gate's types live with the component that asks the
+  // question (engine/credit.h). Named here too because that is how every
+  // caller spells them and how the written-down surface pins them.
+  using CreditRequest = flox::venue::CreditRequest;
+  using CreditDecision = flox::venue::CreditDecision;
+  using CreditCheck = flox::venue::CreditCheck;
 
   // engine/validate.inl
   void setCreditCheck(CreditCheck c);
@@ -342,14 +323,15 @@ class MatchingEngine
   void emitFees(const Trade& t);
 
   // ---- settlement ledger ----
-  struct Reservation
-  {
-    uint64_t account{};
-    AssetId asset{};
-    Amount reservedRaw{};
-    int64_t limitPriceRaw{};
-    Side side{};
-  };
+  // One reservation entry, named where it always was so the checkpoint and
+  // the restore path keep spelling it the same way. The table itself, and
+  // every rule about what goes into it, belong to engine::Credit.
+  using Reservation = engine::Credit::Reservation;
+
+  // Thin forwards into engine::Credit, kept as members because the paths that
+  // call them (clearing, settlement, last look, cancel) ask about buying power
+  // without needing to know where it is kept. Each is one call; nothing here
+  // decides anything.
   Amount imForRaw(int64_t qtyRaw, int64_t priceRaw) const;
   bool reserveFunds(const NewOrder& o);
 
@@ -510,13 +492,6 @@ class MatchingEngine
   // matching takes the mode off the aggressor inside the matcher.
   StpState stp_;
 
-  // account -> admission profile. Empty table and absent entries both mean
-  // "everything permitted", so an engine that was never given profiles behaves
-  // exactly as before.
-  std::unordered_map<uint64_t, AdmissionProfile> admission_;
-
-  uint64_t admissionRejects_{0};  // observability: a counterparty sending what it may not
-
   flox::FeeSchedule fees_;
 
   bool feesEnabled_{false};
@@ -525,11 +500,11 @@ class MatchingEngine
   // submit boundary drains.
   MmpState mmp_;
 
-  CreditCheck credit_;
-
-  // Reason from the last refused credit check, so the reject the client sees
-  // says why ("portfolio margin", say) instead of a flat InsufficientFunds.
-  mutable RejectReason creditReason_{RejectReason::InsufficientFunds};
+  // Who may send an order and what it costs to have one live: the admission
+  // table, the external credit hook and the buying-power reservations. Held by
+  // value and called directly from the hot path, so every gate inlines exactly
+  // as it did when these were loose members of this class.
+  engine::Credit credit_;
 
   // Diagnostic only, like the pro-rata skip counters: conduct measurement, not
   // matching state, so it stays out of the state hash and the snapshot.
@@ -567,8 +542,6 @@ class MatchingEngine
   Ledger* ledger_{nullptr};
 
   uint64_t venueAccount_{0};
-
-  std::unordered_map<OrderId, Reservation> reserve_;
 
   // Positions, the funding calendar and the money that moves on them. Bound
   // to this engine's cfg_ and sink_ (both declared above it, so the binding

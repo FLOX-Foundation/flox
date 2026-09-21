@@ -534,7 +534,7 @@ struct RestoreClOrdIds  // fixed-size batch of an account's clientOrderId dedup 
   uint64_t ids[kClOrdIdBatch]{};
 };
 
-// One buying-power reservation entry (MatchingEngine::reserve_), serialized
+// One buying-power reservation entry (engine::Credit::Reservation), serialized
 // EXACTLY as held live. Reservations are deliberately not re-derived from
 // order formulas on load: partial fills, held slices and STP interactions
 // make the live amount history-dependent, so the record carries it. Applying

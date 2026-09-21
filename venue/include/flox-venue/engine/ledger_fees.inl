@@ -136,92 +136,13 @@ void MatchingEngine<Book>::emitFees(const Trade& t)
 template <class Book>
 Amount MatchingEngine<Book>::imForRaw(int64_t qtyRaw, int64_t priceRaw) const
 {
-  const Amount notional = notionalRaw(priceRaw, qtyRaw, cfg_.priceScale, cfg_.qtyScale);
-  return notional * cfg_.initialMarginBps / 10000;
+  return credit_.imForRaw(qtyRaw, priceRaw, cfg_);
 }
 
 template <class Book>
 bool MatchingEngine<Book>::reserveFunds(const NewOrder& o)
 {
-  // Permission first, funding second. An external risk owner answers a
-  // question the engine cannot ("is this account good for it across every
-  // instrument it holds?"), so it has to be asked whether or not this engine
-  // also posts collateral -- both money branches below used to return before
-  // the hook was ever reached, so binding a ledger silently disabled it.
-  if (credit_)
-  {
-    const CreditDecision d = credit_(CreditRequest{o.id, o.accountId, cfg_.id, o.side, o.type,
-                                                   o.price, o.quantity, o.reduceOnly});
-    if (!d.allowed)
-    {
-      creditReason_ = d.reason;  // surfaced by the caller's reject
-      return false;
-    }
-  }
-  if (ledger_ != nullptr && cfg_.linearPerp)
-  {
-    // Derivatives: reserve initial margin in quote collateral (reduce-only
-    // reserves nothing -- it frees position margin instead).
-    //
-    // An unpriced (market / triggered-stop) order is bounded by the price
-    // band, and for a linear perp that bound is the band's TOP on BOTH sides.
-    // Nothing is delivered here: the exposure is notional, and notional --
-    // hence initial margin -- grows with price whether the account is long or
-    // short. Bounding a perp SELL at minPrice (which is the correct worst case
-    // for a SPOT seller, who delivers base and whose quote proceeds only grow
-    // with price -- see the spot branch below) under-reserves it by the whole
-    // maxPrice/minPrice ratio, and consumeOrderIM then caps the position's
-    // margin at that under-reserved number.
-    const int64_t limitRaw = (o.type == OrderType::LIMIT) ? o.price.raw() : cfg_.maxPrice.raw();
-    // A market/stop order with no price band (limitRaw == 0) cannot be bounded
-    // for margin: reserving 0 IM would let it open a position with no
-    // collateral. Reject rather than admit an uncollateralized fill.
-    if (!o.reduceOnly && o.type != OrderType::LIMIT && limitRaw <= 0)
-    {
-      return false;
-    }
-    const Amount im = o.reduceOnly ? 0 : imForRaw(o.quantity.raw(), limitRaw);
-    if (im > 0 && !ledger_->reserve(o.accountId, cfg_.quoteAsset, im))
-    {
-      return false;
-    }
-    reserve_[o.id] = Reservation{o.accountId, cfg_.quoteAsset, im, limitRaw, o.side};
-    return true;
-  }
-  if (ledger_ != nullptr)
-  {
-    AssetId asset;
-    Amount amt;
-    int64_t limitRaw;
-    if (o.side == Side::BUY)
-    {
-      const Price px = (o.type == OrderType::LIMIT || cfg_.maxPrice.raw() == 0) ? o.price
-                                                                                : cfg_.maxPrice;
-      // A market/stop buy with no price band (px == 0) cannot bound its quote
-      // spend, so reserving amountOf(0) would gate nothing and let the fill
-      // drive the account's reserved balance negative. Reject it instead.
-      if (px.raw() <= 0)
-      {
-        return false;
-      }
-      asset = cfg_.quoteAsset;
-      amt = notionalRaw(px.raw(), o.quantity.raw(), cfg_.priceScale, cfg_.qtyScale);
-      limitRaw = px.raw();
-    }
-    else
-    {
-      asset = cfg_.baseAsset;
-      amt = amountOf(o.quantity);
-      limitRaw = o.price.raw();
-    }
-    if (!ledger_->reserve(o.accountId, asset, amt))
-    {
-      return false;
-    }
-    reserve_[o.id] = Reservation{o.accountId, asset, amt, limitRaw, o.side};
-    return true;
-  }
-  return true;
+  return credit_.reserveFunds(o, cfg_, ledger_);
 }
 
 // Deposits/withdrawals are sequenced commands, not direct Ledger calls, so
@@ -279,20 +200,7 @@ void MatchingEngine<Book>::emitBalance(uint64_t account, AssetId asset, BalanceR
 template <class Book>
 void MatchingEngine<Book>::releaseReservation(OrderId id)
 {
-  if (ledger_ == nullptr)
-  {
-    return;
-  }
-  auto it = reserve_.find(id);
-  if (it == reserve_.end())
-  {
-    return;
-  }
-  if (it->second.reservedRaw > 0)
-  {
-    ledger_->release(it->second.account, it->second.asset, it->second.reservedRaw);
-  }
-  reserve_.erase(it);
+  credit_.releaseReservation(id, ledger_);
 }
 
 // Any open last-look hold referencing this order (as maker or taker)?
@@ -318,7 +226,9 @@ bool MatchingEngine<Book>::hasHoldsFor(OrderId id) const
 // releaseReservation, but keep the slice backing this order's open held
 // fills reserved: a canceled residual must not strip the collateral an
 // accept still needs to settle from (the unchecked-debit fallback would
-// credit the counterparty against a possibly failing debit).
+// credit the counterparty against a possibly failing debit). The hold table
+// is the engine's, so the held quantity is measured here and the money is
+// left to engine::Credit.
 template <class Book>
 void MatchingEngine<Book>::releaseReservationExceptHeld(OrderId id)
 {
@@ -336,39 +246,7 @@ void MatchingEngine<Book>::releaseReservationExceptHeld(OrderId id)
       heldQty += h.qty;
     }
   }
-  if (heldQty.isZero())
-  {
-    releaseReservation(id);
-    return;
-  }
-  auto it = reserve_.find(id);
-  if (it == reserve_.end())
-  {
-    return;
-  }
-  Amount keep;
-  if (cfg_.linearPerp)
-  {
-    keep = imForRaw(heldQty.raw(), it->second.limitPriceRaw);
-  }
-  else if (it->second.side == Side::BUY)
-  {
-    keep = notionalRaw(it->second.limitPriceRaw, heldQty.raw(), cfg_.priceScale, cfg_.qtyScale);
-  }
-  else
-  {
-    keep = amountOf(heldQty);
-  }
-  if (keep > it->second.reservedRaw)
-  {
-    keep = it->second.reservedRaw;
-  }
-  const Amount rel = it->second.reservedRaw - keep;
-  if (rel > 0)
-  {
-    ledger_->release(it->second.account, it->second.asset, rel);
-    it->second.reservedRaw = keep;
-  }
+  credit_.releaseReservationExceptHeld(id, heldQty, cfg_, ledger_);
 }
 
 // After the last hold on an order resolves: if the order is gone from the
@@ -440,10 +318,10 @@ void MatchingEngine<Book>::settleTrade(const Trade& t)
   const OrderId sellerId = takerBuys ? t.makerId : t.takerId;
   const uint64_t sellerAcct = takerBuys ? t.makerAccount : t.takerAccount;
 
-  auto rb = reserve_.find(buyerId);
-  auto rs = reserve_.find(sellerId);
-  const bool buyerUnreserved = (rb == reserve_.end());
-  const bool sellerUnreserved = (rs == reserve_.end());
+  Reservation* rb = credit_.find(buyerId);
+  Reservation* rs = credit_.find(sellerId);
+  const bool buyerUnreserved = (rb == nullptr);
+  const bool sellerUnreserved = (rs == nullptr);
 
   // VALUE INTEGRITY. A leg with no reservation has to settle straight out of
   // `available`, and Ledger::debit is all-or-nothing: it can refuse. Crediting
@@ -475,14 +353,14 @@ void MatchingEngine<Book>::settleTrade(const Trade& t)
   // Buyer: pay quote from reserved (refund over-reservation), receive base.
   if (!buyerUnreserved)
   {
-    const Amount limitNotional = notionalRaw(rb->second.limitPriceRaw, t.quantity.raw(),
+    const Amount limitNotional = notionalRaw(rb->limitPriceRaw, t.quantity.raw(),
                                              cfg_.priceScale, cfg_.qtyScale);
     ledger_->spendReserved(buyerAcct, cfg_.quoteAsset, notional);
     if (limitNotional > notional)
     {
       ledger_->release(buyerAcct, cfg_.quoteAsset, limitNotional - notional);
     }
-    rb->second.reservedRaw -= limitNotional;
+    rb->reservedRaw -= limitNotional;
   }
   ledger_->credit(buyerAcct, cfg_.baseAsset, qtyRaw);
 
@@ -490,7 +368,7 @@ void MatchingEngine<Book>::settleTrade(const Trade& t)
   if (!sellerUnreserved)
   {
     ledger_->spendReserved(sellerAcct, cfg_.baseAsset, qtyRaw);
-    rs->second.reservedRaw -= qtyRaw;
+    rs->reservedRaw -= qtyRaw;
   }
   ledger_->credit(sellerAcct, cfg_.quoteAsset, notional);
 

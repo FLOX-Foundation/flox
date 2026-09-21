@@ -102,9 +102,9 @@ uint64_t MatchingEngine<Book>::stateHash() const
     h = mix(h, static_cast<uint64_t>(trig.raw()));
   }
 
-  for (uint64_t acct : sortedKeys(admission_))
+  for (uint64_t acct : sortedKeys(credit_.admissionProfiles()))
   {
-    const AdmissionProfile& p = admission_.at(acct);
+    const AdmissionProfile& p = credit_.admissionProfiles().at(acct);
     h = mix(h, 0xB00DU);
     h = mix(h, acct);
     h = mix(h, p.allowedTypes);
@@ -145,9 +145,9 @@ uint64_t MatchingEngine<Book>::stateHash() const
     h = mix(h, orderAccount_.count(x.maker) != 0 ? 1U : 0U);
   }
 
-  for (OrderId id : sortedKeys(reserve_))
+  for (OrderId id : sortedKeys(credit_.reservations()))
   {
-    const Reservation& r = reserve_.at(id);
+    const Reservation& r = credit_.reservations().at(id);
     h = mix(h, 0xB009U);
     h = mix(h, id);
     h = mix(h, r.account);
@@ -275,9 +275,11 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   // Admission profiles are engine state of the same kind: they decide what
   // is accepted, so they are re-emitted as the command that set them and
   // applied through the ordinary submit path on load.
-  for (uint64_t acct : sortedKeys(admission_))
+  for (uint64_t acct : sortedKeys(credit_.admissionProfiles()))
   {
-    out.append(InboundCommand{SetAdmissionProfile{cfg_.id, acct, admission_.at(acct)}}, ts);
+    out.append(
+        InboundCommand{SetAdmissionProfile{cfg_.id, acct, credit_.admissionProfiles().at(acct)}},
+        ts);
   }
   // The halt, the auction phase, the session boundary and delisting all ride
   // the same existing AdminCmd path, in the order engine::Session hands them
@@ -360,9 +362,9 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
     out.append(InboundCommand{r}, ts);
   }
 
-  for (OrderId id : sortedKeys(reserve_))
+  for (OrderId id : sortedKeys(credit_.reservations()))
   {
-    const Reservation& r = reserve_.at(id);
+    const Reservation& r = credit_.reservations().at(id);
     out.append(
         InboundCommand{RestoreReservation{id, r.account, r.asset, r.side, r.limitPriceRaw,
                                           r.reservedRaw}},
@@ -421,7 +423,7 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.ocoPending_ = ocoPending_;  // empty at a command boundary; copied for completeness
   e.pegs_ = pegs_;
   e.stp_ = stp_;
-  e.admission_ = admission_;
+  e.credit_.restoreAdmission(credit_.admissionProfiles());
   e.fees_ = fees_;
   e.feesEnabled_ = feesEnabled_;
   e.mmp_ = mmp_;
@@ -429,7 +431,7 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.heldSeq_ = heldSeq_;
   e.heldOpen_.store(e.held_.size(), std::memory_order_relaxed);
   e.clOrdIds_ = clOrdIds_;
-  e.reserve_ = reserve_;
+  e.credit_.restoreReservations(credit_.reservations());
   e.clearing_.copyStateFrom(clearing_);
   e.session_.copyForSnapshotClone(session_);
   // order: not observable -- a keyed copy into the clone's own map; the

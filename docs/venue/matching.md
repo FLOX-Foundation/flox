@@ -463,6 +463,37 @@ the engine owns an instance and does the two things the session cannot do for
 itself, reaching the feed and reaching the book. The same state machine
 therefore exists once however many book types the engine is instantiated with.
 
+Some of the engine never needed the book, and where that is true the code has
+moved out of the template into a plain class the engine holds by value. These
+are components, not fragments: each is an ordinary header that compiles on its
+own and is tested on its own, without an engine, a book or a matcher.
+
+| Component | Header | What it owns |
+|---|---|---|
+| `engine::Credit` | `engine/credit.h` | entitlement (the admission table and the gate), the external credit hook, buying-power reservations, and the per-fill perp risk allowance |
+
+`engine::Credit` answers questions about the ACCOUNT: may this counterparty
+send this order, does the external risk owner allow it, what has to be
+ring-fenced in the ledger before it may rest, what comes back when it stops
+resting, and how much of a prospective fill each leg's risk limits leave. It
+never reads the book. Where the book does come into an answer -- the
+reduce-only quantity the account already has resting -- the engine measures it
+and passes the number in, exactly as it passes in a position. The instrument
+config and the ledger arrive as arguments too, so a copy of the component
+cannot reach another engine's state.
+
+`validate` and `onNew` stay in the template, on the hot path, and call the
+component directly. Nothing is virtual: the calls compile to the same direct
+branches they were when these were loose members of `MatchingEngine`, and
+`engine::Credit` is tested by `venue/tests/test_venue_engine_credit.cpp`
+without an engine in sight.
+
+`SymbolConfig` moved to `flox-venue/symbol_config.h` for the same reason: it
+is instrument configuration, not engine internals, and a component that has
+to obey a tick size should not have to include the whole engine to learn what
+one is. `matching_engine.h` includes it, so nothing that named it before has
+to change.
+
 The public surface is unchanged by the layout, and
 `venue/tests/support/engine_surface.h` says so at compile time.
 

@@ -209,7 +209,7 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   }
   if (admissionDenies(m.accountId, AdmissionDeny::DenyAmend))
   {
-    ++admissionRejects_;
+    credit_.countAdmissionReject();
     sink_(CancelRejected{m.id, m.symbol, RejectReason::AmendNotPermitted, m.accountId, true});
     return;
   }
@@ -399,7 +399,7 @@ void MatchingEngine<Book>::onCancel(const CancelOrder& c)
   }
   if (admissionDenies(c.accountId, AdmissionDeny::DenyCancel))
   {
-    ++admissionRejects_;
+    credit_.countAdmissionReject();
     sink_(CancelRejected{c.id, c.symbol, RejectReason::CancelNotPermitted, c.accountId, false});
     return;
   }

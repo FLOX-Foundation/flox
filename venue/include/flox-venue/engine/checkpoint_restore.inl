@@ -303,16 +303,17 @@ bool MatchingEngine<Book>::applyRestoreHeld(const RestoreHeld& r)
 template <class Book>
 bool MatchingEngine<Book>::applyRestoreReservation(const RestoreReservation& r)
 {
-  if (reserve_.count(r.id) != 0)
+  if (credit_.contains(r.id))
   {
     return false;
   }
   if (ledger_ == nullptr)
   {
     // The snapshot describes a venue that held money; this engine does not.
-    // Accepting it would leave reserve_ empty while stateHash folds it in,
-    // and the generation would later be discarded as "corrupt" -- a wrong
-    // diagnosis of a sound file. Refuse here, where the reason is knowable.
+    // Accepting it would leave the reservation table empty while stateHash
+    // folds it in, and the generation would later be discarded as "corrupt"
+    // -- a wrong diagnosis of a sound file. Refuse here, where the reason
+    // is knowable.
     if (r.reservedRaw > 0)
     {
       std::fprintf(stderr,
@@ -328,7 +329,7 @@ bool MatchingEngine<Book>::applyRestoreReservation(const RestoreReservation& r)
   {
     return false;
   }
-  reserve_[r.id] = Reservation{r.account, r.asset, r.reservedRaw, r.limitPriceRaw, r.side};
+  credit_.put(r.id, Reservation{r.account, r.asset, r.reservedRaw, r.limitPriceRaw, r.side});
   return true;
 }
 
