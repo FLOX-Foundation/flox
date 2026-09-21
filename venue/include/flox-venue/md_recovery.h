@@ -493,6 +493,7 @@ class RecoveringMdSubscriberT
 
   bool recoveryPending() const
   {
+    // order: not observable -- a predicate scan, first active symbol wins
     for (const auto& [sym, p] : pending_)
     {
       (void)sym;
@@ -538,8 +539,15 @@ class RecoveringMdSubscriberT
     }
   }
 
+  // At most one entry here is ever active, so the traversal never chooses: the
+  // only caller is recv(), which services a pending recovery before it observes
+  // the next message, and one message activates at most one symbol (the gap and
+  // epoch callbacks both name m.symbol). Nothing inside attemptRecovery can
+  // activate a second one -- the replay path passes gd_.observe a deliver
+  // callback and no gap callback.
   void serviceRecovery()
   {
+    // order: not observable -- at most one entry is active (see above)
     for (auto& [sym, p] : pending_)
     {
       if (p.active)

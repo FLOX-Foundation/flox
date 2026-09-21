@@ -99,6 +99,8 @@ class CrossMarginManager
   void applyFunding(SymbolId s, double rate, Price mark)
   {
     const int64_t markRaw = mark.raw();
+    // order: not observable -- each account's funding leg is an independent
+    // integer credit, and the venue pool accumulates by addition
     for (auto& [acct, legs] : pos_)
     {
       auto l = legs.find(s);
@@ -166,6 +168,7 @@ class CrossMarginManager
   Amount openInterestRaw() const
   {
     __int128 t = 0;
+    // order: not observable -- __int128 sum over every leg of every account
     for (const auto& [acct, legs] : pos_)
     {
       for (const auto& [s, leg] : legs)
@@ -181,6 +184,7 @@ class CrossMarginManager
   uint64_t openPositionCount() const
   {
     uint64_t n = 0;
+    // order: not observable -- a count
     for (const auto& [acct, legs] : pos_)
     {
       n += legs.size();
@@ -307,6 +311,7 @@ class CrossMarginManager
       return 0;
     }
     __int128 total = 0;
+    // order: not observable -- __int128 sum of the account's legs
     for (const auto& [s, leg] : a->second)
     {
       const int64_t mark = markOf(s, leg.entryRaw);
@@ -324,6 +329,7 @@ class CrossMarginManager
       return 0;
     }
     __int128 total = 0;
+    // order: not observable -- __int128 sum of the account's leg margins
     for (const auto& [s, leg] : a->second)
     {
       total += legMargin(s, leg.qtyRaw, markOf(s, leg.entryRaw), maintenance);
@@ -340,6 +346,7 @@ class CrossMarginManager
     auto a = pos_.find(acct);
     if (a != pos_.end())
     {
+      // order: not observable -- __int128 sum of the account's other legs
       for (const auto& [os, leg] : a->second)
       {
         if (os == s)
@@ -364,6 +371,8 @@ class CrossMarginManager
   void checkLiquidations()
   {
     std::vector<uint64_t> toLiq;
+    // order: the breaching accounts are id-sorted below, before any is
+    // liquidated -- the close order decides who absorbs which deficit
     for (const auto& [acct, legs] : pos_)
     {
       if (legs.empty())
@@ -397,6 +406,7 @@ class CrossMarginManager
       return;
     }
     std::vector<ClosedLeg> bankruptSides;
+    // order: sorted by symbol below -- the legs drive the Liquidation emissions
     for (const auto& [s, leg] : a->second)
     {
       const int64_t mark = markOf(s, leg.entryRaw);
@@ -406,6 +416,16 @@ class CrossMarginManager
       led_.credit(venue_, collateral_, -pnl);
       bankruptSides.push_back({s, leg.qtyRaw, leg.entryRaw});
     }
+    // Deterministic leg order: a portfolio account holds its legs in a
+    // per-account unordered_map keyed by symbol, so collecting them in
+    // traversal order would publish one Liquidation per leg in hash-bucket
+    // order -- the emitted event STREAM of a multi-symbol liquidation (folded
+    // into the determinism hash) would differ between standard libraries while
+    // the wallet and the closed positions came out identical. The ledger moves
+    // above are integer credits and commute; the emissions below do not.
+    std::sort(bankruptSides.begin(), bankruptSides.end(),
+              [](const ClosedLeg& x, const ClosedLeg& y)
+              { return x.symbol < y.symbol; });
     pos_.erase(a);
 
     // Before touching insurance, sell any non-quote collateral (BTC/ETH) the
@@ -455,6 +475,8 @@ class CrossMarginManager
     {
       const SymbolId sym = bankruptLeg.symbol;
       const int64_t bankruptSign = bankruptLeg.qtyRaw > 0 ? 1 : -1;
+      // order: candidates are ranked below by (uPnl, acct, sym), a total order,
+      // so which winner is deleveraged does not depend on this traversal
       for (const auto& [oa, legs] : pos_)
       {
         auto l = legs.find(sym);

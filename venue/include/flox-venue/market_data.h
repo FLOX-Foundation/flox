@@ -14,6 +14,7 @@
 #include "flox/book/events/book_update_event.h"
 #include "flox/book/nlevel_order_book.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <deque>
@@ -206,7 +207,16 @@ class MarketDataPublisher
   // Atomic (snapshot, lastSeq) pair, consistent with the emitted stream: no
   // increment with seq <= lastSeq is missing from the snapshot and none with
   // seq > lastSeq is included. A late joiner applies `orders`, then resumes
-  // the incremental feed at lastSeq+1.
+  // the incremental feed at lastSeq+1. The body is in order-id order.
+  //
+  // Sorted, not merely collected. The resting orders live in an unordered_map,
+  // so their traversal order is a bucket-layout artifact. This vector IS the
+  // snapshot body a late joiner receives -- MdRecoveryServer encodes it record
+  // by record onto the recovery channel -- so an unsorted body makes the BYTES
+  // a recovering consumer reads depend on which standard library the publisher
+  // was built against. The book each consumer rebuilds is identical either
+  // way, which is exactly what makes the divergence invisible to a
+  // state-comparison test and visible only to a byte- or hash-level one.
   MdSnapshot snapshotAtomic() const
   {
     std::lock_guard<std::mutex> lk(m_);
@@ -215,6 +225,7 @@ class MarketDataPublisher
     s.lastSeq = seq_;
     s.orders.reserve(orders_.size());
     const int64_t sendTs = stampSendLocked();
+    // order: sorted below, before the body is handed out
     for (const auto& [id, r] : orders_)
     {
       MdMessage m{MdType::AddOrder, 0, r.symbol, id, r.side, r.price, r.leaves, 0, epoch_};
@@ -224,6 +235,9 @@ class MarketDataPublisher
       m.sendTsNs = sendTs;
       s.orders.push_back(m);
     }
+    std::sort(s.orders.begin(), s.orders.end(),
+              [](const MdMessage& a, const MdMessage& b)
+              { return a.id < b.id; });
     // Current state, so a late joiner starts halted when the instrument is
     // halted and can value a position from the first message it applies.
     if (statusValid_)

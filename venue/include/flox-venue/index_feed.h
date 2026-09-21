@@ -69,6 +69,8 @@ class IndexAggregator
   {
     std::vector<int64_t> out;
     out.reserve(sources_.size());
+    // order: not observable -- the caller reduces this to a median, which
+    // sorts; the outlier filter runs on the sorted vector
     for (const auto& [id, s] : sources_)
     {
       if (nowNs - s.tsNs <= stalenessNs_)

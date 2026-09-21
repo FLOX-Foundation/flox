@@ -397,6 +397,8 @@ class MatchingEngine
   template <class Fn>
   void forEachHold(Fn&& fn) const
   {
+    // order: not observable -- forEachHold reports an identity SET (a caller
+    // restoring its own holds checks membership, not sequence)
     for (const auto& [hid, h] : held_)
     {
       (void)hid;
@@ -483,6 +485,7 @@ class MatchingEngine
   Quantity openInterest() const
   {
     int64_t oi = 0;
+    // order: not observable -- int64 sum of the long legs
     for (const auto& [acct, p] : positions_)
     {
       (void)acct;
@@ -606,13 +609,25 @@ class MatchingEngine
   };
 
   // Client reconnect reconciliation: the account's live resting orders and perp
-  // position. Balances come from the ledger; combine at the gateway. Off the
-  // hot path (a query, not order flow).
+  // position, open orders in id order. Balances come from the ledger; combine
+  // at the gateway. Off the hot path (a query, not order flow).
+  //
+  // openOrders is SORTED, not merely collected. The ids come out of
+  // byAccount_'s per-account std::unordered_set, so their traversal order is a
+  // bucket-layout artifact. session_verbs.h answers AccountSnapshotRequest by
+  // encoding this vector straight to the wire, one OrderAccepted frame per
+  // entry, so an unsorted enumeration makes the FRAME SEQUENCE a reconnecting
+  // client receives depend on which standard library the venue was built
+  // against, while the set of orders reported is identical either way -- the
+  // same divergence StopBook::ids() carried into the emergency-cancel stream.
+  // pendingStops needs no sort: StopBook::forEachPending walks the two
+  // trigger-ordered multimaps and the trailing vector.
   AccountSnapshot snapshotAccount(uint64_t acct) const
   {
     AccountSnapshot s;
     if (auto it = byAccount_.find(acct); it != byAccount_.end())
     {
+      // order: sorted below, before the vector is handed out
       for (OrderId id : it->second)
       {
         if (const RestingOrder* r = book_.find(id))
@@ -621,6 +636,9 @@ class MatchingEngine
               {id, r->side, r->price, Quantity::fromRaw(r->leaves.raw() + r->hidden.raw())});
         }
       }
+      std::sort(s.openOrders.begin(), s.openOrders.end(),
+                [](const OrderView& a, const OrderView& b)
+                { return a.id < b.id; });
     }
     stops_.forEachPending(
         [&](const NewOrder& o, Price trigger)
@@ -641,6 +659,7 @@ class MatchingEngine
   Amount totalPositionMargin() const
   {
     Amount t = 0;
+    // order: not observable -- Amount sum of posted margin
     for (const auto& [acct, p] : positions_)
     {
       (void)acct;
@@ -663,6 +682,8 @@ class MatchingEngine
       publishDerivatives(mark);
       return;
     }
+    // order: not observable -- each account's funding payment is an
+    // independent integer credit; the pool accumulates by addition
     for (auto& [acct, p] : positions_)
     {
       const Amount notional =
@@ -857,6 +878,8 @@ class MatchingEngine
     // and is then swept by the loop below, so nothing survives.
     rejectAllHolds();
     std::vector<OrderId> resting;
+    // order: collected here, id-sorted below -- each surviving id publishes
+    // an OrderCanceled
     for (const auto& [acct, ids] : byAccount_)
     {
       (void)acct;
@@ -1981,6 +2004,8 @@ class MatchingEngine
     e.fundingRateRaw_ = fundingRateRaw_;
     e.fundingIntervalNs_ = fundingIntervalNs_;
     e.nextFundingNs_ = nextFundingNs_;
+    // order: not observable -- a keyed copy into the clone's own map; the
+    // resulting (account -> group) mapping is the same set either way
     for (const auto& [acct, grp] : matcher_.stpGroups())
     {
       e.matcher_.setStpGroup(acct, grp);
@@ -2133,6 +2158,8 @@ class MatchingEngine
     // under that id, so a reused id would merge two unrelated orders.
     if (!held_.empty())
     {
+      // order: not observable -- a predicate scan that returns on the first
+      // hold naming this id
       for (const auto& [hid, h] : held_)
       {
         (void)hid;
@@ -2259,6 +2286,7 @@ class MatchingEngine
       return 0;
     }
     int64_t sum = 0;
+    // order: not observable -- int64 sum of the account's reduce-only leaves
     for (OrderId id : it->second)
     {
       if (id == exclude)
@@ -3329,6 +3357,7 @@ class MatchingEngine
     {
       return;
     }
+    // order: sorted on the next line, before a single cancel is published
     std::vector<OrderId> ids(it->second.begin(), it->second.end());  // copy: erased in loop
     std::sort(ids.begin(), ids.end());                               // deterministic cancel/event order (layout-independent)
     for (OrderId id : ids)
@@ -3707,6 +3736,7 @@ class MatchingEngine
     {
       return false;
     }
+    // order: not observable -- a predicate scan, first match wins
     for (const auto& [hid, h] : held_)
     {
       (void)hid;
@@ -3729,6 +3759,7 @@ class MatchingEngine
       return;
     }
     Quantity heldQty{};
+    // order: not observable -- Quantity sum of the held slices
     for (const auto& [hid, h] : held_)
     {
       (void)hid;
@@ -4148,6 +4179,8 @@ class MatchingEngine
       return;
     }
     std::vector<uint64_t> toLiq;
+    // order: the breaching accounts are id-sorted below, before forceClose
+    // emits the first Liquidation
     for (const auto& [acct, p] : positions_)
     {
       const Amount uPnl = unrealizedPnlRaw(acct, mark);
@@ -4238,6 +4271,8 @@ class MatchingEngine
       Amount uPnl;
     };
     std::vector<Cand> cands;
+    // order: candidates are ranked below by (uPnl, acct), a total order, so
+    // the ADL victim does not depend on this traversal
     for (const auto& [oa, pos] : positions_)
     {
       const int64_t s = pos.qtyRaw > 0 ? 1 : (pos.qtyRaw < 0 ? -1 : 0);
@@ -4930,6 +4965,7 @@ class MatchingEngine
       return;
     }
     std::vector<uint64_t> due;
+    // order: the due holds are id-sorted below, before any is resolved
     for (const auto& [hid, h] : held_)
     {
       if (h.maker == id || h.taker == id)
@@ -4955,6 +4991,7 @@ class MatchingEngine
       return;
     }
     std::vector<uint64_t> due;
+    // order: the due holds are id-sorted below, before any is resolved
     for (const auto& [hid, h] : held_)
     {
       if (h.makerAccount == account || h.takerAccount == account)
@@ -4980,6 +5017,7 @@ class MatchingEngine
     }
     std::vector<uint64_t> due;
     due.reserve(held_.size());
+    // order: the due holds are id-sorted below, before any is resolved
     for (const auto& [hid, h] : held_)
     {
       (void)h;
@@ -5020,6 +5058,8 @@ class MatchingEngine
       return;
     }
     std::vector<OrderId> due;
+    // order: the due orders are id-sorted below, before any expiry is
+    // published
     for (const auto& [id, exp] : expiry_)
     {
       if (now_ >= exp)
@@ -5109,6 +5149,8 @@ class MatchingEngine
     }
     std::vector<OrderId> ids;
     ids.reserve(pegged_.size());
+    // order: the pegged ids are sorted below -- a reprice reads the book
+    // prior reprices in this pass already moved
     for (const auto& [id, p] : pegged_)
     {
       ids.push_back(id);
@@ -5235,6 +5277,8 @@ class MatchingEngine
       return;
     }
     std::vector<uint64_t> due;
+    // order: the due holds are id-sorted below -- a timeout-accept assigns
+    // ++tradeSeq_, so the resolution order feeds the event stream
     for (const auto& [id, h] : held_)
     {
       if (now_ >= h.deadline)

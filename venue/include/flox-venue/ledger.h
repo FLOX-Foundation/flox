@@ -141,6 +141,8 @@ class Ledger
   template <class Fn>
   void forEachBalance(Fn&& fn) const
   {
+    // order: not observable at either caller -- SegregationReport folds the
+    // balances into two integer sums
     for (const auto& [k, b] : bal_)
     {
       fn(k >> 16, static_cast<AssetId>(k & 0xFFFF), b.avail + b.rsvd);
@@ -153,6 +155,8 @@ class Ledger
   template <class Fn>
   void forEachBalanceSplit(Fn&& fn) const
   {
+    // order: not observable -- MatchingEngine::stateHash and writeSnapshot,
+    // the two callers, both sort the collected tuples before using them
     for (const auto& [k, b] : bal_)
     {
       fn(k >> 16, static_cast<AssetId>(k & 0xFFFF), b.avail, b.rsvd);
