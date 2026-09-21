@@ -629,8 +629,8 @@ class SbeOrderEntryCodec
   }
 
  private:
-  static uint16_t u16(InTmpl t) { return static_cast<uint16_t>(t); }
-  static uint16_t u16(OutTmpl t) { return static_cast<uint16_t>(t); }
+  static constexpr uint16_t u16(InTmpl t) { return static_cast<uint16_t>(t); }
+  static constexpr uint16_t u16(OutTmpl t) { return static_cast<uint16_t>(t); }
 };
 
 }  // namespace flox::venue
