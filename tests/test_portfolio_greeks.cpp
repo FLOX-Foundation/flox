@@ -4,6 +4,7 @@
 #include <bit>
 #include <chrono>
 #include <cstdint>
+#include <random>
 #include <vector>
 
 #include "flox/engine/symbol_registry.h"
@@ -44,6 +45,43 @@ SymbolId registerPerp(SymbolRegistry& reg, const std::string& name)
 }
 
 constexpr int64_t kNow = 1'700'000'000'000'000'000LL;
+
+// Tries a handful of concrete key-insertion layouts for the same logical
+// value set and returns them in the order they should be tried. Different
+// standard libraries lay std::unordered_map<PositionId, ...> out
+// completely differently for a small, dense integer key range: libc++ and
+// libstdc++ scramble it by hash bucket, while MSVC STL keeps it close to
+// insertion order. Spreading the real ids apart with spacer entries (never
+// contributing to any sum, since their value is 0.0) gives each attempt a
+// genuinely different absolute key range to hash, without changing which
+// logical values are being folded.
+struct KeyLayoutAttempt
+{
+  const char* name;
+  std::vector<int> gapsBeforeEach;  // spacer count opened before each real position
+};
+
+std::vector<KeyLayoutAttempt> keyLayoutAttempts(size_t n)
+{
+  std::vector<int> noGaps(n, 0);
+
+  std::vector<int> bigLeadingGap(n, 0);
+  bigLeadingGap[0] = 503;
+
+  std::mt19937 rng(12345);
+  std::uniform_int_distribution<int> gapDist(1, 7);
+  std::vector<int> shuffledGaps(n);
+  for (auto& g : shuffledGaps)
+  {
+    g = gapDist(rng);
+  }
+
+  return {
+      {"ascending (contiguous ids)", noGaps},
+      {"descending-like (large leading gap)", bigLeadingGap},
+      {"shuffled (fixed seed)", shuffledGaps},
+  };
+}
 }  // namespace
 
 TEST(PortfolioGreeksTest, SingleLongCallMatchesAnalytic)
@@ -158,6 +196,19 @@ TEST(PortfolioGreeksTest, VegaBucketedByTenor)
 // bits between machines built against different libraries, breaking
 // bit-for-bit backtest reproduction. The fix collects the position ids and
 // sorts them before folding.
+//
+// A single fixed key layout is not enough to exercise this on every
+// library: libc++/libstdc++ scramble a small dense integer key range by
+// hash bucket, but MSVC STL keeps such a range close to insertion order, so
+// the plain "open 16 positions in a row" layout used here previously came
+// back already sorted on windows-clang-cl and the test's own self-check
+// (correctly) refused to claim it was testing anything. keyLayoutAttempts()
+// tries a few different concrete key layouts for the exact same 16 delta
+// values -- spacer positions with contractMultiplier 0.0 spread the real
+// ids' absolute key values apart without contributing anything to the sum
+// (0.0 folds into a running total exactly, regardless of position) -- and
+// the test uses the first layout whose real ids do not enumerate in
+// ascending order on this build.
 TEST(PortfolioGreeksTest, DeltaFoldIsIndependentOfBucketOrder)
 {
   SymbolRegistry reg;
@@ -193,28 +244,63 @@ TEST(PortfolioGreeksTest, DeltaFoldIsIndependentOfBucketOrder)
   ASSERT_EQ(contributions.size(), 16u);
 
   PositionGroupTracker positions;
-  OrderId nextOrderId = 1;
-  for (double c : contributions)
+  bool found = false;
+
+  for (const auto& attempt : keyLayoutAttempts(contributions.size()))
   {
-    positions.openPosition(nextOrderId++, perp, Side::BUY, Price::fromDouble(0.0),
-                           Quantity::fromDouble(1.0), c);
+    PositionGroupTracker trial;
+    OrderId nextOrderId = 1;
+    std::vector<PositionId> realIds;
+    for (size_t i = 0; i < contributions.size(); ++i)
+    {
+      for (int g = 0; g < attempt.gapsBeforeEach[i]; ++g)
+      {
+        // Spacer: stays open (never closed), but contractMultiplier 0.0
+        // means it never changes the running delta sum, wherever it falls
+        // in the fold order.
+        trial.openPosition(nextOrderId++, perp, Side::BUY, Price::fromDouble(0.0),
+                           Quantity::fromDouble(1.0), 0.0);
+      }
+      PositionId pid = trial.openPosition(nextOrderId++, perp, Side::BUY, Price::fromDouble(0.0),
+                                          Quantity::fromDouble(1.0), contributions[i]);
+      realIds.push_back(pid);
+    }
+
+    std::vector<PositionId> realIdSet = realIds;
+    std::sort(realIdSet.begin(), realIdSet.end());
+
+    std::vector<PositionId> nativeOrderReal;
+    for (const auto& [pid, pos] : trial.positions())
+    {
+      if (std::binary_search(realIdSet.begin(), realIdSet.end(), pid))
+      {
+        nativeOrderReal.push_back(pid);
+      }
+    }
+
+    if (!std::is_sorted(nativeOrderReal.begin(), nativeOrderReal.end()))
+    {
+      positions = std::move(trial);
+      found = true;
+      break;
+    }
   }
 
-  // Self-check: the map's own bucket-traversal order must not already be
-  // ascending PositionId, or this test would exercise nothing -- the two
-  // fold orders compared below would be the same order.
+  if (!found)
+  {
+    GTEST_SKIP() << "unordered_map<PositionId, IndividualPosition> enumerated "
+                    "the real ids in ascending order under every insertion "
+                    "pattern tried on this standard library; cannot exercise "
+                    "bucket-order sensitivity here";
+  }
+
+  // The reference: fold in explicit ascending PositionId order -- exactly
+  // what the fix inside compute() does internally.
   std::vector<PositionId> nativeOrder;
   for (const auto& [pid, pos] : positions.positions())
   {
     nativeOrder.push_back(pid);
   }
-  ASSERT_FALSE(std::is_sorted(nativeOrder.begin(), nativeOrder.end()))
-      << "unordered_map<PositionId, IndividualPosition> enumerated positions "
-         "in ascending id order on this build; pick a data set that actually "
-         "exercises hash-bucket order to keep this test meaningful";
-
-  // The reference: fold in explicit ascending PositionId order -- exactly
-  // what the fix inside compute() does internally.
   std::vector<PositionId> sortedOrder = nativeOrder;
   std::sort(sortedOrder.begin(), sortedOrder.end());
   double sortedSum = 0.0;
@@ -231,9 +317,9 @@ TEST(PortfolioGreeksTest, DeltaFoldIsIndependentOfBucketOrder)
     nativeSum += positions.positions().at(pid).contractMultiplier;
   }
 
-  // The data set must actually be order-sensitive for these two positions'
-  // ids and this library's bucket layout, or a mutation that removes the
-  // sort in compute() could not be caught by the assertion below.
+  // The data set must actually be order-sensitive for the chosen layout, or
+  // a mutation that removes the sort in compute() could not be caught by
+  // the assertion below.
   ASSERT_NE(std::bit_cast<uint64_t>(sortedSum), std::bit_cast<uint64_t>(nativeSum))
       << "native and sorted fold orders happened to agree on this data set "
          "(sortedSum="

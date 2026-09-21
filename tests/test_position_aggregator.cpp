@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <random>
 #include <vector>
 
 #include "flox/execution/multi_execution_listener.h"
@@ -32,6 +33,43 @@ static Order makeOrder(OrderId id, SymbolId sym, Side side, double price, double
   o.flags.closePosition = closePos ? 1 : 0;
   o.orderTag = tag;
   return o;
+}
+
+// W32-T012: a handful of concrete key-insertion layouts for the same
+// logical set of positions, tried in order until one produces a native
+// (bucket) traversal that is not already ascending PositionId order.
+// Different standard libraries lay std::unordered_map<PositionId, ...> out
+// completely differently for a small, dense integer key range: libc++ and
+// libstdc++ scramble it by hash bucket, while MSVC STL keeps it close to
+// insertion order. Spacer positions (opened on a symbol the test filters
+// out) spread the real ids apart to give each attempt a genuinely
+// different absolute key range to hash.
+struct PositionKeyLayoutAttempt
+{
+  const char* name;
+  std::vector<int> gapsBeforeEach;
+};
+
+static std::vector<PositionKeyLayoutAttempt> positionKeyLayoutAttempts(size_t n)
+{
+  std::vector<int> noGaps(n, 0);
+
+  std::vector<int> bigLeadingGap(n, 0);
+  bigLeadingGap[0] = 503;
+
+  std::mt19937 rng(12345);
+  std::uniform_int_distribution<int> gapDist(1, 7);
+  std::vector<int> shuffledGaps(n);
+  for (auto& g : shuffledGaps)
+  {
+    g = gapDist(rng);
+  }
+
+  return {
+      {"ascending (contiguous ids)", noGaps},
+      {"descending-like (large leading gap)", bigLeadingGap},
+      {"shuffled (fixed seed)", shuffledGaps},
+  };
 }
 
 class NetModeTest : public ::testing::Test
@@ -1040,30 +1078,75 @@ TEST(GroupedQueryTest, GetOpenPositionsBySymbol)
 // in whatever order _positions (a std::unordered_map<PositionId, ...>)
 // happened to enumerate them -- hash-bucket order, a property of the
 // standard library rather than of the data. Both are fixed to sort by
-// PositionId first. Sixteen-plus spread-out ids so the map's own bucket
-// order (checked below) is not already ascending, or this test would pass
-// vacuously.
+// PositionId first.
+//
+// A single fixed key layout is not enough to exercise this on every
+// library: libc++/libstdc++ scramble a small dense integer key range by
+// hash bucket, but MSVC STL keeps such a range close to insertion order, so
+// the plain "open 20 positions in a row" layout used here previously came
+// back already sorted on windows-clang-cl and the test's own self-check
+// (correctly) refused to claim it was testing anything.
+// positionKeyLayoutAttempts() tries a few different concrete key layouts
+// for the same 20 logical positions -- spacer positions on a different
+// symbol never show up in getOpenPositions(100) and are filtered out of the
+// forEachOpen callback below -- and the test uses the first layout whose
+// real ids do not enumerate in ascending order on this build.
 TEST(GroupedQueryTest, GetOpenPositionsAndForEachOpenAreOrderedByPositionId)
 {
+  constexpr size_t kCount = 20;
   PositionGroupTracker gt;
-  for (OrderId orderId = 1; orderId <= 20; ++orderId)
+  bool found = false;
+
+  for (const auto& attempt : positionKeyLayoutAttempts(kCount))
   {
-    gt.openPosition(orderId, 100, Side::BUY, Price::fromDouble(100.0),
-                    Quantity::fromDouble(1.0));
+    PositionGroupTracker trial;
+    OrderId nextOrderId = 1;
+    std::vector<PositionId> realIds;
+    for (size_t i = 0; i < kCount; ++i)
+    {
+      for (int g = 0; g < attempt.gapsBeforeEach[i]; ++g)
+      {
+        // Spacer on a different symbol: excluded from getOpenPositions(100)
+        // by construction, and filtered out of the forEachOpen callback
+        // below.
+        trial.openPosition(nextOrderId++, 999, Side::BUY, Price::fromDouble(100.0),
+                           Quantity::fromDouble(1.0));
+      }
+      PositionId pid = trial.openPosition(nextOrderId++, 100, Side::BUY, Price::fromDouble(100.0),
+                                          Quantity::fromDouble(1.0));
+      realIds.push_back(pid);
+    }
+
+    std::vector<PositionId> realIdSet = realIds;
+    std::sort(realIdSet.begin(), realIdSet.end());
+
+    std::vector<PositionId> nativeOrderReal;
+    for (const auto& [pid, pos] : trial.positions())
+    {
+      if (std::binary_search(realIdSet.begin(), realIdSet.end(), pid))
+      {
+        nativeOrderReal.push_back(pid);
+      }
+    }
+
+    if (!std::is_sorted(nativeOrderReal.begin(), nativeOrderReal.end()))
+    {
+      gt = std::move(trial);
+      found = true;
+      break;
+    }
   }
 
-  std::vector<PositionId> nativeOrder;
-  for (const auto& [pid, pos] : gt.positions())
+  if (!found)
   {
-    nativeOrder.push_back(pid);
+    GTEST_SKIP() << "unordered_map<PositionId, IndividualPosition> enumerated "
+                    "the real ids in ascending order under every insertion "
+                    "pattern tried on this standard library; cannot exercise "
+                    "bucket-order sensitivity here";
   }
-  ASSERT_FALSE(std::is_sorted(nativeOrder.begin(), nativeOrder.end()))
-      << "unordered_map<PositionId, IndividualPosition> enumerated positions "
-         "in ascending id order on this build; this test needs a larger or "
-         "differently spread id set to stay meaningful";
 
   auto openPositions = gt.getOpenPositions(100);
-  ASSERT_EQ(openPositions.size(), 20u);
+  ASSERT_EQ(openPositions.size(), kCount);
   std::vector<PositionId> fromGetOpen;
   for (const auto* p : openPositions)
   {
@@ -1072,8 +1155,15 @@ TEST(GroupedQueryTest, GetOpenPositionsAndForEachOpenAreOrderedByPositionId)
   EXPECT_TRUE(std::is_sorted(fromGetOpen.begin(), fromGetOpen.end()));
 
   std::vector<PositionId> fromForEach;
-  gt.forEachOpen([&fromForEach](const IndividualPosition& p)
-                 { fromForEach.push_back(p.positionId); });
+  gt.forEachOpen(
+      [&fromForEach](const IndividualPosition& p)
+      {
+        if (p.symbol == 100)
+        {
+          fromForEach.push_back(p.positionId);
+        }
+      });
+  EXPECT_EQ(fromForEach.size(), kCount);
   EXPECT_TRUE(std::is_sorted(fromForEach.begin(), fromForEach.end()));
 }
 
