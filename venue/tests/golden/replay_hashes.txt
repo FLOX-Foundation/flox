@@ -1,0 +1,29 @@
+# Golden replay hashes -- see venue/tests/test_venue_golden_replay.cpp.
+#
+# One row per scenario: name, then stateHash, configHash and the hash of
+# the outbound event stream (plus the snapshot record trace, for the
+# checkpoint scenarios). All three are 16 hex digits.
+#
+# This file is written ONLY by hand, by running the test with
+# FLOX_UPDATE_GOLDEN=1, and only when the behaviour change that moved a
+# number is intended and explained in the same commit. A diff here is a
+# claim that the venue now behaves differently; it is never housekeeping.
+#
+# scenario                               state             config            stream
+journal_recovery_scenario              41498c5a43965585  fc19dd0073f69048  eacbdd9930459dd5
+journal_recovery_replayed              41498c5a43965585  fc19dd0073f69048  eacbdd9930459dd5
+mixed_flow_no_ledger                   cc45686f6aec8d9b  fc19dd0073f69048  b503c25e08b41355
+mixed_flow_cleared                     add7a2f99388bfb8  fc19dd0073f69048  9bb512e7cab4b319
+gtd_expiry_sweep                       a3938d33250680d0  fc19dd0073f69048  ef8a5630e2898b26
+last_look_accept_reject_timeout        e2007709d3aa5507  fc19236df12ef7b3  089612811f49f469
+last_look_tolerance_accept_on_timeout  557bdfb3edef5089  fc192c242e4dde4e  b69c923686e5567a
+mmp_quote_mass_cancel                  d5b79583231ef45f  fc19dd0073f69048  28dcd6078b49b626
+stp_groups_and_admission               f47c57f3758f3ab9  fc19dd0073f69048  75896cf4c673078d
+auction_preopen_continuous             89d4e761e915ab04  fc19dd0073f69048  db845610221e6566
+session_status_transitions             3c4588d9a083a1d8  fc19dd0073f69048  41f5b819d845f965
+perp_funding_liquidation               89f8124cc7961b45  fc19dd0070df52c3  c674c91adb4964b8
+perp_adl_bankruptcy                    59d6bb5bfc91fc54  fc19dd0070f0868e  cef091191bfbd26f
+perp_adl_scripted                      17a056ea7a73878a  fc19dd0070f0868e  0a05fcf86107c40a
+snapshot_midstream_spot                d43ca76b299ae960  fc19dd0073f69048  69eaa9db3e094564
+snapshot_midstream_lastlook            8e42687fa424629a  fc19236df12ef7b3  e5a5947bc60e3dbb
+snapshot_midstream_perp                2e43bc42748d6271  fc19dd0070df52c3  1c206e65b9314b0b

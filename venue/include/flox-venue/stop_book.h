@@ -10,6 +10,7 @@
 
 #include "flox-venue/messages.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -64,7 +65,19 @@ class StopBook
     return it == loc_.end() ? 0 : it->second.clientOrderId;
   }
 
-  // All pending conditional-order ids (for venue-wide emergency cancel).
+  // All pending conditional-order ids (for venue-wide emergency cancel), in
+  // id order.
+  //
+  // Sorted, not merely collected. The ids live in an unordered_map, so their
+  // traversal order is a bucket-layout artifact -- it differs between standard
+  // library implementations for the same sequence of insertions. The one
+  // caller emits an OrderCanceled per id straight to the outbound feed
+  // (MatchingEngine::cancelEntireBook), so an unsorted enumeration makes the
+  // event STREAM of an emergency cancel depend on which libstdc++/libc++ the
+  // venue was built against while the resulting STATE is identical either way
+  // -- a divergence invisible to every state-hash comparison in the suite, and
+  // one the golden replay caught the moment it ran on the other library. The
+  // resting half of the same sweep has always sorted for exactly this reason.
   std::vector<OrderId> ids() const
   {
     std::vector<OrderId> out;
@@ -74,6 +87,7 @@ class StopBook
       (void)l;
       out.push_back(id);
     }
+    std::sort(out.begin(), out.end());
     return out;
   }
 

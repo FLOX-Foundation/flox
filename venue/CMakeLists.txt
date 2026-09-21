@@ -207,6 +207,15 @@ endif()
     if(TARGET Threads::Threads)
       target_link_libraries(${test_name} PRIVATE Threads::Threads)
     endif()
+    if(test_name STREQUAL "test_venue_golden_replay")
+      # The table of recorded hashes, by source path rather than a guess at
+      # the build layout: the test reads it, and FLOX_UPDATE_GOLDEN rewrites
+      # it IN THE SOURCE TREE so the new numbers land in a diff a reviewer
+      # sees. A copy staged into the build directory would be updated where
+      # nobody looks.
+      target_compile_definitions(${test_name}
+        PRIVATE FLOX_VENUE_GOLDEN_TABLE="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden/replay_hashes.txt")
+    endif()
     if(test_name STREQUAL "test_venue_recovery")
       # The helper's path rather than a guess at the build layout: a test that
       # looked for a sibling binary by name would find the wrong one, or none,
