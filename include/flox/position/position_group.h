@@ -283,6 +283,7 @@ class PositionGroupTracker
   Price totalRealizedPnl() const
   {
     int64_t total = 0;
+    // order: not observable -- integer sum, addition is associative
     for (const auto& [_, pnl] : _symbolRealizedPnl)
     {
       total += pnl;
@@ -340,6 +341,7 @@ class PositionGroupTracker
   size_t openPositionCount() const
   {
     size_t count = 0;
+    // order: not observable -- count, order doesn't affect it
     for (const auto& [_, pos] : _positions)
     {
       if (!pos.closed)
@@ -353,6 +355,7 @@ class PositionGroupTracker
   size_t openPositionCount(SymbolId symbol) const
   {
     size_t count = 0;
+    // order: not observable -- count, order doesn't affect it
     for (const auto& [_, pos] : _positions)
     {
       if (pos.symbol == symbol && !pos.closed)
@@ -363,36 +366,59 @@ class PositionGroupTracker
     return count;
   }
 
-  // Get all open positions for a symbol
+  // Get all open positions for a symbol. Sorted by PositionId: this hands
+  // pointers out to the caller in map order otherwise, and bucket order is a
+  // property of the standard library, not of the data.
   std::vector<const IndividualPosition*> getOpenPositions(SymbolId symbol) const
   {
-    std::vector<const IndividualPosition*> result;
-    for (const auto& [_, pos] : _positions)
+    std::vector<PositionId> ids;
+    // order: sorted below, before the result is handed out
+    for (const auto& [pid, pos] : _positions)
     {
       if (pos.symbol == symbol && !pos.closed)
       {
-        result.push_back(&pos);
+        ids.push_back(pid);
       }
+    }
+    std::sort(ids.begin(), ids.end());
+
+    std::vector<const IndividualPosition*> result;
+    result.reserve(ids.size());
+    for (PositionId pid : ids)
+    {
+      result.push_back(&_positions.at(pid));
     }
     return result;
   }
 
-  // Iterate all open positions
+  // Iterate all open positions, in PositionId order. Sorted for the same
+  // reason as getOpenPositions() above: fn runs in map order otherwise, and
+  // that order is not reproducible across standard libraries.
   template <typename Func>
   void forEachOpen(Func&& fn) const
   {
-    for (const auto& [_, pos] : _positions)
+    std::vector<PositionId> ids;
+    // order: sorted below, before fn is invoked
+    for (const auto& [pid, pos] : _positions)
     {
       if (!pos.closed)
       {
-        fn(pos);
+        ids.push_back(pid);
       }
+    }
+    std::sort(ids.begin(), ids.end());
+
+    for (PositionId pid : ids)
+    {
+      fn(_positions.at(pid));
     }
   }
 
   void pruneClosedPositions()
   {
     std::unordered_set<PositionId> pruned;
+    // order: not observable -- each erase only touches its own key; no
+    // accumulator is folded across this traversal
     for (auto it = _positions.begin(); it != _positions.end();)
     {
       if (it->second.closed)
@@ -409,6 +435,8 @@ class PositionGroupTracker
 
     if (!pruned.empty())
     {
+      // order: not observable -- each group's prune only touches its own
+      // positionIds vector, independent of every other group
       for (auto& [_, group] : _groups)
       {
         std::erase_if(group.positionIds, [&](PositionId pid)

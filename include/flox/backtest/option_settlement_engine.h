@@ -48,6 +48,12 @@ class OptionSettlementEngine
   {
     std::vector<std::pair<PositionId, double>> toSettle;
 
+    // Each position's intrinsic value is computed independently of every
+    // other position (no running total is folded across this traversal),
+    // and closePosition() below books each one into _symbolRealizedPnl as
+    // an exact int64 addition, which is associative. Bucket order therefore
+    // cannot change which positions settle or what they settle at.
+    // order: not observable -- see above
     for (const auto& [pid, pos] : positions.positions())
     {
       if (pos.closed)

@@ -33,8 +33,12 @@ one of these is written by someone who did not know the rule existed, and the
 five seconds it takes to write the comment is when they find out whether their
 order is observable.
 
-Scope is venue/include, where the perimeter's publications, snapshots and
-hashes live -- headers and the *.inl fragments they include alike. A fragment
+Scope is venue/include, plus include/flox/position and include/flox/backtest:
+a backtest is expected to reproduce bit-for-bit on another machine, and
+W32-T012 found a float fold over unordered_* there that libc++ and libstdc++
+walk in different orders (include/flox/position/portfolio_greeks.h) and
+audited the rest of both directories for the same shape of bug. Each root is
+scanned as headers and the *.inl fragments they include alike -- a fragment
 declares no members of its own, so it inherits the declarations of the header
 that includes it: otherwise moving a traversal out of a class body into an
 .inl would quietly drop its verdict duty. Tests are exempt: a test asserting a
@@ -54,7 +58,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SCAN = ROOT / "venue" / "include"
+SCAN_ROOTS = [
+    ROOT / "venue" / "include",
+    ROOT / "include" / "flox" / "position",
+    ROOT / "include" / "flox" / "backtest",
+]
 
 UNORDERED = r"std::unordered_(?:map|set|multimap|multiset)"
 
@@ -79,11 +87,16 @@ INCLUDE = re.compile(r'#\s*include\s+"([^"]+)"')
 
 
 def headers():
-    found = list(SCAN.rglob("*.h")) + list(SCAN.rglob("*.inl"))
-    for path in sorted(found):
-        if "tests" in path.parts:
-            continue
-        yield path
+    seen = set()
+    for scan in SCAN_ROOTS:
+        found = list(scan.rglob("*.h")) + list(scan.rglob("*.inl"))
+        for path in sorted(found):
+            if "tests" in path.parts:
+                continue
+            if path in seen:
+                continue
+            seen.add(path)
+            yield path
 
 
 def including(texts):
@@ -92,11 +105,11 @@ def including(texts):
     for path, text in texts.items():
         if path.suffix != ".inl":
             continue
-        rel = path.relative_to(SCAN).as_posix()
+        posix = path.as_posix()
         for other, otext in texts.items():
             if other is path:
                 continue
-            if any(rel.endswith(inc) for inc in INCLUDE.findall(otext)):
+            if any(posix.endswith(inc) for inc in INCLUDE.findall(otext)):
                 owners.setdefault(path, set()).add(other)
     return owners
 
@@ -141,8 +154,10 @@ def traversals(lines: list[str], names: set[str], foreign: set[str], nested: boo
 
 
 def main() -> int:
-    if not SCAN.is_dir():
-        print(f"check_iteration_order: {SCAN} not found")
+    missing = [scan for scan in SCAN_ROOTS if not scan.is_dir()]
+    if missing:
+        for scan in missing:
+            print(f"check_iteration_order: {scan} not found")
         return 1
 
     # Accessors are collected across the whole tree: a header traverses the one
@@ -188,8 +203,9 @@ def main() -> int:
             print(f"  {rel}:{line}: {what}")
             print(f"      {src}")
         return 1
+    scanned = ", ".join(str(scan.relative_to(ROOT)) for scan in SCAN_ROOTS)
     print(f"iteration order: {seen} unordered traversals in "
-          f"{SCAN.relative_to(ROOT)}, every one with a verdict")
+          f"{scanned}, every one with a verdict")
     return 0
 
 
