@@ -427,8 +427,9 @@ TEST(VenueShardWakeSet, ASubmitInsideTheSleepWindowStillWakesTheDriver)
 TEST(VenueShardWakeSet, ParkUntilWakesOnItsDeadlineWithNobodyPublishing)
 {
   WakeSet set;
-  constexpr int kRounds = 8;
+  constexpr int kRounds = 32;
   constexpr int64_t kDeadlineMs = 5;
+  constexpr int64_t kNetMs = WakeSet::kNetInterval.count();
 
   int64_t worstMs = 0;
   int64_t totalMs = 0;
@@ -444,14 +445,24 @@ TEST(VenueShardWakeSet, ParkUntilWakesOnItsDeadlineWithNobodyPublishing)
     // It slept: a deadline is a ceiling on the sleep, not a way out of it.
     EXPECT_GE(took, milliseconds(kDeadlineMs - 1)) << "round " << i << " did not sleep";
   }
+  const int64_t meanMs = totalMs / kRounds;
 
   std::printf("parkUntil(%lld ms), %d rounds: worst %lld ms, mean %lld ms (the net is %lld ms)\n",
               static_cast<long long>(kDeadlineMs), kRounds, static_cast<long long>(worstMs),
-              static_cast<long long>(totalMs / kRounds),
-              static_cast<long long>(WakeSet::kNetInterval.count()));
-  // Single-digit milliseconds plus scheduler slack -- and nowhere near the
-  // 50 ms net, which is the number this exists to get away from.
-  EXPECT_LT(worstMs, 25) << "the deadline was ignored and the sleep rode the net";
+              static_cast<long long>(meanMs), static_cast<long long>(kNetMs));
+
+  // The mean, not the worst, is the assertion. A sleep bounded by the net is
+  // bounded by it EVERY round, so ignoring the deadline shows up as a mean of
+  // a whole net interval; a sleep bounded by the deadline is single-digit
+  // milliseconds here and a couple of tens on a shared CI runner that
+  // oversleeps a 5 ms timer. One descheduled round moves a mean over this
+  // many rounds by about a millisecond, which is the point of taking it over
+  // rounds rather than trusting the worst one.
+  EXPECT_LT(meanMs, 25) << "the deadline was ignored and the sleeps rode the net";
+  // The worst round is held against the net itself, with room above it for a
+  // runner that overslept: a wake-up that came from the net cannot arrive
+  // before the net is up, so no single round may sit out there.
+  EXPECT_LT(worstMs, kNetMs + 5) << "a round waited out the whole net interval";
 }
 
 // A deadline already in the past is "look once and come straight back".
