@@ -357,6 +357,35 @@ Every state-mutating input is an `InboundCommand`: `NewOrder`, `CancelOrder`,
 `ApplyFunding`, `AdminCmd`, `TimeTick` (idle time sweep). That is what makes
 deterministic replay possible; see [Runtime and recovery](runtime.md).
 
+### Where the code lives
+
+`matching_engine.h` is the class: the nested types, the data members, and a
+declaration for every method, in one list. The method **definitions** sit next
+to it in `flox-venue/engine/*.inl`, one file per section, included at the
+bottom of the header. Nothing is conditional and nothing is optional -- the
+header is not usable without them, and they are not usable without it (each
+one refuses a direct `#include`). The split buys one thing: a change to
+clearing is a diff in `clearing.inl` rather than a diff somewhere inside five
+thousand lines shared with everything else.
+
+| File | What is defined there |
+|---|---|
+| `engine/dispatch.inl` | construction, `submit`, `tick`, the engine's own accessors and config setters |
+| `engine/validate.inl` | `validate`, `validateConditional`, admission, the perp risk gate, fill limits, `onNew` |
+| `engine/session.inl` | trading status, halt, close/open, delist, pre-open, `runAuction` |
+| `engine/orders.inl` | stops and triggers, `onModify`, `onCancel`, order ownership |
+| `engine/publications.inl` | status and derivatives publications, per-account resting-order tracking, mass cancel |
+| `engine/quote_mmp.inl` | two-sided quotes, market-maker protection |
+| `engine/ledger_fees.inl` | fees, reservations, deposits/withdrawals, `settleTrade` |
+| `engine/clearing.inl` | perp positions, funding, mark price, liquidation, auto-deleverage |
+| `engine/checkpoint.inl` | `stateHash`, `configHash`, `writeSnapshot`, `cloneForSnapshot` |
+| `engine/checkpoint_restore.inl` | `applySnapshotRecord` and the `applyRestore*` handlers |
+| `engine/expiry_pegs.inl` | GTD expiry, pegged orders, OCO |
+| `engine/last_look.inl` | holds: create, resolve, expire, and their statistics |
+
+The public surface is unchanged by the layout, and
+`venue/tests/support/engine_surface.h` says so at compile time.
+
 ### Pre-trade risk
 
 Configured on `SymbolConfig` and adjustable live, so an operator can tighten

@@ -22,7 +22,7 @@
 # anyway, the hook just shifts the catch left).
 #
 # Triggers:
-#   *.cpp / *.h ........................... clang-format in place
+#   *.cpp / *.h / *.inl ................... clang-format in place
 #   python/*.{h,cpp} ...................... regen .pyi + _api_index.md
 #                                           (chains into llms.txt + FTS
 #                                           via DOCS_TOUCHED below)
@@ -51,7 +51,7 @@ FILES=$(git diff --cached --name-only --diff-filter=ACM)
 DOCS_TOUCHED=0
 
 # ── clang-format ────────────────────────────────────────────────────
-CPP_FILES=$(echo "$FILES" | grep -E '\.(cpp|h)$' || true)
+CPP_FILES=$(echo "$FILES" | grep -E '\.(cpp|h|inl)$' || true)
 if [ -n "$CPP_FILES" ]; then
   # A mismatched clang-format major version would rewrite these files
   # into CI's wrong style on every commit -- see

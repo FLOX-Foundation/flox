@@ -10,7 +10,10 @@ if ! clang_format_version_check; then
   exit 2
 fi
 
-FILES=$(git ls-files '*.cpp' '*.h' | grep -v '^third_party/')
+# *.inl too: the venue engine's method definitions live in header fragments
+# with that extension, and an extension the check does not name is an
+# extension nothing formats.
+FILES=$(git ls-files '*.cpp' '*.h' '*.inl' | grep -v '^third_party/')
 if [ -z "$FILES" ]; then
   echo "[check-format] No C++ source files found to check."
   exit 0

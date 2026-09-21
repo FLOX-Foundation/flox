@@ -33,7 +33,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ENGINE_HEADER = "matching_engine.h"
+# Where the engine's method bodies live. The class is declared in
+# matching_engine.h; its definitions sit in the engine/*.inl fragments that
+# header includes, one per section, so a handler counts as the engine's
+# wherever its section was filed.
+ENGINE_SOURCES = ("matching_engine.h", "flox-venue/engine/")
 
 # The matching entry point every order must pass through, and the trade-emitting
 # helper behind it. Keyed by the method name on Matcher.
@@ -368,18 +372,19 @@ def main() -> int:
 
     index = ci.Index.create()
     handlers: dict[str, object] = {}
-    other_callers: list[tuple[str, int]] = []
+    other_callers: list[tuple[str, str, int]] = []
     tu = None
 
     def visit(node):
         if node.kind == ci.CursorKind.CXX_METHOD and node.is_definition():
             loc = node.location.file
-            if loc and ENGINE_HEADER in loc.name:
+            if loc and any(part in loc.name for part in ENGINE_SOURCES):
                 if MATCH_ENTRY in _calls_in(node, ci):
                     if node.spelling in REQUIRED_GATES:
                         handlers.setdefault(node.spelling, node)
                     else:
-                        other_callers.append((node.spelling, node.location.line))
+                        other_callers.append(
+                            (node.spelling, Path(loc.name).name, node.location.line))
                 return
         for ch in node.get_children():
             visit(ch)
@@ -412,9 +417,9 @@ def main() -> int:
             f"declared handler(s) {sorted(missing_handlers)} no longer reach {MATCH_ENTRY}: "
             f"either the path moved (update this file) or the call was lost")
 
-    for name, line in sorted(set(other_callers)):
+    for name, where, line in sorted(set(other_callers)):
         problems.append(
-            f"{name} (matching_engine.h:{line}) calls {MATCH_ENTRY} but declares no gates. "
+            f"{name} ({where}:{line}) calls {MATCH_ENTRY} but declares no gates. "
             f"Add it to REQUIRED_GATES with the checks it owes.")
 
     for name, node in sorted(handlers.items()):
