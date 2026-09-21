@@ -20382,6 +20382,35 @@ that mutex: keep it to `consumerHasPending`, and never deliver from it.
 the delivery. It reads the stepping driver's own cursor, so it belongs to
 whoever steps that consumer and to nobody else.
 
+### Sleeping until the earlier of two things
+
+A driver rarely only waits for a publisher. It sweeps, it watches a threshold,
+it has periodic business of its own -- and what it wants is to sleep until the
+*earlier* of "somebody published" and "the next thing is due". `parkUnless`
+bounds the sleep only by the net, and a 50 ms net under a cadence measured in
+single-digit milliseconds is not a net, it is the schedule.
+
+```cpp
+int64_t nextSweep = flox::venue::venueMonoNs();
+
+while (running) {
+  const int64_t now = flox::venue::venueMonoNs();
+  if (now >= nextSweep) {
+    nextSweep = now + cadenceNs;
+    sweep();
+  }
+  if (step()) continue;
+  set.parkUntil(nextSweep, [&] { return !running || pending(); });
+}
+```
+
+`parkUntil(deadlineNs, pred)` is the same sleep under the same discipline,
+with a ceiling on it: it returns on a publish, on the predicate, or on the
+deadline -- whichever is first, and the caller loops either way, because a
+return says only "look again" and never why. `deadlineNs` is on the steady
+clock; a deadline already in the past is "look once and come straight back".
+`parkUnless(pred)` is `parkUntil(WakeSet::kNoDeadline, pred)`.
+
 Measured on 14 cores, one thread over N buses, 1024-slot rings, ADAPTIVE
 backoff for the spinning case (the numbers for one consumer on its own thread
 are in [Parking](#parking-the-consumer-that-blocks) above):
