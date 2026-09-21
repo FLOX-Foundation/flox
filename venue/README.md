@@ -51,7 +51,7 @@ behaviour emerge from the interaction.
 | Area | Headers |
 |---|---|
 | Order-level books | `flox/book/{resting_order,ladder_book}.h` (core, O(1) ladder) + `flox-venue/matching_book.h` (module, map reference oracle) — per-order FIFO, distinct from the aggregate `NLevelOrderBook` (market-data depth) |
-| Matching | `matcher.h` (price-time FIFO, pro-rata, STP, last-look), `matching_engine.h` (order lifecycle, TIF, stops, OCO, peg, iceberg, auctions, LULD, perp clearing), `stop_book.h`, `symbol_router.h` |
+| Matching | `matcher.h` (price-time FIFO, pro-rata, STP, last-look), `matching_engine.h` + `engine/*.inl` (order lifecycle, TIF, stops, OCO, peg, iceberg, auctions, LULD, perp clearing), `stop_book.h`, `symbol_router.h` |
 | Money | `ledger.h` — double-entry, `__int128`, `available`/`reserved`, conservation-exact, per-symbol scale helpers |
 | Derivatives risk | `cross_margin.h` (portfolio margin), `collateral.h` (haircut basket), `funding_rate.h` + `funding_scheduler.h`, `index_feed.h` (manipulation-resistant mark), `mark_feed_driver.h` (stale-feed circuit breaker) |
 | Runtime | `sequenced_shard.h` — single-writer core on the FLOX `EventBus`, journalled |

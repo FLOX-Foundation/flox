@@ -34,8 +34,11 @@ five seconds it takes to write the comment is when they find out whether their
 order is observable.
 
 Scope is venue/include, where the perimeter's publications, snapshots and
-hashes live. Tests are exempt: a test asserting a property of bucket order is
-the thing doing the checking.
+hashes live -- headers and the *.inl fragments they include alike. A fragment
+declares no members of its own, so it inherits the declarations of the header
+that includes it: otherwise moving a traversal out of a class body into an
+.inl would quietly drop its verdict duty. Tests are exempt: a test asserting a
+property of bucket order is the thing doing the checking.
 
 The check is a drift guard, not a prover. It recognises the traversal spellings
 the tree actually uses -- range-for over a named unordered container, begin()
@@ -71,11 +74,31 @@ ORDER_NOTE = re.compile(r"//.*\border:\s*\S")
 LOOKBACK = 2
 
 
+# An .inl is a fragment of the header that includes it, not a file of its own.
+INCLUDE = re.compile(r'#\s*include\s+"([^"]+)"')
+
+
 def headers():
-    for path in sorted(SCAN.rglob("*.h")):
+    found = list(SCAN.rglob("*.h")) + list(SCAN.rglob("*.inl"))
+    for path in sorted(found):
         if "tests" in path.parts:
             continue
         yield path
+
+
+def including(texts):
+    """Map each .inl to the headers that include it."""
+    owners: dict[Path, set[Path]] = {}
+    for path, text in texts.items():
+        if path.suffix != ".inl":
+            continue
+        rel = path.relative_to(SCAN).as_posix()
+        for other, otext in texts.items():
+            if other is path:
+                continue
+            if any(rel.endswith(inc) for inc in INCLUDE.findall(otext)):
+                owners.setdefault(path, set()).add(other)
+    return owners
 
 
 def traversals(lines: list[str], names: set[str], foreign: set[str], nested: bool,
@@ -133,6 +156,8 @@ def main() -> int:
         accessors.update(ACCESSOR.findall(text))
         declared.update(DECL.findall(text))
 
+    owners = including(texts)
+
     bad = []
     seen = 0
     for path, text in texts.items():
@@ -141,9 +166,12 @@ def main() -> int:
         # struct another header declares (LastLookSample::byMaker, walked by
         # the Prometheus exposition).
         names = set(DECL.findall(text))
+        family = [texts[o] for o in owners.get(path, ())]
+        for otext in family:
+            names |= set(DECL.findall(otext))
         foreign = declared - names
         lines = text.split("\n")
-        nested = NESTED.search(text) is not None
+        nested = any(NESTED.search(t) is not None for t in [text] + family)
         for i, what in traversals(lines, names, foreign, nested, accessors):
             seen += 1
             window = lines[max(0, i - LOOKBACK): i + 1]
