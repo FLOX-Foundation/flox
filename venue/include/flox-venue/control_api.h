@@ -17,11 +17,197 @@
 #include <functional>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
 namespace flox::venue
 {
+
+// One parsed control request: the fields the caller named, the registry a verb
+// validates against, and the journaled path a mutation travels. Both the
+// built-in verbs and the methods a deployment registers read a request through
+// this, so an added verb inherits the rule the built-ins follow rather than
+// re-deriving it -- a field nobody named stays absent instead of becoming a
+// zero.
+class ControlRequest
+{
+ public:
+  using Fields = std::unordered_map<std::string, std::string>;
+  using CommandSink = std::function<void(const InboundCommand&)>;
+
+  ControlRequest(const Fields& fields, InstrumentRegistry& reg, const CommandSink& sink)
+      : fields_(fields), reg_(reg), sink_(sink)
+  {
+  }
+
+  InstrumentRegistry& registry() const noexcept { return reg_; }
+
+  // The journaling rule, in one call. A verb that changes engine state forwards
+  // the record that reproduces the change on replay; a verb that only reads
+  // never calls this. A deployment that wired no sink is the read-only case.
+  void forward(const InboundCommand& cmd) const
+  {
+    if (sink_)
+    {
+      sink_(cmd);
+    }
+  }
+
+  std::string text(const char* k) const
+  {
+    auto it = fields_.find(k);
+    return it == fields_.end() ? std::string{} : it->second;
+  }
+
+  bool present(const char* k) const
+  {
+    return fields_.count(k) != 0;
+  }
+
+  // Numeric accessors that fail instead of guessing.
+  //
+  // The old accessors read a missing key as an empty string and handed it to
+  // strtod, which answers zero. A request that mentioned a symbol and nothing
+  // else therefore came back ok having written zeros over a live price band --
+  // the collar an operator believed was in place, removed by a request that
+  // never named a price. The REST codec next door states the rule these follow:
+  // a field is what the caller wrote, never a guessed default.
+  //
+  // The same accessors also bound the value. A double past the fixed-point
+  // range has no representable answer, so it is rejected at the perimeter
+  // rather than saturated into a limit nobody asked for.
+
+  bool doubleField(const char* k,
+                   double& out) const
+  {
+    auto it = fields_.find(k);
+    if (it == fields_.end() || it->second.empty())
+    {
+      return false;
+    }
+    const std::string& s = it->second;
+    char* end = nullptr;
+    const double v = std::strtod(s.c_str(), &end);
+    if (end != s.c_str() + s.size())
+    {
+      return false;  // trailing text, or not a number at all
+    }
+    if (!std::isfinite(v))
+    {
+      return false;  // inf / nan, however they were spelled
+    }
+    out = v;
+    return true;
+  }
+
+  template <class D>
+  bool decimalField(const char* k,
+                    D& out) const
+  {
+    double v = 0.0;
+    if (!doubleField(k, v))
+    {
+      return false;
+    }
+    const double scaled = v * static_cast<double>(D::Scale);
+    if (!(scaled > -9223372036854775808.0 && scaled < 9223372036854775808.0))
+    {
+      return false;
+    }
+    out = D::fromDouble(v);
+    return true;
+  }
+
+  // Present-and-valid, or absent. Only a present-but-unparseable value fails,
+  // which keeps the documented "omitted means unset" fields working.
+  template <class D>
+  bool optionalDecimalField(const char* k, D& out) const
+  {
+    return !present(k) || decimalField(k, out);
+  }
+
+  bool i64Field(const char* k,
+                int64_t& out) const
+  {
+    auto it = fields_.find(k);
+    if (it == fields_.end() || it->second.empty())
+    {
+      return false;
+    }
+    const std::string& s = it->second;
+    char* end = nullptr;
+    errno = 0;
+    const long long v = std::strtoll(s.c_str(), &end, 10);
+    if (end != s.c_str() + s.size() || errno == ERANGE)
+    {
+      return false;
+    }
+    out = static_cast<int64_t>(v);
+    return true;
+  }
+
+  bool u64Field(const char* k,
+                uint64_t& out) const
+  {
+    auto it = fields_.find(k);
+    if (it == fields_.end() || it->second.empty() || it->second[0] == '-')
+    {
+      return false;
+    }
+    const std::string& s = it->second;
+    char* end = nullptr;
+    errno = 0;
+    const unsigned long long v = std::strtoull(s.c_str(), &end, 10);
+    if (end != s.c_str() + s.size() || errno == ERANGE)
+    {
+      return false;
+    }
+    out = static_cast<uint64_t>(v);
+    return true;
+  }
+
+  // Same rule for the flags. "halt" defaulted a missing key to resume and
+  // "delist" defaulted it to delist, so the two opposite guesses lived one
+  // handler apart.
+  bool boolField(const char* k,
+                 bool& out) const
+  {
+    auto it = fields_.find(k);
+    if (it == fields_.end())
+    {
+      return false;
+    }
+    if (it->second == "true")
+    {
+      out = true;
+      return true;
+    }
+    if (it->second == "false")
+    {
+      out = false;
+      return true;
+    }
+    return false;
+  }
+
+  bool symbolField(const char* k,
+                   SymbolId& out) const
+  {
+    uint64_t v = 0;
+    if (!u64Field(k, v) || v > (std::numeric_limits<SymbolId>::max)())
+    {
+      return false;
+    }
+    out = static_cast<SymbolId>(v);
+    return true;
+  }
+
+ private:
+  const Fields& fields_;
+  InstrumentRegistry& reg_;
+  const CommandSink& sink_;
+};
 
 class ControlApi
 {
@@ -31,7 +217,7 @@ class ControlApi
   // wires it into the sequenced/journaled path (and to the live engines). On
   // replay, InstrumentRegistry::apply consumes the same records. A read-only
   // deployment may omit the sink.
-  using CommandSink = std::function<void(const InboundCommand&)>;
+  using CommandSink = ControlRequest::CommandSink;
 
   explicit ControlApi(InstrumentRegistry& reg, CommandSink sink = {})
       : reg_(reg), sink_(std::move(sink))
@@ -44,6 +230,57 @@ class ControlApi
   using SnapshotHook = std::function<bool(SymbolId)>;
   void setSnapshotHook(SnapshotHook hook) { snapshotHook_ = std::move(hook); }
 
+  // A verb the deployment adds to this surface. The handler answers the way a
+  // built-in does -- ok(), err("..."), or a JSON object of its own -- and
+  // reaches the venue through the request: registry() to validate against,
+  // forward() for a change that must journal. Nothing in ControlServer or
+  // TcpControlServer knows the difference, so a registered verb is served by
+  // the existing accept loop and line framing.
+  using Method = std::function<std::string(const ControlRequest&)>;
+
+  // Wiring time only. handle() reads the table without a lock, so every
+  // registration belongs before a server starts accepting on this api.
+  //
+  // Refused: an empty name, an empty handler, a name a built-in verb already
+  // answers, and a second registration of a name already taken. A registration
+  // that silently replaced another -- or that was silently shadowed by a
+  // built-in -- routes operator traffic to a handler other than the one whose
+  // name was typed.
+  bool registerMethod(std::string name, Method handler)
+  {
+    if (name.empty() || !handler || isBuiltinMethod(name))
+    {
+      return false;
+    }
+    return methods_.emplace(std::move(name), std::move(handler)).second;
+  }
+
+  // Every verb handle() answers itself. This list is what registerMethod
+  // refuses, so a built-in added to handle() has to be added here too;
+  // test_venue_control_methods walks it and fails on a name handle() does not
+  // know.
+  static constexpr std::string_view kBuiltinMethods[] = {
+      "listInstrument", "halt", "session", "setFundingSchedule",
+      "setBand", "setTriggerRef", "setStpGroup", "setRiskLimits",
+      "delist", "setAdmissionProfile", "snapshotNow", "get",
+      "list"};
+
+  static bool isBuiltinMethod(std::string_view name)
+  {
+    for (std::string_view v : kBuiltinMethods)
+    {
+      if (v == name)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // The response shapes, so a registered method answers in the same one.
+  static std::string ok() { return "{\"ok\":true}"; }
+  static std::string err(const char* e) { return std::string("{\"ok\":false,\"error\":\"") + e + "\"}"; }
+
   std::string handle(const std::string& request)
   {
     std::unordered_map<std::string, std::string> f;
@@ -51,14 +288,15 @@ class ControlApi
     {
       return err("bad_json");
     }
-    const std::string method = get(f, "method");
+    const ControlRequest req(f, reg_, sink_);
+    const std::string method = req.text("method");
 
     if (method == "listInstrument")
     {
       SymbolConfig c;
-      if (!symbolField(f, "symbol", c.id) || !optionalDecimalField(f, "tick", c.tickSize) ||
-          !optionalDecimalField(f, "minPrice", c.minPrice) ||
-          !optionalDecimalField(f, "maxPrice", c.maxPrice))
+      if (!req.symbolField("symbol", c.id) || !req.optionalDecimalField("tick", c.tickSize) ||
+          !req.optionalDecimalField("minPrice", c.minPrice) ||
+          !req.optionalDecimalField("maxPrice", c.maxPrice))
       {
         return err("bad_field");
       }
@@ -77,7 +315,7 @@ class ControlApi
     {
       SymbolId sym{};
       bool halted = false;
-      if (!symbolField(f, "symbol", sym) || !boolField(f, "halted", halted))
+      if (!req.symbolField("symbol", sym) || !req.boolField("halted", halted))
       {
         return err("bad_field");
       }
@@ -96,7 +334,7 @@ class ControlApi
       // configuration), so only the sequenced AdminCmd is forwarded.
       SymbolId sym{};
       bool open = false;
-      if (!symbolField(f, "symbol", sym) || !boolField(f, "open", open))
+      if (!req.symbolField("symbol", sym) || !req.boolField("open", open))
       {
         return err("bad_field");
       }
@@ -113,8 +351,8 @@ class ControlApi
       SymbolId sym{};
       int64_t intervalNs = 0;
       int64_t nextNs = 0;
-      if (!symbolField(f, "symbol", sym) || !i64Field(f, "intervalNs", intervalNs) ||
-          !i64Field(f, "nextFundingNs", nextNs))
+      if (!req.symbolField("symbol", sym) || !req.i64Field("intervalNs", intervalNs) ||
+          !req.i64Field("nextFundingNs", nextNs))
       {
         return err("bad_field");
       }
@@ -133,8 +371,8 @@ class ControlApi
       SymbolId sym{};
       Price lo{};
       Price hi{};
-      if (!symbolField(f, "symbol", sym) || !decimalField(f, "minPrice", lo) ||
-          !decimalField(f, "maxPrice", hi))
+      if (!req.symbolField("symbol", sym) || !req.decimalField("minPrice", lo) ||
+          !req.decimalField("maxPrice", hi))
       {
         return err("bad_field");
       }
@@ -152,8 +390,8 @@ class ControlApi
     if (method == "setTriggerRef")
     {
       SymbolId sym{};
-      const std::string refText = get(f, "ref");
-      if (!symbolField(f, "symbol", sym) || (refText != "mark" && refText != "last"))
+      const std::string refText = req.text("ref");
+      if (!req.symbolField("symbol", sym) || (refText != "mark" && refText != "last"))
       {
         return err("bad_field");
       }
@@ -174,8 +412,8 @@ class ControlApi
       SymbolId sym{};
       uint64_t account = 0;
       uint64_t group = 0;
-      if (!symbolField(f, "symbol", sym) || !u64Field(f, "account", account) ||
-          !u64Field(f, "group", group))
+      if (!req.symbolField("symbol", sym) || !req.u64Field("account", account) ||
+          !req.u64Field("group", group))
       {
         return err("bad_field");
       }
@@ -192,7 +430,7 @@ class ControlApi
       // semantics would let an operator raising a position cap silently zero
       // the fat-finger cap by not mentioning it.
       SymbolId sym{};
-      if (!symbolField(f, "symbol", sym))
+      if (!req.symbolField("symbol", sym))
       {
         return err("bad_field");
       }
@@ -210,9 +448,9 @@ class ControlApi
       uint64_t maxOpenOrders = 0;
       uint64_t imBps = 0;
       uint64_t mmBps = 0;
-      if (present(f, "luldBps") || present(f, "luldHaltNs"))
+      if (req.present("luldBps") || req.present("luldHaltNs"))
       {
-        if (!i64Field(f, "luldBps", luldBps) || !i64Field(f, "luldHaltNs", luldHaltNs))
+        if (!req.i64Field("luldBps", luldBps) || !req.i64Field("luldHaltNs", luldHaltNs))
         {
           return err("bad_field");
         }
@@ -220,18 +458,18 @@ class ControlApi
         r.luldBps = static_cast<int32_t>(luldBps);
         r.luldHaltNs = DurationNs{luldHaltNs};
       }
-      if (present(f, "maxOrderQty") || present(f, "maxOrderNotional"))
+      if (req.present("maxOrderQty") || req.present("maxOrderNotional"))
       {
-        if (!decimalField(f, "maxOrderQty", r.maxOrderQty) ||
-            !decimalField(f, "maxOrderNotional", r.maxOrderNotional))
+        if (!req.decimalField("maxOrderQty", r.maxOrderQty) ||
+            !req.decimalField("maxOrderNotional", r.maxOrderNotional))
         {
           return err("bad_field");
         }
         r.fields |= RiskLimitField::RiskFatFinger;
       }
-      if (present(f, "maxOpenOrders"))
+      if (req.present("maxOpenOrders"))
       {
-        if (!u64Field(f, "maxOpenOrders", maxOpenOrders) ||
+        if (!req.u64Field("maxOpenOrders", maxOpenOrders) ||
             maxOpenOrders > (std::numeric_limits<uint32_t>::max)())
         {
           return err("bad_field");
@@ -239,18 +477,18 @@ class ControlApi
         r.fields |= RiskLimitField::RiskMaxOpenOrders;
         r.maxOpenOrders = static_cast<uint32_t>(maxOpenOrders);
       }
-      if (present(f, "maxPositionQty"))
+      if (req.present("maxPositionQty"))
       {
-        if (!decimalField(f, "maxPositionQty", r.maxPositionQty))
+        if (!req.decimalField("maxPositionQty", r.maxPositionQty))
         {
           return err("bad_field");
         }
         r.fields |= RiskLimitField::RiskMaxPosition;
       }
-      if (present(f, "initialMarginBps") || present(f, "maintenanceMarginBps"))
+      if (req.present("initialMarginBps") || req.present("maintenanceMarginBps"))
       {
-        if (!u64Field(f, "initialMarginBps", imBps) ||
-            !u64Field(f, "maintenanceMarginBps", mmBps) ||
+        if (!req.u64Field("initialMarginBps", imBps) ||
+            !req.u64Field("maintenanceMarginBps", mmBps) ||
             imBps > (std::numeric_limits<int32_t>::max)() ||
             mmBps > (std::numeric_limits<int32_t>::max)())
         {
@@ -273,7 +511,7 @@ class ControlApi
       // pulled, unlike a halt or a session close. Reversible by delist=false.
       SymbolId sym{};
       bool off = false;
-      if (!symbolField(f, "symbol", sym) || !boolField(f, "delisted", off))
+      if (!req.symbolField("symbol", sym) || !req.boolField("delisted", off))
       {
         return err("bad_field");
       }
@@ -296,7 +534,7 @@ class ControlApi
       // how an operator narrows one dimension without having to enumerate
       // every value of the other.
       SymbolId sym{};
-      if (!symbolField(f, "symbol", sym))
+      if (!req.symbolField("symbol", sym))
       {
         return err("bad_field");
       }
@@ -305,15 +543,15 @@ class ControlApi
         return err("unknown_symbol");
       }
       uint64_t account = 0;
-      if (!u64Field(f, "account", account))
+      if (!req.u64Field("account", account))
       {
         return err("bad_field");
       }
       AdmissionProfile p;
       uint64_t allowedTypes = 0;
       uint64_t allowedTif = 0;
-      if ((present(f, "allowedTypes") && !u64Field(f, "allowedTypes", allowedTypes)) ||
-          (present(f, "allowedTif") && !u64Field(f, "allowedTif", allowedTif)) ||
+      if ((req.present("allowedTypes") && !req.u64Field("allowedTypes", allowedTypes)) ||
+          (req.present("allowedTif") && !req.u64Field("allowedTif", allowedTif)) ||
           allowedTypes > (std::numeric_limits<uint32_t>::max)() ||
           allowedTif > (std::numeric_limits<uint32_t>::max)())
       {
@@ -322,19 +560,19 @@ class ControlApi
       p.allowedTypes = static_cast<uint32_t>(allowedTypes);
       p.allowedTif = static_cast<uint32_t>(allowedTif);
       uint8_t deny = 0;
-      if (get(f, "denyResting") == "true")
+      if (req.text("denyResting") == "true")
       {
         deny |= AdmissionDeny::DenyResting;
       }
-      if (get(f, "denyAmend") == "true")
+      if (req.text("denyAmend") == "true")
       {
         deny |= AdmissionDeny::DenyAmend;
       }
-      if (get(f, "denyCancel") == "true")
+      if (req.text("denyCancel") == "true")
       {
         deny |= AdmissionDeny::DenyCancel;
       }
-      if (get(f, "denyQuote") == "true")
+      if (req.text("denyQuote") == "true")
       {
         deny |= AdmissionDeny::DenyQuote;
       }
@@ -345,7 +583,7 @@ class ControlApi
     if (method == "snapshotNow")
     {
       SymbolId sym{};
-      if (!symbolField(f, "symbol", sym))
+      if (!req.symbolField("symbol", sym))
       {
         return err("bad_field");
       }
@@ -362,7 +600,7 @@ class ControlApi
     if (method == "get")
     {
       SymbolId sym{};
-      if (!symbolField(f, "symbol", sym))
+      if (!req.symbolField("symbol", sym))
       {
         return err("bad_field");
       }
@@ -385,7 +623,11 @@ class ControlApi
       a += "]}";
       return a;
     }
-    return err("unknown_method");
+    if (const auto it = methods_.find(method); it != methods_.end())
+    {
+      return it->second(req);
+    }
+    return unknownMethod(method);
   }
 
  private:
@@ -397,8 +639,47 @@ class ControlApi
     }
   }
 
-  static std::string ok() { return "{\"ok\":true}"; }
-  static std::string err(const char* e) { return std::string("{\"ok\":false,\"error\":\"") + e + "\"}"; }
+  // An unknown verb answers with the name it did not know. A bare
+  // "unknown_method" reads the same for a typo, a registration that never ran
+  // and a request that reached the wrong process, which leaves the caller
+  // guessing which of the three it is.
+  static std::string unknownMethod(const std::string& name)
+  {
+    return std::string("{\"ok\":false,\"error\":\"unknown_method\",\"method\":\"") + echo(name) +
+           "\"}";
+  }
+
+  // The name is caller input on its way back out, so it is cut and escaped: a
+  // response is JSON before it is a diagnostic. Anything outside printable
+  // ASCII travels as a \uXXXX escape, which also keeps the cut from splitting
+  // an escape in half.
+  static std::string echo(const std::string& name)
+  {
+    static constexpr size_t kMaxEcho = 64;
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string out;
+    const size_t n = name.size() < kMaxEcho ? name.size() : kMaxEcho;
+    for (size_t i = 0; i < n; ++i)
+    {
+      const auto c = static_cast<unsigned char>(name[i]);
+      if (c == '"' || c == '\\')
+      {
+        out += '\\';
+        out += static_cast<char>(c);
+      }
+      else if (c < 0x20 || c > 0x7e)
+      {
+        out += "\\u00";
+        out += kHex[c >> 4];
+        out += kHex[c & 0x0f];
+      }
+      else
+      {
+        out += static_cast<char>(c);
+      }
+    }
+    return out;
+  }
 
   static std::string instrumentJson(const SymbolConfig& c)
   {
@@ -408,156 +689,6 @@ class ControlApi
            ",\"maxPrice\":" + std::to_string(c.maxPrice.toDouble()) +
            ",\"halted\":" + (c.halted ? "true" : "false") +
            ",\"triggerRef\":\"" + (c.triggerRef == TriggerRef::Mark ? "mark" : "last") + "\"}";
-  }
-
-  static std::string get(const std::unordered_map<std::string, std::string>& f, const char* k)
-  {
-    auto it = f.find(k);
-    return it == f.end() ? std::string{} : it->second;
-  }
-
-  static bool present(const std::unordered_map<std::string, std::string>& f, const char* k)
-  {
-    return f.count(k) != 0;
-  }
-
-  // Numeric accessors that fail instead of guessing.
-  //
-  // The old accessors read a missing key as an empty string and handed it to
-  // strtod, which answers zero. A request that mentioned a symbol and nothing
-  // else therefore came back ok having written zeros over a live price band --
-  // the collar an operator believed was in place, removed by a request that
-  // never named a price. The REST codec next door states the rule these follow:
-  // a field is what the caller wrote, never a guessed default.
-  //
-  // The same accessors also bound the value. A double past the fixed-point
-  // range has no representable answer, so it is rejected at the perimeter
-  // rather than saturated into a limit nobody asked for.
-
-  static bool doubleField(const std::unordered_map<std::string, std::string>& f, const char* k,
-                          double& out)
-  {
-    auto it = f.find(k);
-    if (it == f.end() || it->second.empty())
-    {
-      return false;
-    }
-    const std::string& s = it->second;
-    char* end = nullptr;
-    const double v = std::strtod(s.c_str(), &end);
-    if (end != s.c_str() + s.size())
-    {
-      return false;  // trailing text, or not a number at all
-    }
-    if (!std::isfinite(v))
-    {
-      return false;  // inf / nan, however they were spelled
-    }
-    out = v;
-    return true;
-  }
-
-  template <class D>
-  static bool decimalField(const std::unordered_map<std::string, std::string>& f, const char* k,
-                           D& out)
-  {
-    double v = 0.0;
-    if (!doubleField(f, k, v))
-    {
-      return false;
-    }
-    const double scaled = v * static_cast<double>(D::Scale);
-    if (!(scaled > -9223372036854775808.0 && scaled < 9223372036854775808.0))
-    {
-      return false;
-    }
-    out = D::fromDouble(v);
-    return true;
-  }
-
-  // Present-and-valid, or absent. Only a present-but-unparseable value fails,
-  // which keeps the documented "omitted means unset" fields working.
-  template <class D>
-  static bool optionalDecimalField(const std::unordered_map<std::string, std::string>& f,
-                                   const char* k, D& out)
-  {
-    return !present(f, k) || decimalField(f, k, out);
-  }
-
-  static bool i64Field(const std::unordered_map<std::string, std::string>& f, const char* k,
-                       int64_t& out)
-  {
-    auto it = f.find(k);
-    if (it == f.end() || it->second.empty())
-    {
-      return false;
-    }
-    const std::string& s = it->second;
-    char* end = nullptr;
-    errno = 0;
-    const long long v = std::strtoll(s.c_str(), &end, 10);
-    if (end != s.c_str() + s.size() || errno == ERANGE)
-    {
-      return false;
-    }
-    out = static_cast<int64_t>(v);
-    return true;
-  }
-
-  static bool u64Field(const std::unordered_map<std::string, std::string>& f, const char* k,
-                       uint64_t& out)
-  {
-    auto it = f.find(k);
-    if (it == f.end() || it->second.empty() || it->second[0] == '-')
-    {
-      return false;
-    }
-    const std::string& s = it->second;
-    char* end = nullptr;
-    errno = 0;
-    const unsigned long long v = std::strtoull(s.c_str(), &end, 10);
-    if (end != s.c_str() + s.size() || errno == ERANGE)
-    {
-      return false;
-    }
-    out = static_cast<uint64_t>(v);
-    return true;
-  }
-
-  // Same rule for the flags. "halt" defaulted a missing key to resume and
-  // "delist" defaulted it to delist, so the two opposite guesses lived one
-  // handler apart.
-  static bool boolField(const std::unordered_map<std::string, std::string>& f, const char* k,
-                        bool& out)
-  {
-    auto it = f.find(k);
-    if (it == f.end())
-    {
-      return false;
-    }
-    if (it->second == "true")
-    {
-      out = true;
-      return true;
-    }
-    if (it->second == "false")
-    {
-      out = false;
-      return true;
-    }
-    return false;
-  }
-
-  static bool symbolField(const std::unordered_map<std::string, std::string>& f, const char* k,
-                          SymbolId& out)
-  {
-    uint64_t v = 0;
-    if (!u64Field(f, k, v) || v > (std::numeric_limits<SymbolId>::max)())
-    {
-      return false;
-    }
-    out = static_cast<SymbolId>(v);
-    return true;
   }
 
   static std::string parseString(const std::string& s, size_t& i)
@@ -645,6 +776,7 @@ class ControlApi
   InstrumentRegistry& reg_;
   CommandSink sink_;
   SnapshotHook snapshotHook_;
+  std::unordered_map<std::string, Method> methods_;
 };
 
 }  // namespace flox::venue
