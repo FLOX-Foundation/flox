@@ -232,6 +232,10 @@ struct Run
 
 using Setup = std::function<void(Run&)>;
 
+// gtest's fixture already has a member named Run, so a TEST body cannot name
+// the type unqualified.
+using EngineRun = Run;
+
 // Last-look responder. A LastLookDecision names a heldId the engine invents,
 // so the answer cannot be generated ahead of time -- the corpus reacts to the
 // FillHeld it just saw. One third of the holds are accepted, one third
@@ -1065,4 +1069,57 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
                     << " protects nothing; remove the row deliberately.";
     }
   }
+}
+
+// The finding the golden replay produced on its first run against the other
+// standard library, kept as a check of its own.
+//
+// An emergency cancel sweeps the resting book and then the pending
+// conditionals. The resting half had always been sorted before it was
+// published; the conditional half was published in std::unordered_map
+// traversal order, which is a bucket-layout artifact and differs between
+// libstdc++ and libc++ for the same insertions. The resulting STATE is
+// identical either way -- every order is gone -- so no state-hash comparison
+// in this suite could see it; only the event stream differs, and only on a
+// venue built against the other library.
+//
+// The golden table would catch a regression here again, but only on whichever
+// library the table was not recorded on. This does not care: it asserts the
+// property directly.
+TEST(VenueGoldenReplay, EmergencyCancelReportsPendingStopsInIdOrder)
+{
+  Digest d;
+  EngineRun r(spotCfg(), d);
+
+  // Ids out of order on purpose, and spread out, so a map traversal has every
+  // chance to hand them back in some other sequence.
+  const OrderId ids[] = {907, 13, 55, 2, 471, 88, 306, 7, 1201, 64, 39, 750};
+  for (OrderId id : ids)
+  {
+    NewOrder o;
+    o.id = id;
+    o.symbol = SYM;
+    o.side = Side::SELL;
+    o.type = OrderType::STOP_MARKET;
+    o.quantity = qty(1.0);
+    o.triggerPrice = px(90.0);  // no trade and no mark yet: nothing triggers
+    o.accountId = 1 + (id % 5);
+    r.push(InboundCommand{o});
+  }
+  ASSERT_EQ(r.eng.book().empty(), true) << "a conditional order reached the resting book";
+
+  r.push(InboundCommand{AdminCmd{SYM, AdminAction::HaltAndCancelAll}});
+
+  std::vector<OrderId> canceled;
+  for (const OutboundEvent& e : r.since)
+  {
+    if (const auto* c = std::get_if<OrderCanceled>(&e))
+    {
+      canceled.push_back(c->id);
+    }
+  }
+  ASSERT_EQ(canceled.size(), std::size(ids)) << "the sweep did not report every pending order";
+  EXPECT_TRUE(std::is_sorted(canceled.begin(), canceled.end()))
+      << "pending conditionals were canceled in map-traversal order: the event stream of an "
+         "emergency cancel now depends on the standard library the venue was built with";
 }

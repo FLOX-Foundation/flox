@@ -20,7 +20,7 @@ last_look_tolerance_accept_on_timeout  557bdfb3edef5089  fc192c242e4dde4e  b69c9
 mmp_quote_mass_cancel                  d5b79583231ef45f  fc19dd0073f69048  28dcd6078b49b626
 stp_groups_and_admission               f47c57f3758f3ab9  fc19dd0073f69048  75896cf4c673078d
 auction_preopen_continuous             89d4e761e915ab04  fc19dd0073f69048  db845610221e6566
-session_status_transitions             3c4588d9a083a1d8  fc19dd0073f69048  8c3ac770afcbef4c
+session_status_transitions             3c4588d9a083a1d8  fc19dd0073f69048  41f5b819d845f965
 perp_funding_liquidation               89f8124cc7961b45  fc19dd0070df52c3  c674c91adb4964b8
 perp_adl_bankruptcy                    59d6bb5bfc91fc54  fc19dd0070f0868e  cef091191bfbd26f
 perp_adl_scripted                      17a056ea7a73878a  fc19dd0070f0868e  0a05fcf86107c40a
