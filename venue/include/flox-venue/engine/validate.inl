@@ -133,18 +133,9 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
   // An id referenced by an active last-look hold is still live even when its
   // order is (fully held) out of the book: a reject will restore quantity
   // under that id, so a reused id would merge two unrelated orders.
-  if (!held_.empty())
+  if (hasHoldsFor(o.id))
   {
-    // order: not observable -- a predicate scan that returns on the first
-    // hold naming this id
-    for (const auto& [hid, h] : held_)
-    {
-      (void)hid;
-      if (h.maker == o.id || h.taker == o.id)
-      {
-        return RejectReason::DuplicateOrderId;
-      }
-    }
+    return RejectReason::DuplicateOrderId;
   }
   return RejectReason::None;
 }

@@ -12,6 +12,7 @@
 #include "flox-venue/engine/clordid_window.h"
 #include "flox-venue/engine/credit.h"
 #include "flox-venue/engine/expiry.h"
+#include "flox-venue/engine/last_look.h"
 #include "flox-venue/engine/mmp.h"
 #include "flox-venue/engine/pegs.h"
 #include "flox-venue/engine/session.h"
@@ -384,50 +385,45 @@ class MatchingEngine
   bool applySnapshotEnd(const SnapshotEnd& e);
 
   // ---- last look ----
-  struct Held
-  {
-    uint64_t id{};
-    OrderId taker{};
-    uint64_t takerAccount{};
-    Side takerSide{};
-    OrderId maker{};
-    uint64_t makerAccount{};
-    Price price{};
-    Quantity qty{};
-    SeqNanos deadline{};
-    // The reference when the hold was taken. Last look is about the move
-    // DURING the window, so the move has to be measured from here -- measuring
-    // from the quoted price instead reports the distance between a quote and
-    // the last print, which is a stale quote, not a move.
-    int64_t refAtHoldRaw{0};
-    // Captured at hold time so a reject can route the taker residual by its
-    // TIF and rebuild either leg if it was fully held out of the book.
-    TimeInForce takerTif{TimeInForce::GTC};
-    OrderType takerType{OrderType::LIMIT};
-    Price takerPrice{};
-    SeqNanos takerExpiryNs{};
-    bool makerReduceOnly{false};
-    // Captured so a checkpoint can re-reserve the taker leg's held backing
-    // exactly (a perp reduce-only taker reserves nothing).
-    bool takerReduceOnly{false};
-    // Captured for the same reason as the rest of this block: a reject rebuilds
-    // either leg, and the report that follows has to name the order the way its
-    // submitter does.
-    uint64_t makerClientOrderId{0};
-    uint64_t takerClientOrderId{0};
-  };
+  // The holds themselves live in engine::LastLook (engine/last_look.h), which
+  // is NOT a template: a hold reaches the book three times and every one of
+  // those is on the decision path, which runs at maker latency rather than at
+  // matching latency. Held is that component's record, named here so the
+  // checkpoint and the restore path keep spelling it the way they did.
+  using Held = engine::Held;
 
   // engine/last_look.inl
+  // This engine's model of engine::LastLookHost: the three book operations,
+  // the event sink in its two flavours, and the collaborations a resolution
+  // triggers. Duck-typed rather than derived -- the concept says why.
+  class LastLookHost
+  {
+   public:
+    explicit LastLookHost(MatchingEngine& e) noexcept : e_(e) {}
+
+    const RestingOrder* findResting(OrderId id) const;
+    std::optional<RestingOrder> takeResting(OrderId id);
+    void reinsertTail(Side side, const RestingOrder& o);
+    void publish(const OutboundEvent& ev);
+    void publishTracked(const OutboundEvent& ev);
+    engine::LastLookConfig lastLookConfig() const;
+    int64_t referenceRaw() const;
+    bool holdStillAllowed(const Held& h) const;
+    uint64_t nextTradeSeq();
+    void releaseHeldLeg(OrderId id, Quantity qty);
+    void cleanupOrderIfDone(OrderId id);
+    void rememberStp(OrderId id, STPMode stp);
+    void adoptRestingTaker(const Held& h);
+
+   private:
+    MatchingEngine& e_;
+  };
+
   void createHeld(const RestingOrder& maker, Quantity fill, const NewOrder& taker);
   void releaseHeldLeg(OrderId id, Quantity qty);
-  void resolveHeld(typename std::unordered_map<uint64_t, Held>::iterator it, bool accept);
   void stampFreshHolds();
   int64_t referenceRaw() const;
-  int64_t referenceMoveSinceHold(const Held& h) const;
-  void recordHoldOutcome(const Held& h, int64_t moveRaw, bool accepted);
   bool holdStillAllowed(const Held& h) const;
-  void restoreMakerHeld(const Held& h);
-  void restoreTakerHeld(const Held& h);
   void rejectHoldsFor(OrderId id);
   void rejectHoldsForAccount(uint64_t account);
   void rejectAllHolds();
@@ -458,8 +454,6 @@ class MatchingEngine
   Price lastPrice_{};
 
   bool hasLast_{false};
-
-  std::vector<uint64_t> freshHolds_;  // stamped at the end of the matching pass
 
   Price markPrice_{};
 
@@ -506,19 +500,12 @@ class MatchingEngine
   // as it did when these were loose members of this class.
   engine::Credit credit_;
 
-  // Diagnostic only, like the pro-rata skip counters: conduct measurement, not
-  // matching state, so it stays out of the state hash and the snapshot.
-  std::unordered_map<uint64_t, LastLookStats> lastLookStats_;
+  // Holds nothing but a reference, so it may be declared here and still be
+  // handed `*this` -- and a snapshot clone's host names the clone, because
+  // each engine constructs its own.
+  LastLookHost lastLookHost_{*this};
 
-  uint64_t toleranceRejectedHolds_{0};
-
-  std::unordered_map<uint64_t, Held> held_;
-
-  uint64_t heldSeq_{0};
-
-  // Mirror of held_.size() readable from other threads (the shard's idle
-  // sweeper); the engine itself never reads it for logic.
-  std::atomic<uint64_t> heldOpen_{0};
+  engine::LastLook lastLook_;
 
   // clientOrderId dedup index, per account, in two rotating generations (see
   // engine/clordid_window.h). Rebuilt naturally by journal replay.
@@ -527,12 +514,11 @@ class MatchingEngine
   // Snapshot-only records seen (and dropped) on the live submit path.
   uint64_t droppedSnapshotRecords_{0};
 
-  // Clearing-integrity counters (diagnostics, not hashed state): trades left
-  // unsettled rather than settled by creating value, and last-look accepts
-  // refused at decision time by a perp risk limit.
+  // Clearing-integrity counter (diagnostic, not hashed state): trades left
+  // unsettled rather than settled by creating value. Its last-look sibling --
+  // accepts refused at decision time by a perp risk limit -- is counted inside
+  // engine::LastLook.
   uint64_t unsettledTrades_{0};
-
-  uint64_t riskRejectedHolds_{0};
 
   // Recovery mode flag: this snapshot carried exact RestoreBalance splits, so
   // RestoreReservation / RestorePosition must not move ledger money (v1
