@@ -21,6 +21,7 @@
 #include "flox-venue/event_hash.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
+#include "flox-venue/workload.h"
 #include "flox/book/ladder_book.h"
 #include "support/counterexample.h"
 
@@ -63,91 +64,23 @@ bool crossed(const Book& b)
   return bid.has_value() && ask.has_value() && !(bid.value() < ask.value());
 }
 
+// The command stream is workload::mixedCommand, shared with the golden replay
+// so both drive the SAME generator. A second copy here would drift, and a
+// drifted generator reads as an engine divergence.
+workload::Params wl()
+{
+  workload::Params p;
+  p.symbol = SYM;
+  p.mid = 100.0;
+  p.tick = 0.01;
+  p.accounts = 8;
+  return p;
+}
+
 InboundCommand genCommand(uint64_t& s, uint64_t seq, OrderId& nextId)
 {
-  auto next = [&]() noexcept
-  {
-    s ^= s << 13;
-    s ^= s >> 7;
-    s ^= s << 17;
-    return s;
-  };
-  const uint64_t r = next();
-  const int64_t midRaw = Price::fromDouble(100.0).raw();
-  const int64_t tickRaw = Price::fromDouble(0.01).raw();
-  const uint32_t kind = r % 100;
-
-  if (kind < 15 && nextId > 1)
-  {
-    // cancel a random earlier id (may be live or already gone -- both books
-    // must agree either way)
-    const OrderId victim = 1 + (next() % (nextId - 1));
-    return CancelOrder{victim, SYM, 1};
-  }
-  if (kind < 25 && nextId > 1)
-  {
-    // modify a random earlier id: new price within band, new qty 1..6
-    const OrderId victim = 1 + (next() % (nextId - 1));
-    const int ticks = static_cast<int>((next() % 101)) - 50;
-    const Price newPrice = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
-    const Quantity newQty = Quantity::fromDouble(1.0 + static_cast<double>(next() % 6));
-    return ModifyOrder{victim, SYM, newPrice, newQty, 1};
-  }
-
-  NewOrder o;
-  o.id = nextId++;
-  o.symbol = SYM;
-  o.side = (r & 1U) ? Side::BUY : Side::SELL;
-  o.quantity = Quantity::fromDouble(1.0 + static_cast<double>((r >> 10) % 5));
-  o.accountId = 1 + ((r >> 20) % 8);
-
-  if (kind < 30)
-  {
-    o.type = OrderType::MARKET;
-  }
-  else if (kind < 40)
-  {
-    // stop-market with a random in-band trigger (engine-level, deterministic;
-    // both books must still agree, and cascades are exercised)
-    o.type = OrderType::STOP_MARKET;
-    const int ticks = static_cast<int>((r >> 1) % 101) - 50;
-    o.triggerPrice = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
-  }
-  else
-  {
-    o.type = OrderType::LIMIT;
-    const int ticks = static_cast<int>((r >> 1) % 101) - 50;  // +/-50 ticks
-    o.price = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
-    const uint32_t t = (r >> 32) % 100;
-    if (t < 12)
-    {
-      o.tif = TimeInForce::IOC;
-    }
-    else if (t < 17)
-    {
-      o.postOnly = true;
-    }
-    else if (t < 30)
-    {
-      o.visibleQuantity = Quantity::fromDouble(1.0);  // iceberg peak 1 (if qty > 1)
-    }
-    else if (t < 42)
-    {
-      o.tif = TimeInForce::GTD;  // some expire, some never
-      o.expiryNs = SeqNanos::fromRaw(static_cast<int64_t>((r >> 40) % 2'000'000));
-    }
-    else if (t < 50)
-    {
-      o.ocoGroup = 1 + ((r >> 44) % 6);  // small set -> siblings collide
-    }
-    else if (t < 60)
-    {
-      const uint32_t pr = static_cast<uint32_t>((r >> 48) % 3);
-      o.peg = pr == 0 ? PegRef::Bid : (pr == 1 ? PegRef::Ask : PegRef::Mid);
-    }
-  }
   (void)seq;
-  return InboundCommand{o};
+  return workload::mixedCommand(s, nextId, wl());
 }
 
 int g_failures = 0;
