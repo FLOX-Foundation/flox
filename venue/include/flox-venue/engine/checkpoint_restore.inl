@@ -265,7 +265,7 @@ bool MatchingEngine<Book>::applyRestoreStop(const RestoreStop& r)
 template <class Book>
 bool MatchingEngine<Book>::applyRestoreHeld(const RestoreHeld& r)
 {
-  if (held_.count(r.heldId) != 0 || r.qty.raw() <= 0)
+  if (lastLook_.has(r.heldId) || r.qty.raw() <= 0)
   {
     return false;
   }
@@ -278,8 +278,7 @@ bool MatchingEngine<Book>::applyRestoreHeld(const RestoreHeld& r)
   h.makerReduceOnly = r.makerReduceOnly;
   h.takerReduceOnly = r.takerReduceOnly;
   h.refAtHoldRaw = r.refAtHoldRaw;
-  held_[r.heldId] = h;
-  heldOpen_.store(held_.size(), std::memory_order_relaxed);
+  lastLook_.insertRestored(h);
   // Tracking follows the recorded live truth rather than being re-derived: a
   // held maker stays tracked even fully off the book (see createHeld), and
   // the flag also carries snapshots written before the matcher's own removals
@@ -343,7 +342,7 @@ template <class Book>
 bool MatchingEngine<Book>::applySnapshotEnd(const SnapshotEnd& e)
 {
   tradeSeq_ = e.tradeSeq;
-  heldSeq_ = e.heldSeq;
+  lastLook_.setSeq(e.heldSeq);
   timeCounter_ = e.timeCounter;
   now_ = SeqNanos::fromRaw(e.nowNs);  // snapshot wire -> sequencer domain
   lastPrice_ = Price::fromRaw(e.lastPriceRaw);

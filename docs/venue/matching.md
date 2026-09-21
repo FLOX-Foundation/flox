@@ -434,7 +434,7 @@ thousand lines shared with everything else.
 | `engine/checkpoint.inl` | `stateHash`, `configHash`, `writeSnapshot`, `cloneForSnapshot` |
 | `engine/checkpoint_restore.inl` | `applySnapshotRecord` and the `applyRestore*` handlers |
 | `engine/expiry_pegs.inl` | GTD expiry, pegged orders, OCO |
-| `engine/last_look.inl` | holds: create, resolve, expire, and their statistics |
+| `engine/last_look.inl` | the engine's side of the last-look seam (see below) |
 
 Conduct -- what a submission is allowed to be, and what happens to an order
 once it rests -- is not a section of the template but a set of ordinary
@@ -520,6 +520,25 @@ unchanged -- `kSnapshotFormatVersion` did not move -- and the golden replay
 `SymbolConfig` lives in `flox-venue/symbol_config.h` rather than at the top of
 `matching_engine.h`, so a component can hold it by reference without including
 the engine that includes the component.
+
+One section has moved further out than that. The holds themselves -- their
+records, their decisions, their outcomes and their conduct statistics -- live
+in `flox-venue/engine/last_look.h` as `engine::LastLook`, which is **not** a
+template. A hold reaches the resting book three times (lift an order off its
+level, put one back at the tail, read a maker as it rests), and all three are
+on the decision path, which runs at maker latency rather than at matching
+latency. So the book arrives through `engine::LastLook::Host`, an abstract
+seam whose only implementation is `MatchingEngine<Book>::LastLookHost` in
+`engine/last_look.inl`; the same seam carries the event sink and the few facts
+only the engine can answer (the reference price, the perp re-check on an
+accept, the reservation release on a refused residual). What is left in the
+fragment is that implementation plus thin delegates -- `openHolds`,
+`hasHold`, `forEachHold`, `lastLookStats` and the rest are one line each.
+
+The seam costs one indirect call per book operation on a path that runs once
+per maker decision; measured over 100k hold/resolve cycles it is inside the
+noise of the machine (see `venue/tests/test_venue_engine_last_look.cpp`,
+which also tests the component against a book that is a `std::vector`).
 
 ### Pre-trade risk
 

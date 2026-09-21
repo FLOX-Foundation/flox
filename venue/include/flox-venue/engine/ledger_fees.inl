@@ -207,20 +207,7 @@ void MatchingEngine<Book>::releaseReservation(OrderId id)
 template <class Book>
 bool MatchingEngine<Book>::hasHoldsFor(OrderId id) const
 {
-  if (held_.empty())
-  {
-    return false;
-  }
-  // order: not observable -- a predicate scan, first match wins
-  for (const auto& [hid, h] : held_)
-  {
-    (void)hid;
-    if (h.maker == id || h.taker == id)
-    {
-      return true;
-    }
-  }
-  return false;
+  return lastLook_.referencesOrder(id);
 }
 
 // releaseReservation, but keep the slice backing this order's open held
@@ -236,16 +223,7 @@ void MatchingEngine<Book>::releaseReservationExceptHeld(OrderId id)
   {
     return;
   }
-  Quantity heldQty{};
-  // order: not observable -- Quantity sum of the held slices
-  for (const auto& [hid, h] : held_)
-  {
-    (void)hid;
-    if (h.taker == id || h.maker == id)
-    {
-      heldQty += h.qty;
-    }
-  }
+  const Quantity heldQty = lastLook_.heldQtyFor(id);
   credit_.releaseReservationExceptHeld(id, heldQty, cfg_, ledger_);
 }
 

@@ -49,7 +49,7 @@ uint64_t MatchingEngine<Book>::stateHash() const
   h = mix(h, hasMark_ ? 1U : 0U);
   h = mix(h, static_cast<uint64_t>(markPrice_.raw()));
   h = mix(h, tradeSeq_);
-  h = mix(h, heldSeq_);
+  h = mix(h, lastLook_.seq());
   h = mix(h, static_cast<uint64_t>(timeCounter_));
   h = mix(h, static_cast<uint64_t>(now_.raw()));
 
@@ -114,9 +114,9 @@ uint64_t MatchingEngine<Book>::stateHash() const
   h = stp_.hashInto(h);
   h = pegs_.hashInto(h);
 
-  for (uint64_t hid : sortedKeys(held_))
+  for (uint64_t hid : lastLook_.sortedIds())
   {
-    const Held& x = held_.at(hid);
+    const Held& x = lastLook_.at(hid);
     h = mix(h, 0xB004U);
     h = mix(h, x.id);
     h = mix(h, x.taker);
@@ -348,9 +348,9 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
 
   clearing_.writePositions(out, ts);
 
-  for (uint64_t hid : sortedKeys(held_))
+  for (uint64_t hid : lastLook_.sortedIds())
   {
-    const Held& x = held_.at(hid);
+    const Held& x = lastLook_.at(hid);
     RestoreHeld r{x.id, x.taker, x.takerAccount, x.takerSide, x.maker,
                   x.makerAccount, x.price, x.qty, x.deadline, x.takerTif,
                   x.takerType, x.takerPrice, x.takerExpiryNs, x.makerReduceOnly,
@@ -374,7 +374,7 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   SnapshotEnd end{};
   end.stateHash = h;
   end.tradeSeq = tradeSeq_;
-  end.heldSeq = heldSeq_;
+  end.heldSeq = lastLook_.seq();
   end.timeCounter = timeCounter_;
   end.nowNs = now_.raw();  // snapshot wire: raw
   end.mdEpoch = 0;         // the engine carries no MD epoch today
@@ -427,9 +427,7 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.fees_ = fees_;
   e.feesEnabled_ = feesEnabled_;
   e.mmp_ = mmp_;
-  e.held_ = held_;
-  e.heldSeq_ = heldSeq_;
-  e.heldOpen_.store(e.held_.size(), std::memory_order_relaxed);
+  e.lastLook_.copyHoldsFrom(lastLook_);
   e.clOrdIds_ = clOrdIds_;
   e.credit_.restoreReservations(credit_.reservations());
   e.clearing_.copyStateFrom(clearing_);
