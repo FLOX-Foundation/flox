@@ -36,22 +36,13 @@ uint64_t MatchingEngine<Book>::stateHash() const
   h = mix(h, static_cast<uint64_t>(cfg_.minPrice.raw()));
   h = mix(h, static_cast<uint64_t>(cfg_.maxPrice.raw()));
   h = mix(h, static_cast<uint64_t>(cfg_.triggerRef));
-  h = mix(h, auctionMode_ ? 1U : 0U);
-  if (delisted_)
-  {
-    h = mix(h, 0xB00EU);  // only when set: an engine that never delisted hashes as before
-  }
-  h = mix(h, static_cast<uint64_t>(haltUntil_.raw()));
-  // Session and funding state fold in only when they are set, the same
-  // "zero == absent" rule the balance traversal follows. An engine that has
-  // never been closed and never seen a funding rate or schedule therefore
+  // The session fields fold in their own order, stated once next to them
+  // (engine/session.h). They fold only when set, the same "zero == absent"
+  // rule the balance traversal and the funding block follow: an engine that
+  // has never been closed, never delisted and never seen a funding rate
   // hashes exactly as it did before these fields existed -- which is what
   // lets a snapshot written without them still verify on load.
-  if (closed_)
-  {
-    h = mix(h, 0xB00AU);
-    h = mix(h, 1U);
-  }
+  h = session_.mixState(h);
   h = clearing_.hashFunding(h);
   h = mix(h, hasLast_ ? 1U : 0U);
   h = mix(h, static_cast<uint64_t>(lastPrice_.raw()));
@@ -288,26 +279,16 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   {
     out.append(InboundCommand{SetAdmissionProfile{cfg_.id, acct, admission_.at(acct)}}, ts);
   }
-  out.append(InboundCommand{AdminCmd{cfg_.id, cfg_.halted ? AdminAction::Halt
-                                                          : AdminAction::Resume}},
-             ts);
-  if (auctionMode_)
+  // The halt, the auction phase, the session boundary and delisting all ride
+  // the same existing AdminCmd path, in the order engine::Session hands them
+  // back -- outermost last, exactly as tradingStatus() ranks them, and only
+  // the ones that are set, so an engine that never closed and never delisted
+  // writes the file it always did.
+  std::array<AdminAction, 4> sessionActions{};
+  const size_t nSessionActions = session_.snapshotActions(cfg_.halted, sessionActions);
+  for (size_t i = 0; i < nSessionActions; ++i)
   {
-    out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::BeginPreOpen}}, ts);
-  }
-  // The session state rides the same existing AdminCmd path the halt and the
-  // auction phase do. Written last of the three so it restores as the
-  // outermost state, exactly as tradingStatus() ranks it.
-  if (closed_)
-  {
-    out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::CloseSession}}, ts);
-  }
-  // Delisting is outermost of all, so it is written after the session state.
-  // Only when set, so an engine that never delisted writes the file it always
-  // did and its state hash is unchanged.
-  if (delisted_)
-  {
-    out.append(InboundCommand{AdminCmd{cfg_.id, AdminAction::Delist}}, ts);
+    out.append(InboundCommand{AdminCmd{cfg_.id, sessionActions[i]}}, ts);
   }
   clearing_.writeFunding(out, ts);
 
@@ -399,7 +380,7 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   end.hasLast = hasLast_;
   end.markPriceRaw = markPrice_.raw();
   end.hasMark = hasMark_;
-  end.haltUntilNs = haltUntil_.raw();
+  end.haltUntilNs = session_.haltUntil().raw();
   out.append(InboundCommand{end}, ts);
 }
 
@@ -450,12 +431,7 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.clOrdIds_ = clOrdIds_;
   e.reserve_ = reserve_;
   e.clearing_.copyStateFrom(clearing_);
-  e.auctionMode_ = auctionMode_;
-  e.haltUntil_ = haltUntil_;
-  e.closed_ = closed_;
-  e.lastStatus_ = lastStatus_;
-  e.lastStatusUntil_ = lastStatusUntil_;
-  e.statusPublished_ = statusPublished_;
+  e.session_.copyForSnapshotClone(session_);
   // order: not observable -- a keyed copy into the clone's own map; the
   // resulting (account -> group) mapping is the same set either way
   for (const auto& [acct, grp] : matcher_.stpGroups())

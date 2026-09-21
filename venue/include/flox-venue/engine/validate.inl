@@ -114,11 +114,11 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
   // Outermost first: a client whose order is refused deserves the reason that
   // tells it what to do next. Delisted means do not come back; closed means
   // next session; halted means something is wrong with the instrument now.
-  if (delisted_)
+  if (session_.delisted())
   {
     return RejectReason::InstrumentDelisted;
   }
-  if (closed_)
+  if (session_.closed())
   {
     return RejectReason::MarketClosed;
   }
@@ -244,7 +244,7 @@ RejectReason MatchingEngine<Book>::admissionGate(const NewOrder& o) const
   // filled or died on arrival, and at the uncross it can trade against that
   // counterparty's own other side.
   if ((p.deny & AdmissionDeny::DenyResting) != 0 &&
-      (auctionMode_ || o.tif == TimeInForce::GTC || o.tif == TimeInForce::GTD ||
+      (session_.auction() || o.tif == TimeInForce::GTC || o.tif == TimeInForce::GTD ||
        o.tif == TimeInForce::POST_ONLY || o.postOnly))
   {
     return RejectReason::RestingNotPermitted;
@@ -573,7 +573,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
   committed = true;  // past all reject gates: the order will match/rest, and any
                      // OCO resolution is now owned by processOco / forgetOrder.
 
-  if (auctionMode_)
+  if (session_.auction())
   {
     // Pre-open / auction: accumulate without matching (a crossed book is
     // allowed). Market orders rest at the band edge so they always execute in
@@ -720,9 +720,7 @@ bool MatchingEngine<Book>::luldBand(int64_t& loRaw, int64_t& hiRaw) const
 template <class Book>
 void MatchingEngine<Book>::tripLuldHalt()
 {
-  cfg_.halted = true;  // trip a timed volatility pause
-  haltUntil_ = now_ + cfg_.luldHaltNs;
-  publishStatus(TradingStatusReason::LuldBreach);
+  applySession(engine::SessionEvent::LuldBreach, now_ + cfg_.luldHaltNs);
 }
 
 }  // namespace flox::venue

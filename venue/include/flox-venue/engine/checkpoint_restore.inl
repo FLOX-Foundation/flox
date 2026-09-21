@@ -195,13 +195,13 @@ bool MatchingEngine<Book>::applyRestoreOrder(const RestoreOrder& r)
   // Corruption tripwire: a continuous-trading book without last look is
   // uncrossed by invariant, so a crossing restore marks the file corrupt.
   // Two legal exceptions: a pre-open (auction) book accumulates crossed
-  // (the AdminCmd{BeginPreOpen} record earlier in the file has set
-  // auctionMode_ by the time orders restore), and a last-look venue can
-  // legitimately hold a crossed book -- a rejected hold restores the maker
+  // (the AdminCmd{BeginPreOpen} record earlier in the file has put the
+  // session in its auction phase by the time orders restore), and a last-look
+  // venue can legitimately hold a crossed book -- a rejected hold restores the maker
   // at its original price on top of a residual that rested through it (see
   // restoreMakerHeld). There the SnapshotEnd stateHash remains the
   // corruption check.
-  if (!auctionMode_ && cfg_.lastLookWindowNs.count() == 0)
+  if (!session_.auction() && cfg_.lastLookWindowNs.count() == 0)
   {
     if (r.side == Side::BUY)
     {
@@ -349,13 +349,11 @@ bool MatchingEngine<Book>::applySnapshotEnd(const SnapshotEnd& e)
   hasLast_ = e.hasLast;
   markPrice_ = Price::fromRaw(e.markPriceRaw);
   hasMark_ = e.hasMark;
-  haltUntil_ = SeqNanos::fromRaw(e.haltUntilNs);
+  session_.restoreHaltUntil(SeqNanos::fromRaw(e.haltUntilNs));
   // The restored flags are the state the feed must start from: re-sync the
   // transition memo so the next real transition is measured against the
   // recovered state, not against the one the config records replayed.
-  lastStatus_ = tradingStatus();
-  lastStatusUntil_ = lastStatus_ == TradingStatus::LuldPause ? haltUntil_.raw() : 0;
-  statusPublished_ = true;
+  session_.memoRestored(tradingStatus());
   // Full verification: the reconstructed state must hash to what the writer
   // measured. A mismatch (torn/corrupted/semantically-drifted snapshot)
   // rejects the generation.

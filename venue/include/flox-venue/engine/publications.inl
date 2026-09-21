@@ -10,6 +10,9 @@
 
 // MatchingEngine<Book>: instrument-wide publications and per-account resting-order tracking.
 //
+// The trading-status publication is NOT here: it moved next to the state it
+// reports, in engine/session.inl.
+//
 // Included only from flox-venue/matching_engine.h, which declares every member
 // defined here. Including it directly gives a fragment with no class to attach
 // to, so the include is refused rather than left to fail on the first method.
@@ -29,35 +32,6 @@ template <class Book>
 void MatchingEngine<Book>::setStpGroup(uint64_t account, uint64_t group)
 {
   matcher_.setStpGroup(account, group);
-}
-
-// Emit the state the engine is now in, if it differs from the last one
-// published. Every halt / pause / auction transition routes through here, so
-// the feed carries transitions and only transitions: no duplicate on a
-// re-halt of an already halted symbol, and nothing to infer downstream.
-template <class Book>
-void MatchingEngine<Book>::publishStatus(TradingStatusReason reason)
-{
-  const TradingStatus s = tradingStatus();
-  // The deadline belongs to the timed pause and to nothing else. A state that
-  // is not the pause publishes 0 even when a pause deadline is still stored
-  // underneath it (a closed session or an auction phase over a paused
-  // instrument) -- a subscriber must never be handed an expiry for a state
-  // that does not expire.
-  emitStatus(s, reason, s == TradingStatus::LuldPause ? haltUntil_.raw() : 0);
-}
-
-template <class Book>
-void MatchingEngine<Book>::emitStatus(TradingStatus status, TradingStatusReason reason, int64_t untilNs)
-{
-  if (statusPublished_ && status == lastStatus_ && untilNs == lastStatusUntil_)
-  {
-    return;
-  }
-  statusPublished_ = true;
-  lastStatus_ = status;
-  lastStatusUntil_ = untilNs;
-  sink_(TradingStatusChanged{cfg_.id, status, reason, untilNs});
 }
 
 // Emit the derivatives layer the engine knows: the mark it was just given,

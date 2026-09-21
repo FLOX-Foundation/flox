@@ -10,6 +10,12 @@
 
 // MatchingEngine<Book>: trading status, halt, delisting, pre-open and auctions.
 //
+// The STATE and the transitions between states live in engine::Session
+// (engine/session.h), which is not a template -- none of it touches the book.
+// What is left here is the part that does: publishing a transition to the
+// feed, pulling the resting book when a transition demands it, and the
+// uncross itself.
+//
 // Included only from flox-venue/matching_engine.h, which declares every member
 // defined here. Including it directly gives a fragment with no class to attach
 // to, so the include is refused rather than left to fail on the first method.
@@ -21,73 +27,97 @@ namespace flox::venue
 {
 
 // Current trading state, derived from the engine's own session / halt /
-// pause / auction flags -- the same value the transition events publish.
-// Closed wins over everything: a closed session is the instrument's outermost
-// state, and the halt or auction phase underneath it is preserved untouched
-// so reopening returns to exactly the state the close interrupted.
+// pause / auction flags -- the same value the transition events publish. The
+// ranking (delisted over closed over auction over halt) is engine::Session's,
+// stated once there; cfg_.halted is passed in because the flag is config the
+// engine owns.
 template <class Book>
 TradingStatus MatchingEngine<Book>::tradingStatus() const noexcept
 {
-  if (delisted_)
-  {
-    return TradingStatus::Delisted;
-  }
-  if (closed_)
-  {
-    return TradingStatus::Closed;
-  }
-  if (auctionMode_)
-  {
-    return TradingStatus::AuctionPreOpen;
-  }
-  if (cfg_.halted)
-  {
-    return static_cast<bool>(haltUntil_) ? TradingStatus::LuldPause : TradingStatus::Halted;
-  }
-  return TradingStatus::Trading;
+  return session_.status(cfg_.halted);
 }
 
 // Session state (see AdminAction::CloseSession / OpenSession).
 template <class Book>
 bool MatchingEngine<Book>::sessionClosed() const noexcept
 {
-  return closed_;
+  return session_.closed();
 }
 
 // Withdrawn from trading (see AdminAction::Delist / Relist).
 template <class Book>
 bool MatchingEngine<Book>::delisted() const noexcept
 {
-  return delisted_;
+  return session_.delisted();
 }
 
-// Control-plane hook (and the AdminCmd Halt/Resume path). Clears any timed
-// pause deadline on resume, so the state the feed publishes is the state the
-// engine is actually in.
+// Emit the state the engine is now in, if it differs from the last one
+// published. Every halt / pause / auction transition routes through here, so
+// the feed carries transitions and only transitions: no duplicate on a
+// re-halt of an already halted symbol, and nothing to infer downstream.
+template <class Book>
+void MatchingEngine<Book>::publishStatus(TradingStatusReason reason)
+{
+  const TradingStatus s = tradingStatus();
+  // The deadline belongs to the timed pause and to nothing else. A state that
+  // is not the pause publishes 0 even when a pause deadline is still stored
+  // underneath it (a closed session or an auction phase over a paused
+  // instrument) -- a subscriber must never be handed an expiry for a state
+  // that does not expire.
+  emitStatus(s, reason, session_.publishedUntil(s));
+}
+
+template <class Book>
+void MatchingEngine<Book>::emitStatus(TradingStatus status, TradingStatusReason reason, int64_t untilNs)
+{
+  if (!session_.publishes(status, untilNs))
+  {
+    return;
+  }
+  sink_(TradingStatusChanged{cfg_.id, status, reason, untilNs});
+}
+
+// One row of engine/session.h's transition table. The session moves its own
+// flags and says what caused the move; the two things it cannot do for itself
+// happen here -- the new state reaches the feed, and the book effect the row
+// asks for runs after it, so a subscriber reads the cancels as a consequence
+// of the transition rather than as an unexplained mass cancel.
+//
+// A refused row (Delist on a delisted instrument, the pause deadline not yet
+// reached) publishes nothing and touches nothing: it is not a transition.
+template <class Book>
+void MatchingEngine<Book>::applySession(engine::SessionEvent e, SeqNanos deadline)
+{
+  const engine::SessionOutcome out = session_.apply(e, cfg_.halted, now_, deadline);
+  if (!out.fired)
+  {
+    return;
+  }
+  publishStatus(out.reason);
+  if (out.effect == engine::SessionEffect::CancelBookAfter)
+  {
+    cancelEntireBook(CancelReason::VenueHalt);
+  }
+}
+
+// Control-plane hook (and the AdminCmd Halt/Resume path). The Resume row
+// clears any timed pause deadline with the halt, so the state the feed
+// publishes is the state the engine is actually in.
 template <class Book>
 void MatchingEngine<Book>::setHalted(bool halted)
 {
-  cfg_.halted = halted;
-  if (!halted)
-  {
-    haltUntil_ = SeqNanos{};
-  }
-  publishStatus(TradingStatusReason::Administrative);
+  applySession(halted ? engine::SessionEvent::Halt : engine::SessionEvent::Resume);
 }
 
 // Operator emergency stop: halt the symbol (reject new orders) AND pull the
 // entire resting book -- every live limit order and pending conditional --
-// releasing reservations. Used on a fat-finger event or system anomaly.
+// releasing reservations. Used on a fat-finger event or system anomaly. The
+// row clears the deadline: an operator halt has no deadline, unlike the LULD
+// pause.
 template <class Book>
 void MatchingEngine<Book>::haltAndCancelAll()
 {
-  cfg_.halted = true;
-  haltUntil_ = SeqNanos{};  // an operator halt has no deadline, unlike the LULD pause
-  // The halt reaches the feed BEFORE the flood of cancels it causes, so a
-  // subscriber reads them as consequences of a halt rather than as an
-  // unexplained mass cancel.
-  publishStatus(TradingStatusReason::Administrative);
-  cancelEntireBook(CancelReason::VenueHalt);
+  applySession(engine::SessionEvent::HaltAndCancelAll);
 }
 
 // Pull every resting and pending order. Shared by the emergency halt and by
@@ -143,15 +173,13 @@ void MatchingEngine<Book>::cancelEntireBook(CancelReason reason)
 template <class Book>
 void MatchingEngine<Book>::closeSession()
 {
-  closed_ = true;
-  publishStatus(TradingStatusReason::Session);
+  applySession(engine::SessionEvent::CloseSession);
 }
 
 template <class Book>
 void MatchingEngine<Book>::openSession()
 {
-  closed_ = false;
-  publishStatus(TradingStatusReason::Session);
+  applySession(engine::SessionEvent::OpenSession);
 }
 
 // Withdraw the instrument from trading. Unlike a halt or a closed session,
@@ -161,30 +189,23 @@ void MatchingEngine<Book>::openSession()
 template <class Book>
 void MatchingEngine<Book>::delist()
 {
-  if (delisted_)
-  {
-    return;
-  }
-  delisted_ = true;
-  // The status reaches the feed before the cancels it causes, so a subscriber
-  // reads them as a consequence rather than as an unexplained mass cancel.
-  publishStatus(TradingStatusReason::Administrative);
-  cancelEntireBook(CancelReason::VenueHalt);
+  // Guarded by the table's NotAlreadyDelisted: delisting a delisted
+  // instrument is not a transition, so it publishes nothing and pulls
+  // nothing (the book is already empty, and a second sweep would still emit).
+  applySession(engine::SessionEvent::Delist);
 }
 
 template <class Book>
 void MatchingEngine<Book>::relist()
 {
-  delisted_ = false;
-  publishStatus(TradingStatusReason::Administrative);
+  applySession(engine::SessionEvent::Relist);
 }
 
 // Pre-open: orders accumulate without matching (a crossed book is allowed).
 template <class Book>
 void MatchingEngine<Book>::beginPreOpen()
 {
-  auctionMode_ = true;
-  publishStatus(TradingStatusReason::Auction);
+  applySession(engine::SessionEvent::BeginPreOpen);
 }
 
 // Dispatch a sequenced operator action (see AdminCmd). Routing admin actions
@@ -237,10 +258,7 @@ void MatchingEngine<Book>::onAdmin(AdminAction a)
 template <class Book>
 void MatchingEngine<Book>::resumeWithAuction()
 {
-  cfg_.halted = false;
-  haltUntil_ = SeqNanos{};
-  auctionMode_ = true;
-  publishStatus(TradingStatusReason::Auction);
+  applySession(engine::SessionEvent::ResumeAuction);
 }
 
 // Run the (opening / closing) uncross auction: match everything at the single
@@ -250,11 +268,11 @@ void MatchingEngine<Book>::openContinuous()
 {
   // The uncross is a state of its own for exactly as long as it runs: a
   // subscriber must be able to attribute the burst of fills to it rather than
-  // to continuous trading that has not resumed yet.
+  // to continuous trading that has not resumed yet. It runs BEFORE the flags
+  // move, which is what the row's UncrossBefore effect records.
   emitStatus(TradingStatus::AuctionUncross, TradingStatusReason::Auction, 0);
   runAuction();
-  auctionMode_ = false;
-  publishStatus(TradingStatusReason::Auction);
+  applySession(engine::SessionEvent::OpenContinuous);
 }
 
 // Explicit uncross without changing session mode (closing auction, etc.).
