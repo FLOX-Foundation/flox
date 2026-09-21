@@ -142,7 +142,7 @@ uint64_t MatchingEngine<Book>::stateHash() const
       h = mix(h, x.takerClientOrderId);
     }
     // Live-tracking truth of the maker (see RestoreHeld::makerTracked).
-    h = mix(h, orderAccount_.count(x.maker) != 0 ? 1U : 0U);
+    h = mix(h, pub_.tracked(x.maker) ? 1U : 0U);
   }
 
   for (OrderId id : sortedKeys(credit_.reservations()))
@@ -357,7 +357,7 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
                   x.takerReduceOnly};
     r.makerClientOrderId = x.makerClientOrderId;
     r.takerClientOrderId = x.takerClientOrderId;
-    r.makerTracked = orderAccount_.count(x.maker) != 0;
+    r.makerTracked = pub_.tracked(x.maker);
     r.refAtHoldRaw = x.refAtHoldRaw;
     out.append(InboundCommand{r}, ts);
   }
@@ -415,8 +415,7 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.tradeSeq_ = tradeSeq_;
   e.now_ = now_;
   e.timeCounter_ = timeCounter_;
-  e.orderAccount_ = orderAccount_;
-  e.byAccount_ = byAccount_;
+  e.pub_.copyStateFrom(pub_);
   e.expiry_ = expiry_;
   e.orderOco_ = orderOco_;
   e.ocoMembers_ = ocoMembers_;

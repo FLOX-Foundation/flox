@@ -465,9 +465,9 @@ bool MatchingEngine<Book>::ownershipRefused(OrderId id, uint64_t actor) const
   {
     return false;
   }
-  if (auto it = orderAccount_.find(id); it != orderAccount_.end())
+  if (const uint64_t* owner = pub_.trackedOwner(id))
   {
-    return it->second != actor;
+    return *owner != actor;
   }
   const uint64_t stopAcct = stops_.accountOf(id);
   return stopAcct != 0 && stopAcct != actor;

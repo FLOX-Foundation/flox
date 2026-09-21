@@ -213,14 +213,15 @@ RejectReason MatchingEngine<Book>::perpRiskGate(NewOrder& o)
 template <class Book>
 int64_t MatchingEngine<Book>::restingReduceOnlyRaw(uint64_t account, Side side, OrderId exclude) const
 {
-  auto it = byAccount_.find(account);
-  if (it == byAccount_.end())
+  const auto* own = pub_.ordersOf(account);
+  if (own == nullptr)
   {
     return 0;
   }
+  const std::unordered_set<OrderId>& ids = *own;
   int64_t sum = 0;
   // order: not observable -- int64 sum of the account's reduce-only leaves
-  for (OrderId id : it->second)
+  for (OrderId id : ids)
   {
     if (id == exclude)
     {
@@ -390,8 +391,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
   {
     // Ingress DoS / risk gate: cap live resting orders per account. Once at
     // the cap the account must cancel before adding more.
-    auto it = byAccount_.find(o.accountId);
-    if (it != byAccount_.end() && it->second.size() >= cfg_.maxOpenOrders)
+    if (pub_.accountOrderCount(o.accountId) >= cfg_.maxOpenOrders)
     {
       sink_(OrderRejected{o.id, o.symbol, RejectReason::TooManyOpenOrders, o.accountId, o.clientOrderId});
       return;

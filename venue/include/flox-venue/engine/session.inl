@@ -129,23 +129,14 @@ void MatchingEngine<Book>::cancelEntireBook(CancelReason reason)
   // Resolve every open hold first: restored quantity lands back on the book
   // and is then swept by the loop below, so nothing survives.
   rejectAllHolds();
-  std::vector<OrderId> resting;
-  // order: collected here, id-sorted below -- each surviving id publishes
-  // an OrderCanceled
-  for (const auto& [acct, ids] : byAccount_)
-  {
-    (void)acct;
-    resting.insert(resting.end(), ids.begin(), ids.end());
-  }
-  std::sort(resting.begin(), resting.end());  // deterministic cancel order (layout-independent)
-  for (OrderId id : resting)
+  for (OrderId id : pub_.cancelOrderAll())
   {
     if (auto ro = book_.cancel(id))
     {
       const uint64_t acct = ownerOf(id);
       releaseReservation(id);
       forgetOrder(id);
-      sink_(OrderCanceled{id, cfg_.id, reason, acct, ro->clientOrderId});
+      pub_.publishCanceled(id, reason, acct, ro->clientOrderId);
     }
   }
   for (OrderId id : stops_.ids())
