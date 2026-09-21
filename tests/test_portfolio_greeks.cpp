@@ -4,6 +4,7 @@
 #include <bit>
 #include <chrono>
 #include <cstdint>
+#include <iterator>
 #include <random>
 #include <vector>
 
@@ -68,19 +69,37 @@ std::vector<KeyLayoutAttempt> keyLayoutAttempts(size_t n)
   std::vector<int> bigLeadingGap(n, 0);
   bigLeadingGap[0] = 503;
 
-  std::mt19937 rng(12345);
-  std::uniform_int_distribution<int> gapDist(1, 7);
-  std::vector<int> shuffledGaps(n);
-  for (auto& g : shuffledGaps)
-  {
-    g = gapDist(rng);
-  }
-
-  return {
+  std::vector<KeyLayoutAttempt> attempts = {
       {"ascending (contiguous ids)", noGaps},
       {"descending-like (large leading gap)", bigLeadingGap},
-      {"shuffled (fixed seed)", shuffledGaps},
   };
+
+  // Several independent fixed-seed shuffles rather than one: a single
+  // layout can enumerate in non-ascending order while still happening to
+  // fold to the same bit pattern as sorted order (seen on windows-clang-cl
+  // for the first seed tried during W32-T012). More seeds make it very
+  // unlikely every one of them coincides.
+  static constexpr unsigned kSeeds[] = {12345u, 67890u, 24680u, 13579u, 99999u};
+  static const char* kNames[] = {
+      "shuffled (seed 12345)",
+      "shuffled (seed 67890)",
+      "shuffled (seed 24680)",
+      "shuffled (seed 13579)",
+      "shuffled (seed 99999)",
+  };
+  for (size_t s = 0; s < std::size(kSeeds); ++s)
+  {
+    std::mt19937 rng(kSeeds[s]);
+    std::uniform_int_distribution<int> gapDist(1, 7);
+    std::vector<int> shuffledGaps(n);
+    for (auto& g : shuffledGaps)
+    {
+      g = gapDist(rng);
+    }
+    attempts.push_back({kNames[s], std::move(shuffledGaps)});
+  }
+
+  return attempts;
 }
 }  // namespace
 
@@ -221,8 +240,9 @@ TEST(PortfolioGreeksTest, DeltaFoldIsIndependentOfBucketOrder)
   // single delicate cancellation, which a lucky bucket layout could still
   // fold to the same total regardless of order, but a value at every scale
   // a running sum could be at, so a fold that visits them in a different
-  // order almost always rounds differently somewhere along the way. The
-  // assertion below checks this rather than assuming it.
+  // order almost always rounds differently somewhere along the way. Still
+  // checked below rather than assumed: a non-ascending native order does
+  // not by itself guarantee the fold actually differs.
   std::vector<double> contributions = {
       1.7e16,
       -1.3e16,
@@ -244,6 +264,8 @@ TEST(PortfolioGreeksTest, DeltaFoldIsIndependentOfBucketOrder)
   ASSERT_EQ(contributions.size(), 16u);
 
   PositionGroupTracker positions;
+  double sortedSum = 0.0;
+  double nativeSum = 0.0;
   bool found = false;
 
   for (const auto& attempt : keyLayoutAttempts(contributions.size()))
@@ -277,49 +299,60 @@ TEST(PortfolioGreeksTest, DeltaFoldIsIndependentOfBucketOrder)
         nativeOrderReal.push_back(pid);
       }
     }
-
-    if (!std::is_sorted(nativeOrderReal.begin(), nativeOrderReal.end()))
+    if (std::is_sorted(nativeOrderReal.begin(), nativeOrderReal.end()))
     {
-      positions = std::move(trial);
-      found = true;
-      break;
+      continue;  // this layout enumerated the real ids in ascending order
     }
+
+    // Fold in the map's own native (bucket) order vs. explicit ascending
+    // PositionId order -- exactly what compute() did before the fix vs.
+    // what it does now. A non-ascending native order is necessary but not
+    // sufficient for the two folds to actually disagree (they can still
+    // land on the same bit pattern by coincidence), so this attempt is
+    // only accepted once both differ.
+    std::vector<PositionId> nativeOrder;
+    for (const auto& [pid, pos] : trial.positions())
+    {
+      nativeOrder.push_back(pid);
+    }
+    std::vector<PositionId> sortedOrder = nativeOrder;
+    std::sort(sortedOrder.begin(), sortedOrder.end());
+
+    double trialSortedSum = 0.0;
+    for (PositionId pid : sortedOrder)
+    {
+      trialSortedSum += trial.positions().at(pid).contractMultiplier;
+    }
+    double trialNativeSum = 0.0;
+    for (PositionId pid : nativeOrder)
+    {
+      trialNativeSum += trial.positions().at(pid).contractMultiplier;
+    }
+
+    if (std::bit_cast<uint64_t>(trialSortedSum) == std::bit_cast<uint64_t>(trialNativeSum))
+    {
+      continue;  // native and sorted folds happened to agree; try another layout
+    }
+
+    positions = std::move(trial);
+    sortedSum = trialSortedSum;
+    nativeSum = trialNativeSum;
+    found = true;
+    break;
   }
 
   if (!found)
   {
-    GTEST_SKIP() << "unordered_map<PositionId, IndividualPosition> enumerated "
-                    "the real ids in ascending order under every insertion "
-                    "pattern tried on this standard library; cannot exercise "
+    GTEST_SKIP() << "no insertion pattern tried produced a native bucket "
+                    "order whose fold actually disagrees with the sorted "
+                    "one on this standard library; cannot exercise "
                     "bucket-order sensitivity here";
   }
 
-  // The reference: fold in explicit ascending PositionId order -- exactly
-  // what the fix inside compute() does internally.
-  std::vector<PositionId> nativeOrder;
-  for (const auto& [pid, pos] : positions.positions())
-  {
-    nativeOrder.push_back(pid);
-  }
-  std::vector<PositionId> sortedOrder = nativeOrder;
-  std::sort(sortedOrder.begin(), sortedOrder.end());
-  double sortedSum = 0.0;
-  for (PositionId pid : sortedOrder)
-  {
-    sortedSum += positions.positions().at(pid).contractMultiplier;
-  }
-
-  // What folding in the map's own (native, bucket) order gives -- this is
-  // what compute() produced before the fix.
-  double nativeSum = 0.0;
-  for (PositionId pid : nativeOrder)
-  {
-    nativeSum += positions.positions().at(pid).contractMultiplier;
-  }
-
-  // The data set must actually be order-sensitive for the chosen layout, or
-  // a mutation that removes the sort in compute() could not be caught by
-  // the assertion below.
+  // The data set was order-sensitive for the chosen layout (checked above,
+  // not assumed) -- this is what makes the assertion below meaningful: a
+  // mutation that removes the sort in compute() could not otherwise be
+  // caught.
   ASSERT_NE(std::bit_cast<uint64_t>(sortedSum), std::bit_cast<uint64_t>(nativeSum))
       << "native and sorted fold orders happened to agree on this data set "
          "(sortedSum="
