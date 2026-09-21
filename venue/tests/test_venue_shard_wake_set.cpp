@@ -447,22 +447,52 @@ TEST(VenueShardWakeSet, ParkUntilWakesOnItsDeadlineWithNobodyPublishing)
   }
   const int64_t meanMs = totalMs / kRounds;
 
-  std::printf("parkUntil(%lld ms), %d rounds: worst %lld ms, mean %lld ms (the net is %lld ms)\n",
-              static_cast<long long>(kDeadlineMs), kRounds, static_cast<long long>(worstMs),
-              static_cast<long long>(meanMs), static_cast<long long>(kNetMs));
+  // A control series, right after, on the same machine: the same kRounds
+  // sleeping with no deadline of their own -- parkUntil(kNoDeadline, ...),
+  // which is what parkUnless() already is -- so the only bound left is the
+  // net. A shared macOS CI runner has been seen turning a 5 ms parkUntil into
+  // a 32 ms mean (worst 45 ms) while its own net sleeps average 77 ms against
+  // a nominal 50 ms -- the runner oversleeps whatever it is asked to wait for
+  // by about that much, deadline or net alike. A fixed millisecond ceiling on
+  // the deadline series cannot survive that; what the runner cannot move is
+  // the RATIO between a bounded sleep and an unbounded one measured back to
+  // back on it, and that is what this asserts instead.
+  int64_t totalNetMs = 0;
+  for (int i = 0; i < kRounds; ++i)
+  {
+    const auto t0 = steady_clock::now();
+    set.parkUntil(WakeSet::kNoDeadline,
+                  []
+                  { return false; });
+    const auto took = duration_cast<milliseconds>(steady_clock::now() - t0);
+    totalNetMs += took.count();
+  }
+  const int64_t meanNetMs = totalNetMs / kRounds;
 
-  // The mean, not the worst, is the assertion. A sleep bounded by the net is
-  // bounded by it EVERY round, so ignoring the deadline shows up as a mean of
-  // a whole net interval; a sleep bounded by the deadline is single-digit
-  // milliseconds here and a couple of tens on a shared CI runner that
-  // oversleeps a 5 ms timer. One descheduled round moves a mean over this
-  // many rounds by about a millisecond, which is the point of taking it over
-  // rounds rather than trusting the worst one.
-  EXPECT_LT(meanMs, 25) << "the deadline was ignored and the sleeps rode the net";
-  // The worst round is held against the net itself, with room above it for a
-  // runner that overslept: a wake-up that came from the net cannot arrive
-  // before the net is up, so no single round may sit out there.
-  EXPECT_LT(worstMs, kNetMs + 5) << "a round waited out the whole net interval";
+  std::printf(
+      "parkUntil(%lld ms), %d rounds: worst %lld ms, mean %lld ms (the net is %lld ms, "
+      "mean(net) %lld ms)\n",
+      static_cast<long long>(kDeadlineMs), kRounds, static_cast<long long>(worstMs),
+      static_cast<long long>(meanMs), static_cast<long long>(kNetMs),
+      static_cast<long long>(meanNetMs));
+
+  // The mean against the control series' OWN mean on this same machine, not
+  // against a fixed millisecond budget. A sleep bounded by the net is bounded
+  // by it every round, deadline or no deadline -- that is exactly what the
+  // control series measures -- so a parkUntil() that silently ignored its
+  // deadline would land its mean right next to meanNetMs, same as the control
+  // series does by construction. A parkUntil() that honours its deadline
+  // lands well under it, on any machine: ~32 ms against ~77 ms (a ratio of
+  // 0.42) on the flaky macOS runner above, ~5 ms against ~50 ms (0.1) on a
+  // quiet one. 0.6 leaves wide margin on both those measurements.
+  EXPECT_LT(meanMs, meanNetMs * 6 / 10)
+      << "the deadline was ignored and the sleeps rode the net just like the control series";
+  // The worst round is no longer a mutation detector on its own -- the mean
+  // comparison above is that -- this is just a sanity bound so one wildly
+  // descheduled round does not pass silently while wrecking the printed
+  // numbers. Held against the control series' measured mean rather than the
+  // nominal net constant, for the same reason the assertion above is.
+  EXPECT_LT(worstMs, meanNetMs + 10) << "a round waited far longer than the control series' mean";
 }
 
 // A deadline already in the past is "look once and come straight back".
