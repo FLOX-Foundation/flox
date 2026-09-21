@@ -127,12 +127,7 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
   }
   if (const auto* r = std::get_if<RestoreFunding>(&cmd))
   {
-    // Restored verbatim: the rate is a fact the venue published and the
-    // calendar is a fact it will settle on. Neither is re-derived from
-    // config, which is the whole point of the record.
-    fundingRateRaw_ = r->fundingRateRaw;
-    nextFundingNs_ = r->nextFundingNs.raw() > 0 ? r->nextFundingNs : SeqNanos{};
-    fundingIntervalNs_ = r->fundingIntervalNs.count() > 0 ? r->fundingIntervalNs : DurationNs{};
+    clearing_.restoreFunding(*r);
     return true;
   }
   if (const auto* r = std::get_if<RestoreReservation>(&cmd))
@@ -340,17 +335,7 @@ bool MatchingEngine<Book>::applyRestoreReservation(const RestoreReservation& r)
 template <class Book>
 bool MatchingEngine<Book>::applyRestorePosition(const RestorePosition& r)
 {
-  if (r.qtyRaw == 0 || positions_.count(r.account) != 0)
-  {
-    return false;
-  }
-  if (ledger_ != nullptr && !exactBalanceRestore_ && r.marginRaw > 0 &&
-      !ledger_->reserve(r.account, cfg_.quoteAsset, r.marginRaw))
-  {
-    return false;  // deposited total cannot back the posted margin -> corrupt
-  }
-  positions_[r.account] = Position{r.qtyRaw, r.entryRaw, r.marginRaw};
-  return true;
+  return clearing_.restorePosition(r, exactBalanceRestore_);
 }
 
 template <class Book>

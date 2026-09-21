@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "flox-venue/engine/clearing.h"
 #include "flox-venue/engine/clordid_window.h"
 #include "flox-venue/engine/expiry.h"
 #include "flox-venue/engine/mmp.h"
@@ -21,6 +22,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/messages.h"
 #include "flox-venue/stop_book.h"
+#include "flox-venue/symbol_config.h"
 #include "flox/book/resting_order.h"
 
 #include "flox/backtest/fee_schedule.h"
@@ -40,76 +42,6 @@
 
 namespace flox::venue
 {
-
-// TriggerRef (the conditional-order reference price selector) lives in
-// messages.h next to the SetTriggerRef command that carries it.
-
-struct SymbolConfig
-{
-  SymbolId id{};
-  Price tickSize{};           // 0 = unchecked
-  Quantity lotSize{};         // 0 = unchecked
-  Quantity minQty{};          // 0 = unchecked
-  Price minPrice{};           // 0 = unchecked (price band / collar lower bound)
-  Price maxPrice{};           // 0 = unchecked (price band / collar upper bound)
-  Quantity maxOrderQty{};     // 0 = unchecked (fat-finger max size)
-  Volume maxOrderNotional{};  // 0 = unchecked (fat-finger max notional, limit orders)
-  bool halted{false};
-  TriggerRef triggerRef{TriggerRef::Last};
-  DurationNs lastLookWindowNs{};  // 0 = last look disabled venue-wide
-  // How long a client order id stays reserved against reuse. 0 = forever,
-  // which is what the venue always did and what it still does unless an
-  // operator says otherwise. Past the window an old id is accepted again --
-  // exchanges scope client order id uniqueness to the trading day, so that is
-  // the honest bound, and it has to be stated rather than discovered.
-  int64_t clOrdIdWindowNs{0};
-  bool lastLookAcceptOnTimeout{false};  // window elapses with no decision -> accept vs reject
-  // Symmetric price tolerance. When set, the VENUE decides whether the price
-  // moved too far during the hold, and it applies the same threshold in both
-  // directions: outside it, the fill is rejected whoever it would have
-  // favoured.
-  //
-  // This is what removes the free option. A maker allowed to answer a held
-  // fill however it likes will, over enough samples, fill the ones that moved
-  // its way and refuse the ones that did not -- and that asymmetry is
-  // invisible to the taker, who sees only a reject rate. Enforcing magnitude
-  // at the venue leaves nothing to be asymmetric about outside the band, and
-  // lastLookStats makes what happens inside it visible.
-  //
-  // 0 = no venue-side check: the maker's answer stands whatever the price did.
-  int64_t lastLookToleranceRaw{0};
-  AssetId baseAsset{0};             // e.g. BTC in BTC-USD (settled to the seller/buyer)
-  AssetId quoteAsset{1};            // e.g. USD in BTC-USD
-  int32_t luldBps{0};               // limit-up/limit-down band around the reference (0 = off)
-  DurationNs luldHaltNs{};          // trading pause LENGTH on a band breach
-  bool linearPerp{false};           // derivatives: linear perpetual (margin, no asset delivery)
-  int32_t initialMarginBps{0};      // IM as bps of notional (1000 = 10% = 10x leverage)
-  int32_t maintenanceMarginBps{0};  // MM; position liquidated when equity < MM (0 = off)
-  // Liquidation decided elsewhere (portfolio margin above the per-symbol
-  // engines). The engine still posts isolated IM and settles, but never
-  // liquidates on its own -- it closes only on ForceClosePosition.
-  bool externalLiquidation{false};
-  bool autoDeleverage{false};  // ADL: recover a bankruptcy deficit from winners before insurance
-  Quantity maxPositionQty{};   // 0 = unchecked (max |position| per account, perp risk cap)
-  uint32_t maxOpenOrders{0};   // 0 = unchecked (max live resting orders per account)
-
-  // Per-symbol fixed-point scale, same semantics as core SymbolInfo. Default
-  // 1e8 = the compile-time Price/Quantity scale. Money always settles at
-  // kMoneyScale regardless. Must satisfy scalesValid().
-  int64_t priceScale{Price::Scale};
-  int64_t qtyScale{Quantity::Scale};
-
-  // Startup FALLBACK funding interval (0 = the venue does not fund this
-  // instrument). The engine settles funding only when told to (the sequenced
-  // ApplyFunding command); this is the calendar it publishes when no schedule
-  // has been set -- the next boundary of a fixed-interval grid anchored at the
-  // sequencer-ts origin, a function of (now, interval). The AUTHORITATIVE
-  // calendar is engine state set by SetFundingSchedule, which overrides this;
-  // see MatchingEngine::nextFundingNs. Excluded from configHash for the same
-  // reason the other mutable knobs are: it reinterprets no stored number, so it
-  // cannot invalidate a snapshot.
-  DurationNs fundingIntervalNs{};
-};
 
 // Book selects the resting-book implementation. The default MatchingBook is
 // the allocation-heavy correctness oracle (fine for backtests and tests, needs
@@ -366,7 +298,6 @@ class MatchingEngine
   // engine/publications.inl
   void publishStatus(TradingStatusReason reason);
   void emitStatus(TradingStatus status, TradingStatusReason reason, int64_t untilNs);
-  void advanceFundingSchedule();
   void publishDerivatives(Price mark);
 
   // engine/orders.inl
@@ -429,12 +360,12 @@ class MatchingEngine
   void chargeFee(OrderId id, uint64_t acct, double feeD, bool maker);
 
   // ---- linear-perp clearing ----
-  struct Position
-  {
-    int64_t qtyRaw{0};    // signed contracts (Quantity raw)
-    int64_t entryRaw{0};  // average entry price (Price raw)
-    Amount margin{0};     // posted position margin (quote raw), reserved in the ledger
-  };
+  //
+  // The positions, the funding calendar and everything that moves money on
+  // them live in engine::Clearing (clearing_, below). What is left here is
+  // the part that is not clearing: the order reservations a fill's initial
+  // margin comes out of, the fee charge on a perp print, and the published
+  // methods, which stay on the engine as thin delegates.
 
   // engine/clearing.inl
   static int64_t iabs64(int64_t v);
@@ -442,14 +373,8 @@ class MatchingEngine
   void releaseOrderIM(OrderId orderId, int64_t qtyRaw, uint64_t acct);
   void onAdjustPosition(const AdjustPosition& a);
 
-  void updatePerpPosition(uint64_t acct, OrderId orderId, bool fillBuy, int64_t qtyRaw,
-                          int64_t priceRaw);
-
   void settlePerp(const Trade& t);
   void onForceClose(const ForceClosePosition& fc);
-  void checkLiquidations(Price mark);
-  void forceClose(uint64_t acct, Price mark);
-  void autoDeleverageEngine(int64_t bankruptSign, Amount deficit, Price mark);
 
   // ---- checkpoint helpers ----
   // engine/checkpoint.inl
@@ -641,7 +566,12 @@ class MatchingEngine
 
   std::unordered_map<OrderId, Reservation> reserve_;
 
-  std::unordered_map<uint64_t, Position> positions_;  // perp positions per account
+  // Positions, the funding calendar and the money that moves on them. Bound
+  // to this engine's cfg_ and sink_ (both declared above it, so the binding
+  // is valid) and to the three pieces of engine-side work clearing delegates
+  // back. Its ledger pointer is a mirror of ledger_/venueAccount_, set in the
+  // one place either is set: setLedger.
+  engine::Clearing clearing_;
 
   bool auctionMode_{false};
 
@@ -661,18 +591,6 @@ class MatchingEngine
   int64_t lastStatusUntil_{0};
 
   bool statusPublished_{false};
-
-  // Last funding rate applied, kFundingRateScale (published, never used in
-  // matching), and the live funding calendar set by SetFundingSchedule
-  // (0 = none: nextFundingNs() falls back to the config derivation). All three
-  // are hashed and carried by the checkpoint as RestoreFunding -- a restored
-  // engine publishes the rate and the boundary the venue will actually settle
-  // on, not a zero and a formula.
-  int64_t fundingRateRaw_{0};
-
-  DurationNs fundingIntervalNs_{};
-
-  SeqNanos nextFundingNs_{};
 };
 
 }  // namespace flox::venue

@@ -272,8 +272,7 @@ RejectReason MatchingEngine<Book>::perpRiskGate(NewOrder& o)
   }
   if (o.reduceOnly)
   {
-    const auto pit = positions_.find(o.accountId);
-    const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
+    const int64_t posQ = clearing_.positionQty(o.accountId);
     int64_t reducible = (o.side == Side::BUY && posQ < 0)    ? -posQ
                         : (o.side == Side::SELL && posQ > 0) ? posQ
                                                              : 0;
@@ -298,8 +297,7 @@ RejectReason MatchingEngine<Book>::perpRiskGate(NewOrder& o)
   }
   if (!cfg_.maxPositionQty.isZero())
   {
-    const auto pit = positions_.find(o.accountId);
-    const int64_t posQ = (pit == positions_.end()) ? 0 : pit->second.qtyRaw;
+    const int64_t posQ = clearing_.positionQty(o.accountId);
     const int64_t worst = posQ + (o.side == Side::BUY ? o.quantity.raw() : -o.quantity.raw());
     if (iabs64(worst) > cfg_.maxPositionQty.raw())
     {
@@ -344,8 +342,7 @@ template <class Book>
 int64_t MatchingEngine<Book>::legFillLimit(uint64_t account, Side side, bool reduceOnly, int64_t want,
                                            CancelReason& reason, int64_t posDeltaRaw) const
 {
-  const auto pit = positions_.find(account);
-  const int64_t posQ = ((pit == positions_.end()) ? 0 : pit->second.qtyRaw) + posDeltaRaw;
+  const int64_t posQ = clearing_.positionQty(account) + posDeltaRaw;
   int64_t allowed = want;
   if (reduceOnly)
   {

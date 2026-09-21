@@ -377,7 +377,7 @@ thousand lines shared with everything else.
 | `engine/publications.inl` | status and derivatives publications, per-account resting-order tracking, mass cancel |
 | `engine/quote_mmp.inl` | two-sided quotes, market-maker protection |
 | `engine/ledger_fees.inl` | fees, reservations, deposits/withdrawals, `settleTrade` |
-| `engine/clearing.inl` | perp positions, funding, mark price, liquidation, auto-deleverage |
+| `engine/clearing.inl` | the engine's side of clearing: the published methods, `settlePerp`, the order-IM moves |
 | `engine/checkpoint.inl` | `stateHash`, `configHash`, `writeSnapshot`, `cloneForSnapshot` |
 | `engine/checkpoint_restore.inl` | `applySnapshotRecord` and the `applyRestore*` handlers |
 | `engine/expiry_pegs.inl` | GTD expiry, pegged orders, OCO |
@@ -404,6 +404,30 @@ its digest are written in one place rather than three.
 
 The public surface is unchanged by the layout, and
 `venue/tests/support/engine_surface.h` says so at compile time.
+
+#### Components
+
+Some sections are not merely a file of definitions any more but a class of
+their own, in `flox-venue/engine/<name>.h`. A component is a plain class, not
+a template: the engine owns one, binds it to `cfg_` and the event sink at
+construction, and calls it from the places its methods used to be called from.
+What a component cannot reach -- engine state that is not its own -- arrives
+as `Hooks`: a context pointer plus plain function pointers, so the seam costs
+an indirect call and no vtable.
+
+| Component | State | What the engine kept |
+|---|---|---|
+| `engine/clearing.h` -- `engine::Clearing` | perp positions, the funding calendar, the ledger the money moves in | `positionQty` and the rest of the published surface as delegates; `consumeOrderIM` / `releaseOrderIM` (they read the order reservations); `settlePerp`'s fee charge; the `DerivativesUpdated` publication |
+
+Each component carries its own snapshot records: `hash*`, `write*` and
+`restore*` methods the engine calls at the point in its traversal where those
+records have always been written. The tags, the record order and the bytes are
+unchanged -- `kSnapshotFormatVersion` did not move -- and the golden replay
+(`venue/tests/golden/replay_hashes.txt`) is what proves it.
+
+`SymbolConfig` lives in `flox-venue/symbol_config.h` rather than at the top of
+`matching_engine.h`, so a component can hold it by reference without including
+the engine that includes the component.
 
 ### Pre-trade risk
 

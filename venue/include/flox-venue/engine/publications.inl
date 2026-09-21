@@ -60,35 +60,14 @@ void MatchingEngine<Book>::emitStatus(TradingStatus status, TradingStatusReason 
   sink_(TradingStatusChanged{cfg_.id, status, reason, untilNs});
 }
 
-// A settlement just happened, so the calendar moves on: one whole interval
-// past the boundary that was settled, and further whole intervals if the
-// settlement ran late enough that one step would still leave the boundary in
-// the past (an operator catching up after an outage must not leave a stale
-// "next funding" in the feed). Only an operator-set schedule moves -- with no
-// schedule the published value is derived from `now` and moves by itself.
-template <class Book>
-void MatchingEngine<Book>::advanceFundingSchedule()
-{
-  if (fundingIntervalNs_.count() <= 0 || nextFundingNs_.raw() <= 0)
-  {
-    return;
-  }
-  nextFundingNs_ += fundingIntervalNs_;
-  if (nextFundingNs_ <= now_)
-  {
-    const DurationNs behind = now_ - nextFundingNs_;
-    nextFundingNs_ += DurationNs{(behind.count() / fundingIntervalNs_.count() + 1) *
-                                 fundingIntervalNs_.count()};
-  }
-}
-
 // Emit the derivatives layer the engine knows: the mark it was just given,
 // the last funding rate it applied, the next funding boundary of the
 // configured schedule and the live open interest.
 template <class Book>
 void MatchingEngine<Book>::publishDerivatives(Price mark)
 {
-  sink_(DerivativesUpdated{cfg_.id, mark, fundingRateRaw_, nextFundingNs(), openInterest()});
+  sink_(DerivativesUpdated{cfg_.id, mark, clearing_.fundingRateRaw(), nextFundingNs(),
+                           openInterest()});
 }
 
 // Owner of a live tracked order (0 if unknown) -- read BEFORE forgetOrder so
