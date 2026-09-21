@@ -47,6 +47,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <memory>
 #include <vector>
 
 using namespace flox;
@@ -287,7 +288,12 @@ void test_cross_margin_liquidation_legs_sorted()
 void test_md_snapshot_body_sorted()
 {
   std::printf("test_md_snapshot_body_sorted\n");
-  MarketDataPublisher<> md([](const MdMessage&) {}, px(0.01), SYM);
+  // Heap, not stack, as market_data.h says and as every other publisher in the
+  // suite is held: at the default level count the object is ~2 MB of
+  // preallocated ladder and a Windows thread gets a one-megabyte stack, so the
+  // stack form compiles everywhere and dies on exactly one job.
+  auto mdHolder = std::make_unique<MarketDataPublisher<>>([](const MdMessage&) {}, px(0.01), SYM);
+  auto& md = *mdHolder;
   MatchingEngine<MatchingBook> eng(cfg(), [&](const OutboundEvent& e)
                                    { md.onEvent(e, 0); });
   double p = 10.0;
