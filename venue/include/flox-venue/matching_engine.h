@@ -13,6 +13,7 @@
 #include "flox-venue/engine/expiry.h"
 #include "flox-venue/engine/mmp.h"
 #include "flox-venue/engine/pegs.h"
+#include "flox-venue/engine/session.h"
 #include "flox-venue/engine/sorted_keys.h"
 #include "flox-venue/engine/stp.h"
 #include "flox-venue/event_hash.h"
@@ -28,6 +29,7 @@
 #include "flox/backtest/fee_schedule.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cassert>
 #include <cstdint>
@@ -294,8 +296,12 @@ class MatchingEngine
   bool luldBand(int64_t& loRaw, int64_t& hiRaw) const;
   void tripLuldHalt();
 
-  // ---- instrument-wide publications ----
-  // engine/publications.inl
+  // ---- session ----
+  // engine/session.inl
+  //
+  // One row of engine/session.h's transition table, plus the two things the
+  // session cannot do for itself: reaching the feed, and reaching the book.
+  void applySession(engine::SessionEvent e, SeqNanos deadline = SeqNanos{});
   void publishStatus(TradingStatusReason reason);
   void emitStatus(TradingStatus status, TradingStatusReason reason, int64_t untilNs);
   void publishDerivatives(Price mark);
@@ -509,8 +515,6 @@ class MatchingEngine
   // exactly as before.
   std::unordered_map<uint64_t, AdmissionProfile> admission_;
 
-  bool delisted_{false};  // withdrawn from trading; outranks halt / session / auction
-
   uint64_t admissionRejects_{0};  // observability: a counterparty sending what it may not
 
   flox::FeeSchedule fees_;
@@ -573,24 +577,12 @@ class MatchingEngine
   // one place either is set: setLedger.
   engine::Clearing clearing_;
 
-  bool auctionMode_{false};
-
-  SeqNanos haltUntil_{};
-
-  // Session state, deliberately separate from cfg_.halted: a closed session and
-  // an operator halt are different facts with different reject reasons, and a
-  // close must not clear a halt underneath it. Hashed and checkpointed.
-  bool closed_{false};
-
-  // Last trading state published, so the feed carries transitions only. Not
-  // hashed and not snapshotted: it is a de-duplication memo of what went OUT,
-  // not engine state -- the state itself is (halted, haltUntil_, auctionMode_,
-  // closed_), which stateHash already covers and a snapshot already restores.
-  TradingStatus lastStatus_{TradingStatus::Trading};
-
-  int64_t lastStatusUntil_{0};
-
-  bool statusPublished_{false};
+  // Trading status, halt, the session boundary, delisting and the auction
+  // phase: the state, the automaton that moves it, and the memo of what was
+  // last published. A non-template component (it touches no book), so the
+  // automaton exists once however many book types the engine is instantiated
+  // with -- see engine/session.h.
+  engine::Session session_;
 };
 
 }  // namespace flox::venue

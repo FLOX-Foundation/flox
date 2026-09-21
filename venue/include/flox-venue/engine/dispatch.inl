@@ -175,11 +175,12 @@ void MatchingEngine<Book>::submit(const InboundCommand& cmd, SeqNanos tsNs)
     return;
   }
   now_ = tsNs;
-  if (cfg_.halted && static_cast<bool>(haltUntil_) && now_ >= haltUntil_)
+  // The guard is asked inline because this runs on every command: it is the
+  // LuldPauseElapsed row's own guard (engine/session.h), so the fast check
+  // and the automaton cannot disagree about when the pause ends.
+  if (session_.pauseElapsed(cfg_.halted, now_))
   {
-    cfg_.halted = false;  // timed LULD volatility pause elapsed
-    haltUntil_ = SeqNanos{};
-    publishStatus(TradingStatusReason::LuldPauseElapsed);
+    applySession(engine::SessionEvent::LuldPauseElapsed);
   }
   expireHolds();
   expireOrders();

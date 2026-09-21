@@ -216,6 +216,15 @@ endif()
       target_compile_definitions(${test_name}
         PRIVATE FLOX_VENUE_GOLDEN_TABLE="${CMAKE_CURRENT_SOURCE_DIR}/tests/golden/replay_hashes.txt")
     endif()
+    if(test_name STREQUAL "test_venue_engine_session")
+      # The session transition table generates its own row of documentation and
+      # this test checks the committed block against it, so the written
+      # automaton cannot drift from the running one. By source path, like the
+      # golden table: FLOX_UPDATE_SESSION_TABLE=1 rewrites it IN THE SOURCE
+      # TREE, where a reviewer sees the diff.
+      target_compile_definitions(${test_name}
+        PRIVATE FLOX_VENUE_SESSION_DOC="${CMAKE_CURRENT_SOURCE_DIR}/../docs/venue/matching.md")
+    endif()
     if(test_name STREQUAL "test_venue_recovery")
       # The helper's path rather than a guess at the build layout: a test that
       # looked for a sibling binary by name would find the wrong one, or none,

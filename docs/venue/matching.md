@@ -214,6 +214,59 @@ It outranks halt, session and auction state: reopening the session does not
 make a delisted instrument tradeable. `Relist` reverses it -- an irreversible
 operator action is one mistake away from needing a restart to undo.
 
+### The session automaton
+
+Every trading-state change the venue has is one row of one table,
+`kSessionTransitions` in `flox-venue/engine/session.h`. Nine of the rows have
+an operator behind them (`AdminAction`); the other two the engine raises
+itself, when the price leaves the limit-up/limit-down band and when the timed
+pause that followed runs out.
+
+Read a row as: when the event arrives and its condition holds, the five flags
+move as the cells say, the new state is published with that reason, and the
+engine performs the last column. A row whose condition does not hold is not a
+transition at all -- nothing is published and nothing is touched.
+
+`--` is "left alone", and it is load-bearing rather than lazy: an operator halt
+on top of a live volatility pause leaves the pause deadline where it is, and a
+closed session leaves the halt underneath it untouched, so reopening returns to
+exactly the state the close interrupted.
+
+The table below is GENERATED from the code. `test_venue_engine_session`
+regenerates it and fails if what is committed here differs, so the written
+automaton cannot drift from the running one; `FLOX_UPDATE_SESSION_TABLE=1`
+rewrites it in place.
+
+<!-- generated: session transitions -->
+| Event | Fires | Halt | Pause deadline | Auction | Session closed | Delisted | Published as | The engine also |
+|---|---|---|---|---|---|---|---|---|
+| `Halt` | always | set | -- | -- | -- | -- | `Administrative` | -- |
+| `Resume` | always | clear | clear | -- | -- | -- | `Administrative` | -- |
+| `HaltAndCancelAll` | always | set | clear | -- | -- | -- | `Administrative` | pulls the book, after the status |
+| `BeginPreOpen` | always | -- | -- | set | -- | -- | `Auction` | -- |
+| `OpenContinuous` | always | -- | -- | clear | -- | -- | `Auction` | uncrosses, before the flags move |
+| `ResumeAuction` | always | clear | clear | set | -- | -- | `Auction` | -- |
+| `CloseSession` | always | -- | -- | -- | set | -- | `Session` | -- |
+| `OpenSession` | always | -- | -- | -- | clear | -- | `Session` | -- |
+| `Delist` | not already delisted | -- | -- | -- | -- | set | `Administrative` | pulls the book, after the status |
+| `Relist` | always | -- | -- | -- | -- | clear | `Administrative` | -- |
+| `LuldBreach` | always | set | set | -- | -- | -- | `LuldBreach` | -- |
+| `LuldPauseElapsed` | halted, with a deadline that has passed | clear | clear | -- | -- | -- | `LuldPauseElapsed` | -- |
+<!-- end generated: session transitions -->
+
+The published state itself is not a sixth flag: it is ranked from the five, in
+the order this table's columns are read backwards -- delisting outranks the
+closed session, which outranks the auction phase, which outranks the halt, and
+a halt with a deadline is the timed pause rather than an operator halt. A
+transition reaches the feed only when the state it produces differs from the
+last one published, so a subscriber sees transitions and only transitions.
+
+One known gap, unchanged by the decomposition and called out here rather than
+left to be found: the snapshot clone (`cloneForSnapshot`) copies the auction
+phase, the pause deadline and the session boundary, but not the delisting
+flag, so a checkpoint taken while an instrument is delisted restores it
+listed.
+
 ### Admission profiles
 
 Counterparties have different rights. One routes flow it manages itself and
@@ -372,9 +425,9 @@ thousand lines shared with everything else.
 |---|---|
 | `engine/dispatch.inl` | construction, `submit`, `tick`, the engine's own accessors and config setters |
 | `engine/validate.inl` | `validate`, `validateConditional`, admission, the perp risk gate, fill limits, `onNew` |
-| `engine/session.inl` | trading status, halt, close/open, delist, pre-open, `runAuction` |
+| `engine/session.inl` | trading status, halt, close/open, delist, pre-open, `runAuction`, the `TradingStatusChanged` publication |
 | `engine/orders.inl` | stops and triggers, `onModify`, `onCancel`, order ownership |
-| `engine/publications.inl` | status and derivatives publications, per-account resting-order tracking, mass cancel |
+| `engine/publications.inl` | derivatives publications, per-account resting-order tracking, mass cancel |
 | `engine/quote_mmp.inl` | two-sided quotes, market-maker protection |
 | `engine/ledger_fees.inl` | fees, reservations, deposits/withdrawals, `settleTrade` |
 | `engine/clearing.inl` | the engine's side of clearing: the published methods, `settlePerp`, the order-IM moves |
@@ -401,6 +454,14 @@ testable without an engine (`venue/tests/test_venue_engine_conduct.cpp`).
 
 Each component serializes and hashes its own fields, so a snapshot section and
 its digest are written in one place rather than three.
+
+One piece is not a fragment but a class of its own:
+`flox-venue/engine/session.h` holds the session state machine -- the trading
+state, the transitions between states, and the memo of what was last
+published. It is not a template, because none of it touches the resting book;
+the engine owns an instance and does the two things the session cannot do for
+itself, reaching the feed and reaching the book. The same state machine
+therefore exists once however many book types the engine is instantiated with.
 
 The public surface is unchanged by the layout, and
 `venue/tests/support/engine_surface.h` says so at compile time.

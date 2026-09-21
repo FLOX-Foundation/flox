@@ -33,12 +33,12 @@ bool MatchingEngine<Book>::onStop(const NewOrder& o)
     sink_(OrderRejected{o.id, o.symbol, RejectReason::UnknownSymbol, o.accountId, o.clientOrderId});
     return false;
   }
-  if (delisted_)
+  if (session_.delisted())
   {
     sink_(OrderRejected{o.id, o.symbol, RejectReason::InstrumentDelisted, o.accountId, o.clientOrderId});
     return false;
   }
-  if (closed_)
+  if (session_.closed())
   {
     sink_(OrderRejected{o.id, o.symbol, RejectReason::MarketClosed, o.accountId, o.clientOrderId});
     return false;

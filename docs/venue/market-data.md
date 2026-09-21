@@ -91,6 +91,10 @@ feed that went quiet, and never sees a repeat for a state that did not change.
 | `AuctionPreOpen` | pre-open accumulation, no matching | 0 |
 | `AuctionUncross` | the uncross itself | 0 |
 | `Closed` | the session is closed; new orders rejected, the book stands | 0 |
+| `Delisted` | withdrawn from trading, with no scheduled return; the book was pulled | 0 |
+
+The transitions between them are one table in `flox-venue/engine/session.h`,
+written out in [matching.md](matching.md#the-session-automaton).
 
 `TradingStatusReason` says why: `Administrative` (an operator `AdminCmd`),
 `LuldBreach`, `LuldPauseElapsed` (the timed pause ran out and trading
