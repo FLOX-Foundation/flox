@@ -40,11 +40,39 @@ class WsGateway
   using Handler = DisconnectCanceller::Handler;  // (cmd, responder, recvMonoNs)
 
   // See TcpGateway: `account` binds each session so a client cannot spoof
-  // another account's id. account == 0 is single-tenant-trusted mode.
+  // another account's id (setAccounts for an endpoint that serves several).
+  // account == 0 is single-tenant-trusted mode.
   explicit WsGateway(GatewaySession::Decoder decoder, uint64_t account = 0)
-      : decoder_(std::move(decoder)), account_(account) {}
+      : decoder_(std::move(decoder)), account_(account), accounts_{account} {}
+
+  // The accounts this endpoint serves, identity first. The ordinary shape of a
+  // client bridge: one connection carrying the flow of many customers, each
+  // with its own account at the venue. A command naming an account outside the
+  // set is refused (`Unauthenticated`); reports for any account in it reach
+  // this connection, and an event naming two of them arrives once.
+  void setAccounts(std::vector<uint64_t> accounts)
+  {
+    accounts_ = std::move(accounts);
+    if (accounts_.empty())
+    {
+      accounts_.push_back(0);
+    }
+    account_ = accounts_.front();
+  }
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
+
+  // Client rate limit for NEW sessions. A setting, not one venue's published
+  // profile: `SessionRateLimit::off()` turns the limiter off outright, which
+  // is the right answer for a bridge whose ordinary traffic is bursty and for
+  // a venue that budgets admission somewhere else. The default is the profile
+  // this used to hardwire, so an existing deployment is unchanged.
+  void setRateLimit(SessionRateLimit limit) { rateLimit_ = limit; }
+
+  // Encoder for a refusal that travels with text (see
+  // SessionRegistry::RejectEncoder). Without one a rate-limit refusal still
+  // reaches the client, just without the wait it has to observe.
+  void setRejectEncoder(SessionRegistry::RejectEncoder enc) { rejectEncoder_ = std::move(enc); }
 
   // Delivery mode (see TcpGateway::setDelivery). The registry carries
   // fully-framed WebSocket bytes: the gateway wraps `encoder`'s payload in a
@@ -118,7 +146,8 @@ class WsGateway
     net::writeAll(fd, reinterpret_cast<const uint8_t*>(resp.data()), resp.size());
 
     // 2. Frame loop.
-    GatewaySession session(account_, decoder_);
+    GatewaySession session(accounts_, decoder_, rateLimit_.policy());
+    session.setName("ws/" + std::to_string(account_));
     session.authenticate(true);
     session.setCancelOnDisconnect(cancelOnDisconnect_.load());
     DisconnectCanceller cod(session.cancelOnDisconnect());
@@ -140,14 +169,33 @@ class WsGateway
         out = ws::buildFrame(ws::Opcode::Text, payload.data(), payload.size());
         return true;
       };
+      // Same wrap for the text-carrying encoder: the registry stores complete
+      // WebSocket frames whichever of the two produced them.
+      SessionRegistry::RejectEncoder wsRejectEncoder;
+      if (rejectEncoder_)
+      {
+        wsRejectEncoder = [enc = rejectEncoder_](const OutboundEvent& e, std::string_view text,
+                                                 uint64_t seq, int64_t tsNs,
+                                                 std::vector<uint8_t>& out) -> bool
+        {
+          std::vector<uint8_t> payload;
+          if (!enc(e, text, seq, tsNs, payload))
+          {
+            return false;
+          }
+          out = ws::buildFrame(ws::Opcode::Text, payload.data(), payload.size());
+          return true;
+        };
+      }
       writer = registry_->attach(
-          session.account(), std::move(wsEncoder),
+          session.accounts(), std::move(wsEncoder),
           [fd](const uint8_t* p, size_t n)
           { return net::writeAll(fd, p, n); },
           [fd]
           { net::shutdownBoth(fd); },
           [&cod](const OutboundEvent& e)
-          { cod.observe(e); });
+          { cod.observe(e); },
+          std::move(wsRejectEncoder));
     }
     const Responder responder =
         (writer != nullptr)
@@ -357,7 +405,7 @@ class WsGateway
     }
     if (writer != nullptr)
     {
-      registry_->detach(session.account(), writer);
+      registry_->detach(session.accounts(), writer);
       writer->stop();
     }
     cod.flush(handler_);
@@ -370,12 +418,13 @@ class WsGateway
   {
     SessionReject rej{};
     RejectEcho echo{};
+    std::string rejectText;
     // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
     // ++clock_ frame counter never advanced time -> permanent bans.
     const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                               std::chrono::steady_clock::now().time_since_epoch())
                               .count();
-    auto cmd = session.handle(p, n, nowNs, rej, &echo);
+    auto cmd = session.handle(p, n, nowNs, rej, &echo, &rejectText);
     if (cmd)
     {
       cod.track(*cmd);
@@ -383,17 +432,21 @@ class WsGateway
     }
     else if (rej != SessionReject::None && registry_ != nullptr)
     {
-      // RateLimited decoded fine before admission turned it away, so `echo`
-      // carries the client's own id/symbol/clientOrderId; the other reasons
-      // (DecodeError, Unauthenticated) never had a command to take them from.
+      // Same policy as TcpGateway: the refusal names the frame it refused for
+      // every reason -- `echo` comes from the decoded command, or from the
+      // ClOrdID legible in the raw bytes when the frame did not decode.
       registry_->send(session.account(),
                       OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
-                                                  session.account(), echo.clientOrderId}});
+                                                  session.account(), echo.clientOrderId}},
+                      rejectText);
     }
   }
 
   GatewaySession::Decoder decoder_;
   uint64_t account_{0};
+  std::vector<uint64_t> accounts_{0};
+  SessionRateLimit rateLimit_{};
+  SessionRegistry::RejectEncoder rejectEncoder_;
   Handler handler_;
   SocketAcceptor acceptor_;
   std::atomic<bool> cancelOnDisconnect_{false};

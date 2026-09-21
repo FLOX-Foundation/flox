@@ -29,18 +29,65 @@ connection and the process keeps running.
 
 - **Authentication.** API-key HMAC logon (`apiKey:timestamp` signed with the
   shared secret), constant-time comparison, timestamp-skew window.
-- **Account binding.** A session bound to an account stamps that account onto
-  every command, overwriting whatever the payload carried. Otherwise a client
-  could act as any account by writing a different id into the message. Account
-  `0` is the explicit "unbound / trusted transport" sentinel.
+- **Account binding.** A session is bound to a SET of accounts
+  (`GatewaySession`'s vector constructor, `bindAccounts`, or `setAccounts` on
+  a gateway), identity first. The three rules:
 
-    Every command carrying an account is stamped, not a listed subset. The
-    stamp walks the command variant and rewrites any account field it finds, so
-    a command added later is covered from the day it exists. The list it
-    replaced had to be extended by hand, and was not: it covered the six
-    order-flow commands and missed the ones that move money, close positions
-    and set another account's entitlements.
-- **Rate limiting**, per session, via `flox::RateLimitPolicy`.
+    | the command names | what happens |
+    |---|---|
+    | no account (`0`) | stamped with the session's identity |
+    | one of the session's accounts | kept |
+    | anything else | refused, `Unauthenticated` |
+
+    Account `0` as the session's identity is the explicit "unbound / trusted
+    transport" sentinel and passes everything through.
+
+    The set exists because the ordinary shape of a client bridge is one
+    connection carrying many customers, each with an account of its own.
+    Binding a connection to exactly one meant the bridge got reports for that
+    one and nothing for the rest; a product on top had to re-derive the
+    accounts of every event and fan them out itself.
+
+    The refusal replaces a silent overwrite. Forcing the session's own account
+    onto a foreign id was only ever possible because there was exactly one
+    account to force, and it was never honest even then: an order aimed at the
+    wrong account was quietly placed on a different one and the client was
+    told nothing.
+
+    The check reads the account field by the same walk over the command
+    variant that stamps it, so a command added later is covered from the day
+    it exists. The hand-written list this replaced covered the six order-flow
+    commands and missed the ones that move money, close positions and set
+    another account's entitlements.
+- **Rate limiting**, per session, via `flox::RateLimitPolicy` -- and the
+  policy is a SETTING (`SessionRateLimit`, applied with
+  `setRateLimit(...)` on `TcpGateway`, `TlsGateway` and `WsGateway`), not a
+  fixed profile. `SessionRateLimit::off()` is one of its values.
+
+    Every session used to be handed `RateLimitPolicy::binance_um_futures()`:
+    50 order actions per 10 seconds, then a three-minute ban after three
+    refusals. That is one exchange's retail tier wired in as the only answer
+    available. A client bridge that fans a single price move out into a burst
+    of amendments is not abusing anything, and against that profile its
+    ordinary traffic is a disconnect followed by three minutes of silence.
+    The numbers stay the default, so an existing deployment is unchanged.
+
+    **The refusal says how long to wait.** A rate-limit reject carries
+    `RateLimited: retry in <n> ms` in the text (FIX `58`), and once a ban is
+    armed, `RateLimitBanned: retry in <n> ms`. The bare reason left the client
+    choosing between retrying in a millisecond and retrying in three minutes,
+    and the usual choice -- retry at once -- is the one that walks into the
+    ban; a silent ban reads exactly like one refused order, so the client
+    keeps sending into a session that will refuse everything. The text travels
+    beside the event through `SessionRegistry::RejectEncoder` (registered with
+    `setRejectEncoder`): `OrderRejected` is the engine's message about an
+    order, and why a SESSION refused a frame is not a property of any order.
+    Without a reject encoder the refusal still arrives, just without the wait.
+
+    A ban is also announced on the venue's own side, once per ban, through
+    `GatewaySession::setBanObserver` (default: a `WARN` naming the session).
+    Refusing a named client for minutes is an operational event, not a private
+    matter between the limiter and one connection.
 - **Cancel-on-disconnect** optionally pulls the session's resting orders when
   the connection drops.
 
@@ -60,7 +107,18 @@ engine sink -> registry.route(event) -> AccountStream (per account)
 
 - Every outbound event carries its owner account (appended fields on the
   event structs, folded into the determinism hash). `Trade`, `FillHeld` and
-  `FillRejected` route to both parties; account `0` is unrouteable.
+  `FillRejected` route to both parties; account `0` is unrouteable. The
+  mapping is public as `SessionRegistry::accountsOf(event, out[2], n)` -- a
+  deployment that fans events out itself would otherwise re-derive it and
+  then drift from it as events gain accounts.
+- **A session that speaks for several accounts has ONE stream.** The extra
+  accounts are aliases onto the first account's `AccountStream`: one sequence
+  space, one resend log, one socket. Not one stream per account sharing a
+  writer -- N streams would interleave N sequence spaces on one connection,
+  and an event naming two of the session's accounts (a trade between two of a
+  bridge's own customers) would be encoded, sequenced and delivered twice.
+  The aliases are dropped on detach, so a borrowed account is free to open a
+  session of its own afterwards.
 - The **matching thread never blocks on a client socket**: `route()` encodes
   and enqueues under the account-stream mutex; the write happens on the
   session's writer thread. A full queue is a slow consumer -- the connection
@@ -70,9 +128,20 @@ engine sink -> registry.route(event) -> AccountStream (per account)
   connection loop attaches the bound account on connect and detaches on
   disconnect. Without a registry a gateway stays in the embedded per-frame
   responder mode.
-- **Rejects are not silent**: a frame that fails decode / admission answers
-  with a sequenced `OrderRejected` (id 0, reason `MalformedMessage` /
-  `RateLimited` / `Unauthenticated`) on the session's own stream.
+- **Rejects are not silent, and they name the frame they refused**: a frame
+  that fails decode or admission answers with a sequenced `OrderRejected`
+  (reason `MalformedMessage` / `RateLimited` / `Unauthenticated`) on the
+  session's own stream, carrying the id, symbol and ClOrdID of the command it
+  refused. When the frame did not decode there is no command to take them
+  from, so the ClOrdID is read out of the raw bytes instead
+  (`clientOrderIdFromRaw`: tag 11 at a field boundary, numeric only -- a
+  wrong identifier points the client at an order it never sent, which is
+  worse than none).
+
+    The zeros this replaced cost the client twice. It could not match the
+    refusal to anything it had sent, so it waited out its timeout and
+    resent -- and the resend was refused again, as a duplicate ClOrdID. One
+    refusal became two, and the second one explained nothing.
 - `TlsGateway` supports delivery mode too. OpenSSL forbids CONCURRENT
   `SSL_read`/`SSL_write` on one `SSL*`, not serialized use: each connection
   carries a mutex over its `SSL*`, the read loop takes it only for the

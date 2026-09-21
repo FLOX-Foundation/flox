@@ -55,6 +55,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -262,13 +264,27 @@ class SessionRegistry
   // form for this protocol (nothing is sent or logged).
   using Encoder =
       std::function<bool(const OutboundEvent&, uint64_t seq, int64_t tsNs, std::vector<uint8_t>&)>;
-  // One retained outbound event: assigned seq, first-send wall-clock time, and
-  // the protocol-agnostic event itself (re-encoded on resend).
+  // The same job as Encoder, for an event that travels with TEXT the event
+  // itself has no room for -- how long a rate limit still has to run, how long
+  // a ban has left. OrderRejected is the engine's message about an order, and
+  // why a SESSION refused a frame is not a property of any order; growing it
+  // a text field would put session state inside every exec report the engine
+  // ever emits. So the text rides beside the event, and only a protocol with
+  // somewhere to put it (FIX Text 58) is asked for it.
+  //
+  // Optional: without one, a refusal with text falls back to the plain Encoder
+  // and the client gets the reason without the wait, exactly as before.
+  using RejectEncoder = std::function<bool(const OutboundEvent&, std::string_view text,
+                                           uint64_t seq, int64_t tsNs, std::vector<uint8_t>&)>;
+  // One retained outbound event: assigned seq, first-send wall-clock time, the
+  // protocol-agnostic event itself (re-encoded on resend) and the text it was
+  // first sent with, so a resend says the same thing the original did.
   struct Logged
   {
     uint64_t seq;
     int64_t tsNs;
     OutboundEvent event;
+    std::string text;
   };
   // Observed on the producer thread for every event routed to the account
   // while this connection is attached (terminal-event pruning hooks).
@@ -285,7 +301,8 @@ class SessionRegistry
   // thread), which must detach() and stop() it on teardown.
   std::shared_ptr<SessionWriter> attach(uint64_t account, Encoder encoder,
                                         SessionWriter::WriteFn write, SessionWriter::CloseFn close,
-                                        EventObserver observer = {})
+                                        EventObserver observer = {},
+                                        RejectEncoder rejectEncoder = {})
   {
     auto stream = streamOf(account, /*create*/ true);
     auto writer =
@@ -297,6 +314,7 @@ class SessionRegistry
       displaced = std::move(stream->writer);
       stream->writer = writer;
       stream->encoder = std::move(encoder);
+      stream->rejectEncoder = std::move(rejectEncoder);
       stream->observer = std::move(observer);
     }
     if (displaced)
@@ -306,6 +324,36 @@ class SessionRegistry
       displaced->kill();
     }
     return writer;
+  }
+
+  // Bind a connection that speaks for SEVERAL accounts -- the ordinary shape
+  // of a client bridge carrying many customers down one socket. They share ONE
+  // stream, keyed by the first account; the rest are aliases onto it.
+  //
+  // One stream, not one per account sharing a writer, for two reasons. Each
+  // stream stamps its own sequence number, so N streams on one socket would
+  // interleave N sequence spaces the client cannot reassemble or resend
+  // against. And an event that names two of the session's accounts -- a trade
+  // between two of the bridge's own customers -- would be encoded and
+  // delivered once per account, so the client would see it twice.
+  std::shared_ptr<SessionWriter> attach(const std::vector<uint64_t>& accounts, Encoder encoder,
+                                        SessionWriter::WriteFn write, SessionWriter::CloseFn close,
+                                        EventObserver observer = {},
+                                        RejectEncoder rejectEncoder = {})
+  {
+    const uint64_t identity = accounts.empty() ? 0 : accounts.front();
+    {
+      std::lock_guard<std::mutex> lk(m_);
+      for (size_t i = 1; i < accounts.size(); ++i)
+      {
+        if (accounts[i] != 0 && accounts[i] != identity)
+        {
+          alias_[accounts[i]] = identity;
+        }
+      }
+    }
+    return attach(identity, std::move(encoder), std::move(write), std::move(close),
+                  std::move(observer), std::move(rejectEncoder));
   }
 
   // Unbind `writer` from `account`. After detach returns, no further events or
@@ -326,29 +374,131 @@ class SessionRegistry
     }
   }
 
+  // Unbind a multi-account session. The aliases go first: an account this
+  // session borrowed must be free to attach a stream of its own afterwards,
+  // and one left pointing at a dead session's stream would send its events to
+  // nobody.
+  void detach(const std::vector<uint64_t>& accounts, const std::shared_ptr<SessionWriter>& writer)
+  {
+    const uint64_t identity = accounts.empty() ? 0 : accounts.front();
+    {
+      std::lock_guard<std::mutex> lk(m_);
+      for (size_t i = 1; i < accounts.size(); ++i)
+      {
+        auto it = alias_.find(accounts[i]);
+        if (it != alias_.end() && it->second == identity)
+        {
+          alias_.erase(it);
+        }
+      }
+    }
+    detach(identity, writer);
+  }
+
   // Route one outbound event to the account(s) it belongs to. Called from the
   // matching thread; never blocks on a socket.
   void route(const OutboundEvent& e)
   {
     uint64_t targets[2] = {0, 0};
     int n = 0;
-    targetsOf(e, targets, n);
+    accountsOf(e, targets, n);
     for (int i = 0; i < n; ++i)
     {
       if (targets[i] == 0)
       {
         continue;  // unrouteable (unbound/trusted-transport account)
       }
-      if (i == 1 && targets[1] == targets[0])
+      // A self-trade and a trade between two accounts of ONE session are the
+      // same thing seen from the socket: one report stream, so one copy. The
+      // comparison is on the stream rather than the account id, because a
+      // session that speaks for several accounts has one of the first and
+      // several of the second.
+      if (i == 1 && streamOf(targets[1], /*create*/ false) == streamOf(targets[0], false))
       {
-        continue;  // self-trade: one report stream, not two
+        continue;
       }
       deliver(targets[i], e);
     }
   }
 
-  // Deliver an event to one specific account (session-level rejects).
-  void send(uint64_t account, const OutboundEvent& e) { deliver(account, e); }
+  // Deliver an event to one specific account (session-level rejects). `text`
+  // is what the reason cannot say on its own -- see RejectEncoder.
+  void send(uint64_t account, const OutboundEvent& e, std::string_view text = {})
+  {
+    deliver(account, e, text);
+  }
+
+  // The accounts an outbound event belongs to, written into `out` (n is 0, 1
+  // or 2; `Trade`, `FillHeld` and `FillRejected` name both sides). Account 0
+  // means unrouteable.
+  //
+  // Public because route() is not the only caller that needs the answer: a
+  // deployment that fans events out itself, or one asking which sessions an
+  // event concerns, previously had to re-derive this mapping and then drift
+  // from it as events gained accounts.
+  static void accountsOf(const OutboundEvent& e, uint64_t out[2], int& n)
+  {
+    n = 0;
+    if (const auto* a = std::get_if<OrderAccepted>(&e))
+    {
+      out[n++] = a->account;
+    }
+    else if (const auto* r = std::get_if<OrderRejected>(&e))
+    {
+      out[n++] = r->account;
+    }
+    else if (const auto* r = std::get_if<CancelRejected>(&e))
+    {
+      out[n++] = r->account;
+    }
+    else if (const auto* t = std::get_if<Trade>(&e))
+    {
+      out[n++] = t->makerAccount;
+      out[n++] = t->takerAccount;
+    }
+    else if (const auto* x = std::get_if<OrderExecuted>(&e))
+    {
+      out[n++] = x->account;
+    }
+    else if (const auto* c = std::get_if<OrderCanceled>(&e))
+    {
+      out[n++] = c->account;
+    }
+    else if (const auto* m = std::get_if<OrderModified>(&e))
+    {
+      out[n++] = m->account;
+    }
+    else if (const auto* g = std::get_if<OrderTriggered>(&e))
+    {
+      out[n++] = g->account;
+    }
+    else if (const auto* fh = std::get_if<FillHeld>(&e))
+    {
+      out[n++] = fh->makerAccount;
+      out[n++] = fh->takerAccount;
+    }
+    else if (const auto* fr = std::get_if<FillRejected>(&e))
+    {
+      out[n++] = fr->takerAccount;
+      out[n++] = fr->makerAccount;
+    }
+    else if (const auto* mp = std::get_if<MmpTriggered>(&e))
+    {
+      out[n++] = mp->accountId;
+    }
+    else if (const auto* f = std::get_if<FeeCharged>(&e))
+    {
+      out[n++] = f->account;
+    }
+    else if (const auto* l = std::get_if<Liquidation>(&e))
+    {
+      out[n++] = l->account;
+    }
+    else if (const auto* b = std::get_if<BalanceUpdate>(&e))
+    {
+      out[n++] = b->account;
+    }
+  }
 
   enum class ResendResult : uint8_t
   {
@@ -386,7 +536,7 @@ class SessionRegistry
       if (logged.seq >= fromSeq)
       {
         std::vector<uint8_t> frame;
-        if (stream->encoder(logged.event, logged.seq, logged.tsNs, frame))
+        if (encodeInto(*stream, logged.event, logged.text, logged.seq, logged.tsNs, frame))
         {
           stream->writer->enqueue(std::move(frame));
         }
@@ -575,8 +725,9 @@ class SessionRegistry
   {
     std::mutex m;
     uint64_t lastSeq{0};
-    std::deque<Logged> log;  // seq-ascending, events (not frames): re-encoded on resend
-    Encoder encoder;         // sticky across disconnects: offline events keep being logged
+    std::deque<Logged> log;       // seq-ascending, events (not frames): re-encoded on resend
+    Encoder encoder;              // sticky across disconnects: offline events keep being logged
+    RejectEncoder rejectEncoder;  // optional: only a protocol with a text field wants one
     EventObserver observer;
     std::shared_ptr<SessionWriter> writer;  // null while the account is offline
   };
@@ -584,6 +735,10 @@ class SessionRegistry
   std::shared_ptr<AccountStream> streamOf(uint64_t account, bool create)
   {
     std::lock_guard<std::mutex> lk(m_);
+    if (auto a = alias_.find(account); a != alias_.end())
+    {
+      account = a->second;  // an account another session speaks for
+    }
     auto it = streams_.find(account);
     if (it != streams_.end())
     {
@@ -598,7 +753,19 @@ class SessionRegistry
     return s;
   }
 
-  void deliver(uint64_t account, const OutboundEvent& e)
+  // One place that decides which encoder an event goes through, so live
+  // delivery and a resend of the same event can never disagree.
+  static bool encodeInto(AccountStream& stream, const OutboundEvent& e, std::string_view text,
+                         uint64_t seq, int64_t tsNs, std::vector<uint8_t>& frame)
+  {
+    if (!text.empty() && stream.rejectEncoder)
+    {
+      return stream.rejectEncoder(e, text, seq, tsNs, frame);
+    }
+    return stream.encoder && stream.encoder(e, seq, tsNs, frame);
+  }
+
+  void deliver(uint64_t account, const OutboundEvent& e, std::string_view text = {})
   {
     auto stream = streamOf(account, /*create*/ false);
     if (!stream)
@@ -617,12 +784,12 @@ class SessionRegistry
     std::vector<uint8_t> frame;
     const uint64_t seq = stream->lastSeq + 1;
     const int64_t tsNs = wallClockNs();
-    if (!stream->encoder(e, seq, tsNs, frame))
+    if (!encodeInto(*stream, e, text, seq, tsNs, frame))
     {
       return;  // no wire form for this event on this protocol
     }
     stream->lastSeq = seq;
-    stream->log.push_back(Logged{seq, tsNs, e});
+    stream->log.push_back(Logged{seq, tsNs, e, std::string(text)});
     while (stream->log.size() > cfg_.resendLogCapacity)
     {
       stream->log.pop_front();
@@ -633,76 +800,13 @@ class SessionRegistry
     }
   }
 
-  // Owner account(s) of an outbound event. Events without an account concept
-  // (none today) or with account 0 are not routed.
-  static void targetsOf(const OutboundEvent& e, uint64_t out[2], int& n)
-  {
-    n = 0;
-    if (const auto* a = std::get_if<OrderAccepted>(&e))
-    {
-      out[n++] = a->account;
-    }
-    else if (const auto* r = std::get_if<OrderRejected>(&e))
-    {
-      out[n++] = r->account;
-    }
-    else if (const auto* r = std::get_if<CancelRejected>(&e))
-    {
-      out[n++] = r->account;
-    }
-    else if (const auto* t = std::get_if<Trade>(&e))
-    {
-      out[n++] = t->makerAccount;
-      out[n++] = t->takerAccount;
-    }
-    else if (const auto* x = std::get_if<OrderExecuted>(&e))
-    {
-      out[n++] = x->account;
-    }
-    else if (const auto* c = std::get_if<OrderCanceled>(&e))
-    {
-      out[n++] = c->account;
-    }
-    else if (const auto* m = std::get_if<OrderModified>(&e))
-    {
-      out[n++] = m->account;
-    }
-    else if (const auto* g = std::get_if<OrderTriggered>(&e))
-    {
-      out[n++] = g->account;
-    }
-    else if (const auto* fh = std::get_if<FillHeld>(&e))
-    {
-      out[n++] = fh->makerAccount;
-      out[n++] = fh->takerAccount;
-    }
-    else if (const auto* fr = std::get_if<FillRejected>(&e))
-    {
-      out[n++] = fr->takerAccount;
-      out[n++] = fr->makerAccount;
-    }
-    else if (const auto* mp = std::get_if<MmpTriggered>(&e))
-    {
-      out[n++] = mp->accountId;
-    }
-    else if (const auto* f = std::get_if<FeeCharged>(&e))
-    {
-      out[n++] = f->account;
-    }
-    else if (const auto* l = std::get_if<Liquidation>(&e))
-    {
-      out[n++] = l->account;
-    }
-    else if (const auto* b = std::get_if<BalanceUpdate>(&e))
-    {
-      out[n++] = b->account;
-    }
-  }
-
   DeliveryConfig cfg_;
   GatewayCounters* counters_;
   std::mutex m_;
   std::unordered_map<uint64_t, std::shared_ptr<AccountStream>> streams_;
+  // account -> the identity whose stream carries it, for the extra accounts of
+  // a session that speaks for many. Empty for every single-account session.
+  std::unordered_map<uint64_t, uint64_t> alias_;
 };
 
 }  // namespace flox::venue

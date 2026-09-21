@@ -32,6 +32,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <utility>
 #include <vector>
 #include "flox/net/socket.h"
@@ -174,9 +175,10 @@ class TlsGateway
   using Handler = DisconnectCanceller::Handler;  // (cmd, responder, recvMonoNs)
 
   // See TcpGateway: `account` binds each session so a client cannot spoof
-  // another account's id. account == 0 is single-tenant-trusted mode.
+  // another account's id (setAccounts for an endpoint that serves several).
+  // account == 0 is single-tenant-trusted mode.
   explicit TlsGateway(GatewaySession::Decoder decoder, uint64_t account = 0)
-      : decoder_(std::move(decoder)), account_(account), ctx_(tls::serverCtx())
+      : decoder_(std::move(decoder)), account_(account), accounts_{account}, ctx_(tls::serverCtx())
   {
   }
   ~TlsGateway()
@@ -189,6 +191,33 @@ class TlsGateway
   }
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
+
+  // The accounts this endpoint serves, identity first. The ordinary shape of a
+  // client bridge: one connection carrying the flow of many customers, each
+  // with its own account at the venue. A command naming an account outside the
+  // set is refused (`Unauthenticated`); reports for any account in it reach
+  // this connection, and an event naming two of them arrives once.
+  void setAccounts(std::vector<uint64_t> accounts)
+  {
+    accounts_ = std::move(accounts);
+    if (accounts_.empty())
+    {
+      accounts_.push_back(0);
+    }
+    account_ = accounts_.front();
+  }
+
+  // Client rate limit for NEW sessions. A setting, not one venue's published
+  // profile: `SessionRateLimit::off()` turns the limiter off outright, which
+  // is the right answer for a bridge whose ordinary traffic is bursty and for
+  // a venue that budgets admission somewhere else. The default is the profile
+  // this used to hardwire, so an existing deployment is unchanged.
+  void setRateLimit(SessionRateLimit limit) { rateLimit_ = limit; }
+
+  // Encoder for a refusal that travels with text (see
+  // SessionRegistry::RejectEncoder). Without one a rate-limit refusal still
+  // reaches the client, just without the wait it has to observe.
+  void setRejectEncoder(SessionRegistry::RejectEncoder enc) { rejectEncoder_ = std::move(enc); }
 
   // Delivery mode (see TcpGateway::setDelivery): register every connection in
   // `registry` and deliver exec reports through per-session bounded queues.
@@ -380,7 +409,8 @@ class TlsGateway
       SSL_free(ssl);
       return;  // acceptor owns the fd
     }
-    GatewaySession session(account_, decoder_);
+    GatewaySession session(accounts_, decoder_, rateLimit_.policy());
+    session.setName("tls/" + std::to_string(account_));
     session.authenticate(true);
     session.setCancelOnDisconnect(cancelOnDisconnect_.load());
     DisconnectCanceller cod(session.cancelOnDisconnect());
@@ -393,13 +423,14 @@ class TlsGateway
       // holds the mutex longer than one poll interval.
       setRecvTimeoutMs(fd, idleMs > 0 ? std::min<int64_t>(idleMs, kPollMs) : kPollMs);
       writer = registry_->attach(
-          session.account(), encoder_,
+          session.accounts(), encoder_,
           [ssl, &sslMu](const uint8_t* p, size_t n)
           { return writeFrameLocked(ssl, sslMu, p, n); },
           [fd]
           { net::shutdownBoth(fd); },
           [&cod](const OutboundEvent& e)
-          { cod.observe(e); });
+          { cod.observe(e); },
+          rejectEncoder_);
     }
     // In delivery mode the responder feeds the same per-session queue as the
     // routed events (single writer owns the SSL*'s write side).
@@ -471,12 +502,13 @@ class TlsGateway
       }
       SessionReject rej{};
       RejectEcho echo{};
+      std::string rejectText;
       // Real monotonic nanoseconds (rate-limit windows are wall-clock); the old
       // ++clock_ frame counter never advanced time -> permanent bans.
       const int64_t nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now().time_since_epoch())
                                 .count();
-      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej, &echo);
+      auto cmd = session.handle(frame.data(), frame.size(), nowNs, rej, &echo, &rejectText);
       if (cmd)
       {
         cod.track(*cmd);
@@ -485,13 +517,14 @@ class TlsGateway
       else if (rej != SessionReject::None && registry_ != nullptr)
       {
         // A rejected frame answers with a sequenced exec-report reject instead
-        // of the old silence -- same policy as TcpGateway. RateLimited decoded
-        // fine before admission turned it away, so `echo` carries the client's
-        // own id/symbol/clientOrderId; the other reasons never had a command
-        // to take them from.
+        // of the old silence -- same policy as TcpGateway, and it names the
+        // frame it refused for every reason (GatewaySession::handle fills
+        // `echo` from the decoded command, or from the ClOrdID legible in the
+        // raw bytes when the frame did not decode).
         registry_->send(session.account(),
                         OutboundEvent{OrderRejected{echo.id, echo.symbol, toRejectReason(rej),
-                                                    session.account(), echo.clientOrderId}});
+                                                    session.account(), echo.clientOrderId}},
+                        rejectText);
       }
     }
     if (writer != nullptr)
@@ -499,7 +532,7 @@ class TlsGateway
       // Order matters: detach (no new frames are routed here), stop (drain and
       // JOIN the writer thread -- its last SSL_write finishes) and only then
       // SSL_shutdown/SSL_free below. The writer never sees a freed SSL*.
-      registry_->detach(session.account(), writer);
+      registry_->detach(session.accounts(), writer);
       writer->stop();
     }
     cod.flush(handler_);
@@ -510,6 +543,9 @@ class TlsGateway
 
   GatewaySession::Decoder decoder_;
   uint64_t account_{0};
+  std::vector<uint64_t> accounts_{0};
+  SessionRateLimit rateLimit_{};
+  SessionRegistry::RejectEncoder rejectEncoder_;
   SSL_CTX* ctx_{nullptr};
   Handler handler_;
   SocketAcceptor acceptor_;

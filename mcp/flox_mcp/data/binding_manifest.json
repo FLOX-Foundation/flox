@@ -22275,6 +22275,11 @@
         },
         {
           "kind": "method",
+          "name": "retryAfterNs",
+          "parent": "RateLimitPolicy"
+        },
+        {
+          "kind": "method",
           "name": "setBan",
           "parent": "RateLimitPolicy"
         },

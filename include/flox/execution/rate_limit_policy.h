@@ -189,6 +189,63 @@ class RateLimitPolicy
     return out;
   }
 
+  // Nanoseconds until `action` would be admitted again: the remainder of an
+  // active ban, otherwise how long the tightest matching bucket needs for
+  // enough of its oldest charges to age out. 0 when the action fits right now.
+  //
+  // This is what a refusal has to SAY. "Rate limited" on its own leaves the
+  // caller guessing between retrying in a millisecond and retrying in three
+  // minutes, and the usual guess -- retry immediately -- is the one that
+  // walks into the ban.
+  int64_t retryAfterNs(ActionKind action, int64_t nowNs) const noexcept
+  {
+    if (_banUntilNs > nowNs)
+    {
+      return _banUntilNs - nowNs;
+    }
+    const EndpointFamily family = familyOf(action);
+    int64_t worst = 0;
+    for (const auto& b : _buckets)
+    {
+      if (b.endpointFamily != family)
+      {
+        continue;
+      }
+      // Read-only: the expired head is skipped rather than evicted, so asking
+      // when to retry never changes what the policy would charge.
+      const int64_t cutoff = nowNs - b.windowNs;
+      uint32_t live = 0;
+      for (const auto& c : b.consumed)
+      {
+        if (c.first > cutoff)
+        {
+          live += c.second;
+        }
+      }
+      const uint32_t w = pickWeight(b, action);
+      if (live + w <= b.capacity)
+      {
+        continue;
+      }
+      const uint32_t needed = live + w - b.capacity;
+      uint32_t freed = 0;
+      for (const auto& c : b.consumed)
+      {
+        if (c.first <= cutoff)
+        {
+          continue;
+        }
+        freed += c.second;
+        if (freed >= needed)
+        {
+          worst = std::max(worst, c.first + b.windowNs - nowNs);
+          break;
+        }
+      }
+    }
+    return worst;
+  }
+
   int64_t banUntilNs() const noexcept { return _banUntilNs; }
   uint32_t consecutiveRejects() const noexcept { return _consecutiveRejects; }
   size_t bucketCount() const noexcept { return _buckets.size(); }
