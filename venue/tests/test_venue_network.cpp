@@ -94,7 +94,7 @@ void test_session()
                    { return SbeOrderEntryCodec::decode(p, n); }, limits);
 
   std::vector<uint8_t> buf;
-  SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::BUY, 100, 1)}, buf);
+  SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::BUY, 100, 1, /*acct*/ 7)}, buf);
 
   SessionReject rej{};
   CHECK(!s.handle(buf.data(), buf.size(), 1000, rej).has_value());
@@ -131,7 +131,7 @@ void test_session_rate_limit_reject_echoes_client_order_id()
                    { return SbeOrderEntryCodec::decode(p, n); }, limits);
   s.authenticate(true);
 
-  NewOrder o = mk(kOrderId, Side::BUY, 100, 1);
+  NewOrder o = mk(kOrderId, Side::BUY, 100, 1, /*acct*/ 7);
   o.clientOrderId = kClOrdId;
   std::vector<uint8_t> buf;
   SbeOrderEntryCodec::encode(InboundCommand{o}, buf);
@@ -292,26 +292,49 @@ void test_udp_md()
   CHECK(got > 0);
 }
 
-// A session bound to a real account must force THAT account onto every command,
-// so a client cannot act as another account by writing a different id into the
-// payload. An unbound (account 0 / trusted-transport) session passes through.
+// A session bound to real accounts acts only for those accounts: a command
+// naming one of them keeps it, a command naming none is stamped with the
+// session's identity, and a command naming anything else is refused. An
+// unbound (account 0 / trusted-transport) session passes through.
 void test_session_account_binding()
 {
   std::printf("test_session_account_binding\n");
   auto dec = [](const uint8_t* p, size_t n)
   { return SbeOrderEntryCodec::decode(p, n); };
 
-  // Bound to account 7; the wire order claims account 1 -> must be stamped to 7.
+  // Bound to account 7; the wire order claims account 1 -> refused, not
+  // silently re-aimed at 7.
   GatewaySession bound(7, dec);
   bound.authenticate(true);
   std::vector<uint8_t> buf;
   SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::BUY, 100, 1, /*acct*/ 1)}, buf);
   SessionReject rej{};
   auto cmd = bound.handle(buf.data(), buf.size(), 1000, rej);
-  CHECK(cmd.has_value());
-  const auto* no = std::get_if<NewOrder>(&*cmd);
+  CHECK(!cmd.has_value());
+  CHECK(rej == SessionReject::Unauthenticated);
+
+  // The same order naming no account at all is the client saying "me".
+  std::vector<uint8_t> unnamed;
+  SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::BUY, 100, 1, /*acct*/ 0)}, unnamed);
+  auto stamped = bound.handle(unnamed.data(), unnamed.size(), 1000, rej);
+  CHECK(stamped.has_value());
+  const auto* no = std::get_if<NewOrder>(&*stamped);
   CHECK(no != nullptr);
-  CHECK(no->accountId == 7);  // client-supplied 1 overridden by the session account
+  CHECK(no->accountId == 7);
+
+  // A session that speaks for two accounts keeps either of them.
+  GatewaySession pair(std::vector<uint64_t>{7, 1}, dec);
+  pair.authenticate(true);
+  auto kept = pair.handle(buf.data(), buf.size(), 1000, rej);
+  CHECK(kept.has_value());
+  const auto* nk = std::get_if<NewOrder>(&*kept);
+  CHECK(nk != nullptr && nk->accountId == 1);
+
+  // ... and refuses a third.
+  std::vector<uint8_t> third;
+  SbeOrderEntryCodec::encode(InboundCommand{mk(2, Side::BUY, 100, 1, /*acct*/ 99)}, third);
+  CHECK(!pair.handle(third.data(), third.size(), 1000, rej).has_value());
+  CHECK(rej == SessionReject::Unauthenticated);
 
   // Unbound session (account 0): the client-supplied account passes through.
   GatewaySession open(0, dec);
@@ -324,14 +347,15 @@ void test_session_account_binding()
   CHECK(no2 != nullptr && no2->accountId == 1);  // trusted passthrough
 }
 
-// A gateway constructed with a real account must bind every connection's
-// session to it, so a client that writes a different accountId into the payload
-// is stamped back to the bound account (cross-account protection at the wire).
+// A gateway constructed with a real account binds every connection's session
+// to it, so a client that writes a DIFFERENT accountId into the payload never
+// reaches the engine at all (cross-account protection at the wire).
 void test_gateway_binds_account()
 {
   std::printf("test_gateway_binds_account\n");
   std::mutex m;
   uint64_t seenAccount = 0;
+  std::set<OrderId> seenIds;
   TcpGateway gw([](const uint8_t* p, size_t n)
                 { return SbeOrderEntryCodec::decode(p, n); },
                 /*account=*/7);
@@ -341,6 +365,7 @@ void test_gateway_binds_account()
                               if (const auto* no = std::get_if<NewOrder>(&c))
                               {
                                 seenAccount = no->accountId;
+                                seenIds.insert(no->id);
                               } });
   CHECK(port > 0);
   if (port <= 0)
@@ -357,6 +382,12 @@ void test_gateway_binds_account()
   std::vector<uint8_t> b;
   SbeOrderEntryCodec::encode(InboundCommand{mk(1, Side::SELL, 100, 5, /*acct*/ 99)}, b);
   net::writeFrame(c, b.data(), b.size());
+  // ... followed by one that names no account: it is stamped with the bound
+  // account, and its arrival is how the test knows the first was refused
+  // rather than merely slow.
+  std::vector<uint8_t> mine;
+  SbeOrderEntryCodec::encode(InboundCommand{mk(2, Side::SELL, 100, 5, /*acct*/ 0)}, mine);
+  net::writeFrame(c, mine.data(), mine.size());
 
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (std::chrono::steady_clock::now() < deadline)
@@ -372,7 +403,9 @@ void test_gateway_binds_account()
   }
   ::close(c);
   gw.stop();
-  CHECK(seenAccount == 7);  // spoofed 99 overridden by the gateway's bound account
+  CHECK(seenAccount == 7);       // the unnamed order got the bound account
+  CHECK(seenIds.count(1) == 0);  // the spoofed 99 never reached the engine
+  CHECK(seenIds.count(2) == 1);  // ... and the honest one did
 }
 
 void test_logon()

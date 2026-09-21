@@ -14,6 +14,7 @@
 
 #include "flox/execution/rate_limit_policy.h"
 
+#include <algorithm>
 #include <concepts>
 #include <cstdint>
 #include <functional>
@@ -22,6 +23,7 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace flox::venue
 {
@@ -273,8 +275,30 @@ class GatewaySession
   GatewaySession(uint64_t account, Decoder decode,
                  flox::RateLimitPolicy limits = flox::RateLimitPolicy::binance_um_futures(),
                  std::string secret = {})
-      : account_(account), decode_(std::move(decode)), limits_(std::move(limits)), secret_(std::move(secret))
+      : accounts_{account},
+        decode_(std::move(decode)),
+        limits_(std::move(limits)),
+        secret_(std::move(secret))
   {
+  }
+
+  // A session that speaks for SEVERAL accounts. The ordinary shape of a client
+  // bridge: one connection carrying the flow of many customers, each with its
+  // own account at the venue. The first account is the session's own identity
+  // (the one an unnamed command is stamped with, the one the outbound stream
+  // is keyed by); the rest are accounts it is entitled to act for.
+  GatewaySession(std::vector<uint64_t> accounts, Decoder decode,
+                 flox::RateLimitPolicy limits = flox::RateLimitPolicy::binance_um_futures(),
+                 std::string secret = {})
+      : accounts_(std::move(accounts)),
+        decode_(std::move(decode)),
+        limits_(std::move(limits)),
+        secret_(std::move(secret))
+  {
+    if (accounts_.empty())
+    {
+      accounts_.push_back(0);
+    }
   }
 
   // The name this session is known by in the venue's own log (a ban says who
@@ -288,7 +312,14 @@ class GatewaySession
 
   void authenticate(bool ok) noexcept { authed_ = ok; }
   bool authenticated() const noexcept { return authed_; }
-  uint64_t account() const noexcept { return account_; }
+  // The session's own identity: the first of its accounts.
+  uint64_t account() const noexcept { return accounts_.front(); }
+  // Every account this session may act for, identity first.
+  const std::vector<uint64_t>& accounts() const noexcept { return accounts_; }
+  bool speaksFor(uint64_t a) const noexcept
+  {
+    return std::find(accounts_.begin(), accounts_.end(), a) != accounts_.end();
+  }
 
   // Per-SESSION cancel-on-disconnect. The gateway-wide atomic is only the
   // default seeded into each new session; this flag is what the connection
@@ -296,10 +327,20 @@ class GatewaySession
   // config) is future work -- today deployments set it at accept time.
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_ = on; }
   bool cancelOnDisconnect() const noexcept { return cancelOnDisconnect_; }
-  // Bind this session to an authenticated account (e.g. after logon resolves the
-  // API key to an account). Once bound to a non-zero account, handle() forces
-  // that account onto every command -- see stampAccount.
-  void bindAccount(uint64_t a) noexcept { account_ = a; }
+  // Bind this session to an authenticated account (e.g. after logon resolves
+  // the API key to an account). Once bound to a non-zero account, handle()
+  // stamps that account onto a command that names none, and REFUSES one that
+  // names an account the session does not speak for -- see the authorization
+  // block in handle().
+  void bindAccount(uint64_t a) { accounts_.assign(1, a); }
+  void bindAccounts(std::vector<uint64_t> accounts)
+  {
+    accounts_ = std::move(accounts);
+    if (accounts_.empty())
+    {
+      accounts_.push_back(0);
+    }
+  }
 
   // API-key HMAC logon (crypto-exchange style): the client signs
   // "apiKey:timestamp" with the shared secret. Verifies signature (constant
@@ -388,18 +429,35 @@ class GatewaySession
       }
       return std::nullopt;
     }
-    // Authorization: a session bound to a real account may only act as that
-    // account. Overwrite the client-supplied accountId so a client can never
-    // place orders on, spend the collateral of, or mass-cancel another account
-    // by writing a different id into the payload. account_ == 0 is the "unbound
-    // / trusted-transport" sentinel (current gateway stubs) and passes through.
-    if (account_ != 0)
-    {
-      stampAccount(*cmd, account_);
-    }
     if (echo != nullptr)
     {
       *echo = rejectEchoOf(*cmd);
+    }
+    // Authorization: a bound session may act only for the accounts it speaks
+    // for. A command that names none is stamped with the session's identity; a
+    // command that names one of the session's accounts keeps it; a command
+    // that names anything else is refused, so a client can never place orders
+    // on, spend the collateral of, or mass-cancel an account it was not given.
+    // account() == 0 is the "unbound / trusted-transport" sentinel and passes
+    // through untouched.
+    //
+    // The refusal replaces a silent overwrite. Forcing the session's own
+    // account onto a foreign id was safe with exactly one account and became
+    // meaningless with several -- there is no single id to force -- and it was
+    // never honest even with one: a client that named the wrong account had
+    // its order placed on a different one and was told nothing.
+    if (account() != 0)
+    {
+      const uint64_t named = accountOf(*cmd);
+      if (named == 0)
+      {
+        stampAccount(*cmd, account());
+      }
+      else if (!speaksFor(named))
+      {
+        out = SessionReject::Unauthenticated;
+        return std::nullopt;
+      }
     }
     if (!limits_.tryConsume(actionOf(*cmd), nowNs))
     {
@@ -418,7 +476,7 @@ class GatewaySession
         announcedBanUntilNs_ = limits_.banUntilNs();
         if (banObserver_)
         {
-          banObserver_(SessionBan{name_, account_, announcedBanUntilNs_, retryNs});
+          banObserver_(SessionBan{name_, account(), announcedBanUntilNs_, retryNs});
         }
       }
       return std::nullopt;
@@ -442,6 +500,32 @@ class GatewaySession
       return;
     }
     echo->clientOrderId = clientOrderIdFromRaw(p, n);
+  }
+
+  // The account a command names, or 0 when it names none (admin and market
+  // commands carry no account). Reads the same field stampAccount writes, by
+  // the same walk over the variant, so the two cannot drift apart.
+  static uint64_t accountOf(const InboundCommand& c) noexcept
+  {
+    return std::visit(
+        [](const auto& m) -> uint64_t
+        {
+          using Cmd = std::remove_cvref_t<decltype(m)>;
+          if constexpr (HasAccountId<Cmd>)
+          {
+            return m.accountId;
+          }
+          else if constexpr (HasAccount<Cmd>)
+          {
+            return m.account;
+          }
+          else
+          {
+            static_assert(!NamesAnAccount<Cmd>, "account field of an unexpected type");
+            return 0;
+          }
+        },
+        c);
   }
 
   // Force `a` onto every account-bearing command so the session can only ever
@@ -476,7 +560,7 @@ class GatewaySession
         c);
   }
 
-  uint64_t account_;
+  std::vector<uint64_t> accounts_;  // never empty; accounts_.front() is the identity
   Decoder decode_;
   flox::RateLimitPolicy limits_;
   std::string secret_;

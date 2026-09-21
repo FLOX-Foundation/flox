@@ -175,9 +175,10 @@ class TlsGateway
   using Handler = DisconnectCanceller::Handler;  // (cmd, responder, recvMonoNs)
 
   // See TcpGateway: `account` binds each session so a client cannot spoof
-  // another account's id. account == 0 is single-tenant-trusted mode.
+  // another account's id (setAccounts for an endpoint that serves several).
+  // account == 0 is single-tenant-trusted mode.
   explicit TlsGateway(GatewaySession::Decoder decoder, uint64_t account = 0)
-      : decoder_(std::move(decoder)), account_(account), ctx_(tls::serverCtx())
+      : decoder_(std::move(decoder)), account_(account), accounts_{account}, ctx_(tls::serverCtx())
   {
   }
   ~TlsGateway()
@@ -190,6 +191,21 @@ class TlsGateway
   }
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
+
+  // The accounts this endpoint serves, identity first. The ordinary shape of a
+  // client bridge: one connection carrying the flow of many customers, each
+  // with its own account at the venue. A command naming an account outside the
+  // set is refused (`Unauthenticated`); reports for any account in it reach
+  // this connection, and an event naming two of them arrives once.
+  void setAccounts(std::vector<uint64_t> accounts)
+  {
+    accounts_ = std::move(accounts);
+    if (accounts_.empty())
+    {
+      accounts_.push_back(0);
+    }
+    account_ = accounts_.front();
+  }
 
   // Client rate limit for NEW sessions. A setting, not one venue's published
   // profile: `SessionRateLimit::off()` turns the limiter off outright, which
@@ -393,7 +409,7 @@ class TlsGateway
       SSL_free(ssl);
       return;  // acceptor owns the fd
     }
-    GatewaySession session(account_, decoder_, rateLimit_.policy());
+    GatewaySession session(accounts_, decoder_, rateLimit_.policy());
     session.setName("tls/" + std::to_string(account_));
     session.authenticate(true);
     session.setCancelOnDisconnect(cancelOnDisconnect_.load());
@@ -407,7 +423,7 @@ class TlsGateway
       // holds the mutex longer than one poll interval.
       setRecvTimeoutMs(fd, idleMs > 0 ? std::min<int64_t>(idleMs, kPollMs) : kPollMs);
       writer = registry_->attach(
-          session.account(), encoder_,
+          session.accounts(), encoder_,
           [ssl, &sslMu](const uint8_t* p, size_t n)
           { return writeFrameLocked(ssl, sslMu, p, n); },
           [fd]
@@ -516,7 +532,7 @@ class TlsGateway
       // Order matters: detach (no new frames are routed here), stop (drain and
       // JOIN the writer thread -- its last SSL_write finishes) and only then
       // SSL_shutdown/SSL_free below. The writer never sees a freed SSL*.
-      registry_->detach(session.account(), writer);
+      registry_->detach(session.accounts(), writer);
       writer->stop();
     }
     cod.flush(handler_);
@@ -527,6 +543,7 @@ class TlsGateway
 
   GatewaySession::Decoder decoder_;
   uint64_t account_{0};
+  std::vector<uint64_t> accounts_{0};
   SessionRateLimit rateLimit_{};
   SessionRegistry::RejectEncoder rejectEncoder_;
   SSL_CTX* ctx_{nullptr};

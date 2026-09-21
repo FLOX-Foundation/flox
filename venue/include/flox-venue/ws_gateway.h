@@ -40,9 +40,25 @@ class WsGateway
   using Handler = DisconnectCanceller::Handler;  // (cmd, responder, recvMonoNs)
 
   // See TcpGateway: `account` binds each session so a client cannot spoof
-  // another account's id. account == 0 is single-tenant-trusted mode.
+  // another account's id (setAccounts for an endpoint that serves several).
+  // account == 0 is single-tenant-trusted mode.
   explicit WsGateway(GatewaySession::Decoder decoder, uint64_t account = 0)
-      : decoder_(std::move(decoder)), account_(account) {}
+      : decoder_(std::move(decoder)), account_(account), accounts_{account} {}
+
+  // The accounts this endpoint serves, identity first. The ordinary shape of a
+  // client bridge: one connection carrying the flow of many customers, each
+  // with its own account at the venue. A command naming an account outside the
+  // set is refused (`Unauthenticated`); reports for any account in it reach
+  // this connection, and an event naming two of them arrives once.
+  void setAccounts(std::vector<uint64_t> accounts)
+  {
+    accounts_ = std::move(accounts);
+    if (accounts_.empty())
+    {
+      accounts_.push_back(0);
+    }
+    account_ = accounts_.front();
+  }
 
   void setCancelOnDisconnect(bool on) noexcept { cancelOnDisconnect_.store(on); }
 
@@ -130,7 +146,7 @@ class WsGateway
     net::writeAll(fd, reinterpret_cast<const uint8_t*>(resp.data()), resp.size());
 
     // 2. Frame loop.
-    GatewaySession session(account_, decoder_, rateLimit_.policy());
+    GatewaySession session(accounts_, decoder_, rateLimit_.policy());
     session.setName("ws/" + std::to_string(account_));
     session.authenticate(true);
     session.setCancelOnDisconnect(cancelOnDisconnect_.load());
@@ -172,7 +188,7 @@ class WsGateway
         };
       }
       writer = registry_->attach(
-          session.account(), std::move(wsEncoder),
+          session.accounts(), std::move(wsEncoder),
           [fd](const uint8_t* p, size_t n)
           { return net::writeAll(fd, p, n); },
           [fd]
@@ -389,7 +405,7 @@ class WsGateway
     }
     if (writer != nullptr)
     {
-      registry_->detach(session.account(), writer);
+      registry_->detach(session.accounts(), writer);
       writer->stop();
     }
     cod.flush(handler_);
@@ -428,6 +444,7 @@ class WsGateway
 
   GatewaySession::Decoder decoder_;
   uint64_t account_{0};
+  std::vector<uint64_t> accounts_{0};
   SessionRateLimit rateLimit_{};
   SessionRegistry::RejectEncoder rejectEncoder_;
   Handler handler_;

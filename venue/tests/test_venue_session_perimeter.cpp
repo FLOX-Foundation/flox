@@ -389,3 +389,162 @@ TEST(SessionPerimeter, TheWireRefusalCarriesTheWaitThroughTheGateway)
   ::close(c);
   gw.stop();
 }
+
+// ---------------------------------------------------------------------------
+// One session, many accounts.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+// A FIX encoder pair for a gateway: the plain one, and the one that carries a
+// session refusal's text.
+SessionRegistry::Encoder fixEncoder()
+{
+  return [](const OutboundEvent& e, uint64_t seq, int64_t, std::vector<uint8_t>& out)
+  {
+    const std::string m = FixCodec::encode(e, seq, "VENUE", "CLIENT", "20260921-00:00:00.000");
+    out.assign(m.begin(), m.end());
+    return !m.empty();
+  };
+}
+
+}  // namespace
+
+// A client bridge speaks for many accounts down ONE connection. The gateway
+// bound a connection to exactly one, so the bridge got reports for that one
+// and nothing for the rest -- every customer but the first was invisible.
+TEST(SessionPerimeter, OneSessionSpeaksForItsWholeSetOfAccounts)
+{
+  constexpr uint64_t kFirst = 7;
+  constexpr uint64_t kSecond = 8;
+  constexpr uint64_t kStranger = 99;
+
+  SessionRegistry registry;
+  TcpGateway gw(fixDecoder(), kFirst);
+  gw.setAccounts({kFirst, kSecond});
+  gw.setDelivery(&registry, fixEncoder());
+  gw.setRateLimit(SessionRateLimit::off());
+
+  // The engine stands in as an acknowledger: every admitted order comes back
+  // as an OrderAccepted for the account that actually owns it.
+  const int port =
+      gw.start(0,
+               [&registry](const InboundCommand& c, const TcpGateway::Responder&, int64_t)
+               {
+                 const auto* o = std::get_if<NewOrder>(&c);
+                 if (o == nullptr)
+                 {
+                   return;
+                 }
+                 OrderAccepted a;
+                 a.id = o->id;
+                 a.symbol = o->symbol;
+                 a.side = o->side;
+                 a.price = o->price;
+                 a.leavesQty = o->quantity;
+                 a.account = o->accountId;
+                 a.clientOrderId = o->clientOrderId;
+                 registry.route(OutboundEvent{a});
+               });
+  ASSERT_GT(port, 0);
+
+  const int c = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(c, 0);
+  sockaddr_in a{};
+  a.sin_family = AF_INET;
+  a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  a.sin_port = htons(static_cast<uint16_t>(port));
+  ASSERT_EQ(::connect(c, reinterpret_cast<sockaddr*>(&a), sizeof a), 0);
+  timeval tv{};
+  tv.tv_sec = 5;  // deadline: a report that never arrives fails rather than hangs
+  ::setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+
+  for (const auto& [clOrdId, account] : std::vector<std::pair<uint64_t, uint64_t>>{
+           {101, kFirst}, {102, kSecond}, {103, kStranger}})
+  {
+    const std::string m = newOrderSingle(clOrdId, account);
+    ASSERT_TRUE(net::writeFrame(c, reinterpret_cast<const uint8_t*>(m.data()), m.size()));
+  }
+
+  std::unordered_map<std::string, std::string> statusOf;  // ClOrdID -> OrdStatus
+  for (int i = 0; i < 3; ++i)
+  {
+    std::vector<uint8_t> reply;
+    ASSERT_TRUE(net::readFrame(c, reply)) << "only " << i << " reports arrived";
+    auto w = fields(std::string(reply.begin(), reply.end()));
+    statusOf[w[11]] = w[39];
+  }
+
+  EXPECT_EQ(statusOf["101"], "0") << "the session's first account was not acknowledged";
+  EXPECT_EQ(statusOf["102"], "0") << "the session's second account was not acknowledged";
+  EXPECT_EQ(statusOf["103"], "8") << "an order for an account the session does not speak for "
+                                     "must be refused, not accepted";
+
+  ::close(c);
+  gw.stop();
+}
+
+// A trade between two accounts of the SAME session is one event on one socket.
+// Keyed per account it would be encoded twice, sequenced twice and delivered
+// twice down the one connection that holds both.
+TEST(SessionPerimeter, AnEventNamingTwoAccountsOfOneSessionArrivesOnce)
+{
+  constexpr uint64_t kFirst = 7;
+  constexpr uint64_t kSecond = 8;
+
+  SessionRegistry registry;
+  std::vector<std::vector<uint8_t>> written;
+  auto writer = registry.attach(
+      std::vector<uint64_t>{kFirst, kSecond},
+      [](const OutboundEvent&, uint64_t seq, int64_t, std::vector<uint8_t>& out)
+      {
+        out.assign(1, static_cast<uint8_t>(seq));
+        return true;
+      },
+      [&written](const uint8_t* p, size_t n)
+      {
+        written.emplace_back(p, p + n);
+        return true;
+      },
+      [] {});
+
+  FillHeld held;
+  held.heldId = 1;
+  held.symbol = kSym;
+  held.makerAccount = kFirst;
+  held.takerAccount = kSecond;
+  registry.route(OutboundEvent{held});
+
+  // One sequence number consumed, not two: the seq space belongs to the
+  // session, and a client that saw 1 and 2 for one event could never close the
+  // gap it thinks it has.
+  EXPECT_EQ(registry.lastSeq(kFirst), 1u);
+  EXPECT_EQ(registry.lastSeq(kSecond), 1u) << "the alias must resolve to the same stream";
+  EXPECT_EQ(registry.logSlice(kFirst, 1).size(), 1u);
+
+  // ... and an event naming only one of the two still arrives.
+  OrderAccepted acc;
+  acc.id = 5;
+  acc.symbol = kSym;
+  acc.account = kSecond;
+  registry.route(OutboundEvent{acc});
+  EXPECT_EQ(registry.lastSeq(kFirst), 2u);
+
+  writer->stop();
+  registry.detach(std::vector<uint64_t>{kFirst, kSecond}, writer);
+  EXPECT_EQ(written.size(), 2u);
+
+  // After the detach the borrowed account is free again -- an alias left
+  // pointing at a session that is gone would send that account's events to
+  // nobody, and hand it the other session's sequence numbers on reconnect.
+  EXPECT_EQ(registry.lastSeq(kSecond), 0u);
+  EXPECT_EQ(registry.lastSeq(kFirst), 2u);
+
+  uint64_t targets[2] = {0, 0};
+  int n = 0;
+  SessionRegistry::accountsOf(OutboundEvent{held}, targets, n);
+  EXPECT_EQ(n, 2);
+  EXPECT_EQ(targets[0], kFirst);
+  EXPECT_EQ(targets[1], kSecond);
+}

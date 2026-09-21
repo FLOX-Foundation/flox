@@ -58,12 +58,28 @@ class TcpGateway
 
   // `account` is the account this endpoint serves. Every connection binds its
   // session to it, so a client cannot act as another account by writing a
-  // different id into the payload (stampAccount forces the bound id). Run one
-  // gateway per tenant, or extend with a logon handshake for multi-tenant.
+  // different id into the payload -- one that does is refused, not silently
+  // re-aimed. Run one gateway per tenant, use setAccounts for an endpoint
+  // that serves several, or extend with a logon handshake for multi-tenant.
   // account == 0 is the single-tenant-trusted mode: it trusts the
   // client-supplied accountId and must only face a trusted local producer.
   explicit TcpGateway(GatewaySession::Decoder decoder, uint64_t account = 0)
-      : decoder_(std::move(decoder)), account_(account) {}
+      : decoder_(std::move(decoder)), account_(account), accounts_{account} {}
+
+  // The accounts this endpoint serves, identity first. The ordinary shape of a
+  // client bridge: one connection carrying the flow of many customers, each
+  // with its own account at the venue. A command naming an account outside the
+  // set is refused (`Unauthenticated`); reports for any account in it reach
+  // this connection, and an event naming two of them arrives once.
+  void setAccounts(std::vector<uint64_t> accounts)
+  {
+    accounts_ = std::move(accounts);
+    if (accounts_.empty())
+    {
+      accounts_.push_back(0);
+    }
+    account_ = accounts_.front();
+  }
 
   // Gateway-wide default for NEW sessions; each session carries its own flag
   // (GatewaySession::setCancelOnDisconnect). Wire negotiation is future work.
@@ -135,7 +151,7 @@ class TcpGateway
  private:
   void connLoop(net::Handle fd)
   {
-    GatewaySession session(account_, decoder_, rateLimit_.policy());
+    GatewaySession session(accounts_, decoder_, rateLimit_.policy());
     session.setName("tcp/" + std::to_string(account_));
     session.authenticate(true);  // transport-level auth out of scope here
     session.setCancelOnDisconnect(cancelOnDisconnect_.load());
@@ -145,7 +161,7 @@ class TcpGateway
     if (registry_ != nullptr)
     {
       writer = registry_->attach(
-          session.account(), encoder_,
+          session.accounts(), encoder_,
           [fd](const uint8_t* p, size_t n)
           { return net::writeFrame(fd, p, n); },
           [fd]
@@ -288,7 +304,7 @@ class TcpGateway
     }
     if (writer != nullptr)
     {
-      registry_->detach(session.account(), writer);
+      registry_->detach(session.accounts(), writer);
       writer->stop();
     }
     cod.flush(handler_);
@@ -297,6 +313,7 @@ class TcpGateway
 
   GatewaySession::Decoder decoder_;
   uint64_t account_{0};
+  std::vector<uint64_t> accounts_{0};
   SessionRateLimit rateLimit_{};
   SessionRegistry::RejectEncoder rejectEncoder_;
   Handler handler_;

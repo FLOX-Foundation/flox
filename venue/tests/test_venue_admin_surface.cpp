@@ -46,9 +46,16 @@ constexpr uint64_t kVictimAccount = 2002;
 
 Price px(double v) { return Price::fromDouble(v); }
 
+// What a session did with a command: the command it let through, or the
+// reason it refused.
+struct Verdict
+{
+  std::optional<InboundCommand> cmd;
+  SessionReject reject{SessionReject::None};
+};
+
 // A session whose decoder always yields `cmd`, authenticated as kSessionAccount.
-// The payload the client wrote names the victim's account throughout.
-InboundCommand throughSession(const InboundCommand& cmd)
+Verdict throughSession(const InboundCommand& cmd)
 {
   GatewaySession s(kSessionAccount, [cmd](const uint8_t*, size_t)
                    { return std::optional<InboundCommand>{cmd}; });
@@ -56,8 +63,69 @@ InboundCommand throughSession(const InboundCommand& cmd)
   SessionReject rej{};
   const uint8_t frame[1] = {0};
   auto out = s.handle(frame, sizeof frame, 0, rej);
-  EXPECT_TRUE(out.has_value()) << "session rejected the frame: " << toString(rej);
-  return out.value_or(cmd);
+  return Verdict{std::move(out), rej};
+}
+
+// Read and write the account field by the same walk over the variant the
+// session uses, so a command added later is covered here too.
+uint64_t accountNamedBy(const InboundCommand& c)
+{
+  return std::visit(
+      [](const auto& m) -> uint64_t
+      {
+        using Cmd = std::remove_cvref_t<decltype(m)>;
+        if constexpr (HasAccountId<Cmd>)
+        {
+          return m.accountId;
+        }
+        else if constexpr (HasAccount<Cmd>)
+        {
+          return m.account;
+        }
+        else
+        {
+          return 0;
+        }
+      },
+      c);
+}
+
+void nameAccount(InboundCommand& c, uint64_t a)
+{
+  std::visit(
+      [a](auto& m)
+      {
+        using Cmd = std::remove_reference_t<decltype(m)>;
+        if constexpr (HasAccountId<Cmd>)
+        {
+          m.accountId = a;
+        }
+        else if constexpr (HasAccount<Cmd>)
+        {
+          m.account = a;
+        }
+      },
+      c);
+}
+
+// Every command that carries an account: the order flow, the money moves, the
+// position close, and the per-account configuration. The last three were the
+// ones a hand-written list used to miss.
+std::vector<InboundCommand> accountBearingCommands()
+{
+  Withdraw w;
+  w.amountRaw = 750000;
+  SetStpGroup g;
+  g.group = 77;
+  SetAdmissionProfile prof;
+  prof.profile.deny = AdmissionDeny::DenyCancel | AdmissionDeny::DenyAmend;
+  return {InboundCommand{w}, InboundCommand{Deposit{}},
+          InboundCommand{ForceClosePosition{}},
+          InboundCommand{g}, InboundCommand{prof},
+          InboundCommand{NewOrder{}}, InboundCommand{CancelOrder{}},
+          InboundCommand{ModifyOrder{}},
+          InboundCommand{MassCancel{}}, InboundCommand{Quote{}},
+          InboundCommand{LastLookDecision{}}};
 }
 
 bool containsText(const std::string& s, const char* sub)
@@ -90,75 +158,60 @@ int connectLoopback(int port, int rcvTimeoutSec)
 
 }  // namespace
 
-// Every command that names an account must be forced onto the session's own
-// account. The six order-flow commands were; the funding, position and
-// per-account configuration commands were not, so a session that could reach
-// them spoke for whichever account the payload named.
-TEST(VenueAdminSurface, SessionStampsEveryAccountBearingCommand)
+// A command that names an account the session does not speak for is REFUSED.
+//
+// It used to be stamped instead: the session's own account was written over
+// whatever the payload carried. That kept the victim safe, but it was only
+// ever possible because there was exactly one account to write -- and it told
+// the client nothing, so an order aimed at the wrong account was quietly
+// placed on a different one.
+//
+// The refusal also has to cover every command that carries an account, not a
+// remembered subset. A hand-written list covered the six order-flow commands
+// and missed the ones that move money, close positions and set another
+// account's entitlements.
+TEST(VenueAdminSurface, SessionRefusesACommandNamingAnAccountItDoesNotSpeakFor)
 {
+  for (auto cmd : accountBearingCommands())
   {
-    Withdraw w;
-    w.accountId = kVictimAccount;
-    w.amountRaw = 750000;
-    const auto out = throughSession(InboundCommand{w});
-    EXPECT_EQ(std::get<Withdraw>(out).accountId, kSessionAccount);
-  }
-  {
-    Deposit d;
-    d.accountId = kVictimAccount;
-    const auto out = throughSession(InboundCommand{d});
-    EXPECT_EQ(std::get<Deposit>(out).accountId, kSessionAccount);
-  }
-  {
-    ForceClosePosition f;
-    f.accountId = kVictimAccount;
-    const auto out = throughSession(InboundCommand{f});
-    EXPECT_EQ(std::get<ForceClosePosition>(out).accountId, kSessionAccount);
-  }
-  {
-    SetStpGroup g;
-    g.account = kVictimAccount;
-    g.group = 77;
-    const auto out = throughSession(InboundCommand{g});
-    EXPECT_EQ(std::get<SetStpGroup>(out).account, kSessionAccount)
-        << "otherwise a session drags another account into its own firm group";
-  }
-  {
-    SetAdmissionProfile p;
-    p.account = kVictimAccount;
-    p.profile.deny = AdmissionDeny::DenyCancel | AdmissionDeny::DenyAmend;
-    const auto out = throughSession(InboundCommand{p});
-    EXPECT_EQ(std::get<SetAdmissionProfile>(out).account, kSessionAccount)
-        << "otherwise a session can deny a competitor the right to cancel";
+    nameAccount(cmd, kVictimAccount);
+    const auto v = throughSession(cmd);
+    EXPECT_FALSE(v.cmd.has_value()) << "command index " << cmd.index() << " was let through";
+    EXPECT_EQ(v.reject, SessionReject::Unauthenticated) << "command index " << cmd.index();
   }
 }
 
-TEST(VenueAdminSurface, SessionStillStampsOrderFlow)
+// A command that names NO account is the client saying "me": there is exactly
+// one answer, so it is stamped rather than refused.
+TEST(VenueAdminSurface, SessionStampsItsOwnAccountOntoACommandThatNamesNone)
 {
-  NewOrder o;
-  o.accountId = kVictimAccount;
-  EXPECT_EQ(std::get<NewOrder>(throughSession(InboundCommand{o})).accountId, kSessionAccount);
+  for (auto cmd : accountBearingCommands())
+  {
+    nameAccount(cmd, 0);
+    const auto v = throughSession(cmd);
+    ASSERT_TRUE(v.cmd.has_value())
+        << "command index " << cmd.index() << " refused: " << toString(v.reject);
+    EXPECT_EQ(accountNamedBy(*v.cmd), kSessionAccount) << "command index " << cmd.index();
+  }
+}
 
-  CancelOrder c;
-  c.accountId = kVictimAccount;
-  EXPECT_EQ(std::get<CancelOrder>(throughSession(InboundCommand{c})).accountId, kSessionAccount);
-
-  ModifyOrder m;
-  m.accountId = kVictimAccount;
-  EXPECT_EQ(std::get<ModifyOrder>(throughSession(InboundCommand{m})).accountId, kSessionAccount);
-
-  MassCancel mc;
-  mc.accountId = kVictimAccount;
-  EXPECT_EQ(std::get<MassCancel>(throughSession(InboundCommand{mc})).accountId, kSessionAccount);
-
-  Quote q;
-  q.accountId = kVictimAccount;
-  EXPECT_EQ(std::get<Quote>(throughSession(InboundCommand{q})).accountId, kSessionAccount);
-
-  LastLookDecision ll;
-  ll.accountId = kVictimAccount;
-  EXPECT_EQ(std::get<LastLookDecision>(throughSession(InboundCommand{ll})).accountId,
-            kSessionAccount);
+// A session that speaks for several accounts keeps the one the client named,
+// as long as it is one of them.
+TEST(VenueAdminSurface, SessionKeepsAnAccountItSpeaksFor)
+{
+  for (auto cmd : accountBearingCommands())
+  {
+    nameAccount(cmd, kVictimAccount);
+    GatewaySession s(std::vector<uint64_t>{kSessionAccount, kVictimAccount},
+                     [cmd](const uint8_t*, size_t)
+                     { return std::optional<InboundCommand>{cmd}; });
+    s.authenticate(true);
+    SessionReject rej{};
+    const uint8_t frame[1] = {0};
+    auto out = s.handle(frame, sizeof frame, 0, rej);
+    ASSERT_TRUE(out.has_value()) << "command index " << cmd.index() << ": " << toString(rej);
+    EXPECT_EQ(accountNamedBy(*out), kVictimAccount) << "command index " << cmd.index();
+  }
 }
 
 // An unbound session (account 0, the trusted-transport default) is left alone:
