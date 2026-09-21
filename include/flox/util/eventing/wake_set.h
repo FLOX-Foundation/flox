@@ -54,6 +54,10 @@ class WakeSet
   // and a net that catches things often is a mechanism nobody meant to build.
   static constexpr auto kNetInterval = std::chrono::milliseconds(50);
 
+  // parkUntil() with no deadline of its own: the net is the only bound, which
+  // is what parkUnless() is.
+  static constexpr int64_t kNoDeadline = INT64_MAX;
+
   WakeSet() = default;
   WakeSet(const WakeSet&) = delete;
   WakeSet& operator=(const WakeSet&) = delete;
@@ -84,20 +88,26 @@ class WakeSet
   template <typename Pred>
   void parkUnless(Pred&& hasWork)
   {
-    if (_probe != nullptr)
-    {
-      // Before the mutex and before the hand goes up: the exact instant a
-      // publisher can miss this waiter. See setProbe().
-      _probe(_probeUser);
-    }
-    std::unique_lock<std::mutex> lk(_mx);
-    _waiters.fetch_add(1, std::memory_order_seq_cst);
-    std::atomic_thread_fence(std::memory_order_seq_cst);
-    if (!hasWork())
-    {
-      _cv.wait_for(lk, kNetInterval);
-    }
-    _waiters.fetch_sub(1, std::memory_order_relaxed);
+    park(kNoDeadline, hasWork);
+  }
+
+  // The same sleep, with a time it must not outlast. A driver rarely only
+  // waits for a publisher: it also has cadences of its own -- a sweep, a
+  // checkpoint threshold, a periodic anything -- and what it wants is to
+  // sleep until the EARLIER of "somebody published" and "the next thing is
+  // due". Without a deadline the only bound on the sleep is the net, and a
+  // 50 ms net under a cadence measured in single-digit milliseconds is not a
+  // net, it is the schedule.
+  //
+  // `deadlineNs` is on the steady clock, the same scale as venueMonoNs(): a
+  // deadline already in the past means "look once and come straight back".
+  // Wakes on a publish, on hasWork(), or on the deadline -- whichever is
+  // first -- and the caller loops either way, because a return says only
+  // "look again", never why.
+  template <typename Pred>
+  void parkUntil(int64_t deadlineNs, Pred&& hasWork)
+  {
+    park(deadlineNs, hasWork);
   }
 
   // Wake whoever is parked on the set. Called by a bus after a publish and on
@@ -123,6 +133,45 @@ class WakeSet
   uint32_t waiters() const noexcept { return _waiters.load(std::memory_order_acquire); }
 
  private:
+  // The one sleep both entry points take, so the discipline exists once.
+  template <typename Pred>
+  void park(int64_t deadlineNs, Pred& hasWork)
+  {
+    if (_probe != nullptr)
+    {
+      // Before the mutex and before the hand goes up: the exact instant a
+      // publisher can miss this waiter. See setProbe().
+      _probe(_probeUser);
+    }
+    std::unique_lock<std::mutex> lk(_mx);
+    _waiters.fetch_add(1, std::memory_order_seq_cst);
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    if (!hasWork())
+    {
+      _cv.wait_until(lk, sleepUntil(deadlineNs));
+    }
+    _waiters.fetch_sub(1, std::memory_order_relaxed);
+  }
+
+  // Whichever comes first, the caller's deadline or the net under everything.
+  // Read after the mutex is taken, so the net covers the sleep and not the
+  // wait for the lock.
+  static std::chrono::steady_clock::time_point sleepUntil(int64_t deadlineNs) noexcept
+  {
+    const auto net = std::chrono::steady_clock::now() + kNetInterval;
+    if (deadlineNs == kNoDeadline)
+    {
+      return net;
+    }
+    // duration_cast, not a conversion: steady_clock::duration is not
+    // nanoseconds on every platform, and an implicit narrowing one would not
+    // compile where it is coarser.
+    const std::chrono::steady_clock::time_point deadline{
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::nanoseconds(deadlineNs))};
+    return deadline < net ? deadline : net;
+  }
+
   alignas(64) std::atomic<uint32_t> _waiters{0};
   Probe _probe{nullptr};
   void* _probeUser{nullptr};

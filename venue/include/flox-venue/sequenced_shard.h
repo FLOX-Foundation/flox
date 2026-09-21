@@ -18,6 +18,7 @@
 
 #include "flox/util/concurrency/thread_body.h"
 #include "flox/util/eventing/event_bus.h"
+#include "flox/util/eventing/wake_set.h"
 
 #include <algorithm>
 #include <atomic>
@@ -269,6 +270,57 @@ class SequencedShard
       any = outbound_.pollConsumer(i) || any;
     }
     return any;
+  }
+
+  // Where the thread stepping this shard goes to sleep.
+  //
+  // A shard with no threads of its own has nowhere to wait: both of its buses
+  // are private, so the driver could not have reached their wait points even
+  // if they had one that suited it -- and neither does, because a bus's
+  // condition variable wakes a consumer of THAT bus, and this driver steps
+  // many shards. So the driver either spun a core per group of shards, or ran
+  // a clock of its own and hopped every couple of milliseconds, which is the
+  // same cost paid in latency instead.
+  //
+  // Point the shard at a WakeSet and both of its buses wake it: a command
+  // published into ingress from a gateway thread, and an engine event
+  // published outbound from the driver's own step. One set, however many
+  // shards hang off it. Set before start(), with the buses: after that the
+  // publish path is fixed and the call does nothing (EventBus::setWakeSet).
+  //
+  // A shard nobody points at a set is the shard as it was.
+  void setWakeSet(flox::WakeSet* set) noexcept
+  {
+    ingress_.setWakeSet(set);
+    outbound_.setWakeSet(set);
+  }
+
+  flox::WakeSet* wakeSet() const noexcept { return ingress_.wakeSet(); }
+
+  // Is there anything for a step to do right now? Exactly the look pollOnce()
+  // starts with -- the matching consumer, then every outbound subscriber --
+  // without the delivery, which is what makes it usable as the predicate of a
+  // WakeSet park: that predicate runs under the set's mutex, where delivering
+  // anything would hold up every publisher trying to wake the set.
+  //
+  // Reads the stepping driver's own cursors, so it is for the driver of this
+  // shard to call and nobody else -- the same single-reader contract as
+  // pollOnce().
+  bool hasPending() const noexcept
+  {
+    if (ingress_.consumerHasPending(0))
+    {
+      return true;
+    }
+    const uint32_t n = outbound_.consumerCount();
+    for (uint32_t i = 0; i < n; ++i)
+    {
+      if (outbound_.consumerHasPending(i))
+      {
+        return true;
+      }
+    }
+    return false;
   }
 
   // How this shard's consumers wait when there is nothing to do. Active

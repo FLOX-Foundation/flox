@@ -25580,12 +25580,27 @@
         },
         {
           "kind": "method",
+          "name": "park",
+          "parent": "WakeSet"
+        },
+        {
+          "kind": "method",
           "name": "parkUnless",
           "parent": "WakeSet"
         },
         {
           "kind": "method",
+          "name": "parkUntil",
+          "parent": "WakeSet"
+        },
+        {
+          "kind": "method",
           "name": "setProbe",
+          "parent": "WakeSet"
+        },
+        {
+          "kind": "method",
+          "name": "sleepUntil",
           "parent": "WakeSet"
         },
         {

@@ -438,6 +438,86 @@ must not also be stepped. `flush()`, and therefore `checkpointNow()` and
 `stop()`, step for themselves when the shard has no threads -- otherwise they
 would wait for a consumer that does not exist.
 
+### Where such a driver sleeps
+
+The loop above ends in `backoff.pause()`, which is a core burning while every
+shard is quiet -- the cost of having nowhere to block. Both of a shard's buses
+are private, so the driver cannot reach their wait points, and neither would
+suit it anyway: a bus's condition variable wakes a consumer of *that* bus, and
+this thread steps many shards.
+
+`setWakeSet(&set)` hands one [`WakeSet`](../explanation/disruptor.md#one-wait-point-over-many-buses)
+to both of a shard's buses, so a command published into ingress from a gateway
+thread and an engine event published outbound both wake the driver.
+`hasPending()` is the look `pollOnce()` starts with -- the matching consumer,
+then every outbound subscriber -- without the delivery, which is what makes it
+usable as the park predicate: that predicate runs under the set's mutex, where
+delivering anything would hold up every publisher trying to wake the set.
+
+```cpp
+flox::WakeSet set;
+for (auto& s : myShards)
+{
+  s->setOwnThreads(false);
+  s->setWakeSet(&set);      // both before start()
+  s->start();
+}
+
+int64_t nextSweep = venueMonoNs();
+while (running)
+{
+  const int64_t now = venueMonoNs();
+  if (now >= nextSweep)
+  {
+    nextSweep = now + sweepIntervalNs;
+    for (auto& s : myShards) s->sweepOnce();
+  }
+  bool any = false;
+  for (auto& s : myShards) any = s->pollOnce() || any;
+  if (any) continue;
+
+  // Until somebody submits, or until the sweep is due -- whichever is first.
+  set.parkUntil(nextSweep, [&] {
+    for (const auto& s : myShards) if (s->hasPending()) return true;
+    return false;
+  });
+}
+```
+
+The deadline is the half that makes the sweep affordable: `parkUnless` is
+bounded only by the set's 50 ms net, which is an order of magnitude coarser
+than the cadences a driver actually runs. `setWakeSet` is before `start()`,
+with everything else that fixes the publish path, and a shard nobody points at
+a set is the shard as it was.
+
+Measured on 14 cores, one thread over N shards with no cadences
+(`bench_venue_shard_wake_set`; the bus-level numbers one layer down are in
+[the disruptor notes](../explanation/disruptor.md#one-wait-point-over-many-buses)):
+
+| shards on the thread | idle CPU, backoff | idle CPU, wake set |
+|---|---|---|
+| 3 | 0.22 core | 0 |
+| 16 | 0.20 core | 0 |
+
+The backoff figure is flat in the number of shards because it is one thread
+either way -- that is the point of stepping -- and it is the whole thread,
+idle, forever. Wake-up, submit to outbound handler entry after 2 ms of quiet,
+same run:
+
+| wait | wake-up | worst |
+|---|---|---|
+| backoff, 3 shards | 15 μs | 73 μs |
+| backoff, 16 shards | 16 μs | 53 μs |
+| wake set, 3 shards | 96 μs | 482 μs |
+| wake set, 16 shards | 113 μs | 402 μs |
+
+Unlike the bus-level comparison, the set is a latency trade here, and the
+reason is what runs immediately after the wake-up: this path is a matching
+pass plus a journal append, executed on a core that has just been idle, where
+the bus-level one is a memcpy into a handler on a core that never stopped.
+A driver that needs the tail more than the core keeps the backoff; one holding
+hundreds of shards does not have that many cores to give.
+
 ### The pause when shards share a thread
 
 A shard that owns a thread pays its pause alone, and that is what the pause
