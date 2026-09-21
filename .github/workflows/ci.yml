@@ -89,6 +89,16 @@ jobs:
       run: python3 scripts/check_test_gating.py
     - name: Verify no thread body can terminate the process
       run: python3 scripts/check_thread_bodies_contained.py
+    # A std::unordered_map enumerates in bucket order, and bucket order is a
+    # property of the library, not of the data. The golden replay caught one
+    # that reached the event stream (an emergency cancel publishing its
+    # conditionals in hash order, identical state on both libraries), and it
+    # could only catch it because it runs on both. This is the cheap half:
+    # every traversal in venue/include has to carry the verdict someone
+    # reached about it, so the next one is written by somebody who found out
+    # whether their order is observable.
+    - name: Verify every unordered traversal in the venue says why its order is safe
+      run: python3 scripts/check_iteration_order.py
 
     - name: Verify every test file is reachable by the suite runners
       run: python3 scripts/check_suite_discovery.py

@@ -99,6 +99,8 @@ class SocketAcceptor
     // fd from the set under the lock before closing it.
     {
       std::lock_guard<std::mutex> lk(connsMutex_);
+      // order: not observable -- every open fd is shut down, nothing is
+      // emitted and no fd's treatment depends on another's
       for (net::Handle cfd : connFds_)
       {
         net::shutdownBoth(cfd);

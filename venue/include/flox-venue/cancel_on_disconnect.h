@@ -118,6 +118,8 @@ class DisconnectCanceller
     // Deterministic cancel order (id-sorted), independent of map layout.
     std::vector<CancelOrder> ordered;
     ordered.reserve(live.size());
+    // order: collected here, id-sorted below -- the handler cancels in this
+    // order and the venue publishes an OrderCanceled per entry
     for (const auto& [id, c] : live)
     {
       (void)id;

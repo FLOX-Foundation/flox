@@ -11,6 +11,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -135,11 +136,19 @@ class SymbolRouter
   }
 
   // Cross-shard account view for reconnect: the account's per-symbol snapshots,
-  // limited to symbols where it has activity (orders / stops / a position).
+  // limited to symbols where it has activity (orders / stops / a position), in
+  // SymbolId order.
+  //
+  // Sorted for the same reason MatchingEngine::snapshotAccount sorts its open
+  // orders: the engines live in an unordered_map, and this vector is a
+  // reconnect view whose entries a gateway serves in the order they arrive in.
+  // Per-symbol the frames are already ordered; across symbols they would go
+  // out in hash-bucket order.
   std::vector<std::pair<SymbolId, typename MatchingEngine<Book>::AccountSnapshot>> snapshotAccount(
       uint64_t acct) const
   {
     std::vector<std::pair<SymbolId, typename MatchingEngine<Book>::AccountSnapshot>> out;
+    // order: sorted below, before the vector is handed out
     for (const auto& [sym, eng] : engines_)
     {
       auto s = eng->snapshotAccount(acct);
@@ -148,6 +157,9 @@ class SymbolRouter
         out.emplace_back(sym, std::move(s));
       }
     }
+    std::sort(out.begin(), out.end(),
+              [](const auto& a, const auto& b)
+              { return a.first < b.first; });
     return out;
   }
 

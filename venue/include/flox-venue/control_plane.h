@@ -10,6 +10,7 @@
 
 #include "flox-venue/matching_engine.h"
 
+#include <algorithm>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -126,14 +127,25 @@ class InstrumentRegistry
     return false;  // not a configuration command
   }
 
+  // Every registered instrument, in SymbolId order.
+  //
+  // Sorted, not merely collected. The registry is an unordered_map, and the
+  // one caller (ControlApi's "list" method) renders this vector into the JSON
+  // array it answers an operator with -- so an unsorted enumeration makes the
+  // control plane's reply reorder itself between two venues built against
+  // different standard libraries, and reorder itself again after a rehash on
+  // the same one. An enumeration accessor that hands out a vector hands out an
+  // order, whether or not it means to.
   std::vector<SymbolId> list() const
   {
     std::vector<SymbolId> out;
     out.reserve(instruments_.size());
+    // order: sorted below, before the vector is handed out
     for (const auto& [id, _] : instruments_)
     {
       out.push_back(id);
     }
+    std::sort(out.begin(), out.end());
     return out;
   }
 

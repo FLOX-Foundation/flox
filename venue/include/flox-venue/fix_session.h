@@ -72,6 +72,7 @@
 
 #include "flox/util/file_io.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -134,12 +135,22 @@ class FixSessionHost
   // ---- restart persistence (inbound side of the FIX sidecar) ----
   // Blob: [u32 count]{u64 account, u64 expectedIn}... -- one entry per
   // account that completed a Logon (only established sequence spaces are
-  // worth carrying across a restart).
+  // worth carrying across a restart), in account order.
+  //
+  // Sorted, not merely collected. states_ is an unordered_map, so writing the
+  // entries in traversal order makes the sidecar BYTES -- and the CRC32
+  // FixSessionSidecar::write stamps over the whole payload -- a function of
+  // the standard library the venue was built against rather than of the
+  // session state alone. Two venues holding identical sequence spaces would
+  // produce different files, so a byte-comparison against a reference
+  // checkpoint, or a replica diffing its sidecar against the primary's, would
+  // report a divergence that does not exist.
   void serialize(std::vector<uint8_t>& out)
   {
     std::vector<std::pair<uint64_t, uint64_t>> entries;
     {
       std::lock_guard<std::mutex> lk(m_);
+      // order: sorted below, before a byte is written
       for (const auto& [account, state] : states_)
       {
         std::lock_guard<std::mutex> slk(state->m);
@@ -149,6 +160,7 @@ class FixSessionHost
         }
       }
     }
+    std::sort(entries.begin(), entries.end());
     const uint32_t count = static_cast<uint32_t>(entries.size());
     append(out, &count, sizeof count);
     for (const auto& [account, expectedIn] : entries)

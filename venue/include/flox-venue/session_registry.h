@@ -46,6 +46,7 @@
 #include "flox-venue/metrics.h"
 #include "flox/util/concurrency/thread_body.h"
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -660,12 +661,18 @@ class SessionRegistry
   // a post-restart resend that reaches into the pre-restart range is answered
   // with SequenceReset-GapFill (the honest signal for history the venue no
   // longer holds; full state reconciliation is the snapshot path).
-  // Blob: [u32 count]{u64 account, u64 lastSeq}...
+  // Blob: [u32 count]{u64 account, u64 lastSeq}..., in account order.
+  //
+  // Sorted for the same reason FixSessionHost::serialize is, and into the same
+  // file: streams_ is an unordered_map, so an unsorted write would make the
+  // sidecar bytes -- and the CRC32 over the whole payload -- depend on the
+  // standard library rather than on the sequence state being persisted.
   void serializeSeqs(std::vector<uint8_t>& out)
   {
     std::vector<std::pair<uint64_t, uint64_t>> entries;
     {
       std::lock_guard<std::mutex> lk(m_);
+      // order: sorted below, before a byte is written
       for (const auto& [account, stream] : streams_)
       {
         std::lock_guard<std::mutex> slk(stream->m);
@@ -675,6 +682,7 @@ class SessionRegistry
         }
       }
     }
+    std::sort(entries.begin(), entries.end());
     const uint32_t count = static_cast<uint32_t>(entries.size());
     appendBytes(out, &count, sizeof count);
     for (const auto& [account, lastSeq] : entries)

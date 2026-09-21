@@ -82,6 +82,7 @@ class StopBook
   {
     std::vector<OrderId> out;
     out.reserve(loc_.size());
+    // order: sorted below, before the vector is handed out (see above)
     for (const auto& [id, l] : loc_)
     {
       (void)l;

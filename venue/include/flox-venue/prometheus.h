@@ -179,6 +179,8 @@ inline void lastLook(std::string& out, const LastLookSample& l)
   // because a hash map rehashed.
   std::vector<uint64_t> makers;
   makers.reserve(l.byMaker.size());
+  // order: collected here, sorted on the next line before any series is
+  // written (the comment above says why)
   for (const auto& [maker, st] : l.byMaker)
   {
     makers.push_back(maker);

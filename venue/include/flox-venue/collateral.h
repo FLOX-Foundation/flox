@@ -10,8 +10,10 @@
 
 #include "flox-venue/ledger.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 namespace flox::venue
 {
@@ -37,14 +39,34 @@ class CollateralSchedule
 
   bool accepts(AssetId asset) const { return cfg_.count(asset) != 0; }
 
-  // Enumerate accepted collateral assets (for liquidation-time conversion).
+  // Enumerate accepted collateral assets (for liquidation-time conversion), in
+  // AssetId order.
+  //
+  // Sorted, not merely enumerated. The assets live in an unordered_map, so
+  // their traversal order is a bucket-layout artifact. The caller that matters
+  // is CrossMarginEngine::convertCollateral, which walks this enumeration
+  // GREEDILY: it sells each asset only up to the quote deficit still
+  // outstanding and stops once the deficit is covered. An unsorted enumeration
+  // therefore decides WHICH coin a liquidating account's basket is sold from
+  // and how much of each -- the per-asset balances left on the ledger
+  // afterwards, i.e. the resulting STATE, not merely the order of a report.
+  // Two venues built against different standard libraries would settle the
+  // same bankruptcy into different wallets.
   template <class Fn>
   void forEachAsset(Fn&& fn) const
   {
+    std::vector<AssetId> assets;
+    assets.reserve(cfg_.size());
+    // order: collected and sorted here, before anything is handed to fn
     for (const auto& [asset, c] : cfg_)
     {
       (void)c;
-      fn(asset);
+      assets.push_back(asset);
+    }
+    std::sort(assets.begin(), assets.end());
+    for (AssetId a : assets)
+    {
+      fn(a);
     }
   }
 
@@ -79,6 +101,8 @@ class CollateralSchedule
   Amount portfolioValue(const Ledger& led, uint64_t account) const
   {
     Amount t = 0;
+    // order: not observable -- Amount is an integer and the loop is a sum;
+    // addition is associative, so the basket's value is layout-independent
     for (const auto& [asset, c] : cfg_)
     {
       (void)c;
@@ -94,6 +118,7 @@ class CollateralSchedule
   Amount freeValue(const Ledger& led, uint64_t account) const
   {
     Amount t = 0;
+    // order: not observable -- integer sum, same as portfolioValue above
     for (const auto& [asset, c] : cfg_)
     {
       (void)c;
