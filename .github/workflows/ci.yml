@@ -238,6 +238,15 @@ jobs:
     timeout-minutes: 30
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -637,6 +646,15 @@ jobs:
     timeout-minutes: 30
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -749,6 +767,15 @@ jobs:
         sanitizer: [address, undefined, thread]
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -857,6 +884,15 @@ jobs:
     timeout-minutes: 30
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -1312,6 +1348,15 @@ jobs:
     timeout-minutes: 25
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -1447,6 +1492,15 @@ jobs:
     timeout-minutes: 20
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
