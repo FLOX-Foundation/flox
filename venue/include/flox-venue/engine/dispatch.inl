@@ -27,6 +27,7 @@ MatchingEngine<Book>::MatchingEngine(SymbolConfig cfg, EventSink sink, Book book
       sink_(std::move(sink)),
       matcher_(policy),
       book_(std::move(book)),
+      pub_(sink_, cfg_.id),
       // Clearing delegates back the three things it cannot reach: the order
       // reservation a fill's initial margin moves out of, the release of an
       // unneeded reservation on a reducing fill, and the resting orders of an
@@ -322,7 +323,7 @@ void MatchingEngine<Book>::tick(int64_t nowRawNs)
 template <class Book>
 uint64_t MatchingEngine<Book>::restingOrderCount() const noexcept
 {
-  return orderAccount_.size();
+  return pub_.restingOrderCount();
 }
 
 // Sequencer-ts of the last command the engine applied. This is the ONLY

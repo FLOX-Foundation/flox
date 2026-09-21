@@ -10,6 +10,11 @@
 
 // MatchingEngine<Book>: instrument-wide publications and per-account resting-order tracking.
 //
+// The state and the formatting live in engine::Publications
+// (flox-venue/engine/publications.h); what stays here is the engine's side of
+// it -- the calls that need the book, the matcher, the ledger or the session
+// state, forwarding to the component for the sink and the index.
+//
 // The trading-status publication is NOT here: it moved next to the state it
 // reports, in engine/session.inl.
 //
@@ -40,8 +45,7 @@ void MatchingEngine<Book>::setStpGroup(uint64_t account, uint64_t group)
 template <class Book>
 void MatchingEngine<Book>::publishDerivatives(Price mark)
 {
-  sink_(DerivativesUpdated{cfg_.id, mark, clearing_.fundingRateRaw(), nextFundingNs(),
-                           openInterest()});
+  pub_.publishDerivatives(mark, clearing_.fundingRateRaw(), nextFundingNs(), openInterest());
 }
 
 // Owner of a live tracked order (0 if unknown) -- read BEFORE forgetOrder so
@@ -49,8 +53,7 @@ void MatchingEngine<Book>::publishDerivatives(Price mark)
 template <class Book>
 uint64_t MatchingEngine<Book>::ownerOf(OrderId id) const noexcept
 {
-  auto it = orderAccount_.find(id);
-  return it == orderAccount_.end() ? 0 : it->second;
+  return pub_.ownerOf(id);
 }
 
 // Self-trade-prevention mode recorded for an order, or None if it asked for
@@ -80,8 +83,8 @@ void MatchingEngine<Book>::cancelForStp(OrderId id, uint64_t account)
   const auto ro = book_.cancel(id);
   releaseReservation(id);
   forgetOrder(id);
-  sink_(OrderCanceled{id, cfg_.id, CancelReason::SelfTradePrevention, account,
-                      ro ? ro->clientOrderId : 0});
+  pub_.publishCanceled(id, CancelReason::SelfTradePrevention, account,
+                       ro ? ro->clientOrderId : 0);
 }
 
 // Trim one leg by the overlapping quantity without printing. A leg trimmed
@@ -115,25 +118,19 @@ void MatchingEngine<Book>::decrementForStp(OrderId id, Quantity by)
 template <class Book>
 void MatchingEngine<Book>::trackResting(OrderId id, uint64_t account, STPMode stp)
 {
-  orderAccount_[id] = account;
-  byAccount_[account].insert(id);
+  pub_.trackResting(id, account);
   stp_.track(id, stp);
 }
 
 template <class Book>
 void MatchingEngine<Book>::forgetOrder(OrderId id)
 {
-  auto it = orderAccount_.find(id);
-  if (it == orderAccount_.end())
+  // The component drops the tracking and says whether the id was tracked at
+  // all; the STP mode and the rest of the per-order state are the engine's.
+  if (!pub_.forget(id))
   {
     return;
   }
-  auto ba = byAccount_.find(it->second);
-  if (ba != byAccount_.end())
-  {
-    ba->second.erase(id);
-  }
-  orderAccount_.erase(it);
   expiry_.erase(id);
   unlinkOco(id);
   pegs_.erase(id);
@@ -183,21 +180,16 @@ void MatchingEngine<Book>::cancelAllForAccount(uint64_t account, CancelReason re
   // to the book. Resolving before the id snapshot also catches an order of
   // this account that a restore would re-create.
   rejectHoldsForAccount(account);
-  auto it = byAccount_.find(account);
-  if (it == byAccount_.end())
-  {
-    return;
-  }
-  // order: sorted on the next line, before a single cancel is published
-  std::vector<OrderId> ids(it->second.begin(), it->second.end());  // copy: erased in loop
-  std::sort(ids.begin(), ids.end());                               // deterministic cancel/event order (layout-independent)
-  for (OrderId id : ids)
+  // Who gets canceled, and in what order, is the component's call; the book is
+  // the engine's. The list is a copy by construction -- the index it came from
+  // is erased inside the loop.
+  for (OrderId id : pub_.cancelOrderFor(account))
   {
     if (auto ro = book_.cancel(id))
     {
       releaseReservation(id);
       forgetOrder(id);
-      sink_(OrderCanceled{id, cfg_.id, reason, account, ro->clientOrderId});
+      pub_.publishCanceled(id, reason, account, ro->clientOrderId);
     }
   }
 }

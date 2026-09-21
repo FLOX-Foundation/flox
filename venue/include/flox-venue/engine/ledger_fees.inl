@@ -57,10 +57,11 @@ template <class Book>
 typename MatchingEngine<Book>::AccountSnapshot MatchingEngine<Book>::snapshotAccount(uint64_t acct) const
 {
   AccountSnapshot s;
-  if (auto it = byAccount_.find(acct); it != byAccount_.end())
+  if (const auto* own = pub_.ordersOf(acct))
   {
+    const std::unordered_set<OrderId>& ids = *own;
     // order: sorted below, before the vector is handed out
-    for (OrderId id : it->second)
+    for (OrderId id : ids)
     {
       if (const RestingOrder* r = book_.find(id))
       {

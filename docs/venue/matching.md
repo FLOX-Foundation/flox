@@ -427,7 +427,7 @@ thousand lines shared with everything else.
 | `engine/validate.inl` | `validate`, `validateConditional`, admission, the perp risk gate, fill limits, `onNew` |
 | `engine/session.inl` | trading status, halt, close/open, delist, pre-open, `runAuction`, the `TradingStatusChanged` publication |
 | `engine/orders.inl` | stops and triggers, `onModify`, `onCancel`, order ownership |
-| `engine/publications.inl` | derivatives publications, per-account resting-order tracking, mass cancel |
+| `engine/publications.inl` | the engine's side of the publications: `publishDerivatives`, mass cancel, the per-account index forwarding (the trading-status publication is in `engine/session.inl`) |
 | `engine/quote_mmp.inl` | two-sided quotes, market-maker protection |
 | `engine/ledger_fees.inl` | fees, reservations, deposits/withdrawals, `settleTrade` |
 | `engine/clearing.inl` | the engine's side of clearing: the published methods, `settlePerp`, the order-IM moves |
@@ -539,6 +539,40 @@ The seam costs one indirect call per book operation on a path that runs once
 per maker decision; measured over 100k hold/resolve cycles it is inside the
 noise of the machine (see `venue/tests/test_venue_engine_last_look.cpp`,
 which also tests the component against a book that is a `std::vector`).
+
+Some sections have moved out of the template entirely, into a plain class the
+engine owns as a member. They are not fragments: they compile once, they can
+be tested on their own, and they do not have to be re-instantiated for every
+book type.
+
+| Component | Header | What it owns |
+|---|---|---|
+| `engine::Publications` | `flox-venue/engine/publications.h` | the outbound stream (derivatives, cancel reports) and the per-account resting-order index |
+
+`engine::Publications` is the one place that decides what those outbound
+events LOOK like and in what order a set of them goes out: the derivatives
+publication, the cancel report, and the `account -> resting ids` index a mass
+cancel walks. It holds the event sink by reference and calls it directly --
+no virtual on the publication path, which the engine takes on every trade.
+The trading-status publication is NOT here -- it lives next to the state it
+reports, in `engine::Session` (`engine/session.h`).
+
+What it does NOT own is the book. A mass cancel keeps its loop in the engine,
+because cancelling is reservations, positions and holds as well as an id; the
+component decides only WHICH ids and in WHAT ORDER (sorted, so the event
+sequence does not depend on which standard library the venue was built
+against). The derivatives publication is the same division: `Publications`
+formats it, clearing decides when it goes out.
+
+It carries no checkpoint of its own: the tracking maps are an index over the
+book, which is hashed already. Self-trade prevention stays with
+`engine::StpState` (`engine/stp.h`) -- `hashInto` there mixes the STP table
+into the state hash and `writeSnapshot` writes the `RestoreOrderStp` records,
+unmoved by this split.
+
+`venue/tests/test_venue_engine_publications.cpp` tests it against a fake
+sink, comparing SERIALIZED EVENT BYTES rather than fields, so a field that
+stops being filled cannot pass for lack of an assertion naming it.
 
 ### Pre-trade risk
 

@@ -15,6 +15,7 @@
 #include "flox-venue/engine/last_look.h"
 #include "flox-venue/engine/mmp.h"
 #include "flox-venue/engine/pegs.h"
+#include "flox-venue/engine/publications.h"
 #include "flox-venue/engine/session.h"
 #include "flox-venue/engine/sorted_keys.h"
 #include "flox-venue/engine/stp.h"
@@ -465,9 +466,11 @@ class MatchingEngine
 
   int64_t timeCounter_{0};
 
-  std::unordered_map<OrderId, uint64_t> orderAccount_;
-
-  std::unordered_map<uint64_t, std::unordered_set<OrderId>> byAccount_;
+  // The outbound stream and the per-account resting-order index (orderAccount_,
+  // byAccount_ and orderStp_ used to sit right here). Holds a reference to
+  // sink_, so it must be declared after it -- anywhere after it will do, and
+  // this is where the members it took over were.
+  engine::Publications pub_;
 
   // GTD deadlines: which resting or conditional orders are due, and when.
   ExpiryBook expiry_;
