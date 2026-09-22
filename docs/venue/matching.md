@@ -261,11 +261,9 @@ a halt with a deadline is the timed pause rather than an operator halt. A
 transition reaches the feed only when the state it produces differs from the
 last one published, so a subscriber sees transitions and only transitions.
 
-One known gap, unchanged by the decomposition and called out here rather than
-left to be found: the snapshot clone (`cloneForSnapshot`) copies the auction
-phase, the pause deadline and the session boundary, but not the delisting
-flag, so a checkpoint taken while an instrument is delisted restores it
-listed.
+The snapshot clone (`cloneForSnapshot`) copies the auction phase, the pause
+deadline, the session boundary and the delisting flag, so a checkpoint taken
+while an instrument is delisted restores it delisted.
 
 ### Admission profiles
 

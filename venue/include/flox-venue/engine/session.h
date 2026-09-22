@@ -337,15 +337,15 @@ class Session
   // it is a number, not a transition.
   void restoreHaltUntil(SeqNanos v) noexcept { haltUntil_ = v; }
 
-  // The snapshot clone copies the live session state. delisted_ is not among
-  // the fields -- that is what the engine copied field by field before this
-  // component existed, and this task does not change behaviour. See the note
-  // in docs/venue/matching.md.
+  // The snapshot clone copies the live session state, delisted_ included: a
+  // checkpoint taken on a delisted instrument must restore it delisted. See
+  // the note in docs/venue/matching.md.
   void copyForSnapshotClone(const Session& src) noexcept
   {
     auction_ = src.auction_;
     haltUntil_ = src.haltUntil_;
     closed_ = src.closed_;
+    delisted_ = src.delisted_;
     lastStatus_ = src.lastStatus_;
     lastStatusUntil_ = src.lastStatusUntil_;
     published_ = src.published_;
