@@ -1,0 +1,230 @@
+name: Benchmarks (nightly)
+
+# ci.yml still compiles the benchmarks on every PR (FLOX_BUILD_BENCHMARKS=ON
+# stays on there) so a benchmark that stops building fails a PR immediately.
+# It stopped *running* them on every PR -- the 4-5 min per Linux job that
+# cost -- and running them is what this workflow is for: a schedule so
+# regressions still surface daily, and workflow_dispatch for an on-demand
+# run. A PR that wants numbers can still ask for them with the `bench`
+# label instead of waiting for the next scheduled run.
+on:
+  schedule:
+    # Nightly at 2:00 UTC. Deliberately not the same hour as ci.yml's
+    # Sunday 3:00 UTC weekly (affinity-tests, venue-deep-fuzz) so the two
+    # don't compete for runners.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Mirrors linux-gcc's Configure/Build/Run-benchmarks steps in ci.yml, minus
+  # the Python/Node/Codon/QuickJS bindings that job also builds -- none of
+  # that is needed to build and run the benchmark binaries, and linux-clang
+  # already proves the same core flag set (tests/benchmarks/demo/capi, no
+  # bindings) builds and runs them fine.
+  bench-gcc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14 ccache
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-bench-nightly-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-bench-nightly-
+
+    - name: Build and Install GoogleTest
+      run: |
+        git clone --depth=1 https://github.com/google/googletest.git
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_INSTALL_PREFIX=~/gtest-install
+        cmake --build gtest-build
+        cmake --install gtest-build
+
+    - name: Build and Install Google Benchmark
+      run: |
+        git clone --depth=1 https://github.com/google/benchmark.git
+        cmake -B benchmark-build -S benchmark -G Ninja \
+          -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
+          -DCMAKE_INSTALL_PREFIX=~/benchmark-install
+        cmake --build benchmark-build
+        cmake --install benchmark-build
+
+    # FLOX_NATIVE=OFF: CMakeLists.txt defaults Release builds to
+    # -march=native, safe only when the compiling machine is the running
+    # machine. ccache breaks that assumption across runner instances -- a
+    # cache hit can hand this job an object gcc built on a different
+    # runner's CPU, and running it here can SIGILL. x86-64-v3 (this
+    # option's OFF fallback) trades a slim, non-representative amount of
+    # native-ISA headroom for benchmark numbers that don't depend on
+    # which runner in the fleet the job landed on -- ci.yml's ccache jobs
+    # carry the identical flag for the identical reason.
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
+              -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_BUILD_BENCHMARKS=ON \
+              -DFLOX_BUILD_DEMO=ON \
+              -DFLOX_ENABLE_LZ4=ON \
+              -DFLOX_ENABLE_BACKTEST=ON \
+              -DFLOX_BUILD_CAPI=ON
+
+    - name: ccache zero stats
+      run: ccache -z
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
+
+    - name: Run benchmarks
+      run: ./scripts/run-benchmarks.sh build/benchmarks
+
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+  # Mirrors linux-clang's Configure/Build/Run-benchmarks steps in ci.yml.
+  bench-clang:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install LLVM repository
+      run: |
+        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+        echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build liblz4-dev clang-18 libc++-18-dev libc++abi-18-dev ccache
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-clang18-bench-nightly-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-clang18-bench-nightly-
+
+    - name: Build and Install GoogleTest
+      run: |
+        git clone --depth=1 https://github.com/google/googletest.git
+        cmake -B gtest-build -S googletest -G Ninja \
+          -DCMAKE_CXX_COMPILER=clang++-18 \
+          -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=~/gtest-install
+        cmake --build gtest-build
+        cmake --install gtest-build
+
+    - name: Build and Install Google Benchmark
+      run: |
+        git clone --depth=1 https://github.com/google/benchmark.git
+        cmake -B benchmark-build -S benchmark -G Ninja \
+          -DCMAKE_CXX_COMPILER=clang++-18 \
+          -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
+          -DCMAKE_INSTALL_PREFIX=~/benchmark-install
+        cmake --build benchmark-build
+        cmake --install benchmark-build
+
+    # FLOX_NATIVE=OFF: see bench-gcc's identical Configure step.
+    - name: Configure
+      run: |
+        cmake -B build -G Ninja \
+              -DCMAKE_CXX_COMPILER=clang++-18 \
+              -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
+              -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
+              -DFLOX_BUILD_TESTS=ON \
+              -DFLOX_BUILD_BENCHMARKS=ON \
+              -DFLOX_BUILD_DEMO=ON \
+              -DFLOX_ENABLE_LZ4=ON \
+              -DFLOX_ENABLE_BACKTEST=ON \
+              -DFLOX_BUILD_CAPI=ON
+
+    - name: ccache zero stats
+      run: ccache -z
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
+
+    - name: Run benchmarks
+      run: ./scripts/run-benchmarks.sh build/benchmarks
+
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}

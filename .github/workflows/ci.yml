@@ -22,8 +22,14 @@ on:
 
 # Fast-fail: a new push to the same branch / PR cancels the in-progress run.
 # Build jobs (linux-*, macos, windows-*, sanitizers) depend on the quick
-# format-check + verify-docs-current jobs, so a docs / format failure no
-# longer leaves the multi-OS matrix burning cycles for ~10 minutes.
+# format-check job (~15s), so a formatting failure no longer leaves the
+# multi-OS matrix burning cycles.
+#
+# verify-docs-current (~3.5 min) used to also sit in that `needs`, which
+# meant an 11-job matrix couldn't start requesting runners until both gates
+# cleared. It runs in parallel with the matrix now, not ahead of it -- its
+# own status check still has to go green, it just no longer holds the
+# matrix's start line.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -224,12 +230,23 @@ jobs:
         PYTHONPATH=build/python python3 -m pytest mcp/tests/ -q
 
   linux-gcc:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: ubuntu-24.04
     # Observed: ~15-20 min normally; this is the job that hung for hours on
     # PR #470 (T030 -- one step never released a threaded Runner's
     # ThreadSafeFunction, keeping the process alive with nothing left to do).
     timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -241,7 +258,22 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14 python3-dev python3-pip
+        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14 python3-dev python3-pip ccache
+
+    # Keyed on compiler + a hash of every CMakeLists.txt: a CMake-option
+    # change invalidates the cache (compiler flags are part of what ccache
+    # hashes anyway, so this key doesn't need to enumerate them), while an
+    # unrelated source change keeps hitting it. restore-keys falls back to
+    # the newest same-compiler cache when the exact key misses, so a cache
+    # entry is never truly cold after the first run on this branch's base.
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-
 
     - name: Install Python packages
       # pybind11 pinned below 3.1.0: 3.1.0 changed the signatures stubgen
@@ -268,6 +300,8 @@ jobs:
         git clone --depth=1 https://github.com/google/googletest.git
         cmake -B gtest-build -S googletest -G Ninja \
           -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_INSTALL_PREFIX=~/gtest-install
         cmake --build gtest-build
         cmake --install gtest-build
@@ -277,17 +311,33 @@ jobs:
         git clone --depth=1 https://github.com/google/benchmark.git
         cmake -B benchmark-build -S benchmark -G Ninja \
           -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_BUILD_TYPE=Release \
           -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
           -DCMAKE_INSTALL_PREFIX=~/benchmark-install
         cmake --build benchmark-build
         cmake --install benchmark-build
 
+    # FLOX_NATIVE=OFF: CMakeLists.txt defaults Release builds to
+    # -march=native, which is safe only when the machine that compiled an
+    # object is the machine that runs it. ccache breaks that: a cache hit
+    # can hand this job an object gcc built on a *different* runner in an
+    # earlier run, and if that runner's CPU had an instruction this one
+    # lacks, every test linking it dies with SIGILL on startup -- caught
+    # in review as a 100%-cache-hit run where ~250 of 277 tests failed
+    # with "Exception: Illegal". x86-64-v3 (this option's OFF fallback)
+    # is a fixed baseline every runner in the fleet satisfies, so a cached
+    # object is safe to run anywhere. Same reasoning as this flag's other
+    # OFF caller, the distributable wheel build.
     - name: Configure
       run: |
         cmake -B build -G Ninja \
               -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -Dpybind11_DIR="$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')" \
               -DFLOX_BUILD_TESTS=ON \
@@ -301,8 +351,15 @@ jobs:
               -DFLOX_BUILD_QUICKJS=ON \
               -DFLOX_BUILD_TOOLS=ON
 
+    - name: ccache zero stats
+      run: ccache -z
+
     - name: Build
       run: cmake --build build -j$(nproc)
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
 
     - name: Build Node.js addon
       working-directory: node
@@ -565,14 +622,39 @@ jobs:
     - name: Run demo
       run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
+    # Benchmarks still compile every run (FLOX_BUILD_BENCHMARKS=ON above), so
+    # a benchmark that stops building fails this job either way. Only
+    # *running* them (the 4-5 min this step costs) moves off the PR path:
+    # bench-nightly.yml runs them on a schedule and on workflow_dispatch: a PR
+    # gets the compile check for free, a `bench`-labeled PR or the nightly
+    # run gets the numbers.
     - name: Run benchmarks
+      if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'bench')
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
   linux-clang:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: ubuntu-24.04
     # Observed: ~15 min.
     timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -585,7 +667,16 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev clang-18 libc++-18-dev libc++abi-18-dev
+        sudo apt-get install -y cmake ninja-build liblz4-dev clang-18 libc++-18-dev libc++abi-18-dev ccache
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-clang18-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-clang18-
 
     - name: Build and Install GoogleTest
       run: |
@@ -593,6 +684,8 @@ jobs:
         cmake -B gtest-build -S googletest -G Ninja \
           -DCMAKE_CXX_COMPILER=clang++-18 \
           -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=~/gtest-install
         cmake --build gtest-build
@@ -604,19 +697,28 @@ jobs:
         cmake -B benchmark-build -S benchmark -G Ninja \
           -DCMAKE_CXX_COMPILER=clang++-18 \
           -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_BUILD_TYPE=Release \
           -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
           -DCMAKE_INSTALL_PREFIX=~/benchmark-install
         cmake --build benchmark-build
         cmake --install benchmark-build
 
+    # FLOX_NATIVE=OFF: see linux-gcc's identical Configure step -- ccache
+    # can hand this job an object compiled with -march=native on a
+    # different runner, and running it here can SIGILL. OFF pins to the
+    # x86-64-v3 baseline every runner satisfies.
     - name: Configure
       run: |
         rm -rf build
         cmake -B build -G Ninja \
               -DCMAKE_CXX_COMPILER=clang++-18 \
               -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install" \
               -DFLOX_BUILD_TESTS=ON \
               -DFLOX_BUILD_BENCHMARKS=ON \
@@ -625,8 +727,15 @@ jobs:
               -DFLOX_ENABLE_BACKTEST=ON \
               -DFLOX_BUILD_CAPI=ON
 
+    - name: ccache zero stats
+      run: ccache -z
+
     - name: Build
       run: cmake --build build -j$(nproc)
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
 
     - name: Run tests
       run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
@@ -634,11 +743,21 @@ jobs:
     - name: Run demo
       run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
+    # See linux-gcc's identical step: benchmarks still compile every run,
+    # only running them moves to bench-nightly.yml / a `bench`-labeled PR.
     - name: Run benchmarks
+      if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'bench')
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
   sanitizers:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: ubuntu-24.04
     # Observed: ~11-15 min per sanitizer.
     timeout-minutes: 30
@@ -646,6 +765,17 @@ jobs:
       fail-fast: false
       matrix:
         sanitizer: [address, undefined, thread]
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -653,7 +783,21 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14
+        sudo apt-get install -y cmake ninja-build liblz4-dev g++-14 ccache
+
+    # A separate key per sanitizer, not a shared gcc14 key: the -fsanitize=
+    # flag is baked into every translation unit ccache hashes, so a shared
+    # key would just be three sanitizers fighting over the same slots with
+    # no hit-rate benefit -- separating them means each stays warm on its
+    # own restore-keys prefix instead of getting evicted by the other two.
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-sanitizer-${{ matrix.sanitizer }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-sanitizer-${{ matrix.sanitizer }}-
 
     - name: Build and Install GoogleTest
       run: |
@@ -661,6 +805,8 @@ jobs:
         cmake -B gtest-build -S googletest -G Ninja \
           -DCMAKE_CXX_COMPILER=g++-14 \
           -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_INSTALL_PREFIX=~/gtest-install
         cmake --build gtest-build
         cmake --install gtest-build
@@ -671,6 +817,8 @@ jobs:
               -DCMAKE_CXX_COMPILER=g++-14 \
               -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -g" \
               -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}" \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Debug \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install" \
               -DFLOX_BUILD_TESTS=ON \
@@ -681,8 +829,15 @@ jobs:
               -DFLOX_BUILD_CAPI=ON \
               -DFLOX_BUILD_QUICKJS=ON
 
+    - name: ccache zero stats
+      run: ccache -z
+
     - name: Build
       run: cmake --build build -j$(nproc)
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
 
     - name: Run tests with sanitizer
       # ThreadSanitizer had no options of its own here and ran on its
@@ -710,8 +865,15 @@ jobs:
         TSAN_OPTIONS: halt_on_error=0:exitcode=66:second_deadlock_stack=1
       run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
   macos:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: macos-latest
     # Observed: ~7-8 min plain, +119% with the undefined-behavior sanitizer
     # (~15 min) -- still at or below linux-gcc, the longest job in the
@@ -720,18 +882,40 @@ jobs:
     # on Darwin (silently ignored) and TSan is covered on Linux already, so
     # only UBSan is worth the macOS runner cost here.
     timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
 
     - name: Install dependencies
-      run: brew install cmake ninja lz4
+      run: brew install cmake ninja lz4 ccache
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-appleclang-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-appleclang-
 
     - name: Build and Install GoogleTest
       run: |
         git clone --depth=1 https://github.com/google/googletest.git
         cmake -B gtest-build -S googletest -G Ninja \
           -DCMAKE_CXX_FLAGS="-fsanitize=undefined -fno-omit-frame-pointer" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_INSTALL_PREFIX=~/gtest-install
         cmake --build gtest-build
         cmake --install gtest-build
@@ -741,11 +925,17 @@ jobs:
         git clone --depth=1 https://github.com/google/benchmark.git
         cmake -B benchmark-build -S benchmark -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DBENCHMARK_DOWNLOAD_DEPENDENCIES=ON \
           -DCMAKE_INSTALL_PREFIX=~/benchmark-install
         cmake --build benchmark-build
         cmake --install benchmark-build
 
+    # FLOX_NATIVE=OFF: see linux-gcc's identical Configure step -- this is
+    # still a CONFIG:Release build (the sanitizer flags above don't change
+    # that), so it's just as exposed to a ccache hit serving an object
+    # compiled -march=native on a differently-provisioned macOS runner.
     - name: Configure
       run: |
         LZ4_PREFIX=$(brew --prefix lz4)
@@ -753,6 +943,9 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_CXX_FLAGS="-fsanitize=undefined -fno-omit-frame-pointer -g" \
               -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined" \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH="$HOME/gtest-install;$HOME/benchmark-install;$LZ4_PREFIX" \
               -DCMAKE_LIBRARY_PATH="$LZ4_PREFIX/lib" \
               -DCMAKE_INCLUDE_PATH="$LZ4_PREFIX/include" \
@@ -763,8 +956,15 @@ jobs:
               -DFLOX_ENABLE_BACKTEST=ON \
               -DFLOX_BUILD_TOOLS=ON
 
+    - name: ccache zero stats
+      run: ccache -z
+
     - name: Build
       run: cmake --build build -j$(sysctl -n hw.ncpu)
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
 
     - name: Run tests with undefined-behavior sanitizer
       env:
@@ -776,8 +976,15 @@ jobs:
         UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
       run: scripts/run-with-sanitizer-scan.sh ./build/demo/flox_demo
 
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
   windows-msvc:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: windows-latest
     # Observed: ~13 min. The step-level timeout-minutes below is separate --
     # that one bounds a single flaky-network step, not the whole job.
@@ -790,6 +997,7 @@ jobs:
       # in CI needs it.
       VSCMD_SKIP_SENDTELEMETRY: 1
       VCPKG_DISABLE_METRICS: 1
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
 
     steps:
     - uses: actions/checkout@v5
@@ -797,8 +1005,38 @@ jobs:
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Install ninja
-      run: choco install ninja -y
+    # Retried like the vcpkg installs below: choco's own community feed
+    # has timed out mid-run here (504 from community.chocolatey.org),
+    # same class of flaky network dependency as vcpkg.exe/portfile
+    # downloads, so it gets the same backoff instead of failing the job
+    # on one bad response.
+    - name: Install ninja and sccache
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        for ($i = 1; $i -le 3; $i++) {
+          choco install ninja sccache -y
+          if ($LASTEXITCODE -eq 0) { break }
+          Write-Host "::warning::choco install ninja sccache failed (attempt $i/3, exit $LASTEXITCODE)"
+          if ($i -lt 3) { Start-Sleep -Seconds (20 * $i) }
+        }
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::error::choco install ninja sccache failed after 3 attempts"
+          exit 1
+        }
+
+    # cl.exe's default Release config carries no /Zi (no shared PDB), which
+    # is the one MSVC + sccache combination known to race under parallel
+    # compilation -- so this is the same restore/build/save shape as the
+    # ccache jobs above, not a riskier variant of it.
+    - name: Restore sccache
+      id: sccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.SCCACHE_DIR }}
+        key: sccache-${{ runner.os }}-msvc-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          sccache-${{ runner.os }}-msvc-
 
     # Every one of these three steps reaches the network, and all three have
     # failed on us mid-run (vcpkg.exe download, portfile download). Retry with
@@ -864,12 +1102,17 @@ jobs:
       run: |
         cmake -B build -G Ninja `
               -DCMAKE_BUILD_TYPE=Release `
+              -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+              -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
               -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
               -DFLOX_BUILD_TESTS=ON `
               -DFLOX_BUILD_BENCHMARKS=ON `
               -DFLOX_BUILD_DEMO=ON `
               -DFLOX_ENABLE_LZ4=ON `
               -DFLOX_ENABLE_BACKTEST=ON
+
+    - name: sccache zero stats
+      run: sccache -z
 
     - name: Build
       # Retried once, Windows only. Parallel linking of ~150 test executables
@@ -886,14 +1129,25 @@ jobs:
         }
         if ($LASTEXITCODE -ne 0) { exit 1 }
 
+    - name: sccache stats
+      if: always()
+      run: sccache --show-stats
+
     - name: Run tests
       run: ctest --output-on-failure --test-dir build
 
     - name: Run demo
       run: .\build\demo\flox_demo.exe
 
+    - name: Save sccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.SCCACHE_DIR }}
+        key: ${{ steps.sccache-restore.outputs.cache-primary-key }}
+
   windows-clang-cl:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: windows-latest
     # Observed: ~7 min.
     timeout-minutes: 25
@@ -905,6 +1159,7 @@ jobs:
       # in CI needs it.
       VSCMD_SKIP_SENDTELEMETRY: 1
       VCPKG_DISABLE_METRICS: 1
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
 
     steps:
     - uses: actions/checkout@v5
@@ -912,8 +1167,31 @@ jobs:
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
+    # Retried like windows-msvc's identical step and the vcpkg installs
+    # below: choco's own feed is a flaky network dependency too.
     - name: Install dependencies
-      run: choco install ninja llvm -y
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        for ($i = 1; $i -le 3; $i++) {
+          choco install ninja llvm sccache -y
+          if ($LASTEXITCODE -eq 0) { break }
+          Write-Host "::warning::choco install ninja llvm sccache failed (attempt $i/3, exit $LASTEXITCODE)"
+          if ($i -lt 3) { Start-Sleep -Seconds (20 * $i) }
+        }
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::error::choco install ninja llvm sccache failed after 3 attempts"
+          exit 1
+        }
+
+    - name: Restore sccache
+      id: sccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.SCCACHE_DIR }}
+        key: sccache-${{ runner.os }}-clangcl-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          sccache-${{ runner.os }}-clangcl-
 
     # Every one of these three steps reaches the network, and all three have
     # failed on us mid-run (vcpkg.exe download, portfile download). Retry with
@@ -988,6 +1266,8 @@ jobs:
               -DCMAKE_C_COMPILER=clang-cl `
               -DCMAKE_CXX_COMPILER=clang-cl `
               -DCMAKE_BUILD_TYPE=Release `
+              -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+              -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
               -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
               -DFLOX_BUILD_TESTS=ON `
               -DFLOX_FETCH_GTEST=ON `
@@ -995,6 +1275,9 @@ jobs:
               -DFLOX_BUILD_DEMO=ON `
               -DFLOX_ENABLE_LZ4=ON `
               -DFLOX_ENABLE_BACKTEST=ON
+
+    - name: sccache zero stats
+      run: sccache -z
 
     - name: Build
       # Retried once, Windows only. Parallel linking of ~150 test executables
@@ -1011,11 +1294,22 @@ jobs:
         }
         if ($LASTEXITCODE -ne 0) { exit 1 }
 
+    - name: sccache stats
+      if: always()
+      run: sccache --show-stats
+
     - name: Run tests
       run: ctest --output-on-failure --test-dir build
 
     - name: Run demo
       run: .\build\demo\flox_demo.exe
+
+    - name: Save sccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.SCCACHE_DIR }}
+        key: ${{ steps.sccache-restore.outputs.cache-primary-key }}
 
   # Weekly affinity tests (Linux only)
   affinity-tests:
@@ -1079,10 +1373,21 @@ jobs:
       run: ./scripts/run-benchmarks.sh build/benchmarks
 
   connectors-build:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: ubuntu-24.04
     # Observed: ~11 min.
     timeout-minutes: 25
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -1090,8 +1395,17 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build g++-14 \
+        sudo apt-get install -y cmake ninja-build g++-14 ccache \
                                 libssl-dev zlib1g-dev libcurl4-openssl-dev
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-connectors-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-connectors-
 
     - name: Install GoogleTest
       # connectors/tests/CMakeLists.txt requires it (find_package(GTest
@@ -1100,6 +1414,8 @@ jobs:
         git clone --depth=1 https://github.com/google/googletest.git
         cmake -B gtest-build -S googletest -G Ninja \
           -DCMAKE_CXX_COMPILER=g++-14 \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DCMAKE_INSTALL_PREFIX=$HOME/gtest-install
         cmake --build gtest-build
         cmake --install gtest-build
@@ -1111,24 +1427,42 @@ jobs:
     # adds its own tests/ subdirectory when that flag is on, so without
     # it the unit_test_* targets never exist for ctest to run -- no
     # workflow set both flags together before this.
+    # FLOX_NATIVE=OFF: see linux-gcc's identical Configure step.
     - name: Configure
       run: |
         cmake -B build -G Ninja \
               -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DCMAKE_PREFIX_PATH=$HOME/gtest-install \
               -DFLOX_BUILD_CONNECTORS=ON \
               -DFLOX_ENABLE_POLYMARKET_ORDER_EXECUTOR=OFF \
               -DFLOX_BUILD_TESTS=ON
 
+    - name: ccache zero stats
+      run: ccache -z
+
     - name: Build connectors target and tests
       run: cmake --build build -j$(nproc)
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
 
     - name: Verify static archive exists
       run: test -f build/connectors/libflox-connectors.a
 
     - name: Run connector unit tests
       run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
+
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
   # The venue module must stay genuinely optional: a build with it OFF has to
   # configure, compile and pass its suite with no venue code involved. Cheap
@@ -1139,7 +1473,7 @@ jobs:
   # check silently. Configure only -- the check reads compile_commands.json and
   # never needs a compiled object.
   venue-gate-reachability:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: ubuntu-24.04
     # Observed: ~30s (configure only, no build).
     timeout-minutes: 10
@@ -1171,11 +1505,33 @@ jobs:
     - name: Exhaustively check the checkpoint/recovery protocol
       run: python3 scripts/check_recovery_model.py
 
+  # venue-optional (venue OFF entirely) and venue-engine-only (venue ON,
+  # network perimeter OFF) used to be two separate jobs. Both are cheap
+  # (4-5 min each) but each claimed its own ubuntu-24.04 runner the moment
+  # the gate opened, and with eleven jobs doing that at once, sanitizers
+  # (thread)/sanitizers(address) queued 5-9 minutes for a free one. Running
+  # both variants back-to-back on one runner drops the simultaneous request
+  # count by one without changing what either variant builds, tests, or
+  # asserts -- same two configure/build/test passes, same coverage, just
+  # sequential instead of parallel. ccache is warm for the second pass
+  # (same compiler, mostly-overlapping sources) as a side benefit.
   venue-optional:
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: ubuntu-24.04
-    # Observed: ~4 min.
-    timeout-minutes: 15
+    # Observed: ~4 min (without-venue) + ~5 min (engine-only) run
+    # sequentially now; was two ~4 min / ~5 min jobs on separate runners.
+    timeout-minutes: 20
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # ccache defaults to comparing the compiler binary's mtime, and
+      # apt-get gives g++-14/clang-18 a fresh mtime on every ephemeral
+      # runner -- so the mtime check "changes" on every run even though
+      # the package (and its content) is identical, and ccache treats it
+      # as a different compiler and misses everything. content hashes the
+      # actual bytes instead, which is stable across runners. (sccache on
+      # the Windows jobs already hashes content by default -- this brings
+      # ccache in line with it.)
+      CCACHE_COMPILERCHECK: content
 
     steps:
     - uses: actions/checkout@v5
@@ -1183,44 +1539,46 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
+        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev ccache
 
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-venue-optional-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-venue-optional-
+
+    - name: ccache zero stats
+      run: ccache -z
+
+    # FLOX_NATIVE=OFF on both configures below: see linux-gcc's identical
+    # Configure step.
     - name: Configure without the venue
       run: |
-        cmake -B build -G Ninja \
+        cmake -B build-without-venue -G Ninja \
               -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DFLOX_BUILD_VENUE=OFF \
               -DFLOX_BUILD_TESTS=ON \
               -DFLOX_BUILD_DEMO=ON \
               -DFLOX_ENABLE_BACKTEST=ON
 
-    - name: Build
-      run: cmake --build build -j$(nproc)
+    - name: Build without the venue
+      run: cmake --build build-without-venue -j$(nproc)
 
-    - name: Test
-      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
+    - name: Test without the venue
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build-without-venue
 
     - name: Verify nothing venue-side was built
       run: |
-        test ! -f build/venue/libflox-venue.a
-        ! ctest --test-dir build -N | grep -qE "Test +#[0-9]+: test_venue_(matcher|engine|ledger)"
+        test ! -f build-without-venue/venue/libflox-venue.a
+        ! ctest --test-dir build-without-venue -N | grep -qE "Test +#[0-9]+: test_venue_(matcher|engine|ledger)"
 
-  # The venue's engine without its network perimeter: the configuration a
-  # platform without POSIX sockets gets. Kept honest by checking that the
-  # engine's own tests DO run here -- an exclusion rule that quietly took
-  # the matcher with the gateways would otherwise look like a pass.
-  venue-engine-only:
-    needs: [format-check, verify-docs-current]
-    runs-on: ubuntu-24.04
-    # Observed: ~5 min.
-    timeout-minutes: 20
-    steps:
-    - uses: actions/checkout@v5
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev
     # Seconds, and it answers for every header at once. The Windows job
     # answers the same question eight minutes in and one header at a time,
     # because the compiler stops at the first.
@@ -1239,37 +1597,55 @@ jobs:
     # here.
     - name: Check every installed header only needs what its target declares
       run: python3 scripts/check_installed_headers_declared.py
+
     - name: Configure with the engine and without the perimeter
       run: |
-        cmake -B build -G Ninja \
+        cmake -B build-engine-only -G Ninja \
               -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               -DCMAKE_BUILD_TYPE=Release \
+              -DFLOX_NATIVE=OFF \
               -DFLOX_BUILD_VENUE=ON \
               -DFLOX_VENUE_PERIMETER=OFF \
               -DFLOX_BUILD_TESTS=ON \
               -DFLOX_ENABLE_BACKTEST=ON
-    - name: Build
-      run: cmake --build build -j"$(nproc)"
-    - name: Test
-      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build
+
+    - name: Build with the engine and without the perimeter
+      run: cmake --build build-engine-only -j"$(nproc)"
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
+
+    - name: Test engine-only build
+      run: scripts/run-with-sanitizer-scan.sh ctest --output-on-failure --test-dir build-engine-only
+
     - name: Verify the engine is here and the perimeter is not
       run: |
-        test -f build/venue/libflox-venue.a
+        test -f build-engine-only/venue/libflox-venue.a
         for t in matcher engine ledger checkpoint recovery conservation_fuzz differential_fuzz; do
-          ctest --test-dir build -N | grep -qE "test_venue_$t\b" \
+          ctest --test-dir build-engine-only -N | grep -qE "test_venue_$t\b" \
             || { echo "::error::engine test test_venue_$t is missing from the engine-only build"; exit 1; }
         done
         for t in gateway fix_session md_distribution control_plane tls; do
-          ! ctest --test-dir build -N | grep -qE "test_venue_$t\b" \
+          ! ctest --test-dir build-engine-only -N | grep -qE "test_venue_$t\b" \
             || { echo "::error::perimeter test test_venue_$t was built without the perimeter"; exit 1; }
         done
+
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
   # Weekly deep run of the venue fuzzes. Pull requests run them at a
   # CI-friendly depth; this raises the command count by an order of magnitude,
   # which is where the rarer book divergences and reservation leaks surface.
   venue-deep-fuzz:
     if: github.event_name == 'schedule'
-    needs: [format-check, verify-docs-current]
+    needs: [format-check]
     runs-on: ubuntu-24.04
     # Weekly-only; 2,000,000 fuzz ops is deliberately an order of magnitude
     # past the PR-time depth, so give it real headroom.
