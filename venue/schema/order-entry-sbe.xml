@@ -61,6 +61,18 @@
   and matching the hold back to one of them; the venue has had it all along.
   Appended after `seq`, so a version-5 reader skips it via blockLength.
 
+  Version 8: new inbound QuoteLadder (7), a market maker's whole set of
+  levels on one symbol in one message, replacing the prior set. The engine
+  command of the same name (venue/include/flox-venue/messages.h) is exactly
+  the K Quotes it stands for, so this is the order-entry wire for what a
+  maker previously had to send as K separate replaces. The levels are a FIXED
+  block of 8 slots with a `levels` count rather than an SBE repeating group:
+  this codec has no var-length support, and inventing it for one message
+  would change every decoder's framing. Slots past `levels` carry zero sizes,
+  which is how a shorter ladder takes down the rungs it stopped naming.
+  Additive, like every version before it: a version-7 reader never sees
+  template 7 and is unaffected.
+
   Version 7: FillHeld (17) and FillRejected (18) gained a trailing `clOrdId`
   field (OrderId, sinceVersion="7"): the identifier the TAKER gave its order,
   0 when it gave none. A hold's own id names the hold, not the order that
@@ -72,7 +84,7 @@
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.oe"
                    id="92"
-                   version="7"
+                   version="8"
                    semanticVersion="1.0"
                    description="Flox venue order entry + execution reports"
                    byteOrder="littleEndian">
@@ -93,6 +105,10 @@
     <type name="Nanos"    primitiveType="int64"/>
     <type name="SeqNum"   primitiveType="uint64"/>  <!-- per-session exec-report sequence -->
     <type name="NoteText" primitiveType="char" length="32"/>  <!-- NUL-padded operator note -->
+    <!-- 8 ladder rungs, each bidPrice/bidQty/askPrice/askQty as int64 raw:
+         a fixed 256-byte block, not a repeating group (see the version-8
+         note above). -->
+    <type name="LadderRungs" primitiveType="int64" length="32"/>
   </types>
 
   <!-- ============ inbound: client -> venue ============ -->
@@ -156,6 +172,30 @@
        disconnect). Fire-and-forget, applied at the gateway; no reply frame. -->
   <sbe:message name="SetSessionConfig" id="6" sinceVersion="2">
     <field name="codEnabled" id="1" type="Flag" sinceVersion="2"/>
+  </sbe:message>
+
+  <!-- A market maker's whole set of levels on one symbol, replacing the prior
+       set in one message (FIX calls the shape a mass quote). Level i posts
+       under orderId bidIdBase+i / askIdBase+i, so the ladder owns a block of
+       8 ids a side and can name the levels a shorter ladder drops. Slots past
+       `levels` are ignored on the wire and treated as zero-sized rungs, which
+       takes those levels down. Every flag applies to every leg, exactly as a
+       single two-sided quote's flags apply to both of its legs. -->
+  <sbe:message name="QuoteLadder" id="7" sinceVersion="8">
+    <field name="account"     id="1"  type="Account"  sinceVersion="8"/>
+    <field name="clOrdId"     id="2"  type="OrderId"  sinceVersion="8"/>
+    <field name="expiryNs"    id="3"  type="Nanos"    sinceVersion="8"/>
+    <field name="visibleQty"  id="4"  type="QtyRaw"   sinceVersion="8"/>
+    <field name="bidIdBase"   id="5"  type="OrderId"  sinceVersion="8"/>
+    <field name="askIdBase"   id="6"  type="OrderId"  sinceVersion="8"/>
+    <field name="symbol"      id="7"  type="Symbol"   sinceVersion="8"/>
+    <field name="levels"      id="8"  type="Flag"     sinceVersion="8"/>
+    <field name="stp"         id="9"  type="EnumU8"   sinceVersion="8"/>
+    <field name="lastLook"    id="10" type="Flag"     sinceVersion="8"/>
+    <field name="postOnly"    id="11" type="Flag"     sinceVersion="8"/>
+    <field name="reduceOnly"  id="12" type="Flag"     sinceVersion="8"/>
+    <field name="tif"         id="13" type="EnumU8"   sinceVersion="8"/>
+    <field name="rungs"       id="14" type="LadderRungs" sinceVersion="8"/>
   </sbe:message>
 
   <!-- ============ outbound: venue -> client (execution reports) ============ -->

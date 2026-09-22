@@ -35,6 +35,49 @@ void MatchingEngine<Book>::onQuote(const Quote& q)
   {
     return;
   }
+  applyQuote(q, /*clOrdIdChecked=*/false);
+}
+
+// A market maker's whole set of levels on one symbol, replaced in one command.
+//
+// Every rung goes through applyQuote, which is the Quote path itself and not a
+// copy of it: a ladder of K rungs does what K Quotes with the same parameters
+// do, in the same order, down to the ids the legs are given and the events
+// that leave. The loop runs the full block rather than only the live rungs,
+// because the rungs past the live ones are quotes with no quantity on either
+// side -- which is how a ladder that got shorter takes down the levels it
+// stopped naming. On a level nothing rests at, such a rung cancels nothing
+// and publishes nothing.
+//
+// The clientOrderId is deduplicated ONCE, for the ladder as a whole, for the
+// reason a Quote registers it once for its two legs: a ladder is one
+// submission naming 2K children, not K submissions, and checking it per rung
+// would make the ladder refuse its own second level.
+template <class Book>
+void MatchingEngine<Book>::onQuoteLadder(const QuoteLadder& l)
+{
+  if (l.symbol != cfg_.id)
+  {
+    return;
+  }
+  if (clOrdIdDuplicate(l.accountId, l.clientOrderId))
+  {
+    sink_(OrderRejected{l.bidIdBase, l.symbol, RejectReason::DuplicateClientOrderId, l.accountId,
+                        l.clientOrderId});
+    return;
+  }
+  for (uint8_t i = 0; i < kQuoteLadderLevels; ++i)
+  {
+    applyQuote(engine::QuoteLadderLegs::at(l, i), /*clOrdIdChecked=*/true);
+  }
+}
+
+// The quote path both commands run. `clOrdIdChecked` is true for a ladder's
+// rungs only: the ladder registered the name once, above, before any rung was
+// built.
+template <class Book>
+void MatchingEngine<Book>::applyQuote(const Quote& q, bool clOrdIdChecked)
+{
   if (admissionDenies(q.accountId, AdmissionDeny::DenyQuote))
   {
     credit_.countAdmissionReject();
@@ -58,7 +101,7 @@ void MatchingEngine<Book>::onQuote(const Quote& q)
   // second one asked. A genuine resend (this account replaying the same
   // clOrdId) is still refused, same as any other duplicate, and the prior
   // quote is left resting untouched.
-  if (clOrdIdDuplicate(q.accountId, q.clientOrderId))
+  if (!clOrdIdChecked && clOrdIdDuplicate(q.accountId, q.clientOrderId))
   {
     sink_(OrderRejected{q.bidId, q.symbol, RejectReason::DuplicateClientOrderId, q.accountId,
                         q.clientOrderId});

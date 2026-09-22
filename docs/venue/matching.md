@@ -404,9 +404,10 @@ venue.submit(InboundCommand{order}, tsNs);
 ```
 
 Every state-mutating input is an `InboundCommand`: `NewOrder`, `CancelOrder`,
-`ModifyOrder`, `MassCancel`, `Quote`, `LastLookDecision`, `SetMark`,
-`ApplyFunding`, `AdminCmd`, `TimeTick` (idle time sweep). That is what makes
-deterministic replay possible; see [Runtime and recovery](runtime.md).
+`ModifyOrder`, `MassCancel`, `Quote`, `QuoteLadder`, `LastLookDecision`,
+`SetMark`, `ApplyFunding`, `AdminCmd`, `TimeTick` (idle time sweep). That is
+what makes deterministic replay possible; see
+[Runtime and recovery](runtime.md).
 
 ### Where the code lives
 
@@ -421,7 +422,7 @@ So the engine is three things and a list. The three: a **dispatcher**
 (`submit` reads a command and calls the handler for it), the **book**, and the
 **matcher** that crosses against it. The list is its components. What is left
 in the template is the code that touches the book or the matcher -- `onNew`,
-`onCancel`, `onModify`, `onQuote`, `onStop`, `validate`, the cross path,
+`onCancel`, `onModify`, `onQuote`, `onQuoteLadder`, `onStop`, `validate`, the cross path,
 `runAuction`, `repeg`, the expiry and mass-cancel loops -- plus the instrument
 config it owns and a thin delegate for every published method.
 
@@ -449,7 +450,7 @@ Two kinds of file sit in `flox-venue/engine/`:
 | `engine/session.inl` | the session transition reaching the feed and the book: `applySession`, `publishStatus`, `cancelEntireBook`, `runAuction` |
 | `engine/orders.inl` | stops and triggers, `onModify`, `onCancel`, order ownership |
 | `engine/publications.inl` | the engine's side of the publications: `publishDerivatives`, the mass-cancel loop, the per-account index forwarding |
-| `engine/quote_mmp.inl` | `onQuote`, the MMP enforcement pass |
+| `engine/quote_mmp.inl` | `onQuote`, `onQuoteLadder`, the MMP enforcement pass |
 | `engine/ledger_fees.inl` | reservations, deposits/withdrawals, `settleTrade` |
 | `engine/clearing.inl` | the engine's side of clearing: the published methods, `settlePerp`, the order-IM moves |
 | `engine/checkpoint.inl` | `stateHash`, `configHash`, `writeSnapshot`, `cloneForSnapshot`, and the helpers for the state no component owns |
@@ -475,6 +476,7 @@ sink.
 | `engine::Fees` | `engine/fees.h` | the fee schedule, what a print costs each side, and the ledger move behind the report | the three settlement sites that ask it (ledgerless, spot, perp); `setFeeSchedule` as a delegate |
 | `engine::OcoBook` | `engine/oco.h` | group membership in both directions, the groups a fill decided, and which members lost | `processOco` and `cancelOcoSibling`: the book, the reservation and the report |
 | `engine::QuoteLegs` | `engine/quote.h` | the child orders a quote names, and every field each of them carries | `onQuote`: ownership, dedup, cancelling the two prior legs, submitting the new ones |
+| `engine::QuoteLadderLegs` | `engine/quote.h` | rung `i` of a ladder as the `Quote` it is: the ids from the ladder's id block, the rung's prices and sizes, and every flag the ladder carries | `onQuoteLadder`: the dedup slot the ladder consumes once, and the loop that walks the quote path per rung |
 | `engine::Integrity` | `engine/integrity.h` | the two refusals that must never happen -- a snapshot record in live traffic, a trade that could not settle -- counted and reported | the two published counters as delegates |
 | `ClOrdIdWindow` | `engine/clordid_window.h` | the per-account clientOrderId dedup index in two rotating generations, and the verdict on a resend | `clOrdIdDuplicate`, one line; the reject the verdict causes |
 | `StpState` | `engine/stp.h` | self-trade-prevention modes of resting orders, the scope two accounts are compared in, the verdict on a self-matching auction pair | `runAuction` executing that verdict: decrement or cancel |
@@ -629,23 +631,46 @@ Before the first trade there is no reference price, so no band exists yet.
   choose between the primitive built for two-sided quoting and the controls
   that make two-sided quoting safe.
 
-  A maker holding several levels per side sends one `Quote` per level; there
-  is no bulk ladder replace, and that is a measured decision rather than a
-  gap. On a synthetic ladder feed -- 20 levels a side, three sizes changing
-  per update, the mid stepping a tick one time in five, 5 sources x 50
-  instruments at 100 updates a second each -- the merged stream is about
-  **156k single commands a second**, against a shard that accepts **650-770k**
-  with its journal on disk and replays about 6M a second. By bytes a bulk
-  command is a wash, not a win: one 20-level ladder is ~320 bytes against
-  180-300 for the 3-5 single commands that actually changed.
-  
-  What limits a maker here is journal volume, and the two things that move it
-  are the number of levels published and coalescing updates before sending --
-  both of which live on the maker's side and neither of which a venue command
-  would improve. A bulk `ReplaceLadder` would also change the size of a
-  journaled command, so every existing journal would stop being readable, for
-  parity. See W29-T002; the measurement and the rejected alternatives are
-  there.
+- **Ladder.** `QuoteLadder` replaces a maker's WHOLE set of levels on one
+  symbol in one command: up to 8 rungs a side, one journal record, one
+  sequencer slot. It is defined as the `Quote`s it stands for -- rung `i` is a
+  quote under `bidIdBase + i` / `askIdBase + i`, carrying every flag the
+  ladder carries -- and the engine runs the quote path once per rung, in
+  order, so the legs, the ids, the events and their sequence are what the 8
+  separate quotes would have produced. `engine::QuoteLadderLegs` is that
+  reading; there is no second matching path.
+
+  The rungs past `levels` are quotes with no size on either side, which is how
+  a ladder that got SHORTER takes down the levels it stopped naming. That is
+  the one thing a set of independent quotes could not do: the ladder owns a
+  block of ids, so the engine can name a level the submitter no longer names.
+  A `levels` past the end of the block is clamped rather than refused, and
+  clamped by the same helper the journal writer and the SBE decoder ask, so a
+  live run and its replay cannot disagree about how long the record was.
+
+  `clientOrderId` is the name the submitter gave the LADDER: every leg carries
+  it and it consumes one dedup slot, the rule a `Quote` already applies to its
+  two legs.
+
+  The record is as long as the rungs it names, not as long as the block --
+  `quoteLadderBodySize`, the one journaled body whose length is a property of
+  the record rather than of its type. That is what makes the command cheaper
+  rather than merely tidier:
+
+  | rungs | ladder | 1 `Quote` per rung | saved |
+  |---|---|---|---|
+  | 1 | 114 B | 114 B | 1.00x |
+  | 3 | 178 B | 342 B | 1.92x |
+  | 5 | 242 B | 570 B | 2.36x |
+  | 8 | 338 B | 912 B | 2.70x |
+
+  (bytes on disk per update, framing and crc included, `bench_venue_quote_ladder`.)
+
+  An earlier measurement (W29-T002) rejected a bulk command on the grounds
+  that "by bytes a bulk command is a wash": one 20-level fixed-width ladder of
+  ~320 bytes against 180-300 for the 3-5 single commands that actually
+  changed. That held for a FIXED-width command, which pays for slots nobody
+  fills. It does not hold for this one, which pays for the rungs it sends.
 
 ### Last-look lifecycle
 

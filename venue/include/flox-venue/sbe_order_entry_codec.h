@@ -78,7 +78,14 @@ class SbeOrderEntryCodec
   //    on FillRejected and after `takerSide` on FillHeld (a version-6 frame's
   //    shorter blockLength simply has no id), so seqOffsetIn now knows about
   //    both templates too.
-  static constexpr uint16_t kVersion = 7;
+  // 8. Inbound QuoteLadder (template 7): a maker's whole set of levels on one
+  //    symbol, replacing the prior set, where the wire previously carried one
+  //    replace per level. The rungs are a FIXED block of kQuoteLadderLevels
+  //    slots with a count, not an SBE repeating group: this codec has no
+  //    var-length support and one message is not a reason to invent it. Slots
+  //    past the count are zero-sized rungs, which is how a shorter ladder
+  //    takes down the levels it stopped naming.
+  static constexpr uint16_t kVersion = 8;
 
   enum class InTmpl : uint16_t
   {
@@ -90,6 +97,10 @@ class SbeOrderEntryCodec
     ResendRequest = 4,           // {fromSeq}: replay exec reports with seq >= fromSeq
     AccountSnapshotRequest = 5,  // {}: open orders + position for the session account
     SetSessionConfig = 6,        // {codEnabled}: per-session cancel-on-disconnect
+    // A maker's whole set of levels on one symbol, replacing the prior set.
+    // Not a session verb: this one reaches matching, as the QuoteLadder
+    // command it decodes to.
+    QuoteLadder = 7,
   };
   enum class OutTmpl : uint16_t
   {
@@ -126,6 +137,14 @@ class SbeOrderEntryCodec
   static constexpr uint16_t kBlockResendRequest = 8;
   static constexpr uint16_t kBlockSnapshotRequest = 0;
   static constexpr uint16_t kBlockSetSessionConfig = 1;
+  // account(8) + clOrdId(8) + expiryNs(8) + visibleQty(8) + bidIdBase(8)
+  // + askIdBase(8) + symbol(4) + levels(1) + stp(1) + lastLook(1)
+  // + postOnly(1) + reduceOnly(1) + tif(1), then kQuoteLadderLevels rungs of
+  // bidPrice/bidQty/askPrice/askQty.
+  static constexpr uint16_t kLadderHead = 58;
+  static constexpr uint16_t kLadderRung = 32;
+  static constexpr uint16_t kBlockQuoteLadder =
+      kLadderHead + static_cast<uint16_t>(kQuoteLadderLevels) * kLadderRung;
   static constexpr uint16_t kBlockAccepted = 46;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockExecuted = 54;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockTrade = 53;
@@ -145,7 +164,11 @@ class SbeOrderEntryCodec
   // + reason(1) + seq(8) + note(32)
   static constexpr uint16_t kBlockPositionAdjusted = 77;
 
-  static constexpr size_t kMaxSize = sbe::kHeaderSize + kBlockEnter;
+  // The ladder is now the longest frame this codec produces, by a wide
+  // margin: it carries a whole block of rungs where every other inbound
+  // message carries one order.
+  static constexpr size_t kMaxSize =
+      sbe::kHeaderSize + (kBlockEnter > kBlockQuoteLadder ? kBlockEnter : kBlockQuoteLadder);
 
   // Read the templateId of a framed message (0 if too short / foreign schema).
   // Lets a consumer classify an exec report without a full decode.
@@ -203,6 +226,33 @@ class SbeOrderEntryCodec
       sbe::putI64(out, m->newPrice.raw());
       sbe::putI64(out, m->newQty.raw());
       sbe::putU64(out, m->accountId);
+    }
+    else if (const auto* l = std::get_if<venue::QuoteLadder>(&cmd))
+    {
+      sbe::putHeader(out, kBlockQuoteLadder, u16(InTmpl::QuoteLadder), kSchemaId, kVersion);
+      sbe::putU64(out, l->accountId);
+      sbe::putU64(out, l->clientOrderId);
+      sbe::putI64(out, l->expiryNs.raw());
+      sbe::putI64(out, l->visibleQuantity.raw());
+      sbe::putU64(out, l->bidIdBase);
+      sbe::putU64(out, l->askIdBase);
+      sbe::putU32(out, l->symbol);
+      // The clamped count, not the raw byte: the wire carries as many rungs
+      // as the block has, so a count past the end would name rungs that are
+      // not there.
+      sbe::putU8(out, quoteLadderLiveLevels(*l));
+      sbe::putU8(out, static_cast<uint8_t>(l->stp));
+      sbe::putU8(out, l->lastLook ? 1 : 0);
+      sbe::putU8(out, l->postOnly ? 1 : 0);
+      sbe::putU8(out, l->reduceOnly ? 1 : 0);
+      sbe::putU8(out, static_cast<uint8_t>(l->tif));
+      for (uint8_t i = 0; i < kQuoteLadderLevels; ++i)
+      {
+        sbe::putI64(out, l->level[i].bidPrice.raw());
+        sbe::putI64(out, l->level[i].bidQty.raw());
+        sbe::putI64(out, l->level[i].askPrice.raw());
+        sbe::putI64(out, l->level[i].askQty.raw());
+      }
     }
     // Other InboundCommand alternatives are not part of the order-entry wire.
   }
@@ -280,6 +330,40 @@ class SbeOrderEntryCodec
         m.newQty = Quantity::fromRaw(sbe::getI64(b + 20));
         m.accountId = sbe::getU64(b + 28);
         return InboundCommand{m};
+      }
+      case InTmpl::QuoteLadder:
+      {
+        if (h.blockLength < kBlockQuoteLadder)
+        {
+          return std::nullopt;
+        }
+        venue::QuoteLadder l;
+        l.accountId = sbe::getU64(b + 0);
+        l.clientOrderId = sbe::getU64(b + 8);
+        l.expiryNs = SeqNanos::fromRaw(sbe::getI64(b + 16));
+        l.visibleQuantity = Quantity::fromRaw(sbe::getI64(b + 24));
+        l.bidIdBase = sbe::getU64(b + 32);
+        l.askIdBase = sbe::getU64(b + 40);
+        l.symbol = static_cast<SymbolId>(sbe::getU32(b + 48));
+        // A count past the block is clamped here rather than refused, the
+        // same answer the engine and the journal give it: the frame carries
+        // exactly kQuoteLadderLevels rungs, so there is nothing a larger
+        // count could name.
+        l.levels = b[52] > kQuoteLadderLevels ? kQuoteLadderLevels : b[52];
+        l.stp = static_cast<STPMode>(b[53]);
+        l.lastLook = b[54] != 0;
+        l.postOnly = b[55] != 0;
+        l.reduceOnly = b[56] != 0;
+        l.tif = static_cast<TimeInForce>(b[57]);
+        for (uint8_t i = 0; i < kQuoteLadderLevels; ++i)
+        {
+          const uint8_t* r = b + kLadderHead + i * kLadderRung;
+          l.level[i].bidPrice = Price::fromRaw(sbe::getI64(r + 0));
+          l.level[i].bidQty = Quantity::fromRaw(sbe::getI64(r + 8));
+          l.level[i].askPrice = Price::fromRaw(sbe::getI64(r + 16));
+          l.level[i].askQty = Quantity::fromRaw(sbe::getI64(r + 24));
+        }
+        return InboundCommand{l};
       }
       default:
         break;  // session verbs (ResendRequest / AccountSnapshotRequest) are

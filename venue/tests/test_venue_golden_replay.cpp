@@ -1223,6 +1223,69 @@ std::vector<Scenario> corpus()
                      "golden_snap_held_clordid", /*viaClone*/ true);
                }});
 
+  // QuoteLadder: a maker's whole set of levels in one command. Appended at
+  // the end of the corpus on purpose -- a scenario inserted anywhere else
+  // would rewrite the ORDER of the rows in the table, and a row that moved
+  // reads in a diff exactly like a row whose numbers moved.
+  //
+  // The ladder is one sequenced command that walks the quote path K times,
+  // so what is at stake is the ORDER of what comes out of it: accepts and
+  // cancels interleaved level by level, a taker crossing the top rung
+  // mid-ladder, a narrower ladder taking down the rungs it stopped naming,
+  // and a zero-level ladder pulling the block. None of that is visible in a
+  // state digest -- the same orders rest either way -- which is why it is
+  // here, where the stream digest is compared too.
+  s.push_back({"quote_ladder_replace",
+               []
+               {
+                 SymbolConfig c = spotCfg();
+                 Digest d;
+                 Run r(c, d);
+                 r.eng.setLedger(&r.led, VENUE_ACCT);
+                 for (const auto& dep : deposits(3, 1000.0, 1'000'000.0))
+                 {
+                   r.push(dep);
+                 }
+
+                 const auto rung = [](uint8_t levels, double step, double size)
+                 {
+                   QuoteLadder l;
+                   l.accountId = 1;
+                   l.symbol = SYM;
+                   l.bidIdBase = 100;
+                   l.askIdBase = 200;
+                   l.levels = levels;
+                   l.tif = TimeInForce::GTC;
+                   for (uint8_t i = 0; i < levels; ++i)
+                   {
+                     l.level[i].bidPrice = px(99.99 - step * i);
+                     l.level[i].bidQty = qty(size + i);
+                     l.level[i].askPrice = px(100.01 + step * i);
+                     l.level[i].askQty = qty(size + 1 + i);
+                   }
+                   return l;
+                 };
+
+                 r.push(InboundCommand{rung(5, 0.01, 1.0)});
+                 // A taker lifts the top ask while the ladder rests, so the
+                 // next ladder replaces a level that is no longer whole.
+                 NewOrder take;
+                 take.id = 900;
+                 take.symbol = SYM;
+                 take.side = Side::BUY;
+                 take.type = OrderType::LIMIT;
+                 take.price = px(100.02);
+                 take.quantity = qty(1.5);
+                 take.accountId = 2;
+                 r.push(InboundCommand{take});
+
+                 r.push(InboundCommand{rung(5, 0.02, 2.0)});                   // reprice in place
+                 r.push(InboundCommand{rung(3, 0.02, 2.0)});                   // two rungs dropped
+                 r.push(InboundCommand{rung(kQuoteLadderLevels, 0.01, 1.0)});  // full block
+                 r.push(InboundCommand{rung(0, 0.01, 1.0)});                   // the whole ladder pulled
+                 return r.hashes();
+               }});
+
   return s;
 }
 
