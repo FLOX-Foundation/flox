@@ -242,6 +242,7 @@ bool MatchingEngine<Book>::applyRestoreOrder(const RestoreOrder& r)
   ro.lastLook = r.lastLook;
   ro.reduceOnly = r.reduceOnly;
   ro.postOnly = r.postOnly;
+  ro.cumQty = r.cumQty;  // T058
   // Straight to the tail of its level, NO matching pass: the canonical write
   // order (levels best-first, FIFO within) makes tail-appends reproduce the
   // exact live book layout.

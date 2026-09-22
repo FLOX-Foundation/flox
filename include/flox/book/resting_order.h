@@ -40,6 +40,15 @@ struct RestingOrder
   // incoming request is gone, and a submitter reconciles against the
   // identifier it chose, not the one the venue assigned. 0 = none was given.
   uint64_t clientOrderId{};
+  // Total quantity matched against this order while it rested, accumulated
+  // over its whole life on the book (T058: FIX CumQty/14 on a later cancel
+  // needs the running total, not just what a single cross just filled).
+  // Incremented at the book's two real-fill mutation points only
+  // (MatchingBook::fillFront/consumeById, LadderBook::fillBest/consumeById);
+  // every other leaves/hidden mutator (reduce, reduceTotal -- amend and STP
+  // trims) prints no trade and must not touch this field. 0 = never filled
+  // while resting.
+  Quantity cumQty{};
 };
 
 }  // namespace flox

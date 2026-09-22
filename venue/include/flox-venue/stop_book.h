@@ -65,6 +65,15 @@ class StopBook
     return it == loc_.end() ? 0 : it->second.clientOrderId;
   }
 
+  // The full submitted quantity of a pending conditional order (0 if unknown)
+  // -- FIX LeavesQty when it is canceled or expires: a stop parked here has
+  // never partially filled (T058).
+  Quantity quantityOf(OrderId id) const noexcept
+  {
+    auto it = loc_.find(id);
+    return it == loc_.end() ? Quantity{} : it->second.quantity;
+  }
+
   // All pending conditional-order ids (for venue-wide emergency cancel), in
   // id order.
   //
@@ -118,7 +127,7 @@ class StopBook
     if (trailing)
     {
       trailing_.push_back(Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Trailing, initialTrigger, o.accountId, o.clientOrderId};
+      loc_[o.id] = Loc{Container::Trailing, initialTrigger, o.accountId, o.clientOrderId, o.quantity};
       return;
     }
     // Up = fires when ref >= trigger (BUY stop-loss, SELL take-profit).
@@ -126,12 +135,12 @@ class StopBook
     if (up)
     {
       up_.emplace(initialTrigger, Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Up, initialTrigger, o.accountId, o.clientOrderId};
+      loc_[o.id] = Loc{Container::Up, initialTrigger, o.accountId, o.clientOrderId, o.quantity};
     }
     else
     {
       down_.emplace(initialTrigger, Pending{o, initialTrigger});
-      loc_[o.id] = Loc{Container::Down, initialTrigger, o.accountId, o.clientOrderId};
+      loc_[o.id] = Loc{Container::Down, initialTrigger, o.accountId, o.clientOrderId, o.quantity};
     }
   }
 
@@ -331,6 +340,11 @@ class StopBook
     Price trigger{};
     uint64_t account{};
     uint64_t clientOrderId{};
+    // T058: the order's full submitted quantity, duplicated here the same
+    // way account/clientOrderId already are -- a pending conditional never
+    // partially fills (it is not on the book), so this IS its FIX LeavesQty
+    // when the stop is later canceled or expires unfired.
+    Quantity quantity{};
   };
 
   static NewOrder toAggressor(const Pending& s)

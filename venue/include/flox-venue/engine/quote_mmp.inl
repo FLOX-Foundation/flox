@@ -114,16 +114,16 @@ void MatchingEngine<Book>::applyQuote(const Quote& q, bool clOrdIdChecked)
     const uint64_t acct = ownerOf(q.bidId);
     releaseReservation(q.bidId);
     forgetOrder(q.bidId);
-    sink_(OrderCanceled{q.bidId, cfg_.id, CancelReason::UserRequested, acct,
-                        ro->clientOrderId});
+    sink_(OrderCanceled{q.bidId, cfg_.id, CancelReason::UserRequested, acct, ro->clientOrderId,
+                        ro->leaves + ro->hidden, ro->cumQty});
   }
   if (auto ro = book_.cancel(q.askId))
   {
     const uint64_t acct = ownerOf(q.askId);
     releaseReservation(q.askId);
     forgetOrder(q.askId);
-    sink_(OrderCanceled{q.askId, cfg_.id, CancelReason::UserRequested, acct,
-                        ro->clientOrderId});
+    sink_(OrderCanceled{q.askId, cfg_.id, CancelReason::UserRequested, acct, ro->clientOrderId,
+                        ro->leaves + ro->hidden, ro->cumQty});
   }
   // What the quote asks for, read off it once: the bid leg, then the ask
   // leg, each carrying every field the quote carried (engine::QuoteLegs). The

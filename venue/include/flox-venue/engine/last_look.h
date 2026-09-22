@@ -712,7 +712,19 @@ class LastLook
                                 : (h.takerTif == TimeInForce::FOK)
                                     ? CancelReason::FillOrKillResidual
                                     : CancelReason::ImmediateOrCancelResidual;
-    host.publish(OrderCanceled{h.taker, symbol, reason, h.takerAccount, h.takerClientOrderId});
+    // T058: h.qty is exactly the residual being killed (LeavesQty). CumQty is
+    // NOT reconstructable here: the taker order's fill-so-far as of the
+    // original cross() that created this hold is long out of scope by the
+    // time a held fill resolves (asynchronously, on the maker's own
+    // decision), and Held does not carry a snapshot of it. Left at 0 --
+    // correct whenever this taker's only fill was the held one now being
+    // killed (the common case), understated if the same order filled
+    // against an earlier, non-held maker in the same original cross.
+    // Threading a cumQty-at-hold-time value through Held would also grow
+    // RestoreHeld (checkpointed) and is left as a follow-up, not folded into
+    // this change.
+    host.publish(OrderCanceled{h.taker, symbol, reason, h.takerAccount, h.takerClientOrderId,
+                               h.qty, Quantity{}});
   }
 
   std::unordered_map<uint64_t, Held> held_;

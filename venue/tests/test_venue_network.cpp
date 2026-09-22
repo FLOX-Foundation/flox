@@ -150,16 +150,22 @@ void test_session_rate_limit_reject_echoes_client_order_id()
 
   // Answered on the wire exactly like an engine-side reject: OrderRejected
   // built from `echo` carries clientOrderId as the trailing field of the
-  // encoded block (schema v4 appended it after `seq`; see
+  // encoded block through schema v8 (schema v4 appended it after `seq`; see
   // ClientOrderId.TheBinaryReportCarriesItWithoutDisplacingTheSequence for
-  // the same technique).
+  // the same technique). Schema v9 (T058) appends `cumQty` after clOrdId, so
+  // clOrdId is now the second-to-last i64, not the last.
   const OutboundEvent ev{
       OrderRejected{echo.id, echo.symbol, RejectReason::RateLimited, s.account(), echo.clientOrderId}};
   std::vector<uint8_t> wire;
   SbeOrderEntryCodec::encode(ev, wire, /*seq=*/0);
   uint64_t wireClOrdId = 0;
-  std::memcpy(&wireClOrdId, wire.data() + wire.size() - sizeof(wireClOrdId), sizeof(wireClOrdId));
+  std::memcpy(&wireClOrdId, wire.data() + wire.size() - 2 * sizeof(wireClOrdId),
+              sizeof(wireClOrdId));
   CHECK(wireClOrdId == kClOrdId);
+  uint64_t wireCumQtyRaw = 0;
+  std::memcpy(&wireCumQtyRaw, wire.data() + wire.size() - sizeof(wireCumQtyRaw),
+              sizeof(wireCumQtyRaw));
+  CHECK(wireCumQtyRaw == 0);  // no fill happened before this rate-limit reject
 
   // A reject with nothing decoded (DecodeError) has nothing to echo: id 0,
   // symbol 0, no clientOrderId -- unchanged from before this existed.

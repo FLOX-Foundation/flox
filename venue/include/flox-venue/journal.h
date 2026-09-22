@@ -246,10 +246,18 @@ static_assert(sizeof(QuoteLadder) ==
 // head plus the rungs it names (quoteLadderBodySize), so the length of a
 // record is a property of the record and not only of its tag. Every other tag
 // is unchanged and still fixed-length.
+// 15/16 -> 17/18 (T058): RestoreOrder (tag unchanged) grows one field,
+// cumQty -- the resting order's running fill total, restored so a cancel
+// reported after a recovery still carries its real FIX CumQty instead of
+// resetting to 0. Every other journaled body is unchanged and still
+// fixed-length; only RestoreOrder's sizeof moved. The pair moves by two, not
+// one: 16 already names the scale-checked build's PREVIOUS format (see
+// "moves by two" in docs/venue/runtime.md), so the unchecked build's new
+// number cannot land on it without colliding with that older format.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 16;
+inline constexpr uint8_t kRecordVersion = 18;
 #else
-inline constexpr uint8_t kRecordVersion = 15;
+inline constexpr uint8_t kRecordVersion = 17;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
@@ -313,12 +321,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0x2920f9b5db40ba17ULL,
+static_assert(bodyLayoutFingerprint() == 0xfa88d2a74a0ec9e7ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0xb64828009bd760f7ULL,
+static_assert(bodyLayoutFingerprint() == 0x90586e450848191fULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");

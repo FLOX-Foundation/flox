@@ -184,6 +184,13 @@ uint64_t MatchingEngine<Book>::hashBookAndStops(uint64_t h) const
         {
           h = mix(h, o.clientOrderId);  // same rule: absent means the hash is unchanged
         }
+        if (!o.cumQty.isZero())
+        {
+          // T058: only when a fill has actually landed against this resting
+          // order -- an order that has never traded (the overwhelming common
+          // case) hashes exactly as it did before cumQty existed.
+          h = mix(h, static_cast<uint64_t>(o.cumQty.raw()));
+        }
         h = mix(h, static_cast<uint64_t>(expiryOf(o.id).raw()));
         h = mix(h, oco_.groupOf(o.id));
       });
@@ -317,6 +324,7 @@ void MatchingEngine<Book>::writeBookAndStops(Journal& out, int64_t ts) const
         RestoreOrder r{o.id, o.accountId, o.price, o.leaves, o.side, {}, o.hidden, o.peak, o.lastLook, o.reduceOnly, o.postOnly, {}, o.clientOrderId};
         r.expiryNs = expiryOf(o.id);
         r.ocoGroup = oco_.groupOf(o.id);
+        r.cumQty = o.cumQty;  // T058
         out.append(InboundCommand{r}, ts);
       });
 

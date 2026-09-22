@@ -557,6 +557,12 @@ struct RestoreOrder  // one resting book order, applied straight to the TAIL of 
   uint64_t clientOrderId{0};
   SeqNanos expiryNs{};   // GTD expiry, sequencer time (0 = none)
   uint64_t ocoGroup{0};  // OCO group (0 = none)
+  // T058: mirrors RestingOrder::cumQty -- total filled over the order's
+  // life so far, so a cancel reported after a restart still knows its real
+  // CumQty instead of resetting to 0 across a recovery. Appended at the
+  // end (T057 layout rule); 8-byte Quantity after the 8-byte ocoGroup
+  // introduces no new padding.
+  Quantity cumQty{};
 };
 
 struct RestoreStop  // one pending conditional order (stop book)
@@ -959,6 +965,19 @@ struct OrderRejected
   // reconciles reports against the identifier it chose, not the one the venue
   // assigned, so every report about an order carries it.
   uint64_t clientOrderId{0};
+  // T058: FIX 14 (CumQty) on this report -- appended field, wire codecs
+  // place it last. Currently always 0 with this engine's own call sites:
+  // MatchOutcome::reject (matcher.h cross()/crossProRata()) is set only
+  // BEFORE the fill loop runs, on both policies, so every existing
+  // OrderRejected fires pre-trade -- a fill-time risk re-check or an STP
+  // block that stops a partial residual reports through OrderCanceled
+  // instead (see MatchOutcome::residualCanceled), never through a reject.
+  // The field exists for FIX-spec completeness (14 is required on every
+  // ExecutionReport) and so a future reject path that DOES follow a partial
+  // fill does not silently misreport; it is not dead weight today, it is
+  // unexercised today. No leavesQty field: a rejected order is never left
+  // resting, so it is always 0 by construction, not merely by observation.
+  Quantity cumQty{};
 };
 
 struct Trade
@@ -1005,6 +1024,15 @@ struct OrderCanceled
   // reconciles reports against the identifier it chose, not the one the venue
   // assigned, so every report about an order carries it.
   uint64_t clientOrderId{0};
+  // T058: FIX 151/14 on this report -- both appended fields (wire codecs
+  // place them last). leavesQty is what was actually killed (the residual
+  // that never traded and never rests again); cumQty is the total this
+  // order filled over its whole life, before this cancel. A counterparty
+  // that reads LeavesQty off terminal reports (routine for an IOC/FOK
+  // residual) previously had no way to tell "the order filled completely"
+  // from "the remainder was silently canceled" -- this is the fix.
+  Quantity leavesQty{};
+  Quantity cumQty{};
 };
 
 struct OrderModified

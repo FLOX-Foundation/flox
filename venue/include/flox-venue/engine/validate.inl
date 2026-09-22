@@ -527,7 +527,8 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     // not run the emit_ wrapper's release-on-cancel. Held slices stay
     // reserved: their accept still has to settle (reject releases later).
     releaseReservationExceptHeld(o.id);
-    sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId, o.clientOrderId});
+    sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId, o.clientOrderId,
+                        out.leaves, out.filled});
   }
 
   processTriggers();  // this order's trades may have crossed resting stops
