@@ -64,8 +64,8 @@ inline std::vector<InboundCommand> scenarioCommands()
   { return static_cast<int64_t>(amountOf(Volume::fromDouble(v))); };
 
   std::vector<InboundCommand> v;
-  v.emplace_back(Deposit{1, kScenarioBase, baseRaw(1000), kScenarioSymbol});
-  v.emplace_back(Deposit{2, kScenarioQuote, quoteRaw(100000), kScenarioSymbol});
+  v.emplace_back(Deposit{1, kScenarioBase, {}, baseRaw(1000), kScenarioSymbol});
+  v.emplace_back(Deposit{2, kScenarioQuote, {}, quoteRaw(100000), kScenarioSymbol});
   for (uint64_t i = 0; i < 20; ++i)
   {
     v.emplace_back(scenarioLimit(100 + 2 * i, Side::SELL,
@@ -73,8 +73,8 @@ inline std::vector<InboundCommand> scenarioCommands()
     v.emplace_back(scenarioLimit(101 + 2 * i, Side::BUY,
                                  100.0 + static_cast<double>(i % 5) * 0.01, 0.5, 2));
   }
-  v.emplace_back(CancelOrder{100, kScenarioSymbol, 1});
-  v.emplace_back(Withdraw{2, kScenarioQuote, quoteRaw(10), kScenarioSymbol});
+  v.emplace_back(CancelOrder{100, kScenarioSymbol, {}, 1});
+  v.emplace_back(Withdraw{2, kScenarioQuote, {}, quoteRaw(10), kScenarioSymbol});
   return v;
 }
 

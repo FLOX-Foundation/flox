@@ -91,8 +91,8 @@ std::vector<std::pair<int64_t, InboundCommand>> genesis()
   int64_t ts = 1;
   for (uint64_t a = 1; a <= 3; ++a)
   {
-    g.emplace_back(ts++, InboundCommand{Deposit{a, BASE, static_cast<int64_t>(base(1000)), SYM}});
-    g.emplace_back(ts++, InboundCommand{Deposit{a, QUOTE, static_cast<int64_t>(quote(100000)), SYM}});
+    g.emplace_back(ts++, InboundCommand{Deposit{a, BASE, {}, static_cast<int64_t>(base(1000)), SYM}});
+    g.emplace_back(ts++, InboundCommand{Deposit{a, QUOTE, {}, static_cast<int64_t>(quote(100000)), SYM}});
   }
   return g;
 }
@@ -105,7 +105,7 @@ std::vector<std::pair<int64_t, InboundCommand>> session()
   s.emplace_back(20, InboundCommand{limit(2, Side::SELL, 101, 3, 1)});
   s.emplace_back(30, InboundCommand{limit(3, Side::BUY, 99, 4, 2)});
   s.emplace_back(40, InboundCommand{limit(4, Side::BUY, 100, 6, 2)});  // trades 5@100, rests 1@100
-  s.emplace_back(50, InboundCommand{CancelOrder{2, SYM, 1}});
+  s.emplace_back(50, InboundCommand{CancelOrder{2, SYM, {}, 1}});
   s.emplace_back(60, InboundCommand{limit(5, Side::SELL, 100, 2, 3)});  // trades 1@100 vs id4
   return s;
 }

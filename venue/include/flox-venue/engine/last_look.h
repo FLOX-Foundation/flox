@@ -508,10 +508,7 @@ class LastLook
     for (uint64_t hid : sortedIds())
     {
       const Held& x = held_.at(hid);
-      RestoreHeld r{x.id, x.taker, x.takerAccount, x.takerSide,
-                    x.maker, x.makerAccount, x.price, x.qty,
-                    x.deadline, x.takerTif, x.takerType, x.takerPrice,
-                    x.takerExpiryNs, x.makerReduceOnly, x.takerReduceOnly};
+      RestoreHeld r{x.id, x.taker, x.takerAccount, x.takerSide, {}, x.maker, x.makerAccount, x.price, x.qty, x.deadline, x.takerTif, x.takerType, {}, x.takerPrice, x.takerExpiryNs, x.makerReduceOnly, x.takerReduceOnly};
       r.makerClientOrderId = x.makerClientOrderId;
       r.takerClientOrderId = x.takerClientOrderId;
       r.makerTracked = tracked(x.maker);

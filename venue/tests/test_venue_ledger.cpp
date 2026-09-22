@@ -101,7 +101,7 @@ void test_settlement()
   CHECK(led.total(1, QUOTE) + led.total(2, QUOTE) == quote(10000));
 
   // Cancel the seller remainder -> 2 base released.
-  eng.submit(InboundCommand{CancelOrder{1, SYM, 1}}, 2);
+  eng.submit(InboundCommand{CancelOrder{1, SYM, {}, 1}}, 2);
   CHECK(led.available(1, BASE) == base(7));
   CHECK(led.reserved(1, BASE) == 0);
 }
@@ -144,13 +144,13 @@ void test_modify_reservation()
   CHECK(led.available(2, QUOTE) == 0 && led.reserved(2, QUOTE) == quote(1000));
 
   // Shrink to 4 lots: reservation drops to 400, 600 returns to available.
-  eng.submit(InboundCommand{ModifyOrder{1, SYM, px(100), qty(4), 2}}, 1);
+  eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(100), qty(4), 2}}, 1);
   CHECK(led.reserved(2, QUOTE) == quote(400));
   CHECK(led.available(2, QUOTE) == quote(600));
 
   // Reprice up to 100 @ 200 = 20000 needed, but only 1000 total -> rejected.
   ev.clear();
-  eng.submit(InboundCommand{ModifyOrder{1, SYM, px(200), qty(100), 2}}, 2);
+  eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(200), qty(100), 2}}, 2);
   bool rejected = false;
   for (auto& e : ev)
   {
@@ -185,7 +185,7 @@ void test_iceberg_modify_shrink()
 
   // Shrink to 1 lot. Buggy path freed 1000*(2-1)/2 = 500 (peak-relative) and left
   // 9 lots resting. Correct: full release + re-reserve 1 * 100 = 100.
-  eng.submit(InboundCommand{ModifyOrder{1, SYM, px(100), qty(1), 2}}, 1);
+  eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(100), qty(1), 2}}, 1);
   CHECK(led.reserved(2, QUOTE) == quote(100));
   CHECK(led.available(2, QUOTE) == quote(900));
   CHECK(led.available(2, QUOTE) + led.reserved(2, QUOTE) == quote(1000));
@@ -346,7 +346,7 @@ void test_auction_settlement()
   // Drain the book; no reservation may leak.
   for (OrderId id = 1; id <= 3; ++id)
   {
-    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 3);
+    eng.submit(InboundCommand{CancelOrder{id, SYM, {}, 0}}, 3);
   }
   int leaks = 0;
   for (uint64_t a = 1; a <= 3; ++a)

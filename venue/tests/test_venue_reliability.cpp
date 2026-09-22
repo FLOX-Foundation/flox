@@ -78,9 +78,9 @@ void test_journal_replay()
   p.count = 5000;
   auto cmds = workload::symmetricLimits(p);
   // exercise the cancel record path too (some hit live orders, some don't)
-  cmds.emplace_back(CancelOrder{5, 1, 1});
-  cmds.emplace_back(CancelOrder{123, 1, 1});
-  cmds.emplace_back(CancelOrder{999999, 1, 1});
+  cmds.emplace_back(CancelOrder{5, 1, {}, 1});
+  cmds.emplace_back(CancelOrder{123, 1, {}, 1});
+  cmds.emplace_back(CancelOrder{999999, 1, {}, 1});
 
   const std::string path = tmpPath("venue_reliability_journal", ".bin");
 

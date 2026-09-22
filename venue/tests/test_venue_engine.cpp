@@ -100,7 +100,7 @@ TEST(VenueEngine, CancelReleasesReservation)
   eng.submit(InboundCommand{limitOrder(1, Side::SELL, 100, 4, 1)}, 0);
   EXPECT_EQ(i64(led.reserved(1, BASE)), i64(base(4)));
 
-  eng.submit(InboundCommand{CancelOrder{1, SYM, 1}}, 1);
+  eng.submit(InboundCommand{CancelOrder{1, SYM, {}, 1}}, 1);
   EXPECT_EQ(i64(led.reserved(1, BASE)), 0);
   EXPECT_EQ(i64(led.available(1, BASE)), i64(base(10)));
 }
@@ -113,11 +113,11 @@ TEST(VenueEngine, JournalReplayIsDeterministic)
   // Deposits are commands in the stream, not out-of-band Ledger calls: the
   // journal alone must rebuild balances from an EMPTY ledger.
   std::vector<std::pair<int64_t, InboundCommand>> cmds{
-      {1, InboundCommand{Deposit{1, BASE, static_cast<int64_t>(base(10)), SYM}}},
-      {2, InboundCommand{Deposit{2, QUOTE, static_cast<int64_t>(quote(10000)), SYM}}},
+      {1, InboundCommand{Deposit{1, BASE, {}, static_cast<int64_t>(base(10)), SYM}}},
+      {2, InboundCommand{Deposit{2, QUOTE, {}, static_cast<int64_t>(quote(10000)), SYM}}},
       {10, InboundCommand{limitOrder(1, Side::SELL, 100, 5, 1)}},
       {20, InboundCommand{limitOrder(2, Side::BUY, 100, 3, 2)}},
-      {30, InboundCommand{CancelOrder{1, SYM, 1}}},
+      {30, InboundCommand{CancelOrder{1, SYM, {}, 1}}},
   };
 
   auto run = [&](Ledger& led, const std::vector<std::pair<int64_t, InboundCommand>>& in)

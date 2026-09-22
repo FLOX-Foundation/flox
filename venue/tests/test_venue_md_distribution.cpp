@@ -493,8 +493,8 @@ void test_subscribe_midstream()
   CHECK(c.subscribe(SYM));
 
   // Phase B: the market keeps moving while the snapshot is being served.
-  eng.submit(CancelOrder{2, SYM, 1});
-  eng.submit(ModifyOrder{3, SYM, px(106), qty(2), 1});
+  eng.submit(CancelOrder{2, SYM, {}, 1});
+  eng.submit(ModifyOrder{3, SYM, {}, px(106), qty(2), 1});
   eng.submit(limit(12, Side::SELL, 107, 3));
   eng.submit(limit(13, Side::BUY, 94, 2));
   eng.submit(limit(14, Side::BUY, 103, 10, 2));  // sweeps the 101 remainder, rests at 103
@@ -915,7 +915,7 @@ void test_fix_market_data()
   CHECK(hasField(add, "278=3"));
 
   // A cancel arrives as MDUpdateAction Delete.
-  eng.submit(CancelOrder{3, SYM, 1});
+  eng.submit(CancelOrder{3, SYM, {}, 1});
   const std::string del = c.nextOf("X");
   CHECK(!del.empty());
   CHECK(hasField(del, "279=2"));  // Delete
@@ -1080,7 +1080,7 @@ void test_status_and_derivatives_over_unicast()
   CHECK(dist.start(0) > 0);
 
   eng.submit(limit(1, Side::SELL, 100, 5), 1'000);
-  eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 2'000);
+  eng.submit(InboundCommand{SetMark{SYM, {}, px(100)}}, 2'000);
   eng.submit(InboundCommand{AdminCmd{SYM, AdminAction::Halt}}, 3'000);
 
   // Late joiner: the snapshot leads with the state, then the book.
@@ -1102,7 +1102,7 @@ void test_status_and_derivatives_over_unicast()
 
   // Live: the resume and a new mark reach the same subscriber as increments.
   eng.submit(InboundCommand{AdminCmd{SYM, AdminAction::Resume}}, 4'000);
-  eng.submit(InboundCommand{SetMark{SYM, px(101)}}, 5'000);
+  eng.submit(InboundCommand{SetMark{SYM, {}, px(101)}}, 5'000);
 
   bool sawResume = false;
   bool sawMark = false;

@@ -200,7 +200,7 @@ TEST(VenueMatchingIntegrity, CancelFromAnotherAccountIsRefused)
   eng.submit(InboundCommand{limitOrder(1, Side::SELL, 100, 10, 100)}, 0);
   cap.clear();
 
-  eng.submit(InboundCommand{CancelOrder{1, SYM, /*accountId*/ 666}}, 1);
+  eng.submit(InboundCommand{CancelOrder{1, SYM, {}, /*accountId*/ 666}}, 1);
 
   EXPECT_EQ(cap.cancelRejects(RejectReason::NotOrderOwner), 1);
   EXPECT_EQ(cap.count<OrderCanceled>(), 0);
@@ -245,7 +245,7 @@ TEST(VenueMatchingIntegrity, UnboundCallerKeepsActingOnAnyOrder)
   eng.submit(InboundCommand{limitOrder(1, Side::SELL, 100, 10, 100)}, 0);
   cap.clear();
 
-  eng.submit(InboundCommand{CancelOrder{1, SYM, /*accountId*/ 0}}, 1);
+  eng.submit(InboundCommand{CancelOrder{1, SYM, {}, /*accountId*/ 0}}, 1);
   EXPECT_EQ(cap.count<OrderCanceled>(), 1);
   EXPECT_EQ(eng.book().find(1), nullptr);
 }
@@ -290,7 +290,7 @@ TEST(VenueMatchingIntegrity, ModifyCanceledBySelfTradePreventionFreesItsReservat
 
   // And the phantom no longer answers as a live order.
   cap.clear();
-  eng.submit(InboundCommand{CancelOrder{2, SYM, 7}}, 3);
+  eng.submit(InboundCommand{CancelOrder{2, SYM, {}, 7}}, 3);
   EXPECT_EQ(cap.cancelRejects(RejectReason::UnknownOrder), 1);
 }
 

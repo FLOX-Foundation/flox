@@ -139,8 +139,8 @@ const T* findEvent(const std::vector<OutboundEvent>& evs)
 // two legs both carry a client order id.
 void openHold(MatchingEngine<MatchingBook>& eng)
 {
-  eng.submit(InboundCommand{Deposit{MAKER_ACCT, BASE, baseRaw(100.0), SYM}}, 1000);
-  eng.submit(InboundCommand{Deposit{TAKER_ACCT, QUOTE, quoteRaw(100000.0), SYM}}, 2000);
+  eng.submit(InboundCommand{Deposit{MAKER_ACCT, BASE, {}, baseRaw(100.0), SYM}}, 1000);
+  eng.submit(InboundCommand{Deposit{TAKER_ACCT, QUOTE, {}, quoteRaw(100000.0), SYM}}, 2000);
 
   NewOrder maker = limit(MAKER_ID, Side::SELL, 100.0, 5.0, MAKER_ACCT);
   maker.lastLook = true;
@@ -169,7 +169,7 @@ void runScenario(bool viaSnapshot, bool accept, Outcome& out)
   ASSERT_NE(held, nullptr) << "no hold opened: the scenario stopped testing what it says";
   EXPECT_EQ(held->clientOrderId, TAKER_CLORD);
   const uint64_t heldId = held->heldId;
-  const InboundCommand decision{LastLookDecision{heldId, SYM, accept, MAKER_ACCT}};
+  const InboundCommand decision{LastLookDecision{heldId, SYM, accept, {}, MAKER_ACCT}};
 
   if (!viaSnapshot)
   {

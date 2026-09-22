@@ -149,7 +149,7 @@ class PegBook
     for (OrderId id : sortedKeysOf(pegged_))
     {
       const Peg& p = pegged_.at(id);
-      out.append(InboundCommand{RestorePeg{id, p.side, p.ref, p.offsetRaw}}, ts);
+      out.append(InboundCommand{RestorePeg{id, p.side, p.ref, {}, p.offsetRaw}}, ts);
     }
   }
 

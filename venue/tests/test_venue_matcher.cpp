@@ -346,10 +346,10 @@ void runAll(const std::function<Book()>& mk, const char* label)
     Capture cap;
     MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
     eng.submit(limit(1, Side::SELL, 100, 5, 1));
-    eng.submit(CancelOrder{1, SYM, 1});
+    eng.submit(CancelOrder{1, SYM, {}, 1});
     CHECK(cap.cancels(CancelReason::UserRequested) == 1);
     CHECK(eng.book().empty());
-    eng.submit(CancelOrder{999, SYM, 1});
+    eng.submit(CancelOrder{999, SYM, {}, 1});
     CHECK(cap.cancelRejects(RejectReason::UnknownOrder) == 1);
     CHECK(cap.rejects(RejectReason::UnknownOrder) == 0);  // not an exec report
   }
@@ -364,7 +364,7 @@ void runAll(const std::function<Book()>& mk, const char* label)
     Capture cap;
     MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
     eng.submit(limit(1, Side::SELL, 100, 5, 1));
-    eng.submit(ModifyOrder{1, SYM, Price{}, qty(2), 1});  // keep price, shrink 5->2
+    eng.submit(ModifyOrder{1, SYM, {}, Price{}, qty(2), 1});  // keep price, shrink 5->2
     CHECK(cap.trades() == 0);
     // only 2 left resting: a buy for 3 takes 2 and leaves 1 unmatched
     eng.submit(limit(2, Side::BUY, 100, 3, 2));
@@ -377,14 +377,14 @@ void runAll(const std::function<Book()>& mk, const char* label)
     eng.submit(limit(1, Side::BUY, 99, 5, 1));    // resting bid @99
     eng.submit(limit(2, Side::SELL, 100, 5, 2));  // resting ask @100 (no cross)
     CHECK(cap.trades() == 0);
-    eng.submit(ModifyOrder{1, SYM, px(100), qty(5), 1});  // reprice bid 99->100, crosses ask
+    eng.submit(ModifyOrder{1, SYM, {}, px(100), qty(5), 1});  // reprice bid 99->100, crosses ask
     CHECK(cap.trades() == 1);
     CHECK(cap.firstTrade() && cap.firstTrade()->price == px(100));
   }
   {  // modify unknown order rejects
     Capture cap;
     MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
-    eng.submit(ModifyOrder{42, SYM, px(100), qty(1), 1});
+    eng.submit(ModifyOrder{42, SYM, {}, px(100), qty(1), 1});
     CHECK(cap.cancelRejects(RejectReason::UnknownOrder) == 1);
     CHECK(cap.rejects(RejectReason::UnknownOrder) == 0);
   }
@@ -501,7 +501,7 @@ void runAll(const std::function<Book()>& mk, const char* label)
     eng.submit(limit(3, Side::BUY, 97, 1, 5));  // at cap -> rejected
     CHECK(cap.rejects(RejectReason::TooManyOpenOrders) == 1);
     CHECK(cap.accepts() == 2);
-    eng.submit(CancelOrder{1, SYM, 5});         // free a slot
+    eng.submit(CancelOrder{1, SYM, {}, 5});     // free a slot
     eng.submit(limit(4, Side::BUY, 96, 1, 5));  // now fits
     CHECK(cap.accepts() == 3);
     CHECK(cap.rejects(RejectReason::TooManyOpenOrders) == 1);  // still just the one
@@ -680,7 +680,7 @@ void runAll(const std::function<Book()>& mk, const char* label)
     eng.submit(limit(2, Side::SELL, 100, 5, 7));  // same account rests on the other side
     CHECK(cap.trades() == 0);                     // no cross yet
     // Reprice the bid up through the account's own offer.
-    eng.submit(InboundCommand{ModifyOrder{1, SYM, px(100), qty(5), 0}});
+    eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(100), qty(5), 0}});
     CHECK(cap.trades() == 0);  // still no self-trade
     CHECK(cap.cancels(CancelReason::SelfTradePrevention) >= 1);
   }
@@ -757,7 +757,7 @@ void runAll(const std::function<Book()>& mk, const char* label)
     b.ocoGroup = 1;
     eng.submit(a);
     eng.submit(b);                               // group 1 = [10, 11], both resting
-    eng.submit(CancelOrder{10, SYM, 1});         // cancel leg A -> must unlink 10 from group 1
+    eng.submit(CancelOrder{10, SYM, {}, 1});     // cancel leg A -> must unlink 10 from group 1
     eng.submit(limit(10, Side::BUY, 95, 1, 2));  // REUSE id 10: unrelated buy, no OCO
     CHECK(eng.book().bestBid().has_value() && eng.book().bestBid().value() == px(95));
     eng.submit(limit(12, Side::BUY, 105, 1, 3));  // lift leg B -> resolves group 1

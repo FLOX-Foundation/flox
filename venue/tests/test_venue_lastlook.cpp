@@ -274,7 +274,7 @@ void test_reject_restores_book()
   CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(2));  // 3 held out of the book
   const auto* h = cap.lastHeld();
   CHECK(h != nullptr && h->qty == qty(3) && h->makerDisplayAfter == qty(2));
-  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);
+  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, {}, 1}}, 2);
   CHECK(cap.trades() == 0);
   // Maker's 3 are back on its level (tail); the GTC taker residual rests too.
   CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));
@@ -322,7 +322,7 @@ void test_quote_carries_lastlook()
   CHECK(h != nullptr && h->makerId == 2 && h->qty == qty(2));
 
   // Refused: the liquidity returns to the book rather than vanishing.
-  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);
+  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, {}, 1}}, 2);
   CHECK(cap.trades() == 0);
   CHECK(bookAt(eng.book(), Side::SELL, 101) == qty(5));
 
@@ -371,7 +371,7 @@ void test_symmetric_price_tolerance()
     // The maker sold at 100; the market trades up to 102, so it is losing.
     eng.submit(InboundCommand{limit(3, Side::SELL, 102, 1, 3)}, 2);
     eng.submit(InboundCommand{limit(4, Side::BUY, 102, 1, 4)}, 3);
-    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 4);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, {}, 1}}, 4);
     CHECK(eng.toleranceRejectedHolds() == 1);
   }
 
@@ -393,7 +393,7 @@ void test_symmetric_price_tolerance()
     // Down to 98: the maker sold at 100 and is now winning.
     eng.submit(InboundCommand{limit(3, Side::SELL, 98, 1, 3)}, 2);
     eng.submit(InboundCommand{limit(4, Side::BUY, 98, 1, 4)}, 3);
-    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 4);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, {}, 1}}, 4);
     CHECK(eng.toleranceRejectedHolds() == 1);
   }
 
@@ -409,7 +409,7 @@ void test_symmetric_price_tolerance()
     eng.submit(InboundCommand{mk}, 0);
     eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
     const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
-    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 2);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, {}, 1}}, 2);
     CHECK(cap.trades() == 1);
     CHECK(eng.toleranceRejectedHolds() == 0);
   }
@@ -444,7 +444,7 @@ void test_last_look_conduct_is_visible()
     const double to = adverse ? 102 : 98;
     eng.submit(InboundCommand{limit(102 + round * 10, Side::SELL, to, 1, 3)}, ++ts);
     eng.submit(InboundCommand{limit(103 + round * 10, Side::BUY, to, 1, 4)}, ++ts);
-    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, !adverse, 1}}, ++ts);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, !adverse, {}, 1}}, ++ts);
   }
 
   // The same on the other side of the book. A maker that BOUGHT is hurt by a
@@ -461,7 +461,7 @@ void test_last_look_conduct_is_visible()
     // Down to 98: the maker bought at 100, so this is adverse for it.
     eng.submit(InboundCommand{limit(202, Side::SELL, 98, 1, 3)}, ++ts);
     eng.submit(InboundCommand{limit(203, Side::BUY, 98, 1, 4)}, ++ts);
-    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, 1}}, ++ts);
+    eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, {}, 1}}, ++ts);
   }
 
   const auto& stats = eng.lastLookStats();
@@ -506,12 +506,12 @@ void test_conduct_follows_quotes_not_only_prints()
 
   // Requote roughly nine points lower. No order crosses another, so not one
   // trade happens and the last price never changes -- the whole point.
-  eng.submit(InboundCommand{CancelOrder{90, SYM, 8}}, 3);
-  eng.submit(InboundCommand{CancelOrder{91, SYM, 9}}, 3);
+  eng.submit(InboundCommand{CancelOrder{90, SYM, {}, 8}}, 3);
+  eng.submit(InboundCommand{CancelOrder{91, SYM, {}, 9}}, 3);
   eng.submit(InboundCommand{limit(92, Side::SELL, 92, 1, 8)}, 3);
   eng.submit(InboundCommand{limit(93, Side::BUY, 90, 1, 9)}, 3);
 
-  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, 1}}, 4);
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, {}, 1}}, 4);
 
   const auto& stats = eng.lastLookStats();
   auto it = stats.find(1);
@@ -551,7 +551,7 @@ void test_hold_itself_is_not_a_market_move()
   eng.submit(InboundCommand{limit(2, Side::BUY, 100, 1, 2)}, 2);
   CHECK(cap.lastHeld() != nullptr);
   const uint64_t heldId = cap.lastHeld() ? cap.lastHeld()->heldId : 0;
-  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, 1}}, 3);
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, false, {}, 1}}, 3);
 
   const auto& stats = eng.lastLookStats();
   auto it = stats.find(1);
@@ -578,7 +578,7 @@ void test_partial_hold_reject()
   CHECK(cap.trades() == 1);
   const auto* h = cap.lastHeld();
   CHECK(h != nullptr && h->qty == qty(4));
-  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 3);
+  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, {}, 1}}, 3);
   CHECK(cap.trades() == 1);                              // no new prints
   CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));  // maker fully restored
   CHECK(bookAt(eng.book(), Side::BUY, 100) == qty(4));   // held taker slice rests
@@ -596,7 +596,7 @@ void test_taker_residual_tifs()
     mk.lastLook = true;
     eng.submit(InboundCommand{mk}, 0);
     eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
-    eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, 1}}, 2);
+    eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, {}, 1}}, 2);
     CHECK(bookAt(eng.book(), Side::BUY, 100) == qty(3));
     CHECK(cap.count<OrderCanceled>() == 0);
   }
@@ -609,7 +609,7 @@ void test_taker_residual_tifs()
     NewOrder tk = limit(2, Side::BUY, 100, 3, 2);
     tk.tif = TimeInForce::IOC;
     eng.submit(InboundCommand{tk}, 1);
-    eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, 1}}, 2);
+    eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, {}, 1}}, 2);
     CHECK(cap.sawCancel(CancelReason::ImmediateOrCancelResidual));
     CHECK(bookAt(eng.book(), Side::BUY, 100).isZero());
     CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(5));  // maker still restored
@@ -630,7 +630,7 @@ void test_taker_residual_tifs()
     eng.submit(InboundCommand{tk}, 1);
     const auto* h = cap.lastHeld();
     CHECK(h != nullptr && h->qty == qty(3));
-    eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);
+    eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, {}, 1}}, 2);
     CHECK(cap.sawCancel(CancelReason::MarketResidual));
     CHECK(bookAt(eng.book(), Side::BUY, 100).isZero());
   }
@@ -681,7 +681,7 @@ void test_md_equals_book()
   CHECK(feedMatchesBook(prices));
 
   // Reject: maker restored, taker residual rests -- feed follows both.
-  eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, 1}}, 2);
+  eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, false, {}, 1}}, 2);
   CHECK(pub.book().askAtPrice(px(100)) == qty(5));
   CHECK(pub.book().bidAtPrice(px(100)) == qty(3));
   CHECK(feedMatchesBook(prices));
@@ -691,7 +691,7 @@ void test_md_equals_book()
   tk.tif = TimeInForce::IOC;
   eng.submit(InboundCommand{tk}, 3);
   CHECK(feedMatchesBook(prices));
-  eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, true, 1}}, 4);
+  eng.submit(InboundCommand{LastLookDecision{cap.lastHeld()->heldId, SYM, true, {}, 1}}, 4);
   CHECK(cap.trades() == 1);
   CHECK(pub.book().askAtPrice(px(100)) == qty(3));
   CHECK(feedMatchesBook(prices));
@@ -699,9 +699,9 @@ void test_md_equals_book()
   // Cancel-while-held: resolve + cancel must drain both feed and book.
   eng.submit(InboundCommand{limit(4, Side::BUY, 100, 1, 3)}, 5);  // new hold (1 of maker's 3)
   CHECK(cap.count<FillHeld>() == 3);
-  eng.submit(InboundCommand{CancelOrder{1, SYM, 1}}, 6);  // maker cancels with a live hold
-  eng.submit(InboundCommand{CancelOrder{2, SYM, 2}}, 7);
-  eng.submit(InboundCommand{CancelOrder{4, SYM, 3}}, 8);
+  eng.submit(InboundCommand{CancelOrder{1, SYM, {}, 1}}, 6);  // maker cancels with a live hold
+  eng.submit(InboundCommand{CancelOrder{2, SYM, {}, 2}}, 7);
+  eng.submit(InboundCommand{CancelOrder{4, SYM, {}, 3}}, 8);
   CHECK(eng.book().empty());
   CHECK(feedMatchesBook(prices));
 }
@@ -721,11 +721,11 @@ void test_ownership()
   CHECK(h != nullptr);
   const uint64_t heldId = h->heldId;  // copy: cap.ev may reallocate below
   // The taker (or anyone but the maker) must not be able to accept its own fill.
-  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 2}}, 2);
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, {}, 2}}, 2);
   CHECK(cap.sawReject(RejectReason::NotOrderOwner));
   CHECK(cap.trades() == 0);  // the hold is untouched
   // The real maker still can.
-  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 3);
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, {}, 1}}, 3);
   CHECK(cap.trades() == 1);
 }
 
@@ -741,7 +741,7 @@ void test_timeout_accept()
   eng.submit(InboundCommand{mk}, 0);
   eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);  // deadline 1001
   CHECK(cap.trades() == 0);
-  eng.submit(InboundCommand{CancelOrder{999, SYM, 9}}, 5000);  // time passes -> accept
+  eng.submit(InboundCommand{CancelOrder{999, SYM, {}, 9}}, 5000);  // time passes -> accept
   CHECK(cap.trades() == 1);
   CHECK(cap.count<FillRejected>() == 0);
   CHECK(bookAt(eng.book(), Side::SELL, 100) == qty(2));
@@ -803,7 +803,7 @@ void test_engine_enumerates_open_holds()
 
   // Release the first hold (reject). hasHold/forEachHold must reflect exactly
   // the remaining one -- not just a count, an identity.
-  eng.submit(InboundCommand{LastLookDecision{ids[0], SYM, false, 1}}, 4);
+  eng.submit(InboundCommand{LastLookDecision{ids[0], SYM, false, {}, 1}}, 4);
   CHECK(eng.openHolds() == 1);
   CHECK(!eng.hasHold(ids[0]));
   CHECK(eng.hasHold(ids[1]));
@@ -860,7 +860,7 @@ void test_cancel_while_held_conservation()
 
   // Maker cancels its order while the hold is live: the hold resolves (reject)
   // FIRST, deterministically, then the whole order cancels.
-  eng.submit(InboundCommand{CancelOrder{1, SYM, 1}}, 2);
+  eng.submit(InboundCommand{CancelOrder{1, SYM, {}, 1}}, 2);
   CHECK(cap.count<FillRejected>() == 1);
   CHECK(cap.sawCancel(CancelReason::UserRequested));
   CHECK(bookAt(eng.book(), Side::SELL, 100).isZero());
@@ -871,13 +871,13 @@ void test_cancel_while_held_conservation()
   CHECK(led.reserved(2, QUOTE) == usd300);
 
   // Accept-after-cancel must be impossible.
-  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 3);
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, {}, 1}}, 3);
   CHECK(cap.trades() == 0);
   CHECK(cap.sawReject(RejectReason::UnknownOrder));
 
   // Conservation, then a full drain returns every reserved unit.
   CHECK(led.total(1, BASE) == base5 && led.total(2, QUOTE) == usd300);
-  eng.submit(InboundCommand{CancelOrder{2, SYM, 2}}, 4);
+  eng.submit(InboundCommand{CancelOrder{2, SYM, {}, 2}}, 4);
   CHECK(led.available(2, QUOTE) == usd300 && led.reserved(2, QUOTE) == 0);
 }
 
@@ -935,10 +935,10 @@ void test_stp_cancel_while_held_conservation()
   // The maker now spends the freed collateral elsewhere. If the STP cancel had
   // stripped a live hold's backing, the accept below would settle from an empty
   // account and print base that does not exist.
-  eng.submit(InboundCommand{Withdraw{1, BASE, static_cast<int64_t>(base5), SYM}}, 3);
+  eng.submit(InboundCommand{Withdraw{1, BASE, {}, static_cast<int64_t>(base5), SYM}}, 3);
   CHECK(led.available(1, BASE) == 0);
 
-  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, 1}}, 4);
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, true, {}, 1}}, 4);
   CHECK(cap.trades() == 0);                          // no fill can settle from a resolved hold
   CHECK(cap.sawReject(RejectReason::UnknownOrder));  // the heldId is gone for good
   CHECK(eng.unsettledTrades() == 0);                 // and nothing reached the no-reservation path
@@ -954,8 +954,8 @@ void test_stp_cancel_while_held_conservation()
   // aggressor's own (uncrossed) remainder.
   CHECK(!eng.book().contains(1));
   CHECK(eng.restingOrderCount() == 2);
-  eng.submit(InboundCommand{CancelOrder{2, SYM, 2}}, 5);
-  eng.submit(InboundCommand{CancelOrder{3, SYM, 1}}, 6);
+  eng.submit(InboundCommand{CancelOrder{2, SYM, {}, 2}}, 5);
+  eng.submit(InboundCommand{CancelOrder{3, SYM, {}, 1}}, 6);
   CHECK(eng.restingOrderCount() == 0);
   CHECK(led.reserved(2, QUOTE) == 0 && led.available(2, QUOTE) == usd300);
   CHECK(led.reserved(1, QUOTE) == 0 && led.available(1, QUOTE) == usd300);
@@ -1210,7 +1210,7 @@ void test_clordid_dedup()
     NewOrder o = limit(10, Side::SELL, 100, 3, 1);
     o.clientOrderId = 88;
     eng.submit(InboundCommand{o}, 0);
-    eng.submit(InboundCommand{CancelOrder{10, SYM, 1}}, 1);
+    eng.submit(InboundCommand{CancelOrder{10, SYM, {}, 1}}, 1);
     NewOrder resend = limit(11, Side::SELL, 100, 3, 1);
     resend.clientOrderId = 88;
     eng.submit(InboundCommand{resend}, 2);

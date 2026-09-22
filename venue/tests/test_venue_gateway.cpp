@@ -102,11 +102,11 @@ void test_sbe_oe_roundtrip()
   CHECK(n->reduceOnly && n->lastLook && n->peg == PegRef::Mid);
   CHECK(n->expiryNs.raw() == 1'700'000'000'000 && n->ocoGroup == 99 && n->pegOffsetRaw == -250);
 
-  SbeOrderEntryCodec::encode(InboundCommand{CancelOrder{42, SYM, 77}}, buf);
+  SbeOrderEntryCodec::encode(InboundCommand{CancelOrder{42, SYM, {}, 77}}, buf);
   auto bc = SbeOrderEntryCodec::decode(buf.data(), buf.size());
   CHECK(bc && std::get_if<CancelOrder>(&*bc) && std::get<CancelOrder>(*bc).id == 42);
 
-  SbeOrderEntryCodec::encode(InboundCommand{ModifyOrder{42, SYM, px(102), qty(4), 77}}, buf);
+  SbeOrderEntryCodec::encode(InboundCommand{ModifyOrder{42, SYM, {}, px(102), qty(4), 77}}, buf);
   auto bm = SbeOrderEntryCodec::decode(buf.data(), buf.size());
   CHECK(bm && std::get_if<ModifyOrder>(&*bm));
   CHECK(std::get<ModifyOrder>(*bm).newPrice == px(102) && std::get<ModifyOrder>(*bm).newQty == qty(4));

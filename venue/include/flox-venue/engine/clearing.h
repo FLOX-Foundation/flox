@@ -443,7 +443,7 @@ class Clearing
     for (uint64_t acct : sortedAccounts())
     {
       const Position& p = positions_.at(acct);
-      out.append(InboundCommand{RestorePosition{acct, p.qtyRaw, p.entryRaw, p.margin}}, ts);
+      out.append(InboundCommand{RestorePosition{acct, p.qtyRaw, p.entryRaw, {}, p.margin}}, ts);
     }
   }
 

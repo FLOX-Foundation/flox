@@ -95,7 +95,7 @@ TEST(VenueCheckpointDelisted, RestoredEngineStaysDelisted)
   MatchingEngine<MatchingBook> eng(c, [&](const OutboundEvent& e)
                                    { liveSink(e); });
   eng.setLedger(&led, 900);
-  eng.submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(100000.0), SYM}}, 1000);
+  eng.submit(InboundCommand{Deposit{1, QUOTE, {}, quoteRaw(100000.0), SYM}}, 1000);
   eng.submit(InboundCommand{limitOrder(1, Side::SELL, 100.0, 1.0, 2)}, 2000);
 
   eng.submit(InboundCommand{AdminCmd{SYM, AdminAction::Delist}}, 3000);

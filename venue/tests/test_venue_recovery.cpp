@@ -134,15 +134,15 @@ bool ledgersEqual(const Ledger& a, const Ledger& b, int maxAcct)
 std::vector<InboundCommand> childCommands()
 {
   std::vector<InboundCommand> v;
-  v.emplace_back(Deposit{1, BASE, baseRaw(1000), SYM});
-  v.emplace_back(Deposit{2, QUOTE, quoteRaw(100000), SYM});
+  v.emplace_back(Deposit{1, BASE, {}, baseRaw(1000), SYM});
+  v.emplace_back(Deposit{2, QUOTE, {}, quoteRaw(100000), SYM});
   for (uint64_t i = 0; i < 20; ++i)
   {
     v.emplace_back(limit(100 + 2 * i, Side::SELL, 100.0 + static_cast<double>(i % 5) * 0.01, 1.0, 1));
     v.emplace_back(limit(101 + 2 * i, Side::BUY, 100.0 + static_cast<double>(i % 5) * 0.01, 0.5, 2));
   }
-  v.emplace_back(CancelOrder{100, SYM, 1});
-  v.emplace_back(Withdraw{2, QUOTE, quoteRaw(10), SYM});
+  v.emplace_back(CancelOrder{100, SYM, {}, 1});
+  v.emplace_back(Withdraw{2, QUOTE, {}, quoteRaw(10), SYM});
   return v;
 }
 
@@ -262,7 +262,7 @@ TEST(VenueRecovery, ProcessDeathRecoversFromJournal)
   // injected clock) must produce an identical event stream on both.
   std::vector<InboundCommand> tail;
   tail.emplace_back(limit(9001, Side::BUY, 100.04, 3.0, 2));
-  tail.emplace_back(CancelOrder{9001, SYM, 2});
+  tail.emplace_back(CancelOrder{9001, SYM, {}, 2});
   tail.emplace_back(limit(9002, Side::SELL, 100.10, 1.0, 1));
   refH = kHashSeed;  // isolate the tail stream on the reference
   for (size_t i = 0; i < tail.size(); ++i)
@@ -325,7 +325,7 @@ TEST(VenueRecovery, RestartPreservesAndReplaysJournal)
     EXPECT_EQ(shard->engine().book().bestBid(), ref.book().bestBid());
     EXPECT_EQ(shard->engine().book().bestAsk(), ref.book().bestAsk());
 
-    shard->submit(InboundCommand{CancelOrder{3, SYM, 1}});
+    shard->submit(InboundCommand{CancelOrder{3, SYM, {}, 1}});
     shard->flush();
     shard->stop();
   }
@@ -365,7 +365,7 @@ TEST(VenueRecovery, TimedReplayReproducesLastLookExpiry)
     shard->submit(InboundCommand{limit(2, Side::BUY, 100.00, 3.0, 2)});  // held fill
     for (OrderId id = 900; id < 906; ++id)
     {
-      shard->submit(InboundCommand{CancelOrder{id, SYM, 3}});  // advance time past the window
+      shard->submit(InboundCommand{CancelOrder{id, SYM, {}, 3}});  // advance time past the window
     }
     shard->flush();
     shard->stop();
@@ -410,12 +410,12 @@ TEST(VenueRecovery, GenesisReplaysFromEmptyLedger)
   std::remove(path.c_str());
 
   const std::vector<std::pair<int64_t, InboundCommand>> cmds{
-      {1, InboundCommand{Deposit{1, BASE, baseRaw(10), SYM}}},
-      {2, InboundCommand{Deposit{2, QUOTE, quoteRaw(1000), SYM}}},
+      {1, InboundCommand{Deposit{1, BASE, {}, baseRaw(10), SYM}}},
+      {2, InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(1000), SYM}}},
       {10, InboundCommand{limit(1, Side::SELL, 100, 5, 1)}},
-      {20, InboundCommand{limit(2, Side::BUY, 100, 3, 2)}},            // trades 3 @ 100
-      {30, InboundCommand{Withdraw{2, QUOTE, quoteRaw(10000), SYM}}},  // > available: rejected
-      {40, InboundCommand{Withdraw{1, QUOTE, quoteRaw(100), SYM}}},    // covered: applied
+      {20, InboundCommand{limit(2, Side::BUY, 100, 3, 2)}},                // trades 3 @ 100
+      {30, InboundCommand{Withdraw{2, QUOTE, {}, quoteRaw(10000), SYM}}},  // > available: rejected
+      {40, InboundCommand{Withdraw{1, QUOTE, {}, quoteRaw(100), SYM}}},    // covered: applied
   };
 
   auto run = [&](Ledger& led)
@@ -473,8 +473,8 @@ TEST(VenueRecovery, ConfigReplayReproducesInstrumentState)
   std::remove(path.c_str());
 
   const std::vector<std::pair<int64_t, InboundCommand>> cmds{
-      {10, InboundCommand{ListInstrument{SYM, px(0.01), Quantity{}, px(50), px(150)}}},
-      {20, InboundCommand{SetBands{SYM, px(90), px(110)}}},
+      {10, InboundCommand{ListInstrument{SYM, {}, px(0.01), Quantity{}, px(50), px(150)}}},
+      {20, InboundCommand{SetBands{SYM, {}, px(90), px(110)}}},
       {25, InboundCommand{SetTriggerRef{SYM, TriggerRef::Mark}}},
       {30, InboundCommand{AdminCmd{SYM, AdminAction::Halt}}},
   };

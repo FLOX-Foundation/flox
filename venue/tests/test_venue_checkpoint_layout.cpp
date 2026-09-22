@@ -166,16 +166,16 @@ void buildEverySection(MatchingEngine<MatchingBook>& eng)
 
   for (uint64_t acct = 1; acct <= 5; ++acct)
   {
-    send(InboundCommand{Deposit{acct, QUOTE, quoteRaw(100000), SYM}});
+    send(InboundCommand{Deposit{acct, QUOTE, {}, quoteRaw(100000), SYM}});
   }
-  send(InboundCommand{Deposit{1, BASE, baseRaw(1000), SYM}});
-  send(InboundCommand{Deposit{2, BASE, baseRaw(1000), SYM}});
+  send(InboundCommand{Deposit{1, BASE, {}, baseRaw(1000), SYM}});
+  send(InboundCommand{Deposit{2, BASE, {}, baseRaw(1000), SYM}});
 
   // A printed perp trade: positions and posted margin for accounts 1 and 2,
   // and one MMP window fill for the maker.
   send(InboundCommand{limit(1, Side::SELL, 100.00, 5.0, 2)});
   send(InboundCommand{limit(2, Side::BUY, 100.00, 5.0, 1)});
-  send(InboundCommand{SetMark{SYM, px(100.0)}});
+  send(InboundCommand{SetMark{SYM, {}, px(100.0)}});
 
   // A last-look maker and the taker that takes part of it: the remainder
   // rests, the taken part stays an open hold.

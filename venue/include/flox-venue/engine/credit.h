@@ -500,7 +500,7 @@ class Credit
   {
     for (uint64_t acct : sortedKeysOf(admission_))
     {
-      out.append(InboundCommand{SetAdmissionProfile{symbol, acct, admission_.at(acct)}}, ts);
+      out.append(InboundCommand{SetAdmissionProfile{symbol, {}, acct, admission_.at(acct)}}, ts);
     }
   }
 
@@ -512,8 +512,7 @@ class Credit
     for (OrderId id : sortedKeysOf(reserve_))
     {
       const Reservation& r = reserve_.at(id);
-      out.append(InboundCommand{RestoreReservation{id, r.account, r.asset, r.side,
-                                                   r.limitPriceRaw, r.reservedRaw}},
+      out.append(InboundCommand{RestoreReservation{id, r.account, r.asset, {}, r.side, r.limitPriceRaw, r.reservedRaw}},
                  ts);
     }
   }

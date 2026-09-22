@@ -201,6 +201,24 @@ sequencer timestamp is stored, so `loadTimed` reproduces time-dependent
 behaviour (GTD expiry, last-look windows, MMP windows, LULD pauses) at the
 same points it happened live.
 
+31 of the 35 command structs would otherwise carry compiler-inserted alignment
+padding between or after their named fields (`SnapshotBegin` alone has 4 bytes
+between `formatVersion` and `lastAppliedTs`). **Padding bytes are explicit,
+zero-initialised.** Every such gap is a named `uint8_t padN_[k]{}` member at
+the exact byte offset the implicit padding used to sit at -- sizeof and layout
+are unchanged (`journal.h` static_asserts each type's size against its pre-fix
+value and, for every type but one, `std::has_unique_object_representations_v`,
+which is true exactly when nothing but named fields is left in the object
+representation). An explicit field has a default member initializer like any
+other field, so ordinary construction zeroes it the same way it zeroes any
+other field a caller did not set; nothing runs at journal-write time to
+compensate for padding. Two snapshots of the same engine state -- or two
+journaled records of the same command -- are byte-for-byte identical, not
+merely field-for-field equal, and no stack content leaks into the file. The
+loader does not read padding, so this changes nothing about what a file
+already on disk means; only newly written padding content moves, never the
+format.
+
 ### Format version and what is readable
 
 The `stamp` byte carries the format version. A build reads exactly one version,

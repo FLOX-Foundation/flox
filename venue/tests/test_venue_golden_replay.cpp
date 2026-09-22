@@ -285,7 +285,7 @@ struct HoldResponder
       }
       const Pending p = queue[i];
       queue.erase(queue.begin() + static_cast<long>(i));
-      r.push(InboundCommand{LastLookDecision{p.heldId, sym, p.accept, p.account}});
+      r.push(InboundCommand{LastLookDecision{p.heldId, sym, p.accept, {}, p.account}});
     }
   }
 };
@@ -357,9 +357,9 @@ std::vector<InboundCommand> deposits(uint32_t accounts, double baseAmt, double q
   {
     if (baseAmt > 0.0)
     {
-      v.emplace_back(Deposit{a, BASE, baseRaw(baseAmt), SYM});
+      v.emplace_back(Deposit{a, BASE, {}, baseRaw(baseAmt), SYM});
     }
-    v.emplace_back(Deposit{a, QUOTE, quoteRaw(quoteAmt), SYM});
+    v.emplace_back(Deposit{a, QUOTE, {}, quoteRaw(quoteAmt), SYM});
   }
   return v;
 }
@@ -689,8 +689,8 @@ std::vector<Scenario> corpus()
                  Digest d;
                  Run r(c, d);
                  r.eng.setLedger(&r.led, VENUE_ACCT);
-                 r.push(InboundCommand{Deposit{2, BASE, baseRaw(100.0), SYM}});
-                 r.push(InboundCommand{Deposit{1, QUOTE, quoteRaw(100000.0), SYM}});
+                 r.push(InboundCommand{Deposit{2, BASE, {}, baseRaw(100.0), SYM}});
+                 r.push(InboundCommand{Deposit{1, QUOTE, {}, quoteRaw(100000.0), SYM}});
 
                  NewOrder maker;
                  maker.id = 1;
@@ -715,9 +715,9 @@ std::vector<Scenario> corpus()
 
                  // account 3 never touched this hold: refused as NotOrderOwner,
                  // and the hold stays open.
-                 r.push(InboundCommand{LastLookDecision{1, SYM, true, 3}});
+                 r.push(InboundCommand{LastLookDecision{1, SYM, true, {}, 3}});
                  // the real maker still gets to decide afterwards.
-                 r.push(InboundCommand{LastLookDecision{1, SYM, true, 2}});
+                 r.push(InboundCommand{LastLookDecision{1, SYM, true, {}, 2}});
                  return r.hashes();
                }});
 
@@ -755,8 +755,8 @@ std::vector<Scenario> corpus()
                  Digest d;
                  Run r(c, d);
                  r.eng.setLedger(&r.led, VENUE_ACCT);
-                 r.push(InboundCommand{Deposit{5, BASE, baseRaw(50.0), SYM}});
-                 r.push(InboundCommand{Deposit{6, BASE, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{5, BASE, {}, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{6, BASE, {}, baseRaw(50.0), SYM}});
 
                  NewOrder o1;
                  o1.id = 1;
@@ -801,8 +801,8 @@ std::vector<Scenario> corpus()
                  Digest d;
                  Run r(c, d);
                  r.eng.setLedger(&r.led, VENUE_ACCT);
-                 r.push(InboundCommand{Deposit{10, BASE, baseRaw(50.0), SYM}});
-                 r.push(InboundCommand{Deposit{10, QUOTE, quoteRaw(100000.0), SYM}});
+                 r.push(InboundCommand{Deposit{10, BASE, {}, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{10, QUOTE, {}, quoteRaw(100000.0), SYM}});
 
                  NewOrder maker;
                  maker.id = 1;
@@ -877,10 +877,10 @@ std::vector<Scenario> corpus()
                  r.eng.setLedger(&r.led, VENUE_ACCT);
                  r.eng.setStpGroup(201, 700);
                  r.eng.setStpGroup(202, 700);
-                 r.push(InboundCommand{Deposit{201, BASE, baseRaw(50.0), SYM}});
-                 r.push(InboundCommand{Deposit{202, QUOTE, quoteRaw(100000.0), SYM}});
-                 r.push(InboundCommand{Deposit{203, BASE, baseRaw(50.0), SYM}});
-                 r.push(InboundCommand{Deposit{204, QUOTE, quoteRaw(100000.0), SYM}});
+                 r.push(InboundCommand{Deposit{201, BASE, {}, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{202, QUOTE, {}, quoteRaw(100000.0), SYM}});
+                 r.push(InboundCommand{Deposit{203, BASE, {}, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{204, QUOTE, {}, quoteRaw(100000.0), SYM}});
                  r.push(InboundCommand{AdminCmd{SYM, AdminAction::BeginPreOpen}});
 
                  NewOrder groupSell;
@@ -1013,7 +1013,7 @@ std::vector<Scenario> corpus()
                {
                  workload::Params p = params(0xAD155EEDULL, 15000);
                  p.markSpanTicks = 4000;  // +/-40 on a mid of 100
-                 return plain(perpCfg(/*adl*/ true), concat(concat(deposits(8, 0.0, 600.0), {InboundCommand{Deposit{VENUE_ACCT, QUOTE, quoteRaw(500000.0), SYM}}}), workload::perpFlow(p)), [](Run& r)
+                 return plain(perpCfg(/*adl*/ true), concat(concat(deposits(8, 0.0, 600.0), {InboundCommand{Deposit{VENUE_ACCT, QUOTE, {}, quoteRaw(500000.0), SYM}}}), workload::perpFlow(p)), [](Run& r)
                               {
                                 r.eng.setLedger(&r.led, VENUE_ACCT);
                                 r.eng.setFundingSchedule(DurationNs{8000}, SeqNanos::fromRaw(8000)); }, false, 0);
@@ -1039,9 +1039,9 @@ std::vector<Scenario> corpus()
                  Digest d;
                  Run r(c, d);
                  r.eng.setLedger(&r.led, VENUE_ACCT);
-                 r.push(InboundCommand{Deposit{1, QUOTE, quoteRaw(250.0), SYM}});
-                 r.push(InboundCommand{Deposit{2, QUOTE, quoteRaw(50000.0), SYM}});
-                 r.push(InboundCommand{Deposit{VENUE_ACCT, QUOTE, quoteRaw(100.0), SYM}});
+                 r.push(InboundCommand{Deposit{1, QUOTE, {}, quoteRaw(250.0), SYM}});
+                 r.push(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(50000.0), SYM}});
+                 r.push(InboundCommand{Deposit{VENUE_ACCT, QUOTE, {}, quoteRaw(100.0), SYM}});
 
                  NewOrder maker;
                  maker.id = 1;
@@ -1059,8 +1059,8 @@ std::vector<Scenario> corpus()
                  taker.accountId = 1;
                  r.push(InboundCommand{taker});
 
-                 r.push(InboundCommand{SetMark{SYM, px(100.0)}});
-                 r.push(InboundCommand{SetMark{SYM, px(60.0)}});
+                 r.push(InboundCommand{SetMark{SYM, {}, px(100.0)}});
+                 r.push(InboundCommand{SetMark{SYM, {}, px(60.0)}});
                  return r.hashes();
                }});
 
@@ -1138,9 +1138,9 @@ std::vector<Scenario> corpus()
                {
                  SymbolConfig c = spotCfg();
                  std::vector<InboundCommand> cmds;
-                 cmds.emplace_back(Deposit{1, BASE, baseRaw(100.0), SYM});
-                 cmds.emplace_back(Deposit{1, QUOTE, quoteRaw(100000.0), SYM});
-                 cmds.emplace_back(Deposit{2, QUOTE, quoteRaw(100000.0), SYM});
+                 cmds.emplace_back(Deposit{1, BASE, {}, baseRaw(100.0), SYM});
+                 cmds.emplace_back(Deposit{1, QUOTE, {}, quoteRaw(100000.0), SYM});
+                 cmds.emplace_back(Deposit{2, QUOTE, {}, quoteRaw(100000.0), SYM});
                  cmds.emplace_back(InboundCommand{AdminCmd{SYM, AdminAction::Delist}});
                  NewOrder probe;
                  probe.id = 501;
@@ -1154,8 +1154,8 @@ std::vector<Scenario> corpus()
                  NewOrder probe2 = probe;
                  probe2.id = 502;
                  cmds.emplace_back(probe2);
-                 cmds.emplace_back(InboundCommand{CancelOrder{999, SYM, 0}});
-                 cmds.emplace_back(InboundCommand{Deposit{2, BASE, baseRaw(1.0), SYM}});
+                 cmds.emplace_back(InboundCommand{CancelOrder{999, SYM, {}, 0}});
+                 cmds.emplace_back(InboundCommand{Deposit{2, BASE, {}, baseRaw(1.0), SYM}});
                  return checkpointed(
                      c, cmds, [](Run& r)
                      { r.eng.setLedger(&r.led, VENUE_ACCT); }, false,
@@ -1197,10 +1197,10 @@ std::vector<Scenario> corpus()
                  };
                  std::vector<InboundCommand> cmds;
                  // -- the pre-checkpoint half: two holds, four named legs
-                 cmds.emplace_back(Deposit{1, QUOTE, quoteRaw(100000.0), SYM});
-                 cmds.emplace_back(Deposit{2, BASE, baseRaw(100.0), SYM});
-                 cmds.emplace_back(Deposit{3, BASE, baseRaw(100.0), SYM});
-                 cmds.emplace_back(Deposit{4, QUOTE, quoteRaw(100000.0), SYM});
+                 cmds.emplace_back(Deposit{1, QUOTE, {}, quoteRaw(100000.0), SYM});
+                 cmds.emplace_back(Deposit{2, BASE, {}, baseRaw(100.0), SYM});
+                 cmds.emplace_back(Deposit{3, BASE, {}, baseRaw(100.0), SYM});
+                 cmds.emplace_back(Deposit{4, QUOTE, {}, quoteRaw(100000.0), SYM});
                  cmds.emplace_back(named(10, Side::SELL, 100.00, 5.0, 2, 9001, true));
                  cmds.emplace_back(named(11, Side::BUY, 100.00, 5.0, 1, 9002, false));
                  cmds.emplace_back(named(12, Side::SELL, 100.50, 4.0, 3, 9003, true));
@@ -1209,14 +1209,14 @@ std::vector<Scenario> corpus()
                  //    then the legs the refusal put back are canceled, so the
                  //    ids travel through OrderExecuted, FillRejected,
                  //    OrderModified, OrderAccepted and OrderCanceled alike
-                 cmds.emplace_back(InboundCommand{LastLookDecision{1, SYM, true, 2}});
-                 cmds.emplace_back(InboundCommand{LastLookDecision{2, SYM, false, 3}});
-                 cmds.emplace_back(InboundCommand{CancelOrder{13, SYM, 4}});
-                 cmds.emplace_back(InboundCommand{CancelOrder{12, SYM, 3}});
-                 cmds.emplace_back(Deposit{1, BASE, baseRaw(10.0), SYM});
+                 cmds.emplace_back(InboundCommand{LastLookDecision{1, SYM, true, {}, 2}});
+                 cmds.emplace_back(InboundCommand{LastLookDecision{2, SYM, false, {}, 3}});
+                 cmds.emplace_back(InboundCommand{CancelOrder{13, SYM, {}, 4}});
+                 cmds.emplace_back(InboundCommand{CancelOrder{12, SYM, {}, 3}});
+                 cmds.emplace_back(Deposit{1, BASE, {}, baseRaw(10.0), SYM});
                  cmds.emplace_back(named(14, Side::SELL, 101.00, 1.0, 1, 9005, false));
-                 cmds.emplace_back(InboundCommand{CancelOrder{14, SYM, 1}});
-                 cmds.emplace_back(InboundCommand{CancelOrder{999, SYM, 1}});
+                 cmds.emplace_back(InboundCommand{CancelOrder{14, SYM, {}, 1}});
+                 cmds.emplace_back(InboundCommand{CancelOrder{999, SYM, {}, 1}});
                  return checkpointed(
                      c, cmds, [](Run& r)
                      { r.eng.setLedger(&r.led, VENUE_ACCT); }, false,

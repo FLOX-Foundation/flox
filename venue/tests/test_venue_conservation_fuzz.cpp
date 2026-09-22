@@ -118,7 +118,7 @@ void test_spot_conservation()
     const uint32_t kind = r % 100;
     if (kind < 20 && nextId > 1)
     {
-      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, 0}}, i);
+      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, {}, 0}}, i);
     }
     else if (kind < 30 && nextId > 1)
     {
@@ -128,7 +128,7 @@ void test_spot_conservation()
       const int ticks = static_cast<int>((r >> 1) % 101) - 50;
       const Price np = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
       const Quantity nq = qty(1.0 + static_cast<double>((r >> 24) % 5));
-      eng.submit(InboundCommand{ModifyOrder{vid, SYM, np, nq, 0}}, i);
+      eng.submit(InboundCommand{ModifyOrder{vid, SYM, {}, np, nq, 0}}, i);
     }
     else
     {
@@ -207,7 +207,7 @@ void test_spot_conservation()
   // total but shows up here as residual `reserved` after all orders are gone.
   for (OrderId id = 1; id < nextId; ++id)
   {
-    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 999999);
+    eng.submit(InboundCommand{CancelOrder{id, SYM, {}, 0}}, 999999);
   }
   int reservedLeaks = 0;
   for (int a = 1; a <= NACCT; ++a)
@@ -317,11 +317,11 @@ void test_spot_conservation_lastlook()
       const auto [hid, makerAcct] = pendingHolds[pick];
       pendingHolds.erase(pendingHolds.begin() + static_cast<ptrdiff_t>(pick));
       const uint64_t acct = (r & 4) ? makerAcct : 1 + ((r >> 24) % NACCT);
-      eng.submit(InboundCommand{LastLookDecision{hid, SYM, (r & 8) != 0, acct}}, i);
+      eng.submit(InboundCommand{LastLookDecision{hid, SYM, (r & 8) != 0, {}, acct}}, i);
     }
     else if (kind < 27 && nextId > 1)
     {
-      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, 0}}, i);
+      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, {}, 0}}, i);
     }
     else
     {
@@ -393,7 +393,7 @@ void test_spot_conservation_lastlook()
   // was stripped or stranded shows up here.
   for (OrderId id = 1; id < nextId; ++id)
   {
-    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 999999);
+    eng.submit(InboundCommand{CancelOrder{id, SYM, {}, 0}}, 999999);
   }
   CHECK(sumAsset(BASE) == initBase && sumAsset(QUOTE) == initQuote);
   int reservedLeaks = 0;
@@ -472,7 +472,7 @@ void test_perp_conservation(bool adl)
     const uint32_t kind = r % 100;
     if (kind < 15 && nextId > 1)
     {
-      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, 0}}, i);
+      eng.submit(InboundCommand{CancelOrder{1 + (rng.next() % (nextId - 1)), SYM, {}, 0}}, i);
     }
     else if (kind < 25)
     {
@@ -548,7 +548,7 @@ void test_perp_conservation(bool adl)
   // unit must be backed by an open position's posted margin -- no IM leak.
   for (OrderId id = 1; id < nextId; ++id)
   {
-    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 999999);
+    eng.submit(InboundCommand{CancelOrder{id, SYM, {}, 0}}, 999999);
   }
   Amount reservedSum = 0;
   for (int a = 1; a <= NACCT; ++a)

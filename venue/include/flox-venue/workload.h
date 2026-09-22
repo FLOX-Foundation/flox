@@ -125,7 +125,7 @@ inline InboundCommand mixedCommand(uint64_t& s, OrderId& nextId, const Params& p
   if (kind < 15 && nextId > 1)
   {
     const OrderId victim = 1 + (next() % (nextId - 1));
-    return CancelOrder{victim, p.symbol, 1};
+    return CancelOrder{victim, p.symbol, {}, 1};
   }
   if (kind < 25 && nextId > 1)
   {
@@ -133,7 +133,7 @@ inline InboundCommand mixedCommand(uint64_t& s, OrderId& nextId, const Params& p
     const int ticks = static_cast<int>((next() % 101)) - 50;
     const Price newPrice = Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
     const Quantity newQty = Quantity::fromDouble(1.0 + static_cast<double>(next() % 6));
-    return ModifyOrder{victim, p.symbol, newPrice, newQty, 1};
+    return ModifyOrder{victim, p.symbol, {}, newPrice, newQty, 1};
   }
 
   NewOrder o;
@@ -315,7 +315,7 @@ inline std::vector<InboundCommand> perpFlow(const Params& p)
     const uint32_t kind = r % 100;
     if (kind < 15 && nextId > 1)
     {
-      v.emplace_back(CancelOrder{1 + (rng.next() % (nextId - 1)), p.symbol, 0});
+      v.emplace_back(CancelOrder{1 + (rng.next() % (nextId - 1)), p.symbol, {}, 0});
       continue;
     }
     const int priceTicks = static_cast<int>((r >> 1) % 61) - 30;
@@ -324,7 +324,7 @@ inline std::vector<InboundCommand> perpFlow(const Params& p)
     const Price mark = Price::fromRaw(midRaw + markTicks * tickRaw);
     if (kind < 22)
     {
-      v.emplace_back(SetMark{p.symbol, mark});
+      v.emplace_back(SetMark{p.symbol, {}, mark});
       continue;
     }
     if (kind < 25)
@@ -332,7 +332,7 @@ inline std::vector<InboundCommand> perpFlow(const Params& p)
       // Funding at a rate that is small but not symmetric around zero: a payer
       // at full leverage must occasionally be unable to afford it.
       const double rate = (static_cast<double>((r >> 8) % 21) - 8.0) * 0.0001;
-      v.emplace_back(ApplyFunding{p.symbol, rate, mark});
+      v.emplace_back(ApplyFunding{p.symbol, {}, rate, mark});
       continue;
     }
     if (kind < 27)
@@ -342,7 +342,7 @@ inline std::vector<InboundCommand> perpFlow(const Params& p)
       const uint64_t acct = 1 + ((r >> 8) % p.accounts);
       if ((r >> 40) % 2 == 0)
       {
-        v.emplace_back(ForceClosePosition{acct, p.symbol, 0});
+        v.emplace_back(ForceClosePosition{acct, p.symbol, {}, 0});
       }
       else
       {
