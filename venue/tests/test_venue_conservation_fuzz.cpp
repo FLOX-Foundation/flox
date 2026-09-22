@@ -18,7 +18,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 
-#include "flox/backtest/fee_schedule.h"
+#include "flox/clearing/fee_schedule.h"
 
 #include <gtest/gtest.h>
 #include <array>

@@ -1,0 +1,61 @@
+# what the execution venue consumer includes
+#
+# The header list a downstream consumer that runs the execution venue
+# compiles against: the sequencer and its storage, the matching engine and
+# its components, the network perimeter, the FIX initiator, and the
+# utilities those need. Nothing else in this tree is part of that contract.
+#
+# venue/tests/support/lite_surface.cpp includes exactly this list, so a
+# header that moves or disappears fails to compile in the venue-lite
+# profile. scripts/lite_closure.py walks the transitive closure of these
+# includes and refuses directions the profile does not allow.
+#
+# Paths are as written in an #include, relative to include/ or
+# venue/include/. Blank lines and # comments are ignored.
+
+# sequencer and storage
+flox-venue/sequenced_shard.h
+flox-venue/journal.h
+flox-venue/checkpoint_lane.h
+flox-venue/event_hash.h
+flox/util/crc32.h
+flox/util/file_io.h
+
+# engine and its components
+flox-venue/matching_engine.h
+flox-venue/matcher.h
+flox-venue/matching_book.h
+flox/book/ladder_book.h
+flox-venue/messages.h
+flox-venue/reject_reason.h
+flox-venue/ledger.h
+flox-venue/session.h
+
+# perimeter
+flox-venue/fix_codec.h
+flox-venue/fix_session.h
+flox-venue/session_registry.h
+flox-venue/socket_acceptor.h
+flox-venue/tcp_gateway.h
+flox-venue/control_api.h
+flox-venue/control_plane.h
+flox-venue/metrics.h
+flox-venue/metrics_server.h
+flox-venue/prometheus.h
+flox-venue/shard_events.h
+
+# FIX initiator
+flox/connector/fix/fix_initiator.h
+flox/connector/fix/fix_client_codec.h
+flox/connector/fix/fix_tcp_client.h
+flox/connector/fix/fix_wire.h
+
+# utilities
+flox/common.h
+flox/util/base/time.h
+flox/util/decimal_wire.h
+flox/util/eventing/wake_set.h
+flox/util/performance/busy_backoff.h
+flox/util/concurrency/thread_body.h
+flox/net/socket.h
+flox/net/receive_path.h

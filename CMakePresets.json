@@ -1,0 +1,59 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "venue-lite",
+      "displayName": "venue-lite",
+      "description": "The execution venue and nothing else: engine, perimeter, FIX initiator, utilities. No backtest, no exchange connectors, no bindings, no demo, no benchmarks -- and none of their dependencies are looked for. See docs/venue/build-profiles.md.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-venue-lite",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "FLOX_VENUE_LITE": "ON",
+        "FLOX_BUILD_TESTS": "ON",
+        "FLOX_NATIVE": "OFF"
+      }
+    },
+    {
+      "name": "venue-lite-engine-only",
+      "inherits": "venue-lite",
+      "displayName": "venue-lite, engine only",
+      "description": "venue-lite with the network perimeter off: the matching engine, its journal and its checkpoints, on a platform without POSIX sockets.",
+      "binaryDir": "${sourceDir}/build-venue-lite-engine",
+      "cacheVariables": {
+        "FLOX_VENUE_PERIMETER": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "venue-lite",
+      "configurePreset": "venue-lite"
+    },
+    {
+      "name": "venue-lite-engine-only",
+      "configurePreset": "venue-lite-engine-only"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "venue-lite",
+      "configurePreset": "venue-lite",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "venue-lite-engine-only",
+      "configurePreset": "venue-lite-engine-only",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

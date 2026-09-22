@@ -120,7 +120,13 @@ install(TARGETS flox-venue
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-if(FLOX_VENUE_TLS)
+# In the lite profile the root CMakeLists installs the closure of
+# venue/lite_surface.txt, this module's headers included, and installing the
+# directory here on top of that would put back the 60-odd headers the profile
+# exists to leave out.
+if(FLOX_VENUE_LITE)
+  message(STATUS "FLOX_VENUE_LITE: venue headers are installed as part of the lite closure")
+elseif(FLOX_VENUE_TLS)
   install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 else()
   # A header whose dependency is not there is worse installed than absent: the
@@ -193,6 +199,68 @@ endif()
     list(REMOVE_ITEM FLOX_VENUE_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_venue_tls.cpp)
     message(STATUS "OpenSSL not found -- skipping venue TLS gateway test")
   endif()
+  if(NOT FLOX_ENABLE_BACKTEST)
+    # Same derivation as the two blocks above: read what each test includes
+    # rather than keep a list of names in step by hand. The venue library
+    # needs nothing from flox/backtest/ any more, but liquidation_monitor.h
+    # -- a header-only helper over the backtest liquidation engine, used by
+    # one test and nothing else -- still does.
+    set(FLOX_VENUE_BACKTEST_TESTS "")
+    foreach(t ${FLOX_VENUE_TESTS})
+      file(STRINGS ${t} _bt REGEX "flox/backtest/|liquidation_monitor.h")
+      if(_bt)
+        list(REMOVE_ITEM FLOX_VENUE_TESTS ${t})
+        get_filename_component(_n ${t} NAME_WE)
+        list(APPEND FLOX_VENUE_BACKTEST_TESTS ${_n})
+      endif()
+    endforeach()
+    list(LENGTH FLOX_VENUE_BACKTEST_TESTS _n_backtest)
+    message(STATUS "FLOX_ENABLE_BACKTEST=OFF: ${_n_backtest} venue tests need the backtest module: ${FLOX_VENUE_BACKTEST_TESTS}")
+  endif()
+
+  if(FLOX_VENUE_LITE)
+    # The lite profile builds the core library without src/replay, so the
+    # tape recorder -- a header-only writer over flox::replay::BinaryLogWriter,
+    # and not on the consumer's surface -- has no implementation to link
+    # against. Derived from includes for the same reason as the blocks above.
+    set(FLOX_VENUE_REPLAY_TESTS "")
+    foreach(t ${FLOX_VENUE_TESTS})
+      file(STRINGS ${t} _rp REGEX "flox/replay/|tape_recorder.h")
+      if(_rp)
+        list(REMOVE_ITEM FLOX_VENUE_TESTS ${t})
+        get_filename_component(_n ${t} NAME_WE)
+        list(APPEND FLOX_VENUE_REPLAY_TESTS ${_n})
+      endif()
+    endforeach()
+    list(LENGTH FLOX_VENUE_REPLAY_TESTS _n_replay)
+    message(STATUS "FLOX_VENUE_LITE: ${_n_replay} venue tests need the replay writers: ${FLOX_VENUE_REPLAY_TESTS}")
+  endif()
+
+  # The surface contract for the lite profile: one TU including exactly what
+  # the consumer includes. Built here and not in the full profile, because
+  # the point is what it compiles WITHOUT -- in a full configure the backtest
+  # module and the connectors are present and the TU would pass whether or
+  # not the lite profile still holds. scripts/lite_closure.py (run by the
+  # lite configure) checks its includes against venue/lite_surface.txt.
+  if(FLOX_VENUE_LITE)
+    add_executable(venue_lite_surface
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/support/lite_surface.cpp)
+    target_link_libraries(venue_lite_surface PRIVATE flox-venue)
+    target_include_directories(venue_lite_surface PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    # The half of the contract the compiler cannot see: that the TU's
+    # includes are exactly the consumer's list, and that the closure of that
+    # list has not grown a direction the profile forbids. Attached to this
+    # target rather than left to CI, so an edit to venue/lite_surface.txt
+    # that the TU does not match reddens the surface target on the developer's
+    # own build.
+    add_custom_target(venue_lite_surface_contract
+      COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/lite_closure.py
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+      COMMENT "Checking the venue-lite surface list against its translation unit")
+    add_dependencies(venue_lite_surface venue_lite_surface_contract)
+    add_test(NAME venue_lite_surface COMMAND venue_lite_surface)
+  endif()
+
   # A shard that writes a journal and then abandons the process. Used by the
   # process-death test on every platform: Windows has no fork, and a
   # Windows-only mechanism would be exercised only where nobody runs it by

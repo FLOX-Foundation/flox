@@ -9,15 +9,23 @@
 
 #pragma once
 
-#include "flox/aggregator/events/bar_event.h"
-#include "flox/book/events/book_update_event.h"
-#include "flox/book/events/trade_event.h"
-#include "flox/engine/abstract_market_data_subscriber.h"
-#include "flox/execution/events/order_event.h"
+#include "flox/util/memory/pool.h"
 
 namespace flox
 {
 
+// How an EventBus hands one event to one listener. The bus names it as a
+// dependent type, so only the specialization for the event a given bus
+// carries has to be visible where that bus is instantiated.
+//
+// The specializations therefore live next to their event -- BarEvent's in
+// flox/aggregator/events/bar_event.h, OrderEvent's in
+// flox/execution/events/order_event.h, and so on -- and not here. They used
+// to live here, which made every EventBus in the tree include every event
+// type in the tree: a venue shard carrying its own command and engine-event
+// types pulled in bars, book updates and trades it never sees. Anyone who
+// holds an EventBus<E> already has E's header, so nothing needs the old
+// gather-everything include.
 template <typename T>
 struct EventDispatcher;
 
@@ -28,52 +36,6 @@ struct EventDispatcher<pool::Handle<T>>
   static void dispatch(const pool::Handle<T>& ev, Sub& sub)
   {
     EventDispatcher<T>::dispatch(*ev, sub);
-  }
-};
-
-template <>
-struct EventDispatcher<BookUpdateEvent>
-{
-  // Templated on the subscriber so a statically-subscribed concrete type
-  // keeps its identity all the way to the handler call (see subscribeStatic).
-  template <typename Sub>
-  static void dispatch(const BookUpdateEvent& ev, Sub& sub)
-  {
-    sub.onBookUpdate(ev);
-  }
-};
-
-template <>
-struct EventDispatcher<TradeEvent>
-{
-  // Templated on the subscriber so a statically-subscribed concrete type
-  // keeps its identity all the way to the handler call (see subscribeStatic).
-  template <typename Sub>
-  static void dispatch(const TradeEvent& ev, Sub& sub)
-  {
-    sub.onTrade(ev);
-  }
-};
-
-template <>
-struct EventDispatcher<BarEvent>
-{
-  // Templated on the subscriber so a statically-subscribed concrete type
-  // keeps its identity all the way to the handler call (see subscribeStatic).
-  template <typename Sub>
-  static void dispatch(const BarEvent& ev, Sub& sub)
-  {
-    sub.onBar(ev);
-  }
-};
-
-template <>
-struct EventDispatcher<OrderEvent>
-{
-  template <typename Sub>
-  static void dispatch(const OrderEvent& ev, Sub& listener)
-  {
-    ev.dispatchTo(listener);
   }
 };
 

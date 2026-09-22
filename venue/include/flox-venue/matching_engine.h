@@ -33,7 +33,7 @@
 #include "flox-venue/symbol_config.h"
 #include "flox/book/resting_order.h"
 
-#include "flox/backtest/fee_schedule.h"
+#include "flox/clearing/fee_schedule.h"
 
 #include <algorithm>
 #include <array>

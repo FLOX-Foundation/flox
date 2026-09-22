@@ -222,4 +222,21 @@ struct OrderEvent
   }
 };
 
+// Lives here rather than in event_dispatcher.h: an EventBus names the
+// dispatcher as a dependent type, so the specialization only has to be
+// visible where a bus for THIS event is instantiated, and whoever has that
+// bus already has this header.
+template <typename T>
+struct EventDispatcher;
+
+template <>
+struct EventDispatcher<OrderEvent>
+{
+  template <typename Sub>
+  static void dispatch(const OrderEvent& ev, Sub& listener)
+  {
+    ev.dispatchTo(listener);
+  }
+};
+
 }  // namespace flox
