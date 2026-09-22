@@ -237,7 +237,7 @@ TEST(VenueEngineLastLook, AcceptPrintsTradeAndBothExecutions)
   EXPECT_EQ(held->makerId, 10U);
   EXPECT_EQ(held->takerId, 20U);
 
-  ll.onDecision(b, LastLookDecision{held->heldId, SYM, true, 1});
+  ll.onDecision(b, LastLookDecision{held->heldId, SYM, true, {}, 1});
   EXPECT_EQ(ll.openCount(), 0U);
   EXPECT_EQ(b.count<Trade>(), 1);
   EXPECT_EQ(b.count<OrderExecuted>(), 2);
@@ -261,7 +261,7 @@ TEST(VenueEngineLastLook, RejectReturnsTheMakerAtTheTail)
   ll.create(b, m, qty(2.0), ioc(taker(20, Side::BUY, 100.0, 2.0, 2)), ns(0));
   b.resting[0].leaves = qty(3.0);  // the matcher reserved the held slice out
 
-  ll.onDecision(b, LastLookDecision{1, SYM, false, 1});
+  ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
 
   EXPECT_EQ(b.queue(), (std::vector<OrderId>{11, 10}));  // behind the order it led
   ASSERT_NE(b.at(10), nullptr);
@@ -283,7 +283,7 @@ TEST(VenueEngineLastLook, RejectRebuildsAMakerHeldWhollyOutOfTheBook)
   m.reduceOnly = true;
 
   ll.create(b, m, qty(2.0), ioc(taker(20, Side::BUY, 100.0, 2.0, 2)), ns(0));  // book stays empty
-  ll.onDecision(b, LastLookDecision{1, SYM, false, 1});
+  ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
 
   ASSERT_EQ(b.queue(), (std::vector<OrderId>{10}));
   EXPECT_EQ(b.at(10)->side, Side::SELL);
@@ -305,7 +305,7 @@ TEST(VenueEngineLastLook, RefusedLegsAreRestoredMakerFirst)
   RestingOrder m = maker(10, Side::SELL, 100.0, 2.0, 1);
 
   ll.create(b, m, qty(2.0), taker(20, Side::BUY, 100.0, 2.0, 2), ns(0));
-  ll.onDecision(b, LastLookDecision{1, SYM, false, 1});
+  ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
 
   const int makerReport = b.indexOf<OrderModified>();
   const int takerReport = b.indexOf<OrderAccepted>();
@@ -327,7 +327,7 @@ TEST(VenueEngineLastLook, RejectRoutesTheTakerByItsTimeInForce)
     t.expiryNs = ns(9999);
     t.tif = TimeInForce::GTD;
     ll.create(b, maker(10, Side::SELL, 100.0, 2.0, 1), qty(2.0), t, ns(0));
-    ll.onDecision(b, LastLookDecision{1, SYM, false, 1});
+    ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
 
     EXPECT_EQ(b.queue(), (std::vector<OrderId>{10, 20}));
     EXPECT_NE(std::find(b.calls.begin(), b.calls.end(), "adopt:20"), b.calls.end());
@@ -340,7 +340,7 @@ TEST(VenueEngineLastLook, RejectRoutesTheTakerByItsTimeInForce)
     NewOrder t = taker(20, Side::BUY, 100.0, 2.0, 2);
     t.tif = TimeInForce::IOC;
     ll.create(b, maker(10, Side::SELL, 100.0, 2.0, 1), qty(2.0), t, ns(0));
-    ll.onDecision(b, LastLookDecision{1, SYM, false, 1});
+    ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
 
     EXPECT_EQ(b.queue(), (std::vector<OrderId>{10}));  // the taker did not rest
     EXPECT_NE(std::find(b.calls.begin(), b.calls.end(),
@@ -400,7 +400,7 @@ TEST(VenueEngineLastLook, StatsSplitRefusalsByDirection)
             ns(0));
   ll.stampFresh(b);
   b.reference = 1200;
-  ll.onDecision(b, LastLookDecision{1, SYM, false, 1});
+  ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
 
   // The same maker refusing when the move went its way.
   b.reference = 1000;
@@ -408,7 +408,7 @@ TEST(VenueEngineLastLook, StatsSplitRefusalsByDirection)
             ns(0));
   ll.stampFresh(b);
   b.reference = 800;
-  ll.onDecision(b, LastLookDecision{2, SYM, false, 1});
+  ll.onDecision(b, LastLookDecision{2, SYM, false, {}, 1});
 
   const LastLookStats& st = ll.stats().at(1);
   EXPECT_EQ(st.held, 2U);
@@ -430,7 +430,7 @@ TEST(VenueEngineLastLook, WithoutAStampNoMoveIsMeasurable)
   ll.create(b, maker(10, Side::SELL, 100.0, 2.0, 1), qty(2.0), taker(20, Side::BUY, 100.0, 2.0, 2),
             ns(0));
   b.reference = 5000;  // never stamped: unmeasurable, not "moved 4000"
-  ll.onDecision(b, LastLookDecision{1, SYM, false, 1});
+  ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
 
   const LastLookStats& st = ll.stats().at(1);
   EXPECT_EQ(st.adverse, 0U);
@@ -449,7 +449,7 @@ TEST(VenueEngineLastLook, VenueToleranceOverridesAnAccept)
   ll.stampFresh(b);
 
   b.reference = 1050;  // inside tolerance
-  ll.onDecision(b, LastLookDecision{1, SYM, true, 1});
+  ll.onDecision(b, LastLookDecision{1, SYM, true, {}, 1});
   EXPECT_EQ(b.count<Trade>(), 1);
   EXPECT_EQ(ll.toleranceRejected(), 0U);
 
@@ -458,7 +458,7 @@ TEST(VenueEngineLastLook, VenueToleranceOverridesAnAccept)
             ns(0));
   ll.stampFresh(b);
   b.reference = 1200;  // outside it, in the maker's favour -- still refused
-  ll.onDecision(b, LastLookDecision{2, SYM, true, 1});
+  ll.onDecision(b, LastLookDecision{2, SYM, true, {}, 1});
   EXPECT_EQ(b.count<Trade>(), 1);
   EXPECT_EQ(b.count<FillRejected>(), 1);
   EXPECT_EQ(ll.toleranceRejected(), 1U);
@@ -473,7 +473,7 @@ TEST(VenueEngineLastLook, ARiskLimitReachedDuringTheWindowRefusesTheAccept)
   ll.create(b, maker(10, Side::SELL, 100.0, 2.0, 1), qty(2.0), taker(20, Side::BUY, 100.0, 2.0, 2),
             ns(0));
   b.allowed = false;
-  ll.onDecision(b, LastLookDecision{1, SYM, true, 1});
+  ll.onDecision(b, LastLookDecision{1, SYM, true, {}, 1});
 
   EXPECT_EQ(b.count<Trade>(), 0);
   EXPECT_EQ(b.count<FillRejected>(), 1);
@@ -489,8 +489,8 @@ TEST(VenueEngineLastLook, OwnershipGuardsTheDecision)
   ll.create(b, maker(10, Side::SELL, 100.0, 2.0, 1), qty(2.0), taker(20, Side::BUY, 100.0, 2.0, 2),
             ns(0));
 
-  ll.onDecision(b, LastLookDecision{999, SYM, true, 1});
-  ll.onDecision(b, LastLookDecision{1, SYM, true, 2});  // the taker's account
+  ll.onDecision(b, LastLookDecision{999, SYM, true, {}, 1});
+  ll.onDecision(b, LastLookDecision{1, SYM, true, {}, 2});  // the taker's account
   EXPECT_EQ(ll.openCount(), 1U);
   ASSERT_EQ(b.count<OrderRejected>(), 2);
   EXPECT_EQ(b.first<OrderRejected>()->reason, RejectReason::UnknownOrder);
@@ -555,7 +555,7 @@ TEST(VenueEngineLastLook, CheckpointSurfaceRoundTrips)
             ns(0));
   ll.create(b, maker(11, Side::SELL, 100.0, 2.0, 1), qty(1.0), taker(21, Side::BUY, 100.0, 1.0, 2),
             ns(0));
-  ll.onDecision(b, LastLookDecision{1, SYM, true, 1});  // consumed, sequence keeps going
+  ll.onDecision(b, LastLookDecision{1, SYM, true, {}, 1});  // consumed, sequence keeps going
 
   EXPECT_EQ(ll.seq(), 2U);
   EXPECT_EQ(ll.sortedIds(), (std::vector<uint64_t>{2}));
@@ -611,12 +611,12 @@ TEST(VenueEngineLastLook, HoldPathThroughput)
       e.submit(InboundCommand{ioc(taker(static_cast<OrderId>(3 * i + 2), Side::BUY, 100.0, 1.0,
                                         2))},
                ++ts);
-      e.submit(InboundCommand{LastLookDecision{++heldId, SYM, accept, 1}}, ++ts);
+      e.submit(InboundCommand{LastLookDecision{++heldId, SYM, accept, {}, 1}}, ++ts);
       if (!accept)
       {
         // The refused maker is back on its level: take it off again, so the
         // next cycle starts from the same empty book the first one did.
-        e.submit(InboundCommand{CancelOrder{mid, SYM, 1}}, ++ts);
+        e.submit(InboundCommand{CancelOrder{mid, SYM, {}, 1}}, ++ts);
       }
     }
     const auto t1 = std::chrono::steady_clock::now();

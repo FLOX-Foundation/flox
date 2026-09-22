@@ -248,14 +248,13 @@ TEST(VenuePublications, DerivativesPublicationCarriesTheWholeLayer)
   constexpr int64_t kFirstBoundary = 5'000'000'000;
   constexpr int64_t kOneBp = kFundingRateScale / 10'000;
 
-  eng.submit(InboundCommand{SetFundingSchedule{SYM, DurationNs{kInterval},
-                                               SeqNanos::fromRaw(kFirstBoundary)}},
+  eng.submit(InboundCommand{SetFundingSchedule{SYM, {}, DurationNs{kInterval}, SeqNanos::fromRaw(kFirstBoundary)}},
              int64_t{1000});
   // No mark yet: an unmarked instrument publishes nothing at all.
   EXPECT_TRUE(f.only<DerivativesUpdated>().empty());
 
-  eng.submit(InboundCommand{SetMark{SYM, px(100.0)}}, int64_t{2000});
-  eng.submit(InboundCommand{ApplyFunding{SYM, 0.0001, px(101.0)}}, int64_t{3000});
+  eng.submit(InboundCommand{SetMark{SYM, {}, px(100.0)}}, int64_t{2000});
+  eng.submit(InboundCommand{ApplyFunding{SYM, {}, 0.0001, px(101.0)}}, int64_t{3000});
 
   EXPECT_STREAM(f.only<DerivativesUpdated>(),
                 DerivativesUpdated{SYM, px(100.0), 0, SeqNanos::fromRaw(kFirstBoundary), Quantity{}},
@@ -361,7 +360,7 @@ TEST(VenuePublications, PartialFillKeepsTheIdAndCancelDropsIt)
   EXPECT_EQ(before.openOrders[0].id, OrderId{1});
 
   f.clear();
-  eng.submit(InboundCommand{CancelOrder{1, SYM, 100}}, int64_t{3000});
+  eng.submit(InboundCommand{CancelOrder{1, SYM, {}, 100}}, int64_t{3000});
   EXPECT_STREAM(f.ev, OrderCanceled{1, SYM, CancelReason::UserRequested, 100, 11});
   EXPECT_EQ(eng.restingOrderCount(), 0U);
   EXPECT_TRUE(eng.snapshotAccount(100).openOrders.empty());

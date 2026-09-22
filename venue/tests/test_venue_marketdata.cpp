@@ -99,10 +99,10 @@ void test_l2_and_codec()
   eng.submit(limit(4, Side::BUY, 100, 2));  // crosses id1: trade 2 @100, id1 leaves 3
   CHECK(md.book().askAtPrice(px(100)) == qty(3));
 
-  eng.submit(CancelOrder{2, SYM, 1});  // remove the 101 level
+  eng.submit(CancelOrder{2, SYM, {}, 1});  // remove the 101 level
   CHECK(md.book().askAtPrice(px(101)) == qty(0));
 
-  eng.submit(ModifyOrder{1, SYM, px(102), qty(3), 1});  // reprice 100->102
+  eng.submit(ModifyOrder{1, SYM, {}, px(102), qty(3), 1});  // reprice 100->102
   CHECK(md.book().askAtPrice(px(100)) == qty(0));
   CHECK(md.book().bestAsk() == px(102));
   CHECK(md.book().askAtPrice(px(102)) == qty(3));

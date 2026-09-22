@@ -204,7 +204,7 @@ void test_timestamped_replay()
   mk.lastLook = true;
   live.emplace_back(10, InboundCommand{mk});
   live.emplace_back(20, InboundCommand{limit(2, Side::BUY, 100, 3, 2)});  // held @ deadline 1020
-  live.emplace_back(5000, InboundCommand{CancelOrder{999, SYM, 1}});      // past deadline -> timeout
+  live.emplace_back(5000, InboundCommand{CancelOrder{999, SYM, {}, 1}});  // past deadline -> timeout
 
   {
     Journal j(path);

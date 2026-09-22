@@ -394,7 +394,7 @@ TEST(ClientOrderId, AHeldFillAndItsRejectCarryTheTakersName)
 
   // Decided by the MAKER's account (1, the default of order() above) -- only
   // the account owning the held quote may answer.
-  eng.submit(InboundCommand{LastLookDecision{held.heldId, SYM, /*accept=*/false, 1}}, 3);
+  eng.submit(InboundCommand{LastLookDecision{held.heldId, SYM, /*accept=*/false, {}, 1}}, 3);
 
   const auto* rejected = cap.first<FillRejected>();
   ASSERT_NE(rejected, nullptr);

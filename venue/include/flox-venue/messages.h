@@ -48,11 +48,17 @@ struct NewOrder
   SymbolId symbol{};
   Side side{};
   OrderType type{OrderType::LIMIT};  // LIMIT | MARKET and the conditional (stop / take-profit / trailing) types
-  Price price{};                     // ignored for MARKET
+  // Explicit alignment padding (T057): the compiler inserted 7 bytes here
+  // regardless, uninitialised; naming it means every construction path (NSDMI
+  // on this field) writes zero instead of leaving whatever was on the stack.
+  // See journal.h for the static_assert pair that keeps this honest.
+  uint8_t pad0_[7]{};
+  Price price{};  // ignored for MARKET
   Quantity quantity{};
   TimeInForce tif{TimeInForce::GTC};
   bool postOnly{false};
   STPMode stp{STPMode::None};
+  uint8_t pad1_[5]{};  // explicit alignment padding (T057)
   uint64_t accountId{0};
   uint64_t clientOrderId{0};
   Quantity visibleQuantity{};  // iceberg display size; 0 or >= quantity = fully visible
@@ -60,9 +66,11 @@ struct NewOrder
   Price trailingOffset{};      // trailing-stop offset (price distance from extreme)
   bool lastLook{false};        // maker holds a fill for a last-look window before confirming
   bool reduceOnly{false};      // derivatives: may only reduce/close a position, never increase
+  uint8_t pad2_[6]{};          // explicit alignment padding (T057)
   SeqNanos expiryNs{};         // GTD: sequencer time at/after which a resting order auto-cancels (0 = none)
   uint64_t ocoGroup{0};        // OCO: orders sharing a group cancel each other on the first fill (0 = none)
   PegRef peg{PegRef::None};    // peg: re-price to track Bid/Ask/Mid each submit boundary
+  uint8_t pad3_[7]{};          // explicit alignment padding (T057)
   int64_t pegOffsetRaw{0};     // signed price offset from the peg reference (raw ticks)
 };
 
@@ -70,6 +78,7 @@ struct CancelOrder
 {
   OrderId id{};
   SymbolId symbol{};
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   uint64_t accountId{0};
 };
 
@@ -77,7 +86,8 @@ struct ModifyOrder  // cancel/replace
 {
   OrderId id{};
   SymbolId symbol{};
-  Price newPrice{};  // raw 0 = keep current price
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
+  Price newPrice{};    // raw 0 = keep current price
   // New leaves target. On an iceberg this is the TOTAL remaining -- displayed
   // peak plus hidden reserve -- which is the same number an execution report
   // gives as that order's leavesQty. The peak itself is preserved across the
@@ -90,6 +100,7 @@ struct MassCancel  // cancel every resting order of an account (MM cancel-all)
 {
   uint64_t accountId{};
   SymbolId symbol{};
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057), tail
 };
 
 struct Quote  // two-sided market-maker quote (replace prior quote on this symbol)
@@ -97,6 +108,7 @@ struct Quote  // two-sided market-maker quote (replace prior quote on this symbo
   OrderId bidId{};
   OrderId askId{};
   SymbolId symbol{};
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   Price bidPrice{};
   Quantity bidQty{};  // 0 = no bid side
   Price askPrice{};
@@ -120,6 +132,7 @@ struct Quote  // two-sided market-maker quote (replace prior quote on this symbo
   bool postOnly{false};
   bool reduceOnly{false};
   TimeInForce tif{TimeInForce::GTC};
+  uint8_t pad1_[3]{};          // explicit alignment padding (T057)
   Quantity visibleQuantity{};  // iceberg peak per leg (0 = show the visible leg)
   SeqNanos expiryNs{};         // GTD expiry for both legs (0 = none)
   // Appended field: a quote is one submission that becomes two resting
@@ -138,6 +151,7 @@ struct LastLookDecision  // maker accepts or rejects a held last-look fill
   uint64_t heldId{};
   SymbolId symbol{};
   bool accept{};
+  uint8_t pad0_[3]{};  // explicit alignment padding (T057)
   uint64_t accountId{};
 };
 
@@ -148,12 +162,14 @@ struct LastLookDecision  // maker accepts or rejects a held last-look fill
 struct SetMark  // update the mark price (triggers maintenance-margin liquidations)
 {
   SymbolId symbol{};
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   Price mark{};
 };
 
 struct ApplyFunding  // settle a funding payment across open positions
 {
   SymbolId symbol{};
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   double rate{};
   Price mark{};
 };
@@ -196,6 +212,7 @@ struct AdminCmd
 {
   SymbolId symbol{};
   AdminAction action{};
+  uint8_t pad0_[3]{};  // explicit alignment padding (T057), tail
 };
 
 // Genesis flows through the SAME sequenced, journaled stream as orders, so a
@@ -207,16 +224,20 @@ struct Deposit  // credit external funds into an account
 {
   uint64_t accountId{};
   AssetId asset{};
+  uint8_t pad0_[6]{};   // explicit alignment padding (T057)
   int64_t amountRaw{};  // kMoneyScale units; <= 0 is ignored
   SymbolId symbol{};    // routing key only: the shard owning this account's ledger
+  uint8_t pad1_[4]{};   // explicit alignment padding (T057), tail
 };
 
 struct Withdraw  // debit available funds; a no-op unless available >= amount
 {
   uint64_t accountId{};
   AssetId asset{};
+  uint8_t pad0_[6]{};   // explicit alignment padding (T057)
   int64_t amountRaw{};  // kMoneyScale units; <= 0 is ignored
   SymbolId symbol{};    // routing key only
+  uint8_t pad1_[4]{};   // explicit alignment padding (T057), tail
 };
 
 // Instrument configuration mutations, sequenced so a restart replays them.
@@ -226,6 +247,7 @@ struct Withdraw  // debit available funds; a no-op unless available >= amount
 struct ListInstrument
 {
   SymbolId symbol{};
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   Price tickSize{};
   Quantity lotSize{};
   Price minPrice{};
@@ -235,6 +257,7 @@ struct ListInstrument
 struct SetBands  // adjust the static price band (collar) of a listed instrument
 {
   SymbolId symbol{};
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   Price minPrice{};
   Price maxPrice{};
 };
@@ -243,6 +266,7 @@ struct SetTriggerRef  // switch the conditional-order reference (last trade vs m
 {
   SymbolId symbol{};
   TriggerRef ref{TriggerRef::Last};
+  uint8_t pad0_[3]{};  // explicit alignment padding (T057), tail
 };
 
 // Firm-group STP membership: map an account to a firm/group id so self-trade
@@ -267,6 +291,7 @@ struct AdmissionProfile
   uint32_t allowedTypes{0};  // bit i = OrderType(i) allowed; 0 = all
   uint32_t allowedTif{0};    // bit i = TimeInForce(i) allowed; 0 = all
   uint8_t deny{0};           // bitmask of AdmissionDeny
+  uint8_t pad0_[3]{};        // explicit alignment padding (T057), tail
 };
 
 // Rights withheld from a profile. A bitmask rather than four bools so the
@@ -281,9 +306,11 @@ enum AdmissionDeny : uint8_t
 
 struct SetAdmissionProfile
 {
-  SymbolId symbol{};  // routing key
+  SymbolId symbol{};   // routing key
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   uint64_t account{};
   AdmissionProfile profile{};
+  uint8_t pad1_[4]{};  // explicit alignment padding (T057), tail
 };
 
 // Which risk limits a SetRiskLimits record carries.
@@ -312,12 +339,15 @@ enum RiskLimitField : uint16_t
 struct SetRiskLimits
 {
   SymbolId symbol{};
-  uint16_t fields{};  // bitmask of RiskLimitField; 0 = no-op
+  uint16_t fields{};   // bitmask of RiskLimitField; 0 = no-op
+  uint8_t pad0_[2]{};  // explicit alignment padding (T057)
   int32_t luldBps{};
+  uint8_t pad1_[4]{};       // explicit alignment padding (T057)
   DurationNs luldHaltNs{};  // pause LENGTH -- an interval, not a moment (haltUntil = now + this)
   Quantity maxOrderQty{};
   Volume maxOrderNotional{};
   uint32_t maxOpenOrders{};
+  uint8_t pad2_[4]{};  // explicit alignment padding (T057)
   Quantity maxPositionQty{};
   int32_t initialMarginBps{};
   int32_t maintenanceMarginBps{};
@@ -325,7 +355,8 @@ struct SetRiskLimits
 
 struct SetStpGroup
 {
-  SymbolId symbol{};  // routing key
+  SymbolId symbol{};   // routing key
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   uint64_t account{};
   uint64_t group{};
 };
@@ -353,6 +384,7 @@ struct TimeTick
 struct SetFundingSchedule
 {
   SymbolId symbol{};
+  uint8_t pad0_[4]{};        // explicit alignment padding (T057)
   DurationNs intervalNs{};   // funding interval (<= 0 clears the schedule)
   SeqNanos nextFundingNs{};  // next settlement boundary, sequencer time (<= 0 clears)
 };
@@ -410,6 +442,7 @@ inline constexpr uint32_t kSnapshotFormatVersion = 4;
 struct SnapshotBegin
 {
   uint32_t formatVersion{kSnapshotFormatVersion};
+  uint8_t pad0_[4]{};        // explicit alignment padding (T057)
   int64_t lastAppliedTs{0};  // sequencer-ts of the last command folded into this snapshot
   uint64_t stateHash{0};     // MatchingEngine::stateHash() at write time (repeated in SnapshotEnd)
   // Hash of the engine's CONSTRUCTOR configuration (scales, assets, tick/lot,
@@ -428,11 +461,13 @@ struct RestoreOrder  // one resting book order, applied straight to the TAIL of 
   Price price{};
   Quantity leaves{};  // displayed peak
   Side side{};
-  Quantity hidden{};  // iceberg reserve (0 = none)
-  Quantity peak{};    // iceberg display size (0 = non-iceberg)
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
+  Quantity hidden{};   // iceberg reserve (0 = none)
+  Quantity peak{};     // iceberg display size (0 = non-iceberg)
   bool lastLook{false};
   bool reduceOnly{false};
   bool postOnly{false};  // may never take, including after an amend
+  uint8_t pad1_[5]{};    // explicit alignment padding (T057)
   // The identifier the submitter gave the order. The resting record carries
   // it now (see RestingOrder), so this is the real value and not a placeholder
   // -- a restored order reports under the same name its submitter chose.
@@ -452,6 +487,7 @@ struct RestorePeg  // peg spec of a resting order (pegged_ entry)
   OrderId id{};
   Side side{};
   PegRef ref{PegRef::None};
+  uint8_t pad0_[3]{};  // explicit alignment padding (T057)
   int64_t offsetRaw{0};
 };
 
@@ -465,7 +501,8 @@ struct RestorePeg  // peg spec of a resting order (pegged_ entry)
 struct RestoreOrderStp
 {
   OrderId id{};
-  uint8_t mode{};  // STPMode
+  uint8_t mode{};      // STPMode
+  uint8_t pad0_[7]{};  // explicit alignment padding (T057), tail
 };
 
 struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
@@ -474,6 +511,7 @@ struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
   OrderId taker{};
   uint64_t takerAccount{};
   Side takerSide{};
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   OrderId maker{};
   uint64_t makerAccount{};
   Price price{};
@@ -481,6 +519,7 @@ struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
   SeqNanos deadline{};
   TimeInForce takerTif{TimeInForce::GTC};
   OrderType takerType{OrderType::LIMIT};
+  uint8_t pad1_[6]{};  // explicit alignment padding (T057)
   Price takerPrice{};
   SeqNanos takerExpiryNs{};
   bool makerReduceOnly{false};
@@ -490,6 +529,7 @@ struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
   // STP-cancel can legally remove a maker while its hold stays open -- the
   // write side records the live truth instead of re-deriving it.
   bool makerTracked{true};
+  uint8_t pad2_[5]{};  // explicit alignment padding (T057)
   // Reference when the hold was taken; the move that last look is about is
   // measured from here. Appended -- the record grows, and this module has not
   // shipped.
@@ -505,6 +545,7 @@ struct RestorePosition  // one perp position (qty, average entry, posted margin)
   uint64_t account{};
   int64_t qtyRaw{0};    // signed contracts (Quantity raw)
   int64_t entryRaw{0};  // average entry price (Price raw)
+  uint8_t pad0_[8]{};   // explicit alignment padding (T057)
   Amount marginRaw{0};  // posted position margin (quote raw); re-reserved on apply
 };
 
@@ -545,6 +586,7 @@ struct RestoreReservation
   OrderId id{};
   uint64_t account{};
   AssetId asset{};
+  uint8_t pad0_[2]{};  // explicit alignment padding (T057)
   Side side{};
   int64_t limitPriceRaw{0};
   Amount reservedRaw{0};
@@ -561,6 +603,7 @@ struct RestoreBalance
 {
   uint64_t account{};
   AssetId asset{};
+  uint8_t pad0_[6]{};      // explicit alignment padding (T057)
   Amount availableRaw{0};  // signed, kMoneyScale units
   Amount reservedRaw{0};
 };
@@ -575,7 +618,8 @@ inline constexpr uint32_t kMmpFillBatch = 16;
 struct RestoreMmpFills
 {
   uint64_t account{};
-  uint32_t count{0};  // entries [0..count) valid, count <= kMmpFillBatch
+  uint32_t count{0};   // entries [0..count) valid, count <= kMmpFillBatch
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
   int64_t tsNs[kMmpFillBatch]{};
   int64_t qtyRaw[kMmpFillBatch]{};
 };
@@ -607,8 +651,10 @@ struct SnapshotEnd
   uint64_t mdEpoch{0};  // 0 = none (the engine carries no MD epoch today)
   int64_t lastPriceRaw{0};
   bool hasLast{false};
+  uint8_t pad0_[7]{};  // explicit alignment padding (T057)
   int64_t markPriceRaw{0};
   bool hasMark{false};
+  uint8_t pad1_[7]{};      // explicit alignment padding (T057)
   int64_t haltUntilNs{0};  // pending timed (LULD) halt deadline (0 = none)
 };
 
@@ -632,7 +678,8 @@ struct ForceClosePosition
 {
   uint64_t accountId{};
   SymbolId symbol{};
-  int64_t qtyRaw{};  // 0 = the whole position
+  uint8_t pad0_[4]{};  // explicit alignment padding (T057)
+  int64_t qtyRaw{};    // 0 = the whole position
 };
 
 // Why a position was corrected by hand. The venue's books and an external
@@ -669,10 +716,12 @@ struct AdjustPosition
 {
   uint64_t accountId{};
   SymbolId symbol{};
+  uint8_t pad0_[4]{};      // explicit alignment padding (T057)
   int64_t qtyDeltaRaw{0};  // signed; added to the existing position
   int64_t entryRaw{0};     // 0 = keep the current average entry; else set it
   AdjustReason reason{AdjustReason::Reconciliation};
   char note[kAdjustNoteLen]{};
+  uint8_t pad1_[7]{};  // explicit alignment padding (T057), tail
 };
 
 using InboundCommand =

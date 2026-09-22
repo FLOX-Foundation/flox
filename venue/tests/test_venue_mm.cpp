@@ -124,7 +124,7 @@ void test_last_look()
     CHECK(cap.count<FillHeld>() == 1);
     const auto* h = cap.firstHeld();
     CHECK(h && h->qty == qty(3));
-    eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, true, 1}}, 2);
+    eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, true, {}, 1}}, 2);
     CHECK(cap.trades() == 1);  // accepted -> traded
   }
   {  // reject
@@ -135,7 +135,7 @@ void test_last_look()
     eng.submit(InboundCommand{mk}, 0);
     eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);
     const auto* h = cap.firstHeld();
-    eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);
+    eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, {}, 1}}, 2);
     CHECK(cap.trades() == 0);
     CHECK(cap.count<FillRejected>() == 1);
   }
@@ -145,8 +145,8 @@ void test_last_look()
     NewOrder mk = limit(1, Side::SELL, 100, 5, 1);
     mk.lastLook = true;
     eng.submit(InboundCommand{mk}, 0);
-    eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);  // deadline 1001
-    eng.submit(InboundCommand{CancelOrder{999, SYM, 1}}, 5000);     // past deadline -> expire
+    eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);   // deadline 1001
+    eng.submit(InboundCommand{CancelOrder{999, SYM, {}, 1}}, 5000);  // past deadline -> expire
     CHECK(cap.trades() == 0);
     CHECK(cap.count<FillRejected>() == 1);
   }
@@ -178,7 +178,7 @@ void test_last_look_reject_releases_reservation()
   eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 1);  // taker reserves 300 USD; held 3
   const auto* h = cap.firstHeld();
   CHECK(h != nullptr);
-  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, 1}}, 2);  // reject
+  eng.submit(InboundCommand{LastLookDecision{h->heldId, SYM, false, {}, 1}}, 2);  // reject
   CHECK(cap.trades() == 0);
   // Liquidity restored: maker's ask is back, the taker's GTC residual rests.
   CHECK(eng.book().bestAsk() == px(100));
@@ -190,8 +190,8 @@ void test_last_look_reject_releases_reservation()
   CHECK(led.total(1, BASE) == base3);
   CHECK(led.total(2, QUOTE) == usd300);
   // Cancel the restored orders: every reserved unit returns to available.
-  eng.submit(InboundCommand{CancelOrder{1, SYM, 1}}, 3);
-  eng.submit(InboundCommand{CancelOrder{2, SYM, 2}}, 4);
+  eng.submit(InboundCommand{CancelOrder{1, SYM, {}, 1}}, 3);
+  eng.submit(InboundCommand{CancelOrder{2, SYM, {}, 2}}, 4);
   CHECK(eng.book().empty());
   CHECK(led.available(1, BASE) == base3 && led.reserved(1, BASE) == 0);
   CHECK(led.available(2, QUOTE) == usd300 && led.reserved(2, QUOTE) == 0);
@@ -227,11 +227,11 @@ void test_quote()
   std::printf("test_quote\n");
   Cap cap;
   MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
-  eng.submit(InboundCommand{Quote{10, 11, SYM, px(99), qty(5), px(101), qty(5), 1}}, 0);
+  eng.submit(InboundCommand{Quote{10, 11, SYM, {}, px(99), qty(5), px(101), qty(5), 1}}, 0);
   CHECK(eng.book().bestBid() == px(99));
   CHECK(eng.book().bestAsk() == px(101));
   // replace: tighter quote
-  eng.submit(InboundCommand{Quote{10, 11, SYM, px(99.5), qty(4), px(100.5), qty(4), 1}}, 1);
+  eng.submit(InboundCommand{Quote{10, 11, SYM, {}, px(99.5), qty(4), px(100.5), qty(4), 1}}, 1);
   CHECK(eng.book().bestBid() == px(99.5));
   CHECK(eng.book().bestAsk() == px(100.5));
 }

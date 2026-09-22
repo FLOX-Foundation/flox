@@ -76,12 +76,12 @@ NewOrder ord(OrderId id, Side s, double p, double q, uint64_t acct)
 std::vector<std::pair<int64_t, InboundCommand>> session()
 {
   std::vector<std::pair<int64_t, InboundCommand>> s;
-  s.emplace_back(0, InboundCommand{SetMark{SYM, px(100)}});
-  s.emplace_back(1, InboundCommand{ord(1, Side::BUY, 100, 10, 1)});     // acct1 long 10 @ 100 (IM 100)
-  s.emplace_back(2, InboundCommand{ord(2, Side::SELL, 100, 10, 2)});    // acct2 short
-  s.emplace_back(3, InboundCommand{ApplyFunding{SYM, 0.01, px(100)}});  // longs pay
-  s.emplace_back(4, InboundCommand{SetMark{SYM, px(91)}});              // still solvent
-  s.emplace_back(5, InboundCommand{SetMark{SYM, px(85)}});              // acct1 liquidated here
+  s.emplace_back(0, InboundCommand{SetMark{SYM, {}, px(100)}});
+  s.emplace_back(1, InboundCommand{ord(1, Side::BUY, 100, 10, 1)});         // acct1 long 10 @ 100 (IM 100)
+  s.emplace_back(2, InboundCommand{ord(2, Side::SELL, 100, 10, 2)});        // acct2 short
+  s.emplace_back(3, InboundCommand{ApplyFunding{SYM, {}, 0.01, px(100)}});  // longs pay
+  s.emplace_back(4, InboundCommand{SetMark{SYM, {}, px(91)}});              // still solvent
+  s.emplace_back(5, InboundCommand{SetMark{SYM, {}, px(85)}});              // acct1 liquidated here
   return s;
 }
 

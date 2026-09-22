@@ -129,7 +129,7 @@ void run(MatchingEngine<MatchingBook>& eng, Cap& cap, int64_t& ts, const Episode
   // against actually moves.
   eng.submit(InboundCommand{limit(g_nextId++, Side::SELL, ep.moveTo, 1, 7)}, ++ts);
   eng.submit(InboundCommand{limit(g_nextId++, Side::BUY, ep.moveTo, 1, 8)}, ++ts);
-  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, ep.confirm, ep.maker}}, ++ts);
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, ep.confirm, {}, ep.maker}}, ++ts);
 
   // A refused hold puts BOTH legs back on the book: the maker's quantity
   // returns to its price level, and the taker's residual rests per its TIF.

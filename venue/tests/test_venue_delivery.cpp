@@ -489,7 +489,7 @@ void test_balance_update_on_wire()
   std::vector<uint8_t> f;
   CHECK(a.readUntil(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::Rejected), f));
 
-  v.submit(InboundCommand{Deposit{1, QUOTE, 5'000, SYM}});
+  v.submit(InboundCommand{Deposit{1, QUOTE, {}, 5'000, SYM}});
   CHECK(a.readUntil(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::BalanceUpdate), f));
   auto bu = SbeOrderEntryCodec::decodeBalanceUpdate(f.data(), f.size());
   CHECK(bu.has_value());
@@ -499,14 +499,14 @@ void test_balance_update_on_wire()
   CHECK(SbeOrderEntryCodec::seqOf(f.data(), f.size()) == 2);  // sequenced stream
 
   // Covered withdraw: balances shrink, reason Withdraw.
-  v.submit(InboundCommand{Withdraw{1, QUOTE, 2'000, SYM}});
+  v.submit(InboundCommand{Withdraw{1, QUOTE, {}, 2'000, SYM}});
   CHECK(a.readUntil(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::BalanceUpdate), f));
   bu = SbeOrderEntryCodec::decodeBalanceUpdate(f.data(), f.size());
   CHECK(bu.has_value());
   CHECK(bu->availableRaw == 3'000 && bu->reason == BalanceReason::Withdraw);
 
   // Uncovered withdraw: nothing moves, the client is told explicitly.
-  v.submit(InboundCommand{Withdraw{1, QUOTE, 1'000'000, SYM}});
+  v.submit(InboundCommand{Withdraw{1, QUOTE, {}, 1'000'000, SYM}});
   CHECK(a.readUntil(static_cast<uint8_t>(SbeOrderEntryCodec::OutTmpl::BalanceUpdate), f));
   bu = SbeOrderEntryCodec::decodeBalanceUpdate(f.data(), f.size());
   CHECK(bu.has_value());

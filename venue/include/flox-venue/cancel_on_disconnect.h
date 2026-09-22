@@ -61,7 +61,7 @@ class DisconnectCanceller
     if (const auto* n = std::get_if<NewOrder>(&cmd))
     {
       std::lock_guard<std::mutex> lk(m_);
-      placed_[n->id] = CancelOrder{n->id, n->symbol, n->accountId};
+      placed_[n->id] = CancelOrder{n->id, n->symbol, {}, n->accountId};
     }
   }
 

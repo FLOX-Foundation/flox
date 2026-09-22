@@ -150,7 +150,7 @@ void test_soak()
     {
       const OrderId victim = 1 + (rng.next() % (nextId[s] - 1));
       // encode a per-symbol unique id space: id = sym-local; router uses symbol
-      router.submit(InboundCommand{CancelOrder{victim + static_cast<OrderId>(s) * 10000000, SYMS[s], 0}});
+      router.submit(InboundCommand{CancelOrder{victim + static_cast<OrderId>(s) * 10000000, SYMS[s], {}, 0}});
     }
     else
     {

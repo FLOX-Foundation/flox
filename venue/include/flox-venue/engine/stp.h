@@ -108,7 +108,7 @@ class StpState
   {
     for (uint64_t acct : sortedKeysOf(groups))
     {
-      out.append(InboundCommand{SetStpGroup{symbol, acct, groups.at(acct)}}, ts);
+      out.append(InboundCommand{SetStpGroup{symbol, {}, acct, groups.at(acct)}}, ts);
     }
   }
 

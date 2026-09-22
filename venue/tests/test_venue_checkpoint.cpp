@@ -193,7 +193,7 @@ InboundCommand randomCmd(Rng& rng, OrderId& nextId, int i, bool moneyFlow)
 
   if (kind < 10 && nextId > 1)
   {
-    return InboundCommand{CancelOrder{1 + (r >> 16) % (nextId - 1), SYM, 0}};
+    return InboundCommand{CancelOrder{1 + (r >> 16) % (nextId - 1), SYM, {}, 0}};
   }
   if (kind < 16 && nextId > 1)
   {
@@ -202,12 +202,12 @@ InboundCommand randomCmd(Rng& rng, OrderId& nextId, int i, bool moneyFlow)
     const Price np = ((r >> 40) % 4 == 0)
                          ? Price{}  // keep current price
                          : Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
-    return InboundCommand{ModifyOrder{vid, SYM, np, qty(1.0 + static_cast<double>((r >> 44) % 4)), 0}};
+    return InboundCommand{ModifyOrder{vid, SYM, {}, np, qty(1.0 + static_cast<double>((r >> 44) % 4)), 0}};
   }
   if (kind < 20)
   {
     // Random held id: mostly stale/wrong (deterministic rejects), sometimes live.
-    return InboundCommand{LastLookDecision{1 + (r >> 16) % 64, SYM, (r & 8) != 0, acct}};
+    return InboundCommand{LastLookDecision{1 + (r >> 16) % 64, SYM, (r & 8) != 0, {}, acct}};
   }
   if (kind < 23)
   {
@@ -215,21 +215,18 @@ InboundCommand randomCmd(Rng& rng, OrderId& nextId, int i, bool moneyFlow)
     const OrderId askId = nextId + 1;
     nextId += 2;
     const int bt = static_cast<int>((r >> 32) % 30);
-    return InboundCommand{Quote{bidId, askId, SYM, Price::fromRaw(midRaw - (1 + bt) * tickRaw),
-                                qty(1.0 + static_cast<double>((r >> 40) % 3)),
-                                Price::fromRaw(midRaw + (1 + bt) * tickRaw),
-                                qty(1.0 + static_cast<double>((r >> 44) % 3)), acct}};
+    return InboundCommand{Quote{bidId, askId, SYM, {}, Price::fromRaw(midRaw - (1 + bt) * tickRaw), qty(1.0 + static_cast<double>((r >> 40) % 3)), Price::fromRaw(midRaw + (1 + bt) * tickRaw), qty(1.0 + static_cast<double>((r >> 44) % 3)), acct}};
   }
   if (kind < 25 && moneyFlow)
   {
     return (r & 4) != 0
-               ? InboundCommand{Deposit{acct, QUOTE, quoteRaw(500.0), SYM}}
-               : InboundCommand{Deposit{acct, BASE, baseRaw(5.0), SYM}};
+               ? InboundCommand{Deposit{acct, QUOTE, {}, quoteRaw(500.0), SYM}}
+               : InboundCommand{Deposit{acct, BASE, {}, baseRaw(5.0), SYM}};
   }
   if (kind < 27 && moneyFlow)
   {
-    return (r & 4) != 0 ? InboundCommand{Withdraw{acct, QUOTE, quoteRaw(200.0), SYM}}
-                        : InboundCommand{Withdraw{acct, BASE, baseRaw(2.0), SYM}};
+    return (r & 4) != 0 ? InboundCommand{Withdraw{acct, QUOTE, {}, quoteRaw(200.0), SYM}}
+                        : InboundCommand{Withdraw{acct, BASE, {}, baseRaw(2.0), SYM}};
   }
   if (kind < 29)
   {
@@ -335,8 +332,8 @@ TEST(VenueCheckpoint, EngineSnapshotRoundTrip)
   Ledger led;
   MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
   eng.setLedger(&led, VENUE_ACCT);
-  eng.submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}}, 1000);
-  eng.submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(100000), SYM}}, 2000);
+  eng.submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}}, 1000);
+  eng.submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(100000), SYM}}, 2000);
   NewOrder maker = limit(1, Side::SELL, 100.00, 5.0, 1);
   maker.lastLook = true;
   eng.submit(InboundCommand{maker}, 3000);
@@ -406,8 +403,8 @@ TEST(VenueCheckpoint, DifferentialRandomSessionCheckpointInvisible)
   s1->start();
   for (int a = 1; a <= NACCT; ++a)
   {
-    s1->submit(InboundCommand{Deposit{static_cast<uint64_t>(a), BASE, baseRaw(1000), SYM}});
-    s1->submit(InboundCommand{Deposit{static_cast<uint64_t>(a), QUOTE, quoteRaw(100000), SYM}});
+    s1->submit(InboundCommand{Deposit{static_cast<uint64_t>(a), BASE, {}, baseRaw(1000), SYM}});
+    s1->submit(InboundCommand{Deposit{static_cast<uint64_t>(a), QUOTE, {}, quoteRaw(100000), SYM}});
   }
 
   Rng rng{0xC0FFEE0DDBA11ULL};
@@ -568,11 +565,11 @@ TEST(VenueCheckpoint, CheckpointRestoresOpenStateAddressably)
   s1->subscribeOutbound(&sink1);
   s1->start();
 
-  s1->submit(InboundCommand{Deposit{1, BASE, baseRaw(1000), SYM}});
-  s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(100000), SYM}});
-  s1->submit(InboundCommand{Deposit{3, BASE, baseRaw(1000), SYM}});
-  s1->submit(InboundCommand{Deposit{3, QUOTE, quoteRaw(100000), SYM}});
-  s1->submit(InboundCommand{Deposit{4, QUOTE, quoteRaw(100000), SYM}});
+  s1->submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(1000), SYM}});
+  s1->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(100000), SYM}});
+  s1->submit(InboundCommand{Deposit{3, BASE, {}, baseRaw(1000), SYM}});
+  s1->submit(InboundCommand{Deposit{3, QUOTE, {}, quoteRaw(100000), SYM}});
+  s1->submit(InboundCommand{Deposit{4, QUOTE, {}, quoteRaw(100000), SYM}});
 
   NewOrder mk = limit(1, Side::SELL, 100.00, 5.0, 1);
   mk.lastLook = true;
@@ -647,7 +644,7 @@ TEST(VenueCheckpoint, CheckpointRestoresOpenStateAddressably)
   // The restored hold accepts and SETTLES: trade at 100 x 3, money moves.
   const Amount a1qBefore = led2.available(1, QUOTE);
   const Amount a2bBefore = led2.available(2, BASE);
-  s2->submit(InboundCommand{LastLookDecision{1, SYM, true, 1}});
+  s2->submit(InboundCommand{LastLookDecision{1, SYM, true, {}, 1}});
   s2->flush();
   bool sawTrade = false;
   for (const auto& e : sink2.events)
@@ -723,7 +720,7 @@ TEST(VenueCheckpoint, CheckpointRestoresOpenStateAddressably)
   // Drain: every reservation returns to available.
   for (OrderId id = 1; id <= 21; ++id)
   {
-    s2->submit(InboundCommand{CancelOrder{id, SYM, 0}});
+    s2->submit(InboundCommand{CancelOrder{id, SYM, {}, 0}});
   }
   s2->flush();
   for (int a = 1; a <= 4; ++a)
@@ -755,11 +752,11 @@ TEST(VenueCheckpoint, PerpPositionAndMarginRestored)
                                                clockOf(t1));
   s1->engine().setLedger(&led1, VENUE_ACCT);
   s1->start();
-  s1->submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(100000), SYM}});
-  s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(100000), SYM}});
+  s1->submit(InboundCommand{Deposit{1, QUOTE, {}, quoteRaw(100000), SYM}});
+  s1->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(100000), SYM}});
   s1->submit(InboundCommand{limit(1, Side::SELL, 100.00, 5.0, 2)});
   s1->submit(InboundCommand{limit(2, Side::BUY, 100.00, 5.0, 1)});  // +5 / -5 @ 100
-  s1->submit(InboundCommand{SetMark{SYM, px(100.0)}});
+  s1->submit(InboundCommand{SetMark{SYM, {}, px(100.0)}});
   ASSERT_TRUE(s1->checkpointNow());
   s1->flush();
   const uint64_t liveHash = s1->engine().stateHash();
@@ -814,15 +811,15 @@ TEST(VenueCheckpoint, TornSnapshotFallsBackToPreviousGeneration)
                                                clockOf(t1));
   s1->engine().setLedger(&led1, VENUE_ACCT);
   s1->start();
-  s1->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
-  s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s1->submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}});
+  s1->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(10000), SYM}});
   s1->submit(InboundCommand{limit(1, Side::SELL, 100.00, 2.0, 1)});
   s1->submit(InboundCommand{limit(2, Side::BUY, 99.00, 1.0, 2)});
   ASSERT_TRUE(s1->checkpointNow());                                 // generation A
   s1->submit(InboundCommand{limit(3, Side::BUY, 100.00, 1.0, 2)});  // trades vs 1
   s1->submit(InboundCommand{limit(4, Side::SELL, 101.00, 1.0, 1)});
   ASSERT_TRUE(s1->checkpointNow());  // generation B
-  s1->submit(InboundCommand{CancelOrder{2, SYM, 2}});
+  s1->submit(InboundCommand{CancelOrder{2, SYM, {}, 2}});
   s1->flush();
   const uint64_t liveHash = s1->engine().stateHash();
   s1->stop();
@@ -896,14 +893,14 @@ TEST(VenueCheckpoint, ForeignFormatVersionFallsBackForSnapshotsAndRefusesForSegm
                                                clockOf(t1));
   s1->engine().setLedger(&led1, VENUE_ACCT);
   s1->start();
-  s1->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
-  s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s1->submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}});
+  s1->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(10000), SYM}});
   s1->submit(InboundCommand{limit(1, Side::SELL, 100.00, 2.0, 1)});
   s1->submit(InboundCommand{limit(2, Side::BUY, 99.00, 1.0, 2)});
   ASSERT_TRUE(s1->checkpointNow());                                 // generation A
   s1->submit(InboundCommand{limit(3, Side::BUY, 100.00, 1.0, 2)});  // trades vs 1
   ASSERT_TRUE(s1->checkpointNow());                                 // generation B
-  s1->submit(InboundCommand{CancelOrder{2, SYM, 2}});               // lands in the newest segment
+  s1->submit(InboundCommand{CancelOrder{2, SYM, {}, 2}});           // lands in the newest segment
   s1->flush();
   const uint64_t liveHash = s1->engine().stateHash();
   s1->stop();
@@ -1012,8 +1009,8 @@ TEST(VenueCheckpoint, RotationRetainsConfiguredGenerations)
                                                clockOf(t1));
   s1->engine().setLedger(&led1, VENUE_ACCT);
   s1->start();
-  s1->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
-  s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s1->submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}});
+  s1->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(10000), SYM}});
 
   std::vector<int64_t> cpTs;
   for (int gen = 0; gen < 3; ++gen)
@@ -1116,8 +1113,8 @@ TEST(VenueCheckpoint, SnapshotPauseMeasuredOn100kOrders)
   eng.setLedger(&led, VENUE_ACCT);
   for (int a = 1; a <= NACCT; ++a)
   {
-    eng.submit(InboundCommand{Deposit{static_cast<uint64_t>(a), BASE, baseRaw(10'000'000), SYM}}, a);
-    eng.submit(InboundCommand{Deposit{static_cast<uint64_t>(a), QUOTE, quoteRaw(1'000'000'000), SYM}},
+    eng.submit(InboundCommand{Deposit{static_cast<uint64_t>(a), BASE, {}, baseRaw(10'000'000), SYM}}, a);
+    eng.submit(InboundCommand{Deposit{static_cast<uint64_t>(a), QUOTE, {}, quoteRaw(1'000'000'000), SYM}},
                NACCT + a);
   }
   Rng rng{0xBEEFCAFEULL};
@@ -1200,8 +1197,8 @@ TEST(VenueCheckpoint, ConservationHoldsAcrossPeriodicCheckpoints)
   s1->start();
   for (int a = 1; a <= NACCT; ++a)
   {
-    s1->submit(InboundCommand{Deposit{static_cast<uint64_t>(a), BASE, baseRaw(1000), SYM}});
-    s1->submit(InboundCommand{Deposit{static_cast<uint64_t>(a), QUOTE, quoteRaw(100000), SYM}});
+    s1->submit(InboundCommand{Deposit{static_cast<uint64_t>(a), BASE, {}, baseRaw(1000), SYM}});
+    s1->submit(InboundCommand{Deposit{static_cast<uint64_t>(a), QUOTE, {}, quoteRaw(100000), SYM}});
   }
   const Amount initBase = static_cast<Amount>(baseRaw(1000)) * NACCT;
   const Amount initQuote = static_cast<Amount>(quoteRaw(100000)) * NACCT;
@@ -1250,7 +1247,7 @@ TEST(VenueCheckpoint, ConservationHoldsAcrossPeriodicCheckpoints)
 
   for (OrderId id = 1; id < nextId; ++id)
   {
-    s2->submit(InboundCommand{CancelOrder{id, SYM, 0}});
+    s2->submit(InboundCommand{CancelOrder{id, SYM, {}, 0}});
   }
   // Cancel-while-held resolves holds; sweep any residual timeout holds too.
   t2->fetch_add(100'000'000);
@@ -1276,8 +1273,8 @@ TEST(VenueCheckpoint, NegativeAvailableBalanceRestoredExactly)
   Ledger led;
   MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
   eng.setLedger(&led, VENUE_ACCT);
-  eng.submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(100.0), SYM}}, 1000);
-  eng.submit(InboundCommand{Deposit{2, BASE, baseRaw(10.0), SYM}}, 2000);
+  eng.submit(InboundCommand{Deposit{1, QUOTE, {}, quoteRaw(100.0), SYM}}, 1000);
+  eng.submit(InboundCommand{Deposit{2, BASE, {}, baseRaw(10.0), SYM}}, 2000);
   // Account 2 keeps a live reservation (resting ask) on top of the distortion.
   eng.submit(InboundCommand{limit(1, Side::SELL, 100.00, 3.0, 2)}, 3000);
   // Force the "impossible" moments directly (the liquidation path produces the
@@ -1307,7 +1304,7 @@ TEST(VenueCheckpoint, NegativeAvailableBalanceRestoredExactly)
   EXPECT_EQ(led2.available(2, BASE), led.available(2, BASE));
   EXPECT_EQ(led2.reserved(2, BASE), led.reserved(2, BASE));  // reservation split intact
   // The restored reservation is live: cancel releases it back to available.
-  rec.submit(InboundCommand{CancelOrder{1, SYM, 2}}, 9000);
+  rec.submit(InboundCommand{CancelOrder{1, SYM, {}, 2}}, 9000);
   EXPECT_EQ(led2.reserved(2, BASE), 0);
   EXPECT_EQ(led2.available(2, BASE), static_cast<Amount>(baseRaw(10.0)));
   std::remove(path.c_str());
@@ -1333,7 +1330,7 @@ TEST(VenueCheckpoint, LegacyDepositSnapshotRecordsStillApply)
   rr.side = Side::BUY;
   rr.limitPriceRaw = px(100.0).raw();
   rr.reservedRaw = static_cast<Amount>(quoteRaw(300.0));
-  const Deposit dep{1, QUOTE, quoteRaw(1000.0), SYM};
+  const Deposit dep{1, QUOTE, {}, quoteRaw(1000.0), SYM};
 
   Ledger refLed;
   MatchingEngine<MatchingBook> ref(c, [](const OutboundEvent&) {});
@@ -1344,7 +1341,7 @@ TEST(VenueCheckpoint, LegacyDepositSnapshotRecordsStillApply)
 
   {
     Journal out(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
-    out.append(InboundCommand{SnapshotBegin{kSnapshotFormatVersion, ts, h, 0}}, ts);
+    out.append(InboundCommand{SnapshotBegin{kSnapshotFormatVersion, {}, ts, h, 0}}, ts);
     out.append(InboundCommand{dep}, ts);
     out.append(InboundCommand{rr}, ts);
     SnapshotEnd end{};
@@ -1462,8 +1459,8 @@ TEST(VenueCheckpoint, StpGroupsJournaledSnapshottedAndRestored)
                                                clockOf(t1));
   s1->subscribeOutbound(&sink1);
   s1->start();
-  s1->submit(InboundCommand{SetStpGroup{SYM, 1, 77}});
-  s1->submit(InboundCommand{SetStpGroup{SYM, 2, 77}});
+  s1->submit(InboundCommand{SetStpGroup{SYM, {}, 1, 77}});
+  s1->submit(InboundCommand{SetStpGroup{SYM, {}, 2, 77}});
   s1->submit(InboundCommand{limit(1, Side::SELL, 100.00, 1.0, 1)});
   NewOrder tk = limit(2, Side::BUY, 100.00, 1.0, 2);
   tk.stp = STPMode::CancelNewest;
@@ -1471,7 +1468,7 @@ TEST(VenueCheckpoint, StpGroupsJournaledSnapshottedAndRestored)
   s1->flush();
   EXPECT_TRUE(stpCanceled(sink1.events, 2));
   ASSERT_TRUE(s1->checkpointNow());
-  s1->submit(InboundCommand{SetStpGroup{SYM, 3, 77}});  // journal-tail mutation
+  s1->submit(InboundCommand{SetStpGroup{SYM, {}, 3, 77}});  // journal-tail mutation
   s1->flush();
   const uint64_t liveHash = s1->engine().stateHash();
   s1->stop();
@@ -1582,8 +1579,8 @@ TEST(VenueCheckpoint, CrashBeforeSnapshotPublishRecoversViaPreviousGeneration)
                                                clockOf(t1));
   s1->engine().setLedger(&led1, VENUE_ACCT);
   s1->start();
-  s1->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
-  s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s1->submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}});
+  s1->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(10000), SYM}});
   s1->submit(InboundCommand{limit(1, Side::SELL, 100.00, 2.0, 1)});
   ASSERT_TRUE(s1->checkpointNow());                                 // generation A
   s1->submit(InboundCommand{limit(2, Side::BUY, 100.00, 1.0, 2)});  // trades vs 1
@@ -1663,8 +1660,8 @@ TEST(VenueCheckpoint, RefusesToStartWhenNoGenerationCanCoverHistory)
                                                  clockOf(t1));
     s1->engine().setLedger(&led1, VENUE_ACCT);
     s1->start();
-    s1->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
-    s1->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+    s1->submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}});
+    s1->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(10000), SYM}});
     s1->submit(InboundCommand{limit(1, Side::SELL, 100.00, 2.0, 1)});
     ASSERT_TRUE(s1->checkpointNow());  // generation A
     s1->submit(InboundCommand{limit(2, Side::BUY, 99.00, 1.0, 2)});
@@ -1744,8 +1741,8 @@ TEST(VenueCheckpoint, GroupCommitSyncsBeforeItPublishes)
   s->subscribeOutbound(&w);
   s->start();
 
-  s->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
-  s->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s->submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}});
+  s->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(10000), SYM}});
   s->submit(InboundCommand{limit(1, Side::SELL, 100.00, 2.0, 1)});
   s->submit(InboundCommand{limit(2, Side::BUY, 100.00, 1.0, 2)});
   s->flush();
@@ -1823,7 +1820,7 @@ TEST(VenueCheckpoint, GroupCommitAcksEverythingItJournalsWhenStopped)
     s->subscribeOutbound(&w);
     s->start();
 
-    s->submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(10'000'000), SYM}});
+    s->submit(InboundCommand{Deposit{1, QUOTE, {}, quoteRaw(10'000'000), SYM}});
     s->flush();
 
     std::thread producer(
@@ -1892,8 +1889,8 @@ TEST(VenueCheckpoint, AFailedBackgroundPublishIsCountedRatherThanLost)
       });
 
   s->start();
-  s->submit(InboundCommand{Deposit{1, BASE, baseRaw(100), SYM}});
-  s->submit(InboundCommand{Deposit{2, QUOTE, quoteRaw(10000), SYM}});
+  s->submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}});
+  s->submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(10000), SYM}});
   s->submit(InboundCommand{limit(10, Side::SELL, 100.00, 1.0, 1)});
 
   EXPECT_FALSE(s->checkpointNow());

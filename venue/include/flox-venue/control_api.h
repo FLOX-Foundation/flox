@@ -308,7 +308,7 @@ class ControlApi
       {
         return err("exists");
       }
-      forward(InboundCommand{ListInstrument{c.id, c.tickSize, c.lotSize, c.minPrice, c.maxPrice}});
+      forward(InboundCommand{ListInstrument{c.id, {}, c.tickSize, c.lotSize, c.minPrice, c.maxPrice}});
       return ok();
     }
     if (method == "halt")
@@ -361,7 +361,7 @@ class ControlApi
         return err("unknown_symbol");
       }
       forward(InboundCommand{
-          SetFundingSchedule{sym, DurationNs{intervalNs}, SeqNanos::fromRaw(nextNs)}});
+          SetFundingSchedule{sym, {}, DurationNs{intervalNs}, SeqNanos::fromRaw(nextNs)}});
       return ok();
     }
     if (method == "setBand")
@@ -384,7 +384,7 @@ class ControlApi
       {
         return err("unknown_symbol");
       }
-      forward(InboundCommand{SetBands{sym, lo, hi}});
+      forward(InboundCommand{SetBands{sym, {}, lo, hi}});
       return ok();
     }
     if (method == "setTriggerRef")
@@ -421,7 +421,7 @@ class ControlApi
       {
         return err("unknown_symbol");
       }
-      forward(InboundCommand{SetStpGroup{sym, account, group}});
+      forward(InboundCommand{SetStpGroup{sym, {}, account, group}});
       return ok();
     }
     if (method == "setRiskLimits")
@@ -577,7 +577,7 @@ class ControlApi
         deny |= AdmissionDeny::DenyQuote;
       }
       p.deny = deny;
-      forward(InboundCommand{SetAdmissionProfile{sym, account, p}});
+      forward(InboundCommand{SetAdmissionProfile{sym, {}, account, p}});
       return ok();
     }
     if (method == "snapshotNow")

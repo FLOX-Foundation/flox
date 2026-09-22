@@ -151,7 +151,7 @@ void test_timestamps_on_every_message()
   Feed f;
   f.eng.submit(limit(1, Side::SELL, 100, 5), 1000);
   f.eng.submit(limit(2, Side::BUY, 100, 2), 2000);  // trade + executed
-  f.eng.submit(CancelOrder{1, SYM, 1}, 3000);
+  f.eng.submit(CancelOrder{1, SYM, {}, 1}, 3000);
   f.eng.submit(InboundCommand{AdminCmd{SYM, AdminAction::Halt}}, 4000);
 
   CHECK(!f.out.empty());
@@ -356,7 +356,7 @@ void test_mark_funding_and_open_interest_visible()
   Feed f(perpCfg());
   f.eng.setLedger(&led, VENUE);
 
-  f.eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 1 * SEC);
+  f.eng.submit(InboundCommand{SetMark{SYM, {}, px(100)}}, 1 * SEC);
   const MdMessage* first = f.lastOf(MdType::DerivativesUpdate);
   CHECK(first != nullptr);
   CHECK(first->price == px(100));          // mark
@@ -368,14 +368,14 @@ void test_mark_funding_and_open_interest_visible()
   // Open a long/short pair: open interest is the long side, not the net.
   f.eng.submit(limit(1, Side::SELL, 100, 4, 2), 2 * SEC);
   f.eng.submit(limit(2, Side::BUY, 100, 4, 1), 3 * SEC);
-  f.eng.submit(InboundCommand{SetMark{SYM, px(101)}}, 4 * SEC);
+  f.eng.submit(InboundCommand{SetMark{SYM, {}, px(101)}}, 4 * SEC);
   const MdMessage* withOi = f.lastOf(MdType::DerivativesUpdate);
   CHECK(withOi->price == px(101));
   CHECK(withOi->qty == qty(4));
   CHECK(f.eng.openInterest() == qty(4));
 
   // A funding settlement publishes the rate that was applied, as fixed point.
-  f.eng.submit(InboundCommand{ApplyFunding{SYM, 0.0001, px(101)}}, 9 * SEC);
+  f.eng.submit(InboundCommand{ApplyFunding{SYM, {}, 0.0001, px(101)}}, 9 * SEC);
   const MdMessage* funded = f.lastOf(MdType::DerivativesUpdate);
   CHECK(funded->fundingRateRaw == kFundingRateScale / 10'000);  // 1bp
   CHECK(funded->nextFundingNs == 16 * SEC);                     // next boundary of the schedule
@@ -383,13 +383,13 @@ void test_mark_funding_and_open_interest_visible()
 
   // The rate persists onto later mark updates: a consumer that joins between
   // settlements still learns what it is paying.
-  f.eng.submit(InboundCommand{SetMark{SYM, px(102)}}, 10 * SEC);
+  f.eng.submit(InboundCommand{SetMark{SYM, {}, px(102)}}, 10 * SEC);
   CHECK(f.lastOf(MdType::DerivativesUpdate)->fundingRateRaw == kFundingRateScale / 10'000);
 
   // Without a configured funding interval there is no calendar to publish, and
   // the feed says 0 rather than inventing one.
   Feed spot(cfg());
-  spot.eng.submit(InboundCommand{SetMark{SYM, px(50)}}, 1 * SEC);
+  spot.eng.submit(InboundCommand{SetMark{SYM, {}, px(50)}}, 1 * SEC);
   CHECK(spot.lastOf(MdType::DerivativesUpdate)->nextFundingNs == 0);
 }
 
@@ -401,7 +401,7 @@ void test_late_joiner_snapshot_carries_state()
   std::printf("test_late_joiner_snapshot_carries_state\n");
   Feed f(perpCfg());
   f.eng.submit(limit(1, Side::SELL, 100, 5), 1 * SEC);
-  f.eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 2 * SEC);
+  f.eng.submit(InboundCommand{SetMark{SYM, {}, px(100)}}, 2 * SEC);
   f.eng.submit(InboundCommand{AdminCmd{SYM, AdminAction::Halt}}, 3 * SEC);
 
   const MdSnapshot snap = f.md.snapshotAtomic();

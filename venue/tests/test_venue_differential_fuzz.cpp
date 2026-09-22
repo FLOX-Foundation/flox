@@ -214,8 +214,7 @@ TEST(VenueDifferentialFuzz, MinimiserReducesToTheWitness)
     stream.push_back(InboundCommand{o});
     if (i == 400)
     {
-      stream.push_back(InboundCommand{ModifyOrder{1, SYM, Price::fromDouble(98.0),
-                                                  Quantity::fromDouble(2.0), 0}});
+      stream.push_back(InboundCommand{ModifyOrder{1, SYM, {}, Price::fromDouble(98.0), Quantity::fromDouble(2.0), 0}});
     }
   }
 

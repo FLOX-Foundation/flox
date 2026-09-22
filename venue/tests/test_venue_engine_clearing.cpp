@@ -611,14 +611,14 @@ TEST(EngineClearing, SnapshotRoundTripReproducesTheState)
 TEST(EngineClearing, RestorePositionRefusesAZeroOrDuplicateRecord)
 {
   Host h(perpCfg());
-  EXPECT_FALSE(h.clearing.restorePosition(RestorePosition{1, 0, px(500).raw(), 0}, true));
+  EXPECT_FALSE(h.clearing.restorePosition(RestorePosition{1, 0, px(500).raw(), {}, 0}, true));
 
   h.led.deposit(1, USD, money(1000));
   EXPECT_TRUE(
-      h.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(500).raw(), money(100)}, false));
+      h.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(500).raw(), {}, money(100)}, false));
   EXPECT_EQ(i64(h.led.reserved(1, USD)), i64(money(100)));
   EXPECT_FALSE(
-      h.clearing.restorePosition(RestorePosition{1, qty(3).raw(), px(500).raw(), money(100)}, false));
+      h.clearing.restorePosition(RestorePosition{1, qty(3).raw(), px(500).raw(), {}, money(100)}, false));
   EXPECT_EQ(h.clearing.positionQty(1), qty(2).raw());
 
   // exactBalanceRestore: the margin is already split into `reserved` by the
@@ -626,7 +626,7 @@ TEST(EngineClearing, RestorePositionRefusesAZeroOrDuplicateRecord)
   Host h2(perpCfg());
   h2.led.deposit(1, USD, money(1000));
   EXPECT_TRUE(h2.clearing.restorePosition(
-      RestorePosition{1, qty(2).raw(), px(500).raw(), money(100)}, true));
+      RestorePosition{1, qty(2).raw(), px(500).raw(), {}, money(100)}, true));
   EXPECT_EQ(i64(h2.led.reserved(1, USD)), 0);
 }
 
@@ -643,27 +643,27 @@ TEST(EngineClearing, TheHashSeesEveryFieldAndNotTheInsertionOrder)
   const std::vector<uint64_t> rev{3, 2, 1};
   for (uint64_t acct : fwd)
   {
-    a.clearing.restorePosition(RestorePosition{acct, qty(2).raw(), px(500).raw(), money(100)}, true);
+    a.clearing.restorePosition(RestorePosition{acct, qty(2).raw(), px(500).raw(), {}, money(100)}, true);
   }
   for (uint64_t acct : rev)
   {
-    b.clearing.restorePosition(RestorePosition{acct, qty(2).raw(), px(500).raw(), money(100)}, true);
+    b.clearing.restorePosition(RestorePosition{acct, qty(2).raw(), px(500).raw(), {}, money(100)}, true);
   }
   EXPECT_EQ(a.clearing.hashPositions(0), b.clearing.hashPositions(0));
 
   Host c(perpCfg());
   c.led.deposit(1, USD, money(10000));
-  c.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(500).raw(), money(100)}, true);
+  c.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(500).raw(), {}, money(100)}, true);
   const uint64_t base = c.clearing.hashPositions(0);
 
   Host d(perpCfg());
   d.led.deposit(1, USD, money(10000));
-  d.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(500).raw(), money(101)}, true);
+  d.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(500).raw(), {}, money(101)}, true);
   EXPECT_NE(d.clearing.hashPositions(0), base);  // margin is in the hash
 
   Host e(perpCfg());
   e.led.deposit(1, USD, money(10000));
-  e.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(501).raw(), money(100)}, true);
+  e.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(501).raw(), {}, money(100)}, true);
   EXPECT_NE(e.clearing.hashPositions(0), base);  // entry is in the hash
 
   // An engine that never saw funding hashes as it did before the fields

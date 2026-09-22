@@ -257,8 +257,8 @@ void test_late_joiner_snapshot()
 
   // Phase B: live traffic the late joiner receives but cannot deliver until
   // the snapshot recovery has run (everything is ahead of the missing prefix).
-  eng.submit(CancelOrder{2, SYM, 1});
-  eng.submit(ModifyOrder{3, SYM, px(106), qty(2), 1});
+  eng.submit(CancelOrder{2, SYM, {}, 1});
+  eng.submit(ModifyOrder{3, SYM, {}, px(106), qty(2), 1});
   eng.submit(limit(12, Side::SELL, 107, 3));
   const uint64_t targetB = md.seq();
 
@@ -292,7 +292,7 @@ void test_late_joiner_snapshot()
   // Phase C: the incremental feed keeps both books in step with no further
   // recovery round-trips.
   eng.submit(limit(13, Side::BUY, 94, 2));
-  eng.submit(CancelOrder{6, SYM, 1});
+  eng.submit(CancelOrder{6, SYM, {}, 1});
   eng.submit(limit(14, Side::BUY, 103, 10, 2));  // sweeps the 101 remainder, rests at 103
   const uint64_t target = md.seq();
 
@@ -663,7 +663,7 @@ void test_status_and_derivatives_over_multicast_and_recovery()
   CHECK(rec.start(0) > 0);
 
   eng.submit(limit(1, Side::SELL, 100, 5), 1'000);
-  eng.submit(InboundCommand{SetMark{SYM, px(100)}}, 2'000);
+  eng.submit(InboundCommand{SetMark{SYM, {}, px(100)}}, 2'000);
   eng.submit(InboundCommand{AdminCmd{SYM, AdminAction::Halt}}, 3'000);
 
   // Multicast: both new types arrive decoded, with both timestamps.

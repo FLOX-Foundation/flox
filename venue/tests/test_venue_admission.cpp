@@ -201,9 +201,9 @@ void run(const std::function<Book()>& mk, const char* label)
     Cap cap;
     MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
     eng.setAdmissionProfile(7, takerOnly());
-    eng.submit(InboundCommand{ModifyOrder{1, SYM, px(100), qty(1), 7}});
-    eng.submit(InboundCommand{CancelOrder{1, SYM, 7}});
-    eng.submit(InboundCommand{Quote{10, 11, SYM, px(99), qty(1), px(101), qty(1), 7}});
+    eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(100), qty(1), 7}});
+    eng.submit(InboundCommand{CancelOrder{1, SYM, {}, 7}});
+    eng.submit(InboundCommand{Quote{10, 11, SYM, {}, px(99), qty(1), px(101), qty(1), 7}});
     CHECK(cap.cancelRejects(RejectReason::AmendNotPermitted, /*wasReplace*/ true) == 1);
     CHECK(cap.cancelRejects(RejectReason::CancelNotPermitted, /*wasReplace*/ false) == 1);
     CHECK(cap.rejects(RejectReason::QuoteNotPermitted) == 1);
@@ -219,8 +219,8 @@ void run(const std::function<Book()>& mk, const char* label)
     eng.setAdmissionProfile(8, mm);
     eng.submit(InboundCommand{limit(1, Side::BUY, 99, 5, 8)});
     CHECK(eng.book().find(1) != nullptr);
-    eng.submit(InboundCommand{ModifyOrder{1, SYM, px(98), qty(4), 8}});
-    eng.submit(InboundCommand{CancelOrder{1, SYM, 8}});
+    eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(98), qty(4), 8}});
+    eng.submit(InboundCommand{CancelOrder{1, SYM, {}, 8}});
     CHECK(eng.book().empty());
     CHECK(eng.admissionRejects() == 0);
   }
@@ -259,14 +259,14 @@ void run(const std::function<Book()>& mk, const char* label)
     MatchingEngine<Book> b(cfg(), cb.sink(), mk());
     CHECK(a.stateHash() == b.stateHash());  // baseline: identical before anything
 
-    a.submit(InboundCommand{SetAdmissionProfile{SYM, 7, takerOnly()}}, 1);
-    b.submit(InboundCommand{SetAdmissionProfile{SYM, 8, takerOnly()}}, 1);
+    a.submit(InboundCommand{SetAdmissionProfile{SYM, {}, 7, takerOnly()}}, 1);
+    b.submit(InboundCommand{SetAdmissionProfile{SYM, {}, 8, takerOnly()}}, 1);
     CHECK(a.stateHash() != b.stateHash());  // same command count, different state
 
     // Each learns the other's profile. The table is keyed and sorted, so the
     // order they arrived in must not matter either.
-    a.submit(InboundCommand{SetAdmissionProfile{SYM, 8, takerOnly()}}, 2);
-    b.submit(InboundCommand{SetAdmissionProfile{SYM, 7, takerOnly()}}, 2);
+    a.submit(InboundCommand{SetAdmissionProfile{SYM, {}, 8, takerOnly()}}, 2);
+    b.submit(InboundCommand{SetAdmissionProfile{SYM, {}, 7, takerOnly()}}, 2);
     CHECK(a.stateHash() == b.stateHash());
   }
   {  // A call auction rests everything it admits, so a counterparty that may

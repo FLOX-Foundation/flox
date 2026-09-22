@@ -358,7 +358,7 @@ void test_perp_modify_respects_position_cap()
   ev.clear();
   // Grow it to 20 (> cap). A fresh qty-20 order is rejected in onNew; the modify
   // must be too, not silently accepted.
-  eng.submit(InboundCommand{ModifyOrder{1, SYM, px(100), qty(20), 1}}, 1);
+  eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(100), qty(20), 1}}, 1);
   bool rejected = false;
   for (auto& e : ev)
   {
@@ -393,7 +393,7 @@ void test_perp_risk_gate_consistent_across_paths()
     ev.clear();
     if (viaModify)
     {
-      eng.submit(InboundCommand{ModifyOrder{1, SYM, px(100), qty(20), 1}}, 1);  // 8 -> 20
+      eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(100), qty(20), 1}}, 1);  // 8 -> 20
     }
     else
     {
@@ -431,7 +431,7 @@ void test_perp_modify_preserves_reduce_only()
   // Reduce-only SELL rests above market (capped to the +5 position at submit).
   eng.submit(InboundCommand{ord(3, Side::SELL, 110, 5, 1, /*reduceOnly*/ true)}, 2);
   // Modify to a LARGER qty (10): reduce-only must be preserved and re-capped to 5.
-  eng.submit(InboundCommand{ModifyOrder{3, SYM, px(110), qty(10), 1}}, 3);
+  eng.submit(InboundCommand{ModifyOrder{3, SYM, {}, px(110), qty(10), 1}}, 3);
   // Fill it fully: acct2 buys 10 @ 110. Only 5 should rest -> acct1 reduces to FLAT.
   eng.submit(InboundCommand{ord(4, Side::BUY, 110, 10, 2)}, 4);
   CHECK(eng.positionQty(1) == 0);  // reduced to flat -- bug flips it to -5 (opened a short)
@@ -566,7 +566,7 @@ void test_reduce_only_resting_cannot_flip_at_fill()
   // every reserved unit left must be a position's posted margin).
   for (OrderId id = 1; id <= 6; ++id)
   {
-    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 6);
+    eng.submit(InboundCommand{CancelOrder{id, SYM, {}, 0}}, 6);
   }
   Amount reservedSum = 0;
   for (uint64_t a = 1; a <= 3; ++a)
@@ -665,7 +665,7 @@ void test_position_cap_not_circumvented_by_several_orders()
 
   for (OrderId id = 1; id <= 4; ++id)
   {
-    eng.submit(InboundCommand{CancelOrder{id, SYM, 0}}, 4);
+    eng.submit(InboundCommand{CancelOrder{id, SYM, {}, 0}}, 4);
   }
   Amount reservedSum = led.reserved(1, QUOTE) + led.reserved(2, QUOTE) + led.reserved(3, QUOTE);
   CHECK(reservedSum == eng.totalPositionMargin());

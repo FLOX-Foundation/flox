@@ -627,7 +627,7 @@ class RestJson
       {
         return std::nullopt;
       }
-      return InboundCommand{CancelOrder{f.id, symbol, f.account}};
+      return InboundCommand{CancelOrder{f.id, symbol, {}, f.account}};
     }
 
     if (action == "modify")

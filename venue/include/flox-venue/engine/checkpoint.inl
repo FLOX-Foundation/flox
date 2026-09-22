@@ -119,7 +119,7 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
 {
   const int64_t ts = now_.raw();  // snapshot records carry raw sequencer ticks
   const uint64_t h = stateHash();
-  out.append(InboundCommand{SnapshotBegin{kSnapshotFormatVersion, ts, h, configHash()}}, ts);
+  out.append(InboundCommand{SnapshotBegin{kSnapshotFormatVersion, {}, ts, h, configHash()}}, ts);
 
   writeConfigSection(out, ts);
   clearing_.writeFunding(out, ts);
@@ -269,10 +269,9 @@ uint64_t MatchingEngine<Book>::hashBalances(uint64_t h) const
 template <class Book>
 void MatchingEngine<Book>::writeConfigSection(Journal& out, int64_t ts) const
 {
-  out.append(InboundCommand{ListInstrument{cfg_.id, cfg_.tickSize, cfg_.lotSize, cfg_.minPrice,
-                                           cfg_.maxPrice}},
+  out.append(InboundCommand{ListInstrument{cfg_.id, {}, cfg_.tickSize, cfg_.lotSize, cfg_.minPrice, cfg_.maxPrice}},
              ts);
-  out.append(InboundCommand{SetBands{cfg_.id, cfg_.minPrice, cfg_.maxPrice}}, ts);
+  out.append(InboundCommand{SetBands{cfg_.id, {}, cfg_.minPrice, cfg_.maxPrice}}, ts);
   // Risk limits ride the config section for the same reason the bands do:
   // they decide what is admitted, so a recovered engine that lost them would
   // admit orders the live one refused.
@@ -302,7 +301,7 @@ void MatchingEngine<Book>::writeBalances(Journal& out, int64_t ts) const
 {
   for (const auto& [acct, asset, avail, rsvd] : sortedBalances())
   {
-    out.append(InboundCommand{RestoreBalance{acct, asset, avail, rsvd}}, ts);
+    out.append(InboundCommand{RestoreBalance{acct, asset, {}, avail, rsvd}}, ts);
   }
 }
 
@@ -315,9 +314,7 @@ void MatchingEngine<Book>::writeBookAndStops(Journal& out, int64_t ts) const
   book_.forEachOrder(
       [&](const RestingOrder& o)
       {
-        RestoreOrder r{o.id, o.accountId, o.price, o.leaves,
-                       o.side, o.hidden, o.peak, o.lastLook,
-                       o.reduceOnly, o.postOnly, o.clientOrderId};
+        RestoreOrder r{o.id, o.accountId, o.price, o.leaves, o.side, {}, o.hidden, o.peak, o.lastLook, o.reduceOnly, o.postOnly, {}, o.clientOrderId};
         r.expiryNs = expiryOf(o.id);
         r.ocoGroup = oco_.groupOf(o.id);
         out.append(InboundCommand{r}, ts);

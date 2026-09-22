@@ -200,7 +200,7 @@ InboundCommand randomCmd(Rng& rng, OrderId& nextId, int i, bool moneyFlow)
 
   if (kind < 10 && nextId > 1)
   {
-    return InboundCommand{CancelOrder{1 + (r >> 16) % (nextId - 1), SYM, 0}};
+    return InboundCommand{CancelOrder{1 + (r >> 16) % (nextId - 1), SYM, {}, 0}};
   }
   if (kind < 16 && nextId > 1)
   {
@@ -209,12 +209,12 @@ InboundCommand randomCmd(Rng& rng, OrderId& nextId, int i, bool moneyFlow)
     const Price np = ((r >> 40) % 4 == 0)
                          ? Price{}  // keep current price
                          : Price::fromRaw(midRaw + static_cast<int64_t>(ticks) * tickRaw);
-    return InboundCommand{ModifyOrder{vid, SYM, np, qty(1.0 + static_cast<double>((r >> 44) % 4)), 0}};
+    return InboundCommand{ModifyOrder{vid, SYM, {}, np, qty(1.0 + static_cast<double>((r >> 44) % 4)), 0}};
   }
   if (kind < 20)
   {
     // Random held id: mostly stale/wrong (deterministic rejects), sometimes live.
-    return InboundCommand{LastLookDecision{1 + (r >> 16) % 64, SYM, (r & 8) != 0, acct}};
+    return InboundCommand{LastLookDecision{1 + (r >> 16) % 64, SYM, (r & 8) != 0, {}, acct}};
   }
   if (kind < 23)
   {
@@ -222,21 +222,18 @@ InboundCommand randomCmd(Rng& rng, OrderId& nextId, int i, bool moneyFlow)
     const OrderId askId = nextId + 1;
     nextId += 2;
     const int bt = static_cast<int>((r >> 32) % 30);
-    return InboundCommand{Quote{bidId, askId, SYM, Price::fromRaw(midRaw - (1 + bt) * tickRaw),
-                                qty(1.0 + static_cast<double>((r >> 40) % 3)),
-                                Price::fromRaw(midRaw + (1 + bt) * tickRaw),
-                                qty(1.0 + static_cast<double>((r >> 44) % 3)), acct}};
+    return InboundCommand{Quote{bidId, askId, SYM, {}, Price::fromRaw(midRaw - (1 + bt) * tickRaw), qty(1.0 + static_cast<double>((r >> 40) % 3)), Price::fromRaw(midRaw + (1 + bt) * tickRaw), qty(1.0 + static_cast<double>((r >> 44) % 3)), acct}};
   }
   if (kind < 25 && moneyFlow)
   {
     return (r & 4) != 0
-               ? InboundCommand{Deposit{acct, QUOTE, quoteRaw(500.0), SYM}}
-               : InboundCommand{Deposit{acct, BASE, baseRaw(5.0), SYM}};
+               ? InboundCommand{Deposit{acct, QUOTE, {}, quoteRaw(500.0), SYM}}
+               : InboundCommand{Deposit{acct, BASE, {}, baseRaw(5.0), SYM}};
   }
   if (kind < 27 && moneyFlow)
   {
-    return (r & 4) != 0 ? InboundCommand{Withdraw{acct, QUOTE, quoteRaw(200.0), SYM}}
-                        : InboundCommand{Withdraw{acct, BASE, baseRaw(2.0), SYM}};
+    return (r & 4) != 0 ? InboundCommand{Withdraw{acct, QUOTE, {}, quoteRaw(200.0), SYM}}
+                        : InboundCommand{Withdraw{acct, BASE, {}, baseRaw(2.0), SYM}};
   }
   if (kind < 29)
   {
@@ -378,13 +375,13 @@ TEST(VenueCheckpoint, BalanceUpdateRecoverySuppressionAndSidecarHook)
                      ASSERT_TRUE(FixSessionSidecar::write(sidecar, host, registry)); });
   s1->start();
 
-  s1->submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(100), SYM}});
+  s1->submit(InboundCommand{Deposit{1, QUOTE, {}, quoteRaw(100), SYM}});
   s1->flush();
   EXPECT_EQ(countBalance(sink1.events), 1u);  // the live deposit reported once
 
   ASSERT_TRUE(s1->checkpointNow());
-  EXPECT_GT(hookTs, 0);                                               // the hook rode the checkpoint boundary
-  s1->submit(InboundCommand{Withdraw{1, QUOTE, quoteRaw(30), SYM}});  // journal-tail record
+  EXPECT_GT(hookTs, 0);                                                   // the hook rode the checkpoint boundary
+  s1->submit(InboundCommand{Withdraw{1, QUOTE, {}, quoteRaw(30), SYM}});  // journal-tail record
   s1->flush();
   EXPECT_EQ(countBalance(sink1.events), 2u);
   s1->stop();
@@ -417,7 +414,7 @@ TEST(VenueCheckpoint, BalanceUpdateRecoverySuppressionAndSidecarHook)
   EXPECT_EQ(led2.available(1, QUOTE), led1.available(1, QUOTE));
 
   // A fresh deposit after recovery reports exactly once, as live.
-  s2->submit(InboundCommand{Deposit{1, QUOTE, quoteRaw(5), SYM}});
+  s2->submit(InboundCommand{Deposit{1, QUOTE, {}, quoteRaw(5), SYM}});
   s2->flush();
   EXPECT_EQ(countBalance(sink2.events), 1u);
   s2->stop();

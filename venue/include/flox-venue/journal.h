@@ -95,6 +95,88 @@ static_assert(std::variant_size_v<InboundCommand> == 35,
               "new InboundCommand alternative: extend expectedBodySize/appendDecoded and the "
               "blittable asserts above");
 
+// T057: every journaled/snapshot body is written as raw bytes (Journal::append
+// below), so any compiler-inserted alignment padding a struct above carries
+// would reach disk uninitialised. The fix is in messages.h, not here: each gap
+// the compiler would otherwise insert implicitly is instead an explicit
+// `uint8_t padN_[k]{}` member. An explicit field has a default member
+// initializer like every other field, so ordinary construction -- aggregate
+// init that leaves it unspecified, or the type's own default constructor --
+// zeroes it the same way it zeroes any other field the caller did not set;
+// nothing special about padding has to hold, and nothing runs here at
+// serialization time to compensate for it.
+//
+// `has_unique_object_representations_v<T>` is true exactly when T has no
+// padding bits (and no field whose value has more than one valid bit
+// pattern), so it is the direct, compiler-checked statement of "this struct
+// has no implicit padding left" -- it fails again, loudly, the moment a new
+// field reintroduces a gap this list does not know about. ApplyFunding is the
+// one exception: it carries a `double`, and the trait is specified false for
+// any type with a floating-point member regardless of padding (multiple bit
+// patterns can represent the same value, e.g. NaN), so it is checked by
+// sizeof instead -- the sum of its fields' sizes already includes the
+// explicit pad field, so if that sum ever stops matching sizeof(ApplyFunding),
+// either a field changed size or a gap opened up again.
+static_assert(std::has_unique_object_representations_v<NewOrder>, "NewOrder carries padding");
+static_assert(std::has_unique_object_representations_v<CancelOrder>, "CancelOrder carries padding");
+static_assert(std::has_unique_object_representations_v<ModifyOrder>, "ModifyOrder carries padding");
+static_assert(std::has_unique_object_representations_v<MassCancel>, "MassCancel carries padding");
+static_assert(std::has_unique_object_representations_v<Quote>, "Quote carries padding");
+static_assert(std::has_unique_object_representations_v<LastLookDecision>,
+              "LastLookDecision carries padding");
+static_assert(std::has_unique_object_representations_v<SetMark>, "SetMark carries padding");
+static_assert(sizeof(ApplyFunding) == sizeof(ApplyFunding::symbol) + sizeof(ApplyFunding::pad0_) +
+                                          sizeof(ApplyFunding::rate) + sizeof(ApplyFunding::mark),
+              "ApplyFunding carries padding beyond its explicit pad field (has_unique_object_"
+              "representations_v is unconditionally false here because of the double member, "
+              "not because of padding, so it cannot be used for this one)");
+static_assert(std::has_unique_object_representations_v<AdminCmd>, "AdminCmd carries padding");
+static_assert(std::has_unique_object_representations_v<Deposit>, "Deposit carries padding");
+static_assert(std::has_unique_object_representations_v<Withdraw>, "Withdraw carries padding");
+static_assert(std::has_unique_object_representations_v<ListInstrument>,
+              "ListInstrument carries padding");
+static_assert(std::has_unique_object_representations_v<SetBands>, "SetBands carries padding");
+static_assert(std::has_unique_object_representations_v<TimeTick>, "TimeTick carries padding");
+static_assert(std::has_unique_object_representations_v<SetTriggerRef>,
+              "SetTriggerRef carries padding");
+static_assert(std::has_unique_object_representations_v<SnapshotBegin>,
+              "SnapshotBegin carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreOrder>,
+              "RestoreOrder carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreStop>, "RestoreStop carries padding");
+static_assert(std::has_unique_object_representations_v<RestorePeg>, "RestorePeg carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreHeld>, "RestoreHeld carries padding");
+static_assert(std::has_unique_object_representations_v<RestorePosition>,
+              "RestorePosition carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreMmpCfg>,
+              "RestoreMmpCfg carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreClOrdIds>,
+              "RestoreClOrdIds carries padding");
+static_assert(std::has_unique_object_representations_v<SnapshotEnd>, "SnapshotEnd carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreReservation>,
+              "RestoreReservation carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreBalance>,
+              "RestoreBalance carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreMmpFills>,
+              "RestoreMmpFills carries padding");
+static_assert(std::has_unique_object_representations_v<SetStpGroup>, "SetStpGroup carries padding");
+static_assert(std::has_unique_object_representations_v<SetFundingSchedule>,
+              "SetFundingSchedule carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreFunding>,
+              "RestoreFunding carries padding");
+static_assert(std::has_unique_object_representations_v<ForceClosePosition>,
+              "ForceClosePosition carries padding");
+static_assert(std::has_unique_object_representations_v<RestoreOrderStp>,
+              "RestoreOrderStp carries padding");
+static_assert(std::has_unique_object_representations_v<AdmissionProfile>,
+              "AdmissionProfile (nested in SetAdmissionProfile) carries padding");
+static_assert(std::has_unique_object_representations_v<SetAdmissionProfile>,
+              "SetAdmissionProfile carries padding");
+static_assert(std::has_unique_object_representations_v<SetRiskLimits>,
+              "SetRiskLimits carries padding");
+static_assert(std::has_unique_object_representations_v<AdjustPosition>,
+              "AdjustPosition carries padding");
+
 // Version of the on-disk record format this build writes and reads. Bodies go
 // to disk as raw bytes, so the version stands for the layout of all 34 command
 // structs as much as for the framing around them.
@@ -319,6 +401,11 @@ class Journal
           appendBytes(&stamp, sizeof(stamp));
           appendBytes(&tag, sizeof(tag));
           appendBytes(&len, sizeof(len));
+          // T057: every byte of v is real data, including what used to be
+          // implicit alignment padding -- messages.h now names those bytes as
+          // explicit pad fields with their own default member initializer, so
+          // v carries zeros there the same way it carries zeros in any other
+          // field the caller left unset. Nothing to zero here.
           appendBytes(&v, sizeof(v));
           const uint32_t crc = flox::util::Crc32::compute(rec_.data(), rec_.size());
           appendBytes(&crc, sizeof(crc));

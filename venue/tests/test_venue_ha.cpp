@@ -83,10 +83,8 @@ std::vector<InboundCommand> genesisDeposits()
   std::vector<InboundCommand> g;
   for (int a = 1; a <= NACCT; ++a)
   {
-    g.emplace_back(Deposit{static_cast<uint64_t>(a), BASE,
-                           static_cast<int64_t>(amountOf(Quantity::fromDouble(10000))), SYM});
-    g.emplace_back(Deposit{static_cast<uint64_t>(a), QUOTE,
-                           static_cast<int64_t>(amountOf(Volume::fromDouble(1000000))), SYM});
+    g.emplace_back(Deposit{static_cast<uint64_t>(a), BASE, {}, static_cast<int64_t>(amountOf(Quantity::fromDouble(10000))), SYM});
+    g.emplace_back(Deposit{static_cast<uint64_t>(a), QUOTE, {}, static_cast<int64_t>(amountOf(Volume::fromDouble(1000000))), SYM});
   }
   return g;
 }
