@@ -302,7 +302,7 @@ market-data path.
 | Codec | Notes |
 |---|---|
 | `SbeOrderEntryCodec` | SBE binary order entry + exec reports, full fidelity: every field round-trips, including `reduceOnly`, `peg`, `expiryNs`, `ocoGroup`, `lastLook`; schema version 8 adds inbound `QuoteLadder` (template 7), a maker's whole set of levels in one frame (schema `venue/schema/order-entry-sbe.xml`) |
-| `FixCodec` | FIX 4.4: `D`/`F`/`G` in, `ExecutionReport` out, with `BodyLength` and validated `CheckSum` |
+| `FixCodec` | FIX 4.4: `D`/`F`/`G` in, `ExecutionReport` out, with `BodyLength` and validated `CheckSum`; `MassQuote` (`i`) / `QuoteCancel` (`Z`) in, `QuoteStatusReport` (`AI`) out -- a maker's whole ladder on one symbol, see [fix-quoting.md](fix-quoting.md) |
 | `flox::fix::ClientCodec` | the mirror, for talking TO a venue: `D`/`F`/`G` out, `35=8`/`9`/`3`/`j` in ([FIX initiator](fix-initiator.md)) |
 | `RestJson` | REST/JSON adoption path (simdjson) |
 | `SbeMdCodec` | outbound market data (SBE, schema `venue/schema/md-sbe.xml`) |

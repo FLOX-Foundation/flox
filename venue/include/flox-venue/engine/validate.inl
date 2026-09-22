@@ -316,6 +316,21 @@ bool MatchingEngine<Book>::clOrdIdDuplicate(uint64_t account, uint64_t clOrdId)
 template <class Book>
 void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
 {
+  // Quotes-only admission (T063): DenyNewOrder refuses a genuine client
+  // NewOrder while leaving a Quote/QuoteLadder's own legs untouched, even
+  // though both arrive here as the same NewOrder struct -- clOrdIdChecked is
+  // true ONLY for a quote's legs (see quote_mmp.inl: their dedup was already
+  // registered once, for the whole quote, before onNew was ever called), so
+  // it doubles as exactly the signal needed here. Checked before
+  // admissionGate rather than inside it: admissionGate runs for both kinds
+  // of caller and has no other way to tell them apart.
+  if (!clOrdIdChecked && admissionDenies(o.accountId, AdmissionDeny::DenyNewOrder))
+  {
+    credit_.countAdmissionReject();
+    sink_(OrderRejected{o.id, o.symbol, RejectReason::NewOrderNotPermitted, o.accountId,
+                        o.clientOrderId});
+    return;
+  }
   // Entitlement first: an order the counterparty may not send should not
   // consume a clientOrderId, link an OCO group or reach any later gate.
   if (const RejectReason r = credit_.admissionGate(o, session_.auction()); r != RejectReason::None)

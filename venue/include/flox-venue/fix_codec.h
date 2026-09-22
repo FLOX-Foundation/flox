@@ -55,6 +55,61 @@ class FixCodec
     return flox::fix::parseFields(msg);
   }
 
+  // Order-preserving tag/value scan. parseFields collapses repeats into a map
+  // by design (order entry is flat tag=value with no repeats), which is
+  // exactly wrong for MassQuote's repeating QuoteEntry groups (299/55/132/
+  // 133/134/135, once per level): a map cannot hold more than one value per
+  // tag, so a group HAS to be read straight off the wire instead. Mirrors
+  // FixMdCodec::parseOrdered (market data's own repeating-group reason);
+  // kept local rather than shared so this header stays independent of
+  // fix_md_codec.h, a different message family with its own session layer.
+  static std::vector<std::pair<int, std::string>> parseOrdered(const std::string& msg)
+  {
+    std::vector<std::pair<int, std::string>> f;
+    size_t i = 0;
+    while (i < msg.size())
+    {
+      const size_t eq = msg.find('=', i);
+      if (eq == std::string::npos)
+      {
+        break;
+      }
+      size_t soh = msg.find(SOH, eq + 1);
+      if (soh == std::string::npos)
+      {
+        soh = msg.size();
+      }
+      f.emplace_back(std::atoi(msg.substr(i, eq - i).c_str()), msg.substr(eq + 1, soh - eq - 1));
+      i = soh + 1;
+    }
+    return f;
+  }
+
+  // Deterministic per-(account, symbol) resting order-id block for a FIX
+  // quoting session's ladder (T063). MassQuote carries no venue order id of
+  // its own -- 117 QuoteID is the LADDER's own name (QuoteLadder::
+  // clientOrderId), not an id base -- and QuoteCancel names no ids at all.
+  // A pure function of (account, symbol) is what lets both answer from the
+  // same formula with no state kept anywhere: every MassQuote/QuoteCancel
+  // from one account on one symbol addresses the SAME
+  // 2*kQuoteLadderLevels-id block (the bid block, then the ask block
+  // immediately after it), so a later MassQuote replaces the very legs a
+  // QuoteCancel would have taken down -- the "replaced atomically, same ids"
+  // contract QuoteLadder already documents.
+  static OrderId quoteLadderIdBase(uint64_t accountId, SymbolId symbol) noexcept
+  {
+    constexpr uint64_t kBlock = 2ULL * kQuoteLadderLevels;
+    // Folded with distinct multipliers so two different (account, symbol)
+    // pairs land in different blocks; offset above a range a hand-assigned
+    // ClOrdID (NewOrderSingle's 11, reused as the venue OrderId) would
+    // plausibly use, purely so the two ranges read as distinct in a capture
+    // -- a quotes-only session's DenyNewOrder profile is what actually keeps
+    // them from ever colliding for real.
+    constexpr uint64_t kMarker = 0x51'00000000ULL;  // 'Q'
+    return static_cast<OrderId>(kMarker +
+                                (accountId * 4099ULL + static_cast<uint64_t>(symbol)) * kBlock);
+  }
+
   // FIX integrity: if a CheckSum (tag 10) is present it MUST be correct --
   // sum of every byte up to and including the SOH before "10=", mod 256.
   // Lenient when absent, for internal/test callers that don't append one.
@@ -232,6 +287,153 @@ class FixCodec
       m.accountId = u64(1);
       return InboundCommand{m};
     }
+    // MassQuote (35=i): a maker's whole ladder on one symbol, one command
+    // (T063). Wire mapping: 117 QuoteID -> QuoteLadder::clientOrderId (the
+    // ladder's own name, dedup slot consumed once for the whole ladder); 1
+    // Account -> QuoteLadder::accountId, required here (unlike NewOrderSingle,
+    // which tolerates an absent Account and lets the session stamp it) because
+    // bidIdBase/askIdBase are DERIVED from it below -- a late stamp after
+    // decode would leave the ladder's own accountId field disagreeing with
+    // the id block it was built from. Each QuoteEntry (299 QuoteEntryID
+    // starts one) carries 55 Symbol, 132 BidPx, 133 OfferPx, 134 BidSize, 135
+    // OfferSize; NoQuoteSets (296) / QuoteSetID (302) / NoQuoteEntries (295)
+    // are the FIX 4.4 group counts and are not needed here -- entries are
+    // read as they arrive, delimited by 299, the same way FixMdCodec reads
+    // repeating MD entries.
+    if (type == "i")
+    {
+      if (!has(1) || !has(117))
+      {
+        return std::nullopt;  // Account and QuoteID are both required
+      }
+      struct RawLevel
+      {
+        std::string symbolStr, bidPx, offerPx, bidSize, offerSize;
+      };
+      std::vector<RawLevel> raw;
+      for (const auto& [tag, val] : parseOrdered(msg))
+      {
+        switch (tag)
+        {
+          case 299:
+            raw.emplace_back();
+            break;
+          case 55:
+            if (raw.empty())
+            {
+              return std::nullopt;
+            }
+            raw.back().symbolStr = val;
+            break;
+          case 132:
+            if (raw.empty())
+            {
+              return std::nullopt;
+            }
+            raw.back().bidPx = val;
+            break;
+          case 133:
+            if (raw.empty())
+            {
+              return std::nullopt;
+            }
+            raw.back().offerPx = val;
+            break;
+          case 134:
+            if (raw.empty())
+            {
+              return std::nullopt;
+            }
+            raw.back().bidSize = val;
+            break;
+          case 135:
+            if (raw.empty())
+            {
+              return std::nullopt;
+            }
+            raw.back().offerSize = val;
+            break;
+          default:
+            break;
+        }
+      }
+      if (raw.empty() || raw.size() > kQuoteLadderLevels)
+      {
+        return std::nullopt;  // nothing to quote, or more levels than the ladder holds
+      }
+      QuoteLadder l;
+      l.accountId = u64(1);
+      l.clientOrderId = u64(117);
+      l.levels = static_cast<uint8_t>(raw.size());
+      SymbolId sym0 = 0;
+      Price prevBid{};
+      Price prevAsk{};
+      for (size_t i = 0; i < raw.size(); ++i)
+      {
+        const RawLevel& e = raw[i];
+        if (e.symbolStr.empty() || e.bidPx.empty() || e.offerPx.empty() || e.bidSize.empty() ||
+            e.offerSize.empty())
+        {
+          return std::nullopt;  // every level must carry all five fields
+        }
+        const SymbolId s = static_cast<SymbolId>(std::strtoul(e.symbolStr.c_str(), nullptr, 10));
+        if (i == 0)
+        {
+          sym0 = s;
+        }
+        else if (s != sym0)
+        {
+          return std::nullopt;  // one QuoteLadder is one symbol
+        }
+        int64_t bidRaw, offerRaw, bidSzRaw, offerSzRaw;
+        if (!decwire::parse(e.bidPx, bidRaw) || !decwire::parse(e.offerPx, offerRaw) ||
+            !decwire::parse(e.bidSize, bidSzRaw) || !decwire::parse(e.offerSize, offerSzRaw))
+        {
+          return std::nullopt;
+        }
+        const Price bid = Price::fromRaw(bidRaw);
+        const Price ask = Price::fromRaw(offerRaw);
+        // Levels ordered as received: bid strictly descending, ask strictly
+        // ascending -- the shape a real ladder walking away from the mid
+        // always has. A MassQuote that does not honour it is refused rather
+        // than silently sorted: sorting would submit a ladder the sender
+        // never asked for under ITS OWN QuoteID.
+        if (i > 0 && (bid.raw() >= prevBid.raw() || ask.raw() <= prevAsk.raw()))
+        {
+          return std::nullopt;
+        }
+        prevBid = bid;
+        prevAsk = ask;
+        l.level[i].bidPrice = bid;
+        l.level[i].askPrice = ask;
+        l.level[i].bidQty = Quantity::fromRaw(bidSzRaw);
+        l.level[i].askQty = Quantity::fromRaw(offerSzRaw);
+      }
+      l.symbol = sym0;
+      l.bidIdBase = quoteLadderIdBase(l.accountId, l.symbol);
+      l.askIdBase = l.bidIdBase + kQuoteLadderLevels;
+      return InboundCommand{l};
+    }
+    // QuoteCancel (35=Z): take the ladder down -- a QuoteLadder with zero
+    // levels, addressing the SAME id block a MassQuote from this account on
+    // this symbol would (see quoteLadderIdBase). 298 QuoteCancelType (4 =
+    // every symbol, or by symbol) is not read: every engine shard already
+    // handles exactly one symbol, so "all symbols" and "this symbol" are the
+    // same operation from here.
+    if (type == "Z")
+    {
+      if (!has(1) || !has(55))
+      {
+        return std::nullopt;
+      }
+      QuoteLadder l;
+      l.accountId = u64(1);
+      l.symbol = sym(55);
+      l.levels = 0;
+      l.bidIdBase = quoteLadderIdBase(l.accountId, l.symbol);
+      l.askIdBase = l.bidIdBase + kQuoteLadderLevels;
+      return InboundCommand{l};
+    }
     return std::nullopt;
   }
 
@@ -340,6 +542,34 @@ class FixCodec
       add(102, unknown ? "1" : "99");        // CxlRejReason: Unknown order / Other
       add(58, text.empty() ? std::string(toString(cr->reason)) : std::string(text));
       return frame(b);
+    }
+
+    // A Quote/QuoteLadder admission refusal (T063: AdmissionDeny::DenyQuote)
+    // is QuoteStatusReport-shaped, not exec-report-shaped, the same reasoning
+    // as CancelRejected above: FIX has no honest ExecType for "your ladder
+    // never reached the book", and this venue's own MassQuote/QuoteCancel
+    // path already answers every accepted request through QuoteStatusReport
+    // (see fix_session.h) -- an engine-side refusal of a ladder that made it
+    // past THAT admission answers through the same shape rather than
+    // switching to an exec report partway through one conversation. Safe to
+    // key on the reason alone: today QuoteNotPermitted fires only from
+    // applyQuote (Quote and QuoteLadder), and the plain Quote struct has no
+    // FIX mapping of its own, so on the wire this can only be a QuoteLadder.
+    if (const auto* qj = std::get_if<OrderRejected>(&ev); qj != nullptr &&
+                                                          qj->reason == RejectReason::QuoteNotPermitted)
+    {
+      std::string qb;
+      auto qadd = [&](int tag, const std::string& val)
+      { qb += std::to_string(tag) + "=" + val + SOH; };
+      qadd(35, "AI");
+      if (qj->clientOrderId != 0)
+      {
+        qadd(117, std::to_string(qj->clientOrderId));
+      }
+      qadd(55, std::to_string(qj->symbol));
+      qadd(297, "5");  // QuoteStatus Rejected
+      qadd(58, text.empty() ? std::string(toString(qj->reason)) : std::string(text));
+      return frame(qb);
     }
 
     add(35, "8");  // ExecutionReport

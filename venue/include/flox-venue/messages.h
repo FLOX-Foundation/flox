@@ -384,7 +384,14 @@ enum AdmissionDeny : uint8_t
   DenyResting = 1u << 0,  // a residual may not join the book
   DenyAmend = 1u << 1,    // ModifyOrder refused
   DenyCancel = 1u << 2,   // CancelOrder refused
-  DenyQuote = 1u << 3,    // Quote refused
+  DenyQuote = 1u << 3,    // Quote / QuoteLadder refused
+  // A quotes-only counterparty (T063: a FIX MassQuote/QuoteCancel session)
+  // is the mirror image of DenyQuote: it may replace its ladder but must
+  // never place or work a plain order, so the two flags together
+  // (DenyNewOrder | DenyCancel, DenyQuote left unset) are what that profile
+  // actually sets. Refused on admission, before NewOrder reaches any other
+  // gate -- the same posture as every other Deny* flag.
+  DenyNewOrder = 1u << 4,  // NewOrder refused
 };
 
 struct SetAdmissionProfile

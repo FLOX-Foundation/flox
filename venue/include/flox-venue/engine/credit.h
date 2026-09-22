@@ -139,6 +139,14 @@ class Credit
       return RejectReason::None;  // no profile: everything permitted
     }
     const AdmissionProfile& p = it->second;
+    // DenyNewOrder (T063) is deliberately NOT checked here: admissionGate
+    // runs for every NewOrder onNew sees, including the synthetic legs a
+    // Quote/QuoteLadder builds for itself (engine/quote.h), and a
+    // quotes-only profile must deny exactly the client's OWN NewOrder
+    // submissions while leaving its Quote/QuoteLadder legs untouched -- the
+    // two are the same struct by the time they get here. See onNew, which
+    // checks DenyNewOrder itself, gated on clOrdIdChecked (false only for a
+    // genuine top-level NewOrder).
     if (p.allowedTypes != 0 && (p.allowedTypes & (1u << static_cast<uint32_t>(o.type))) == 0)
     {
       return RejectReason::OrderTypeNotPermitted;

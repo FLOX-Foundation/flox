@@ -31,11 +31,23 @@
  *    application traffic would let a gapped session run orders out of
  *    admission order; dropping is valid because the peer must resend anyway.
  *  - Unknown MsgType: an in-sequence message whose 35 is outside the known
- *    set (admin 0/1/2/4/5/A, application D/F/G) is answered with a session
- *    Reject (35=3: 45=RefSeqNum, 372=RefMsgType, 58=text) instead of being
- *    silently consumed. Application messages still flow through the normal
- *    decoder path -- a decode failure there answers with an exec-report
- *    reject, not 35=3.
+ *    set (admin 0/1/2/4/5/A, application D/F/G/i/Z) is answered with a
+ *    session Reject (35=3: 45=RefSeqNum, 372=RefMsgType, 58=text) instead of
+ *    being silently consumed. Application messages still flow through the
+ *    normal decoder path -- a decode failure there answers with an
+ *    exec-report reject, not 35=3.
+ *  - MassQuote (35=i) / QuoteCancel (35=Z) (T063): a maker's whole ladder on
+ *    one symbol, decoded to the SAME QuoteLadder command a non-FIX caller
+ *    would build (see flox-venue/fix_codec.h and flox-venue/messages.h).
+ *    Answered immediately with QuoteStatusReport (35=AI, 297 QuoteStatus)
+ *    before the frame falls through to the ordinary admission/submit
+ *    pipeline -- accepted (297=0) for anything this venue can turn into a
+ *    ladder, rejected (297=5, 58=reason) for one it cannot (too many levels,
+ *    levels not ordered bid-descending / ask-ascending, missing Account/
+ *    QuoteID). An engine-side refusal of a ladder that got past that
+ *    (QuoteNotPermitted) answers through the same report shape, from
+ *    FixCodec::encode's own QuoteNotPermitted case, over the ordinary event
+ *    path -- see docs/venue/fix-quoting.md.
  *  - Logon may carry the custom tag 20003 (CancelOnDisconnect=Y/N): wire
  *    negotiation of the session's cancel-on-disconnect (see
  *    docs/venue/perimeter.md, next to the 20001/20002 last-look tags). The
@@ -86,6 +98,7 @@
 #include <system_error>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace flox::venue
@@ -425,6 +438,25 @@ class FixConnection
     {
       return Verdict::Handled;  // duplicate Logon on a live session: ignore
     }
+    if (type == "i" || type == "Z")
+    {
+      // MassQuote / QuoteCancel (T063): handled here, at the session layer,
+      // the same way Logon/Heartbeat/Reject already are -- not because the
+      // resulting command skips admission or matching (it does not:
+      // Verdict::App below still hands a syntactically valid frame to the
+      // ordinary decode -> admission -> submit pipeline, so rate limiting,
+      // account binding and cancel-on-disconnect tracking all still apply),
+      // but because the immediate QuoteStatusReport this message family
+      // answers with is not an engine event and has nowhere else to come
+      // from. A frame this venue cannot turn into a ladder at all (missing
+      // Account/QuoteID, more than kQuoteLadderLevels entries, levels not
+      // ordered bid-descending / ask-ascending -- see FixCodec::decode) is
+      // refused right here and never reaches the engine; an engine-side
+      // refusal of a syntactically valid ladder (QuoteNotPermitted) answers
+      // through the SAME report shape, from FixCodec::encode's own
+      // QuoteNotPermitted case, over the ordinary event path.
+      return onMassQuoteOrCancel(f, msg, nowNs);
+    }
     if (type == "D" || type == "F" || type == "G")
     {
       return Verdict::App;
@@ -668,6 +700,50 @@ class FixConnection
     gapPending_ = true;
     lastGapReqNs_ = nowNs;
     sendAdmin("2", {{7, std::to_string(state_->expectedIn)}, {16, "0"}}, nowNs);
+  }
+
+  // MassQuote (35=i) / QuoteCancel (35=Z), see the call site above: decode +
+  // validate right here so the immediate QuoteStatusReport this message
+  // family answers with can be sent, then either refuse (Handled, frame
+  // never reaches the engine) or acknowledge and fall through to the
+  // ordinary pipeline (App) exactly like D/F/G.
+  Verdict onMassQuoteOrCancel(std::unordered_map<int, std::string>& f, const std::string& msg,
+                              int64_t nowNs)
+  {
+    const uint64_t quoteId = f.count(117) != 0 ? std::strtoull(f[117].c_str(), nullptr, 10) : 0;
+    const SymbolId sym =
+        f.count(55) != 0 ? static_cast<SymbolId>(std::strtoul(f[55].c_str(), nullptr, 10)) : 0;
+    const auto cmd = FixCodec::decode(msg);
+    if (!cmd || !std::holds_alternative<QuoteLadder>(*cmd))
+    {
+      sendQuoteStatus(false, quoteId, sym, "MassQuote/QuoteCancel rejected: malformed", nowNs);
+      return Verdict::Handled;
+    }
+    sendQuoteStatus(true, quoteId, sym, {}, nowNs);
+    return Verdict::App;
+  }
+
+  // QuoteStatusReport (35=AI): 117 QuoteID echo (omitted when the request
+  // carried none, e.g. a QuoteCancel), 55 Symbol, 297 QuoteStatus (0
+  // Accepted, 5 Rejected), 58 Text on a rejection. Sent the same way
+  // Logon/Heartbeat/Reject are (sendAdmin -- sequenced, not logged for
+  // resend: a resend into this seq range GapFills, same as every other
+  // session-layer reply).
+  bool sendQuoteStatus(bool accepted, uint64_t quoteId, SymbolId symbol, const std::string& text,
+                       int64_t nowNs)
+  {
+    std::vector<std::pair<int, std::string>> fields;
+    if (quoteId != 0)
+    {
+      fields.emplace_back(117, std::to_string(quoteId));
+    }
+    fields.emplace_back(55, std::to_string(symbol));
+    fields.emplace_back(297, accepted ? "0" : "5");
+    if (!accepted)
+    {
+      fields.emplace_back(58, text);
+    }
+    return sendAdmin("AI", fields, nowNs);
   }
 
   void heartbeatReply(std::unordered_map<int, std::string>& f, int64_t nowNs)

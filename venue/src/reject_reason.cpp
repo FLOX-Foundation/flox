@@ -88,6 +88,8 @@ const char* toString(RejectReason r) noexcept
       return "AdjustmentEmpty";
     case RejectReason::AdjustmentNeedsEntry:
       return "AdjustmentNeedsEntry";
+    case RejectReason::NewOrderNotPermitted:
+      return "NewOrderNotPermitted";
   }
   return "?";
 }
