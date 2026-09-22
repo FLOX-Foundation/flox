@@ -670,6 +670,57 @@ std::vector<Scenario> corpus()
                               { r.eng.setLedger(&r.led, VENUE_ACCT); }, true, 0);
                }});
 
+  // A last-look decision from an account that does not own the held maker
+  // order. engine/last_look.h::onDecision must refuse it with
+  // RejectReason::NotOrderOwner rather than let a stranger settle -- or
+  // kill -- someone else's hold. last_look_accept_reject_timeout and
+  // last_look_tolerance_accept_on_timeout answer every hold through
+  // HoldResponder, which always decides as the recorded makerAccount, so the
+  // wrong-account path never reaches the wire anywhere else in this corpus.
+  // heldId 1 is exactly the one pair created below -- the first and only
+  // hold this engine ever opens -- so the id does not have to be read back
+  // off the stream the way HoldResponder does it.
+  s.push_back({"last_look_wrong_account_decision",
+               []
+               {
+                 SymbolConfig c = spotCfg();
+                 c.lastLookWindowNs = DurationNs{1'000'000};
+                 c.lastLookAcceptOnTimeout = false;
+                 Digest d;
+                 Run r(c, d);
+                 r.eng.setLedger(&r.led, VENUE_ACCT);
+                 r.push(InboundCommand{Deposit{2, BASE, baseRaw(100.0), SYM}});
+                 r.push(InboundCommand{Deposit{1, QUOTE, quoteRaw(100000.0), SYM}});
+
+                 NewOrder maker;
+                 maker.id = 1;
+                 maker.symbol = SYM;
+                 maker.side = Side::SELL;
+                 maker.type = OrderType::LIMIT;
+                 maker.price = px(100.0);
+                 maker.quantity = qty(5.0);
+                 maker.accountId = 2;
+                 maker.lastLook = true;
+                 r.push(InboundCommand{maker});
+
+                 NewOrder taker;
+                 taker.id = 2;
+                 taker.symbol = SYM;
+                 taker.side = Side::BUY;
+                 taker.type = OrderType::LIMIT;
+                 taker.price = px(100.0);
+                 taker.quantity = qty(5.0);
+                 taker.accountId = 1;
+                 r.push(InboundCommand{taker});
+
+                 // account 3 never touched this hold: refused as NotOrderOwner,
+                 // and the hold stays open.
+                 r.push(InboundCommand{LastLookDecision{1, SYM, true, 3}});
+                 // the real maker still gets to decide afterwards.
+                 r.push(InboundCommand{LastLookDecision{1, SYM, true, 2}});
+                 return r.hashes();
+               }});
+
   // MM protection and the mass-cancel / quote-replace path.
   s.push_back({"mmp_quote_mass_cancel",
                []
@@ -681,6 +732,99 @@ std::vector<Scenario> corpus()
                                 {
                                   r.eng.setMmp(a, qty(12.0), DurationNs{500});
                                 } }, false, 0);
+               }});
+
+  // Mass-cancel over resting orders that carry a client order id.
+  // publishCanceled already forwards ro->clientOrderId at every call site
+  // (session.inl, publications.inl), but event_hash.h only folds
+  // OrderCanceled::clientOrderId into the stream digest when it is non-zero
+  // (kept for backward compatibility with events recorded before the field
+  // existed) -- and no generator in this corpus ever gives a resting order a
+  // non-zero clientOrderId (workload.h never sets NewOrder::clientOrderId),
+  // so every mass-cancel elsewhere in the corpus -- mmp_quote_mass_cancel and
+  // whichever mixedFlow/makerFlow runs reach MassCancel -- cancels orders
+  // whose clientOrderId was always 0. A publishCanceled that silently
+  // dropped the field on the way out would still hash the same. Two orders
+  // from one account carry distinct client order ids; a third, from a
+  // second account, carries none, as a control that the zero case still
+  // hashes as before.
+  s.push_back({"mass_cancel_named_orders",
+               []
+               {
+                 SymbolConfig c = spotCfg();
+                 Digest d;
+                 Run r(c, d);
+                 r.eng.setLedger(&r.led, VENUE_ACCT);
+                 r.push(InboundCommand{Deposit{5, BASE, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{6, BASE, baseRaw(50.0), SYM}});
+
+                 NewOrder o1;
+                 o1.id = 1;
+                 o1.symbol = SYM;
+                 o1.side = Side::SELL;
+                 o1.type = OrderType::LIMIT;
+                 o1.price = px(101.0);
+                 o1.quantity = qty(2.0);
+                 o1.accountId = 5;
+                 o1.clientOrderId = 7001;
+                 r.push(InboundCommand{o1});
+
+                 NewOrder o2 = o1;
+                 o2.id = 2;
+                 o2.price = px(102.0);
+                 o2.clientOrderId = 7002;
+                 r.push(InboundCommand{o2});
+
+                 NewOrder o3 = o1;
+                 o3.id = 3;
+                 o3.price = px(103.0);
+                 o3.accountId = 6;
+                 o3.clientOrderId = 0;
+                 r.push(InboundCommand{o3});
+
+                 r.push(InboundCommand{MassCancel{5, SYM}});
+                 r.push(InboundCommand{MassCancel{6, SYM}});
+                 return r.hashes();
+               }});
+
+  // STPMode::CancelBoth in CONTINUOUS matching. workload.h's makerFlow only
+  // ever generates None/CancelOldest/CancelNewest/Decrement (see its
+  // stpModes array), so no fuzzed scenario in this corpus ever sends
+  // CancelBoth into Matcher::applySelfTradePrevention -- found by mutating
+  // that branch to StpOutcome::NotApplicable, which left CorpusMatchesTheTable
+  // green. One account rests a SELL, then crosses itself with a BUY carrying
+  // stp=CancelBoth: both legs must be canceled and nothing may print.
+  s.push_back({"stp_cancel_both_continuous",
+               []
+               {
+                 SymbolConfig c = spotCfg();
+                 Digest d;
+                 Run r(c, d);
+                 r.eng.setLedger(&r.led, VENUE_ACCT);
+                 r.push(InboundCommand{Deposit{10, BASE, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{10, QUOTE, quoteRaw(100000.0), SYM}});
+
+                 NewOrder maker;
+                 maker.id = 1;
+                 maker.symbol = SYM;
+                 maker.side = Side::SELL;
+                 maker.type = OrderType::LIMIT;
+                 maker.price = px(100.0);
+                 maker.quantity = qty(5.0);
+                 maker.accountId = 10;
+                 r.push(InboundCommand{maker});
+
+                 NewOrder taker;
+                 taker.id = 2;
+                 taker.symbol = SYM;
+                 taker.side = Side::BUY;
+                 taker.type = OrderType::LIMIT;
+                 taker.price = px(100.0);
+                 taker.quantity = qty(5.0);
+                 taker.accountId = 10;
+                 taker.stp = STPMode::CancelBoth;
+                 r.push(InboundCommand{taker});
+                 return r.hashes();
                }});
 
   // Self-trade prevention across a firm -- two accounts in one group are one
@@ -708,6 +852,68 @@ std::vector<Scenario> corpus()
                        r.eng.setAdmissionProfile(6, noAmend);
                      },
                      false, 0);
+               }});
+
+  // Self-trade prevention across a firm group during an AUCTION uncross.
+  // Continuous matching reads the group scope off the matcher's own copy
+  // (Matcher::stpScope, used by applySelfTradePrevention); an auction has no
+  // aggressor and instead reads it back through
+  // MatchingEngine::stpScope -> StpState::scopeOf (engine/session.inl's
+  // uncross loop). Two different call paths onto the same rule -- a scopeOf
+  // that quietly falls back to per-account scope leaves continuous STP
+  // unaffected and breaks only the uncross, which none of the other STP
+  // scenarios in this corpus reaches: stp_groups_and_admission never calls
+  // BeginPreOpen, and auction_preopen_continuous never registers a group.
+  // Accounts 201 and 202 are one firm (group 700) and cross at 100.00 with
+  // CancelBoth -- the pair must never print. Accounts 203 and 204 cross at
+  // the same price with no group and no STP, as a control: the uncross
+  // itself still has to trade when self-trade prevention does not engage.
+  s.push_back({"stp_group_auction_uncross",
+               []
+               {
+                 SymbolConfig c = spotCfg();
+                 Digest d;
+                 Run r(c, d);
+                 r.eng.setLedger(&r.led, VENUE_ACCT);
+                 r.eng.setStpGroup(201, 700);
+                 r.eng.setStpGroup(202, 700);
+                 r.push(InboundCommand{Deposit{201, BASE, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{202, QUOTE, quoteRaw(100000.0), SYM}});
+                 r.push(InboundCommand{Deposit{203, BASE, baseRaw(50.0), SYM}});
+                 r.push(InboundCommand{Deposit{204, QUOTE, quoteRaw(100000.0), SYM}});
+                 r.push(InboundCommand{AdminCmd{SYM, AdminAction::BeginPreOpen}});
+
+                 NewOrder groupSell;
+                 groupSell.id = 1;
+                 groupSell.symbol = SYM;
+                 groupSell.side = Side::SELL;
+                 groupSell.type = OrderType::LIMIT;
+                 groupSell.price = px(100.0);
+                 groupSell.quantity = qty(5.0);
+                 groupSell.accountId = 201;
+                 groupSell.stp = STPMode::CancelBoth;
+                 r.push(InboundCommand{groupSell});
+
+                 NewOrder groupBuy = groupSell;
+                 groupBuy.id = 2;
+                 groupBuy.side = Side::BUY;
+                 groupBuy.accountId = 202;
+                 r.push(InboundCommand{groupBuy});
+
+                 NewOrder ctrlSell = groupSell;
+                 ctrlSell.id = 3;
+                 ctrlSell.accountId = 203;
+                 ctrlSell.stp = STPMode::None;
+                 r.push(InboundCommand{ctrlSell});
+
+                 NewOrder ctrlBuy = groupBuy;
+                 ctrlBuy.id = 4;
+                 ctrlBuy.accountId = 204;
+                 ctrlBuy.stp = STPMode::None;
+                 r.push(InboundCommand{ctrlBuy});
+
+                 r.push(InboundCommand{AdminCmd{SYM, AdminAction::OpenContinuous}});
+                 return r.hashes();
                }});
 
   // Pre-open accumulation, uncross, continuous, re-opening auction, uncross
@@ -873,7 +1079,7 @@ std::vector<Scenario> corpus()
                        r.eng.setFeeSchedule(fs);
                        r.eng.setLedger(&r.led, VENUE_ACCT);
                      },
-                     false, "golden_snap_spot");
+                     false, "golden_snap_spot", /*viaClone*/ true);
                }});
 
   // Checkpoint with open holds, MMP windows and STP groups in flight: the
@@ -898,7 +1104,7 @@ std::vector<Scenario> corpus()
                        r.eng.setStpGroup(1, 900);
                        r.eng.setStpGroup(2, 900);
                      },
-                     true, "golden_snap_lastlook");
+                     true, "golden_snap_lastlook", /*viaClone*/ true);
                }});
 
   // Checkpoint with open perp positions, posted margin and a funding
@@ -915,7 +1121,7 @@ std::vector<Scenario> corpus()
                        r.eng.setLedger(&r.led, VENUE_ACCT);
                        r.eng.setFundingSchedule(DurationNs{8000}, SeqNanos::fromRaw(8000));
                      },
-                     false, "golden_snap_perp");
+                     false, "golden_snap_perp", /*viaClone*/ true);
                }});
 
   // Checkpoint taken while the instrument is delisted. Delist lands last in

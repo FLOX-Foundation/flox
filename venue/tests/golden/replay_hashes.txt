@@ -17,8 +17,12 @@ mixed_flow_cleared                     add7a2f99388bfb8  fc19dd0073f69048  9bb51
 gtd_expiry_sweep                       a3938d33250680d0  fc19dd0073f69048  ef8a5630e2898b26
 last_look_accept_reject_timeout        e2007709d3aa5507  fc19236df12ef7b3  089612811f49f469
 last_look_tolerance_accept_on_timeout  557bdfb3edef5089  fc192c242e4dde4e  b69c923686e5567a
+last_look_wrong_account_decision       857caca165292029  8052ef67ccdd52af  e1c7c185742f690f
 mmp_quote_mass_cancel                  d5b79583231ef45f  fc19dd0073f69048  28dcd6078b49b626
+mass_cancel_named_orders               f6fb0ea5c09fdc32  fc19dd0073f69048  b933f7691157694d
+stp_cancel_both_continuous             31b2911463963425  fc19dd0073f69048  559f6ef9ea7e7438
 stp_groups_and_admission               f47c57f3758f3ab9  fc19dd0073f69048  75896cf4c673078d
+stp_group_auction_uncross              2594848d637a7bd2  fc19dd0073f69048  7538561876b4a2e2
 auction_preopen_continuous             89d4e761e915ab04  fc19dd0073f69048  db845610221e6566
 session_status_transitions             3c4588d9a083a1d8  fc19dd0073f69048  41f5b819d845f965
 perp_funding_liquidation               89f8124cc7961b45  fc19dd0070df52c3  c674c91adb4964b8
