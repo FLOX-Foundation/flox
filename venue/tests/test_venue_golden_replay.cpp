@@ -399,8 +399,17 @@ Hashes plain(const SymbolConfig& c, const std::vector<InboundCommand>& cmds, con
 // state and, from the snapshot on, emit the same events. The golden stream
 // digest of this scenario carries the snapshot record trace as well, so the
 // ORDER writeSnapshot writes its records in is nailed down too.
+// `viaClone` runs the checkpoint half through cloneForSnapshot rather than
+// through the live engine's own writeSnapshot -- the path production actually
+// takes (SequencedShard::doCheckpoint clones off the hot path and serializes
+// the clone in the background; see venue/include/flox-venue/sequenced_shard.h).
+// The two are not the same thing: a field the clone forgets to copy is
+// invisible to a snapshot written straight off the live engine, whose own
+// copy of that field was never wrong. Default false leaves every existing
+// scenario's bytes, and golden hashes, untouched.
 Hashes checkpointed(const SymbolConfig& c, const std::vector<InboundCommand>& cmds,
-                    const Setup& setup, bool lastLook, const char* pathStem)
+                    const Setup& setup, bool lastLook, const char* pathStem,
+                    bool viaClone = false)
 {
   const size_t half = cmds.size() / 2;
 
@@ -460,7 +469,15 @@ Hashes checkpointed(const SymbolConfig& c, const std::vector<InboundCommand>& cm
     std::remove(path.c_str());
     {
       Journal out2(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
-      a.eng.writeSnapshot(out2);
+      if (viaClone)
+      {
+        auto clone = a.eng.cloneForSnapshot();
+        clone.engine->writeSnapshot(out2);
+      }
+      else
+      {
+        a.eng.writeSnapshot(out2);
+      }
       out2.flush();
     }
     const auto records = Journal::loadTimed(path);
@@ -899,6 +916,44 @@ std::vector<Scenario> corpus()
                        r.eng.setFundingSchedule(DurationNs{8000}, SeqNanos::fromRaw(8000));
                      },
                      false, "golden_snap_perp");
+               }});
+
+  // Checkpoint taken while the instrument is delisted. Delist lands last in
+  // the pre-checkpoint half; a probe order opens the post-restore half, so it
+  // is the very first thing the restored engine sees. `viaClone` routes the
+  // checkpoint through cloneForSnapshot -- the path production actually
+  // takes -- rather than the live engine's own writeSnapshot: a checkpoint
+  // clone that forgets a flag is invisible to the plain path but not to this
+  // one. checkpointed()'s own EXPECT_EQ(b.eng.stateHash(), cont.eng.stateHash())
+  // already catches a clone that comes back listed, since the continuous run
+  // rejects the probe order and a mis-restored split run would accept it.
+  s.push_back({"snapshot_midstream_delisted",
+               []
+               {
+                 SymbolConfig c = spotCfg();
+                 std::vector<InboundCommand> cmds;
+                 cmds.emplace_back(Deposit{1, BASE, baseRaw(100.0), SYM});
+                 cmds.emplace_back(Deposit{1, QUOTE, quoteRaw(100000.0), SYM});
+                 cmds.emplace_back(Deposit{2, QUOTE, quoteRaw(100000.0), SYM});
+                 cmds.emplace_back(InboundCommand{AdminCmd{SYM, AdminAction::Delist}});
+                 NewOrder probe;
+                 probe.id = 501;
+                 probe.symbol = SYM;
+                 probe.side = Side::BUY;
+                 probe.type = OrderType::LIMIT;
+                 probe.price = px(100.0);
+                 probe.quantity = qty(1.0);
+                 probe.accountId = 2;
+                 cmds.emplace_back(probe);
+                 NewOrder probe2 = probe;
+                 probe2.id = 502;
+                 cmds.emplace_back(probe2);
+                 cmds.emplace_back(InboundCommand{CancelOrder{999, SYM, 0}});
+                 cmds.emplace_back(InboundCommand{Deposit{2, BASE, baseRaw(1.0), SYM}});
+                 return checkpointed(
+                     c, cmds, [](Run& r)
+                     { r.eng.setLedger(&r.led, VENUE_ACCT); }, false,
+                     "golden_snap_delisted", /*viaClone*/ true);
                }});
 
   return s;
