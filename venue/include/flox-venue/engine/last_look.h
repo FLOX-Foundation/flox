@@ -560,8 +560,24 @@ class LastLook
       host.publishTracked(OrderExecuted{h.maker, cfg.symbol, h.qty, makerLeaves, false,
                                         makerLeaves.isZero(), h.price, makerDisp, h.makerAccount,
                                         h.makerClientOrderId});
-      host.publishTracked(OrderExecuted{h.taker, cfg.symbol, h.qty, Quantity{}, true, false,
-                                        h.price, Quantity{}, h.takerAccount,
+      // The taker leg is done exactly when nothing of its order is still
+      // outstanding: not resting (a GTC/GTD residual may already sit in the
+      // book, untouched by this hold -- see restoreTaker/onNew's
+      // residualRests) and not sitting in another open hold (one sweep can
+      // hold against more than one last-look maker; each resolves on its own
+      // maker's schedule). `it` above already erased THIS hold, so
+      // heldQtyFor sums only the others. Hardcoding leaves=0/complete=true
+      // here would fire the terminal report before a sibling hold or a
+      // resting residual actually clears; hardcoding them false/0, as this
+      // used to, never fires it at all -- see T062.
+      const RestingOrder* tk = host.findResting(h.taker);
+      const Quantity takerRestLeaves =
+          tk ? Quantity::fromRaw(tk->leaves.raw() + tk->hidden.raw()) : Quantity{};
+      const Quantity takerLeaves =
+          Quantity::fromRaw(takerRestLeaves.raw() + heldQtyFor(h.taker).raw());
+      const Quantity takerDisp = tk ? tk->leaves : Quantity{};  // displayed peak, public feed
+      host.publishTracked(OrderExecuted{h.taker, cfg.symbol, h.qty, takerLeaves, true,
+                                        takerLeaves.isZero(), h.price, takerDisp, h.takerAccount,
                                         h.takerClientOrderId});
     }
     else

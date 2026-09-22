@@ -15,9 +15,9 @@ journal_recovery_replayed              41498c5a43965585  fc19dd0073f69048  eacbd
 mixed_flow_no_ledger                   e53ad60e5195b020  fc19dd0073f69048  ddb35f9b9c796bf7
 mixed_flow_cleared                     dec456c60536e756  fc19dd0073f69048  56f7efcad38e7dec
 gtd_expiry_sweep                       39386118497de809  fc19dd0073f69048  c6324b6a88e738da
-last_look_accept_reject_timeout        7184bcdc7edccdd3  fc19236df12ef7b3  8594254a9cb7a753
-last_look_tolerance_accept_on_timeout  48e3c534e4ba556d  fc192c242e4dde4e  b866e66a68b48a33
-last_look_wrong_account_decision       857caca165292029  8052ef67ccdd52af  e1c7c185742f690f
+last_look_accept_reject_timeout        7184bcdc7edccdd3  fc19236df12ef7b3  e6c39eaa687040d5
+last_look_tolerance_accept_on_timeout  48e3c534e4ba556d  fc192c242e4dde4e  56912d5850392783
+last_look_wrong_account_decision       857caca165292029  8052ef67ccdd52af  e1c7c1857453313a
 mmp_quote_mass_cancel                  d5b79583231ef45f  fc19dd0073f69048  fa94cfdb38534847
 mass_cancel_named_orders               f6fb0ea5c09fdc32  fc19dd0073f69048  a017326da6d8f580
 stp_cancel_both_continuous             31b2911463963425  fc19dd0073f69048  6400f340e7a363b3
@@ -30,8 +30,8 @@ perp_funding_liquidation               89f8124cc7961b45  fc19dd0070df52c3  f6184
 perp_adl_bankruptcy                    70417ac9a8a4a833  fc19dd0070f0868e  0c8e2c04ae7d6d8a
 perp_adl_scripted                      17a056ea7a73878a  fc19dd0070f0868e  0a05fcf86107c40a
 snapshot_midstream_spot                9f44c165acdb38ab  fc19dd0073f69048  785c184e986bc71a
-snapshot_midstream_lastlook            d7efd37604bc4b78  fc19236df12ef7b3  61fa67874e53081e
+snapshot_midstream_lastlook            d7efd37604bc4b78  fc19236df12ef7b3  adc1f4dd5b3a7496
 snapshot_midstream_perp                f3419d7d3d044985  fc19dd0070df52c3  a58ebebba695394f
 snapshot_midstream_delisted            7868af69d1a0fe9b  fc19dd0073f69048  e8ece1429e0bf7b3
-snapshot_midstream_held_clordid        ca56f6ad2a0d0996  8052ef67ccdd52af  ff023b9e2d613710
+snapshot_midstream_held_clordid        ca56f6ad2a0d0996  8052ef67ccdd52af  bb6c77d468750c0f
 quote_ladder_replace                   38a988827c07be87  fc19dd0073f69048  573c81be9e7c3ab9
