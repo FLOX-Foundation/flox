@@ -188,7 +188,8 @@ void MatchingEngine<Book>::processTriggers()
     else if (out.residualCanceled)
     {
       releaseReservationExceptHeld(agg->id);  // held slices stay reserved
-      sink_(OrderCanceled{agg->id, cfg_.id, out.residualCancelReason, agg->accountId, agg->clientOrderId});
+      sink_(OrderCanceled{agg->id, cfg_.id, out.residualCancelReason, agg->accountId,
+                          agg->clientOrderId, out.leaves, out.filled});
     }
     ref = triggerReference();  // trades may have moved the last-price reference
     if (!ref)
@@ -365,7 +366,8 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
     // order. Held slices stay reserved: their accept still has to settle.
     releaseReservationExceptHeld(m.id);
     forgetOrder(m.id);
-    sink_(OrderCanceled{m.id, m.symbol, out.residualCancelReason, acct, curClientOrderId});
+    sink_(OrderCanceled{m.id, m.symbol, out.residualCancelReason, acct, curClientOrderId,
+                        out.leaves, out.filled});
     processTriggers();
     return;
   }
@@ -418,12 +420,16 @@ void MatchingEngine<Book>::onCancel(const CancelOrder& c)
   const uint64_t restingAcct = ownerOf(c.id);
   const uint64_t stopAcct = stops_.accountOf(c.id);
   const uint64_t stopClOrd = stops_.clientOrderIdOf(c.id);
+  // Captured before stops_.cancel() below erases the entry (T058): a pending
+  // stop never partially fills, so its full submitted quantity IS its
+  // LeavesQty on this cancel.
+  const Quantity stopQty = stops_.quantityOf(c.id);
   if (auto ro = book_.cancel(c.id))
   {
     releaseReservation(c.id);
     forgetOrder(c.id);
     sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, restingAcct,
-                        ro->clientOrderId});
+                        ro->clientOrderId, ro->leaves + ro->hidden, ro->cumQty});
   }
   else if (stops_.cancel(c.id))
   {
@@ -432,7 +438,8 @@ void MatchingEngine<Book>::onCancel(const CancelOrder& c)
     // looks for an order that no longer exists.
     oco_.unlink(c.id);
     forgetOrder(c.id);
-    sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, stopAcct, stopClOrd});
+    sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, stopAcct, stopClOrd, stopQty,
+                        Quantity{}});
   }
   else
   {

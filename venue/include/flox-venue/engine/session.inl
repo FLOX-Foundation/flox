@@ -136,17 +136,20 @@ void MatchingEngine<Book>::cancelEntireBook(CancelReason reason)
       const uint64_t acct = ownerOf(id);
       releaseReservation(id);
       forgetOrder(id);
-      pub_.publishCanceled(id, reason, acct, ro->clientOrderId);
+      pub_.publishCanceled(id, reason, acct, ro->clientOrderId, ro->leaves + ro->hidden,
+                           ro->cumQty);
     }
   }
   for (OrderId id : stops_.ids())
   {
     const uint64_t acct = stops_.accountOf(id);
     const uint64_t clOrd = stops_.clientOrderIdOf(id);
+    // Captured before stops_.cancel() below erases the entry (T058).
+    const Quantity stopQty = stops_.quantityOf(id);
     if (stops_.cancel(id))
     {
       releaseReservation(id);
-      sink_(OrderCanceled{id, cfg_.id, reason, acct, clOrd});
+      sink_(OrderCanceled{id, cfg_.id, reason, acct, clOrd, stopQty, Quantity{}});
     }
   }
 }
@@ -360,6 +363,10 @@ void MatchingEngine<Book>::runAuction()
     // leg out of the book before the reports are emitted.
     const uint64_t bClOrd = bid->clientOrderId;
     const uint64_t aClOrd = ask->clientOrderId;
+    const Quantity bLeavesTotal = bid->leaves + bid->hidden;  // T058
+    const Quantity aLeavesTotal = ask->leaves + ask->hidden;
+    const Quantity bCum = bid->cumQty;
+    const Quantity aCum = ask->cumQty;
     // Self-trade prevention. An auction has no aggressor -- both legs are
     // resting -- so the verdict is reached from the two recorded modes rather
     // than from an aggressor's (StpState::auctionVerdict); what is left here
@@ -405,10 +412,13 @@ void MatchingEngine<Book>::runAuction()
         const OrderId blocked = lim.makerBlocked ? askId : bidId;
         const uint64_t blockedAcct = lim.makerBlocked ? aAcct : bAcct;
         const uint64_t blockedClOrd = lim.makerBlocked ? aClOrd : bClOrd;
+        const Quantity blockedLeaves = lim.makerBlocked ? aLeavesTotal : bLeavesTotal;
+        const Quantity blockedCum = lim.makerBlocked ? aCum : bCum;
         book_.cancel(blocked);
         releaseReservation(blocked);
         forgetOrder(blocked);
-        sink_(OrderCanceled{blocked, cfg_.id, lim.reason, blockedAcct, blockedClOrd});
+        sink_(OrderCanceled{blocked, cfg_.id, lim.reason, blockedAcct, blockedClOrd, blockedLeaves,
+                            blockedCum});
         continue;
       }
       fill = lim.qty;

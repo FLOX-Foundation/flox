@@ -384,6 +384,12 @@ class FixCodec
       clOrd(c->clientOrderId);
       add(150, "4");  // Canceled
       add(39, "4");
+      // T058: the residual this cancel actually killed, and what the order
+      // filled before it. Without 151 a counterparty that reads LeavesQty
+      // off terminal reports (routine for an IOC/FOK residual) has no way to
+      // tell "filled completely" from "the remainder was silently canceled".
+      add(151, qn(c->leavesQty));  // LeavesQty
+      add(14, qn(c->cumQty));      // CumQty
     }
     else if (const auto* j = std::get_if<OrderRejected>(&ev))
     {
@@ -392,6 +398,12 @@ class FixCodec
       add(150, "8");  // Rejected
       add(39, "8");
       add(58, text.empty() ? std::string(toString(j->reason)) : std::string(text));
+      // T058: a rejected order is never left resting (151 is always 0), but
+      // CumQty is not always 0 -- a fill-time risk re-check or an STP block
+      // can reject an order's residual after matcher_.cross() already
+      // printed part of it (see OrderRejected::cumQty).
+      add(151, qn(Quantity{}));
+      add(14, qn(j->cumQty));
     }
     else if (const auto* m = std::get_if<OrderModified>(&ev))
     {

@@ -80,11 +80,26 @@
   had to keep a 37 to 11 map of its own just to recognise a hold or a reject
   on one of them. Appended after `seq` on FillRejected, and after `takerSide`
   on FillHeld, so a version-6 reader skips it via blockLength on both.
+
+  Version 9 (T058): Canceled (13) gained trailing `leavesQty` and `cumQty`
+  fields (QtyRaw each, sinceVersion="9"): the residual a cancel actually
+  killed, and what the order filled before it. A reader that took LeavesQty
+  off a terminal report (routine for an IOC/FOK residual) previously had no
+  way to distinguish a full fill from a silently-canceled remainder.
+  Rejected (14) gained a trailing `cumQty` (QtyRaw, sinceVersion="9"), no
+  leavesQty: a rejected order is never left resting, so that is always 0.
+  cumQty is 0 at every call site this engine has today (a reject only ever
+  fires pre-trade), carried for FIX-spec completeness. Both appended after
+  `clOrdId`, so a version-8 reader skips them via blockLength, but unlike
+  every earlier addition here, this one moves where `seq` sits relative to
+  the end of the block on these two templates, since clOrdId was previously
+  the last field on both. The C++ codec's seqOffsetIn has its own
+  version-gated branch for it.
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.oe"
                    id="92"
-                   version="8"
+                   version="9"
                    semanticVersion="1.0"
                    description="Flox venue order entry + execution reports"
                    byteOrder="littleEndian">
@@ -237,22 +252,29 @@
     <field name="seq"     id="8" type="SeqNum" sinceVersion="1"/>
   </sbe:message>
 
-  <!-- Order canceled (reason = CancelReason underlying value). -->
+  <!-- Order canceled (reason = CancelReason underlying value). leavesQty is
+       the residual this cancel actually killed; cumQty is what the order
+       filled over its whole life before this cancel. -->
   <sbe:message name="Canceled" id="13">
     <field name="orderId" id="1" type="OrderId"/>
     <field name="symbol"  id="2" type="Symbol"/>
     <field name="reason"  id="3" type="EnumU8"/>
     <field name="seq"     id="4" type="SeqNum" sinceVersion="1"/>
     <field name="clOrdId"  id="5" type="OrderId" sinceVersion="4"/>
+    <field name="leavesQty" id="6" type="QtyRaw" sinceVersion="9"/>
+    <field name="cumQty"    id="7" type="QtyRaw" sinceVersion="9"/>
   </sbe:message>
 
-  <!-- Order rejected (reason = RejectReason underlying value). -->
+  <!-- Order rejected (reason = RejectReason underlying value). cumQty is
+       what the order filled before this reject; no leavesQty field, since
+       a rejected order is never left resting, so it is always 0. -->
   <sbe:message name="Rejected" id="14">
     <field name="orderId" id="1" type="OrderId"/>
     <field name="symbol"  id="2" type="Symbol"/>
     <field name="reason"  id="3" type="EnumU8"/>
     <field name="seq"     id="4" type="SeqNum" sinceVersion="1"/>
     <field name="clOrdId"  id="5" type="OrderId" sinceVersion="4"/>
+    <field name="cumQty"   id="6" type="QtyRaw" sinceVersion="9"/>
   </sbe:message>
 
   <!-- Order replaced (priorityKept = kept time priority in place). -->

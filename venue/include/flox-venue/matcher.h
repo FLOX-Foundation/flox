@@ -295,7 +295,8 @@ class Matcher
             {
               continue;  // hook may have reshaped the book -- re-peek
             }
-            sink(OrderCanceled{blockedId, order.symbol, lim.reason, blockedAcct});
+            sink(OrderCanceled{blockedId, order.symbol, lim.reason, blockedAcct, 0,
+                               m->leaves + m->hidden, m->cumQty});
             book.cancel(blockedId);
             continue;
           }
@@ -615,13 +616,15 @@ class Matcher
     switch (order.stp)
     {
       case STPMode::CancelOldest:
-        sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId});
+        sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId, 0,
+                           m.leaves + m.hidden, m.cumQty});
         book.cancel(m.id);
         return StpOutcome::RePeek;
       case STPMode::CancelNewest:
         return StpOutcome::CancelTaker;
       case STPMode::CancelBoth:
-        sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId});
+        sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId, 0,
+                           m.leaves + m.hidden, m.cumQty});
         book.cancel(m.id);
         return StpOutcome::CancelTaker;
       case STPMode::Decrement:
@@ -636,7 +639,8 @@ class Matcher
         const Quantity dec = qmin(leaves, restTotal);
         if (!(dec < restTotal))  // resting <= incoming: resting fully removed
         {
-          sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId});
+          sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId, 0,
+                             m.leaves + m.hidden, m.cumQty});
           book.cancel(m.id);
         }
         else  // incoming smaller: reduce resting, incoming fully decremented

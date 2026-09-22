@@ -174,6 +174,7 @@ class LadderBook
     }
     Node& node = nodes_[static_cast<size_t>(n)];
     node.order.leaves -= by;
+    node.order.cumQty += by;  // T058: real fill -- track the running total
     levelRef(node.side, node.level).totalQty -= by;
     if (!node.order.leaves.isZero())
     {
@@ -267,6 +268,7 @@ class LadderBook
     const int32_t head = level.head;
     Node& node = nodes_[static_cast<size_t>(head)];
     node.order.leaves -= by;
+    node.order.cumQty += by;  // T058: real fill -- track the running total
     level.totalQty -= by;
     if (node.order.leaves.isZero())
     {

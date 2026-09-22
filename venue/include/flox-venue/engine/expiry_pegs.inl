@@ -36,19 +36,23 @@ void MatchingEngine<Book>::expireOrders()
     expiry_.erase(id);
     rejectHoldsFor(id);  // expiry removes the order: resolve holds first
     const uint64_t stopClOrd = stops_.clientOrderIdOf(id);
+    // Captured before stops_.cancel() below erases the entry (T058): see
+    // onCancel's identical reasoning.
+    const Quantity stopQty = stops_.quantityOf(id);
     if (auto ro = book_.cancel(id))  // still resting -> expire it
     {
       const uint64_t acct = ownerOf(id);
       releaseReservation(id);
       forgetOrder(id);
-      sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct, ro->clientOrderId});
+      sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct, ro->clientOrderId,
+                          ro->leaves + ro->hidden, ro->cumQty});
     }
     else if (stops_.cancel(id))  // never triggered -> expire the conditional
     {
       const uint64_t acct = ownerOf(id);
       oco_.unlink(id);
       forgetOrder(id);
-      sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct, stopClOrd});
+      sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct, stopClOrd, stopQty, Quantity{}});
     }
   }
 }
@@ -132,7 +136,8 @@ void MatchingEngine<Book>::repeg()
       {
         forgetOrder(id);
         pegs_.erase(id);
-        sink_(OrderCanceled{id, cfg_.id, CancelReason::UserRequested, ro->accountId, ro->clientOrderId});
+        sink_(OrderCanceled{id, cfg_.id, CancelReason::UserRequested, ro->accountId,
+                            ro->clientOrderId, ro->leaves + ro->hidden, ro->cumQty});
         continue;
       }
     }
@@ -170,16 +175,19 @@ void MatchingEngine<Book>::cancelOcoSibling(OrderId id)
   const uint64_t restingAcct = ownerOf(id);
   const uint64_t stopAcct = stops_.accountOf(id);
   const uint64_t stopClOrd = stops_.clientOrderIdOf(id);
+  // Captured before stops_.cancel() below erases the entry (T058).
+  const Quantity stopQty = stops_.quantityOf(id);
   if (auto ro = book_.cancel(id))
   {
     releaseReservation(id);
     forgetOrder(id);
-    sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, restingAcct,
-                        ro->clientOrderId});
+    sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, restingAcct, ro->clientOrderId,
+                        ro->leaves + ro->hidden, ro->cumQty});
   }
   else if (stops_.cancel(id))
   {
-    sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, stopAcct, stopClOrd});
+    sink_(OrderCanceled{id, cfg_.id, CancelReason::OcoTriggered, stopAcct, stopClOrd, stopQty,
+                        Quantity{}});
   }
 }
 

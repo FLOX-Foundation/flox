@@ -85,7 +85,25 @@ class SbeOrderEntryCodec
   //    var-length support and one message is not a reason to invent it. Slots
   //    past the count are zero-sized rungs, which is how a shorter ladder
   //    takes down the levels it stopped naming.
-  static constexpr uint16_t kVersion = 8;
+  // Schema version 9 (T058):
+  //  - Canceled gained trailing `leavesQty` and `cumQty` (i64 each,
+  //    sinceVersion=9): the residual this cancel actually killed, and what
+  //    the order filled before it. A reader that took LeavesQty off a
+  //    terminal report (routine for an IOC/FOK residual) previously had no
+  //    way to distinguish a full fill from a silently-canceled remainder.
+  //  - Rejected gained a trailing `cumQty` (i64, sinceVersion=9), no
+  //    leavesQty: a rejected order is never left resting, so that is always
+  //    0. cumQty is 0 at every call site this engine has today (an
+  //    OrderRejected only ever fires pre-trade), carried for FIX-spec
+  //    completeness and so a future reject path following a partial fill
+  //    does not misreport by construction.
+  //    Both appended after `clOrdId` (a version-8 frame's shorter
+  //    blockLength simply has neither), but this DOES move `seq`: unlike
+  //    every earlier addition, which landed on templates where clOrdId (or
+  //    takerSide) was already the last field, Canceled/Rejected keep
+  //    growing past it -- seqOffsetIn has its own version>=9 branch for
+  //    these two templates so it keeps subtracting the right trailing width.
+  static constexpr uint16_t kVersion = 9;
 
   enum class InTmpl : uint16_t
   {
@@ -148,8 +166,8 @@ class SbeOrderEntryCodec
   static constexpr uint16_t kBlockAccepted = 46;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockExecuted = 54;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockTrade = 53;
-  static constexpr uint16_t kBlockCanceled = 29;  // v4: + trailing clOrdId (u64)
-  static constexpr uint16_t kBlockRejected = 29;  // v4: + trailing clOrdId (u64)
+  static constexpr uint16_t kBlockCanceled = 45;  // v4: + clOrdId (u64); v9: + leavesQty, cumQty (i64 each)
+  static constexpr uint16_t kBlockRejected = 37;  // v4: + clOrdId (u64); v9: + cumQty (i64)
   static constexpr uint16_t kBlockReplaced = 45;  // v4: + trailing clOrdId (u64)
   static constexpr uint16_t kBlockTriggered = 28;
   static constexpr uint16_t kBlockFillHeld = 69;      // v7: + trailing clOrdId (u64)
@@ -449,6 +467,8 @@ class SbeOrderEntryCodec
       sbe::putU8(out, static_cast<uint8_t>(c->reason));
       sbe::putU64(out, seq);
       sbe::putU64(out, c->clientOrderId);
+      sbe::putI64(out, c->leavesQty.raw());  // v9 (T058): residual this cancel killed
+      sbe::putI64(out, c->cumQty.raw());     // v9 (T058): total filled before this cancel
     }
     else if (const auto* j = std::get_if<OrderRejected>(&ev))
     {
@@ -458,6 +478,10 @@ class SbeOrderEntryCodec
       sbe::putU8(out, static_cast<uint8_t>(j->reason));
       sbe::putU64(out, seq);
       sbe::putU64(out, j->clientOrderId);
+      // v9 (T058): total filled before this reject. No leavesQty field: a
+      // rejected order is never left resting, so it is always 0 (see
+      // OrderRejected::cumQty).
+      sbe::putI64(out, j->cumQty.raw());
     }
     else if (const auto* m = std::get_if<OrderModified>(&ev))
     {
@@ -559,11 +583,12 @@ class SbeOrderEntryCodec
   // is, so that is what decides.
   static constexpr uint16_t seqOffsetIn(const sbe::Header& h)
   {
+    const bool isCanceled = h.templateId == u16(OutTmpl::Canceled);
+    const bool isRejected = h.templateId == u16(OutTmpl::Rejected);
     const bool hasClOrdIdAfterSeq =
         h.version >= 4 &&
         (h.templateId == u16(OutTmpl::Accepted) || h.templateId == u16(OutTmpl::Executed) ||
-         h.templateId == u16(OutTmpl::Canceled) || h.templateId == u16(OutTmpl::Rejected) ||
-         h.templateId == u16(OutTmpl::Replaced));
+         isCanceled || isRejected || h.templateId == u16(OutTmpl::Replaced));
     const bool isFillHeld = h.templateId == u16(OutTmpl::FillHeld);
     const bool isFillRejected = h.templateId == u16(OutTmpl::FillRejected);
     uint16_t trailing = 8;
@@ -578,6 +603,22 @@ class SbeOrderEntryCodec
     else if (isFillHeld && h.version >= 6)
     {
       trailing = 9;
+    }
+    // T058 (v9): Canceled gained trailing leavesQty+cumQty (16 bytes, after
+    // clOrdId); Rejected gained trailing cumQty (8 bytes, after clOrdId).
+    // Both push `seq` further from the end of the block -- gated by version,
+    // exactly like every earlier addition here, so a v8 frame (still 16
+    // trailing bytes on both) keeps decoding correctly.
+    if (h.version >= 9)
+    {
+      if (isCanceled)
+      {
+        trailing += 16;
+      }
+      else if (isRejected)
+      {
+        trailing += 8;
+      }
     }
     return h.blockLength >= trailing ? static_cast<uint16_t>(h.blockLength - trailing) : 0;
   }

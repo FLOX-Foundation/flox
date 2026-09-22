@@ -951,6 +951,67 @@ std::vector<Scenario> corpus()
                  return r.hashes();
                }});
 
+  // T058 coverage gap: an auction uncross fills a resting order PARTIALLY
+  // (MatchingBook::consumeById, engine/session.inl's uncross loop -- a
+  // different real-fill mutation point than the plain FIFO fillFront every
+  // other scenario here exercises), and the residual is canceled afterward.
+  // Without this, a mutation that deletes RestingOrder::cumQty's increment
+  // inside consumeById passes every test in this corpus silently: nothing
+  // else here ever reports a cancel on an order that was partially filled
+  // through an uncross specifically, only through continuous FIFO matching.
+  // Same four orders/clearing price as the auction unit tests (BUY 101x5,
+  // SELL 99x5, BUY 100x3, SELL 100x2 -> uncrosses at 100 for 7 units; order 3
+  // is left resting with 1 of its 3), then the residual is explicitly
+  // canceled so the leftover's real cumQty (2) reaches the stream.
+  s.push_back({"auction_uncross_residual_cancel",
+               []
+               {
+                 SymbolConfig c = spotCfg();
+                 Digest d;
+                 Run r(c, d);
+                 r.eng.setLedger(&r.led, VENUE_ACCT);
+                 for (const auto& dep : deposits(4, 100000.0, 10'000'000.0))
+                 {
+                   r.push(dep);
+                 }
+                 r.push(InboundCommand{AdminCmd{SYM, AdminAction::BeginPreOpen}});
+
+                 NewOrder o1;
+                 o1.id = 1;
+                 o1.symbol = SYM;
+                 o1.side = Side::BUY;
+                 o1.type = OrderType::LIMIT;
+                 o1.price = px(101.0);
+                 o1.quantity = qty(5.0);
+                 o1.accountId = 1;
+                 r.push(InboundCommand{o1});
+
+                 NewOrder o2 = o1;
+                 o2.id = 2;
+                 o2.side = Side::SELL;
+                 o2.price = px(99.0);
+                 o2.accountId = 2;
+                 r.push(InboundCommand{o2});
+
+                 NewOrder o3 = o1;
+                 o3.id = 3;
+                 o3.price = px(100.0);
+                 o3.quantity = qty(3.0);
+                 o3.accountId = 3;
+                 r.push(InboundCommand{o3});
+
+                 NewOrder o4 = o2;
+                 o4.id = 4;
+                 o4.price = px(100.0);
+                 o4.quantity = qty(2.0);
+                 o4.accountId = 4;
+                 r.push(InboundCommand{o4});
+
+                 r.push(InboundCommand{AdminCmd{SYM, AdminAction::OpenContinuous}});  // uncross: order 3 left with 1
+                 r.push(InboundCommand{CancelOrder{3, SYM, {}, 3}});
+                 return r.hashes();
+               }});
+
   // Session and status transitions: halt, resume, close, reopen, delist,
   // relist, and an emergency halt-and-cancel. Every one of them publishes a
   // TradingStatusChanged, which is what the "drop a publication" mutation

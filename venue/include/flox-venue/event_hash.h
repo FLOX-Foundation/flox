@@ -57,6 +57,13 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     {
       h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
     }
+    if (!x->cumQty.isZero())
+    {
+      // T058: only when the rejected order actually printed a fill first
+      // (a post-cross reject) -- the overwhelming common case, a pre-trade
+      // reject, hashes exactly as it did before cumQty existed.
+      h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
+    }
   }
   else if (const auto* x = std::get_if<CancelRejected>(&e))
   {
@@ -107,6 +114,24 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     if (x->clientOrderId != 0)
     {
       h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
+    if (!x->leavesQty.isZero())
+    {
+      // T058: guarded the same way every other appended field on this
+      // digest is, but not actually a no-op case here -- a cancel always
+      // kills a positive residual (an order already at 0 has nothing left
+      // to cancel; it would have gone out as a completing OrderExecuted
+      // instead), so this fires on effectively every real OrderCanceled.
+      // Every golden scenario that exercises a cancel gets a new digest;
+      // see the PR's golden-table diff for which ones that is.
+      h = mix(h, static_cast<uint64_t>(x->leavesQty.raw()));
+    }
+    if (!x->cumQty.isZero())
+    {
+      // Unlike leavesQty, this one IS usually a no-op: most canceled orders
+      // never filled at all while resting, so most scenarios keep their
+      // digest unchanged.
+      h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
     }
   }
   else if (const auto* x = std::get_if<OrderModified>(&e))

@@ -83,8 +83,8 @@ void MatchingEngine<Book>::cancelForStp(OrderId id, uint64_t account)
   const auto ro = book_.cancel(id);
   releaseReservation(id);
   forgetOrder(id);
-  pub_.publishCanceled(id, CancelReason::SelfTradePrevention, account,
-                       ro ? ro->clientOrderId : 0);
+  pub_.publishCanceled(id, CancelReason::SelfTradePrevention, account, ro ? ro->clientOrderId : 0,
+                       ro ? ro->leaves + ro->hidden : Quantity{}, ro ? ro->cumQty : Quantity{});
 }
 
 // Trim one leg by the overlapping quantity without printing. A leg trimmed
@@ -164,7 +164,8 @@ void MatchingEngine<Book>::cancelAllForAccount(uint64_t account, CancelReason re
     {
       releaseReservation(id);
       forgetOrder(id);
-      pub_.publishCanceled(id, reason, account, ro->clientOrderId);
+      pub_.publishCanceled(id, reason, account, ro->clientOrderId, ro->leaves + ro->hidden,
+                           ro->cumQty);
     }
   }
 }

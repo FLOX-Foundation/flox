@@ -247,7 +247,7 @@ existed be named as version 0 rather than misread.
 A scale-checked build (`FLOX_SCALE_CHECKS`, the default without `NDEBUG`) is a
 different format under this rule, not a debugging variant of the same one. It
 widens `Decimal`, so `sizeof(Price)` goes 8 to 16 and every body holding a price
-or a quantity moves its fields. Those layouts carry version 16 and version 15
+or a quantity moves its fields. Those layouts carry version 18 and version 17
 respectively, so a journal from a debug venue is refused by name in a release
 one rather than read at the wrong offsets.
 
@@ -303,8 +303,26 @@ still produces a different exec-report stream than the previous one did (the
 hold and its reject now name the taker), so the generation number moves
 anyway, the same reasoning as 7/8 and 9/10.
 
+Versions 15 and 16 were the pair before `OrderCanceled` and `OrderRejected`
+carried the FIX `LeavesQty`/`CumQty` (151/14) a terminal report needs (T058):
+a counterparty that read `LeavesQty` off a cancel of an IOC/FOK residual --
+routine practice -- had no way to tell a full fill from a silently-canceled
+remainder, because the tag was never written. Closing that gap needed
+`RestingOrder::cumQty`, the resting order's running fill total, so a plain
+cancel of an order that partially filled earlier reports the real cumulative
+fill and not 0; `RestoreOrder` (the snapshot record for a resting book order)
+carries the same field, so it survives a recovery instead of resetting.
+`OrderCanceled`/`OrderRejected` are themselves outbound events, not journaled
+`InboundCommand` bodies, so widening them alone would not have moved the
+fingerprint -- `RestoreOrder` is what does, because a `Restore*` record is a
+tagged `InboundCommand` alternative in its own right (applied straight
+through the same path a snapshot replays), not a separate mechanism. A file
+written by a build without the field holds resting orders whose replayed
+`CumQty` silently resets to 0 across a recovery -- wrong for exactly the
+counterparty this fix protects -- so it is refused rather than read that way.
+
 Bumping the version is a deliberate edit, and the build stops you from
-forgetting it. The sizes of all 35 journaled command structs are folded into a
+forgetting it. The sizes of all 36 journaled command structs are folded into a
 compile-time fingerprint next to the version constant; adding a field to any of
 them fails that assertion with the reason, instead of surfacing months later as
 a length that does not add up during someone's recovery.
