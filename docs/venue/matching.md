@@ -276,7 +276,7 @@ checked on entry.
 |---|---|
 | `allowedTypes` | bitmask over `OrderType`; 0 = no restriction |
 | `allowedTif` | bitmask over `TimeInForce`; 0 = no restriction |
-| `deny` | `DenyResting`, `DenyAmend`, `DenyCancel`, `DenyQuote` |
+| `deny` | `DenyResting`, `DenyAmend`, `DenyCancel`, `DenyQuote`, `DenyNewOrder` |
 
 An absent profile permits everything, so an engine never given one behaves as
 before. `DenyResting` rejects GTC, GTD and post-only on admission rather than

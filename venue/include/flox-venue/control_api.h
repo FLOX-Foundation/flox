@@ -576,6 +576,10 @@ class ControlApi
       {
         deny |= AdmissionDeny::DenyQuote;
       }
+      if (req.text("denyNewOrder") == "true")
+      {
+        deny |= AdmissionDeny::DenyNewOrder;
+      }
       p.deny = deny;
       forward(InboundCommand{SetAdmissionProfile{sym, {}, account, p}});
       return ok();
