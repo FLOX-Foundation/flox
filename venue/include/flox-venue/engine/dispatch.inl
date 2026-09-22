@@ -203,6 +203,10 @@ void MatchingEngine<Book>::submit(const InboundCommand& cmd, SeqNanos tsNs)
   {
     onQuote(*q);
   }
+  else if (const auto* ql = std::get_if<QuoteLadder>(&cmd))
+  {
+    onQuoteLadder(*ql);
+  }
   else if (const auto* ll = std::get_if<LastLookDecision>(&cmd))
   {
     onLastLookDecision(*ll);
@@ -289,7 +293,7 @@ void MatchingEngine<Book>::submit(const InboundCommand& cmd, SeqNanos tsNs)
   // it is dropped, and the venue carries on as if it had never been sent.
   // Snapshot-only records are supposed to land here; a new LIVE command is
   // not, and nothing but this says so.
-  static_assert(std::variant_size_v<InboundCommand> == 35,
+  static_assert(std::variant_size_v<InboundCommand> == 36,
                 "new InboundCommand alternative: give it a branch in submit(), or confirm it "
                 "is snapshot-only and handled in applySnapshotRecord");
   processOco();

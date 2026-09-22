@@ -38,8 +38,12 @@ inline flox::RateLimitPolicy::ActionKind actionOf(const InboundCommand& c) noexc
   {
     return flox::RateLimitPolicy::ActionKind::Cancel;
   }
-  if (std::get_if<Quote>(&c))
+  if (std::get_if<Quote>(&c) || std::get_if<QuoteLadder>(&c))
   {
+    // A ladder is one action, not one per rung: it is one submission the
+    // client sent, and the limiter counts what the client sent. Charging it
+    // per level would price the command the venue offers as a way to send
+    // less out of the budget of the K commands it replaces.
     return flox::RateLimitPolicy::ActionKind::Submit;
   }
   if (std::get_if<LastLookDecision>(&c))
@@ -206,6 +210,12 @@ inline RejectEcho rejectEchoOf(const InboundCommand& c) noexcept
     // A quote names two ids; bidId is the one OrderRejected already uses
     // elsewhere for a whole-quote refusal (see MatchingEngine::onQuote).
     return RejectEcho{q->bidId, q->symbol, q->clientOrderId};
+  }
+  if (const auto* l = std::get_if<QuoteLadder>(&c))
+  {
+    // Same rule one level up: the ladder's first bid id is the one the engine
+    // itself names when it refuses a whole rung (see onQuoteLadder).
+    return RejectEcho{l->bidIdBase, l->symbol, l->clientOrderId};
   }
   return RejectEcho{};
 }

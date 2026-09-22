@@ -13,7 +13,9 @@
  * Record framing (native-endian, one record per command):
  *   [ts:8][stamp:1][tag:1][len:4][body:len][crc32:4]
  * stamp carries the format version (see kRecordVersion); tag is the
- * InboundCommand variant index; len is sizeof the body struct; crc32
+ * InboundCommand wire tag; len is the body's length -- sizeof the body struct
+ * for every command but QuoteLadder, which is written as its head plus the
+ * rungs it names (journaledBodySize / quoteLadderBodySize); crc32
  * (flox::util::Crc32) covers ts+stamp+tag+len+body. A torn tail (a record whose
  * bytes are not fully present) or a corrupted record is DETECTED on load: the
  * loader returns the largest intact prefix and never materialises a
@@ -91,7 +93,10 @@ static_assert(std::is_trivially_copyable_v<SetAdmissionProfile>,
               "SetAdmissionProfile must be blittable");
 static_assert(std::is_trivially_copyable_v<SetRiskLimits>, "SetRiskLimits must be blittable");
 static_assert(std::is_trivially_copyable_v<AdjustPosition>, "AdjustPosition must be blittable");
-static_assert(std::variant_size_v<InboundCommand> == 35,
+static_assert(std::is_trivially_copyable_v<QuoteLadderLevel>,
+              "QuoteLadderLevel must be blittable");
+static_assert(std::is_trivially_copyable_v<QuoteLadder>, "QuoteLadder must be blittable");
+static_assert(std::variant_size_v<InboundCommand> == 36,
               "new InboundCommand alternative: extend expectedBodySize/appendDecoded and the "
               "blittable asserts above");
 
@@ -176,6 +181,27 @@ static_assert(std::has_unique_object_representations_v<SetRiskLimits>,
               "SetRiskLimits carries padding");
 static_assert(std::has_unique_object_representations_v<AdjustPosition>,
               "AdjustPosition carries padding");
+static_assert(std::has_unique_object_representations_v<QuoteLadderLevel>,
+              "QuoteLadderLevel carries padding");
+static_assert(std::has_unique_object_representations_v<QuoteLadder>,
+              "QuoteLadder carries padding");
+// The ladder is the one body written short: a record carries the head and the
+// rungs it names, never the unused tail of the block (quoteLadderBodySize).
+// So the head has to END on the level array, with nothing between them that a
+// short write would drop and a reader would then invent -- which is exactly
+// what offsetof(level) == the sum of the fields before it says.
+static_assert(kQuoteLadderHeadSize ==
+                  sizeof(QuoteLadder::accountId) + sizeof(QuoteLadder::clientOrderId) +
+                      sizeof(QuoteLadder::expiryNs) + sizeof(QuoteLadder::visibleQuantity) +
+                      sizeof(QuoteLadder::bidIdBase) + sizeof(QuoteLadder::askIdBase) +
+                      sizeof(QuoteLadder::symbol) + sizeof(QuoteLadder::levels) +
+                      sizeof(QuoteLadder::stp) + sizeof(QuoteLadder::lastLook) +
+                      sizeof(QuoteLadder::postOnly) + sizeof(QuoteLadder::reduceOnly) +
+                      sizeof(QuoteLadder::tif) + sizeof(QuoteLadder::pad0_),
+              "QuoteLadder has a gap between its head and its levels");
+static_assert(sizeof(QuoteLadder) ==
+                  kQuoteLadderHeadSize + kQuoteLadderLevels * sizeof(QuoteLadderLevel),
+              "QuoteLadder carries something after its levels");
 
 // Version of the on-disk record format this build writes and reads. Bodies go
 // to disk as raw bytes, so the version stands for the layout of all 34 command
@@ -212,10 +238,18 @@ static_assert(std::has_unique_object_representations_v<AdjustPosition>,
 // reason it did at 9/10: a journal replayed by this build produces a
 // different exec-report stream (the hold and its reject now name the taker)
 // than the same file replayed by the previous one.
+// 13/14 -> 15/16: QuoteLadder (tag 35), a market maker's whole set of levels
+// on one symbol in ONE record instead of one Quote per level. A build without
+// the alternative has no type for tag 35 at all, so it would refuse such a
+// file by tag rather than read it -- the version pair says so first, and by
+// name. It is also the first body written SHORT: a ladder record carries the
+// head plus the rungs it names (quoteLadderBodySize), so the length of a
+// record is a property of the record and not only of its tag. Every other tag
+// is unchanged and still fixed-length.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 14;
+inline constexpr uint8_t kRecordVersion = 16;
 #else
-inline constexpr uint8_t kRecordVersion = 13;
+inline constexpr uint8_t kRecordVersion = 15;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
@@ -279,12 +313,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0x3651e7e477354404ULL,
+static_assert(bodyLayoutFingerprint() == 0x2920f9b5db40ba17ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0x70158dbaaad1aafcULL,
+static_assert(bodyLayoutFingerprint() == 0xb64828009bd760f7ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
@@ -301,6 +335,22 @@ inline std::string unknownTagMessage(const std::string& path, uint8_t tag, size_
          " after " + std::to_string(afterRecords) + " good records" +
          " is not a command this build knows. The file was written by a build with a command "
          "this one does not have; reading past it would silently return a prefix of the history.";
+}
+
+// Bytes of a command that actually go into its record. sizeof for all but one
+// of them: the ladder is written as its head plus the rungs it names, so a
+// five-level ladder costs five levels of wire and not eight. Everything else
+// about the framing is unchanged -- the length still travels in the header,
+// and the crc still covers exactly the bytes written.
+template <class T>
+inline constexpr size_t journaledBodySize(const T&) noexcept
+{
+  return sizeof(T);
+}
+
+inline constexpr size_t journaledBodySize(const QuoteLadder& l) noexcept
+{
+  return quoteLadderBodySize(l);
 }
 
 class JournalFormatError : public std::runtime_error
@@ -394,7 +444,7 @@ class Journal
     std::visit(
         [&](const auto& v)
         {
-          const uint32_t len = static_cast<uint32_t>(sizeof(v));
+          const uint32_t len = static_cast<uint32_t>(journaledBodySize(v));
           const uint8_t stamp = kRecordStamp;
           rec_.clear();
           appendBytes(&tsNs, sizeof(tsNs));
@@ -406,7 +456,12 @@ class Journal
           // explicit pad fields with their own default member initializer, so
           // v carries zeros there the same way it carries zeros in any other
           // field the caller left unset. Nothing to zero here.
-          appendBytes(&v, sizeof(v));
+          //
+          // `len` is sizeof(v) for every command but the ladder, whose unused
+          // tail is not written at all -- which is the point of the record,
+          // and is safe for exactly the same reason: the bytes left out are
+          // the ones that were zero.
+          appendBytes(&v, len);
           const uint32_t crc = flox::util::Crc32::compute(rec_.data(), rec_.size());
           appendBytes(&crc, sizeof(crc));
         },
@@ -515,7 +570,7 @@ class Journal
         // on; this is not.
         throw JournalFormatError(unknownTagMessage(path, tag, v.size()));
       }
-      if (len != expect)
+      if (!bodySizeAccepted(tag, len, expect))
       {
         break;  // body the wrong size for its tag: corrupt, stop
       }
@@ -536,7 +591,16 @@ class Journal
 
       int64_t ts;
       std::memcpy(&ts, frame.data(), sizeof(ts));
-      appendDecoded(v, ts, tag, frame.data() + kHeaderSize);
+      // The one length that the framing alone cannot confirm: a ladder's
+      // record length has to be the length its own `levels` byte asks for.
+      // The crc has already passed, so a mismatch is not damage in transit --
+      // it is a record laid out by rules this build does not have, and
+      // applying its rungs would replay a ladder nobody sent.
+      if (tag == kQuoteLadderWireTag && !quoteLadderLengthAgrees(frame.data() + kHeaderSize, len))
+      {
+        break;
+      }
+      appendDecoded(v, ts, tag, frame.data() + kHeaderSize, len);
     }
     return v;
   }
@@ -571,6 +635,34 @@ class Journal
   static uint32_t expectedBodySizeForTag(uint8_t tag) { return expectedBodySize(tag); }
 
  private:
+  // Is `len` a length this tag can legitimately have? For every fixed-length
+  // command that is "the one size its type has". The ladder is the exception
+  // the whole record exists for: its body is the head plus 0..K rungs, so the
+  // decoder checks the SHAPE of the length here and the record's own `levels`
+  // byte confirms which of those shapes it is (quoteLadderLengthAgrees).
+  static bool bodySizeAccepted(uint8_t tag, uint32_t len, uint32_t expect)
+  {
+    if (tag != kQuoteLadderWireTag)
+    {
+      return len == expect;
+    }
+    if (len < kQuoteLadderHeadSize || len > expect)
+    {
+      return false;
+    }
+    return (len - kQuoteLadderHeadSize) % sizeof(QuoteLadderLevel) == 0;
+  }
+
+  // The record's length against the record's own account of it. Read off the
+  // raw body rather than off a decoded struct: a length that disagrees must
+  // stop the load before anything is materialised from it.
+  static bool quoteLadderLengthAgrees(const uint8_t* body, uint32_t len)
+  {
+    QuoteLadder probe{};
+    std::memcpy(&probe.levels, body + offsetof(QuoteLadder, levels), sizeof(probe.levels));
+    return quoteLadderBodySize(probe) == len;
+  }
+
   static uint32_t expectedBodySize(uint8_t tag)
   {
     switch (tag)
@@ -645,6 +737,12 @@ class Journal
         return sizeof(SetRiskLimits);
       case 34:
         return sizeof(AdjustPosition);
+      case 35:
+        // The MAXIMUM, not the only length: a ladder record is as long as the
+        // rungs it names (bodySizeAccepted below). Every caller that wants
+        // "the size of the alternative that owns this tag" -- the fingerprint,
+        // the decoder's upper bound -- wants this number.
+        return sizeof(QuoteLadder);
       default:
         return 0;
     }
@@ -658,9 +756,22 @@ class Journal
     return InboundCommand{proto};
   }
 
-  static void appendDecoded(std::vector<std::pair<int64_t, InboundCommand>>& v, int64_t ts,
-                            uint8_t tag, const uint8_t* body)
+  // The ladder, whose record is as long as the rungs it carries. The unnamed
+  // tail of the block never reached disk, so it is read back as what it was
+  // when the record was written: zero. `proto` starts zeroed for exactly that
+  // reason -- the memcpy covers `len` bytes and nothing else may be inherited
+  // from the stack.
+  static InboundCommand quoteLadderFromBody(const uint8_t* body, uint32_t len)
   {
+    QuoteLadder proto{};
+    std::memcpy(&proto, body, len);
+    return InboundCommand{proto};
+  }
+
+  static void appendDecoded(std::vector<std::pair<int64_t, InboundCommand>>& v, int64_t ts,
+                            uint8_t tag, const uint8_t* body, uint32_t len)
+  {
+    (void)len;
     switch (tag)
     {
       case 0:
@@ -767,6 +878,9 @@ class Journal
         break;
       case 34:
         v.emplace_back(ts, fromBody<AdjustPosition>(body));
+        break;
+      case 35:
+        v.emplace_back(ts, quoteLadderFromBody(body, len));
         break;
     }
   }

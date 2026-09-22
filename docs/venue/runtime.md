@@ -247,7 +247,7 @@ existed be named as version 0 rather than misread.
 A scale-checked build (`FLOX_SCALE_CHECKS`, the default without `NDEBUG`) is a
 different format under this rule, not a debugging variant of the same one. It
 widens `Decimal`, so `sizeof(Price)` goes 8 to 16 and every body holding a price
-or a quantity moves its fields. Those layouts carry version 10 and version 9
+or a quantity moves its fields. Those layouts carry version 16 and version 15
 respectively, so a journal from a debug venue is refused by name in a release
 one rather than read at the wrong offsets.
 
@@ -270,6 +270,25 @@ the submitter sent rather than a per-leg id it never chose. A file written by
 a build without the field holds quote-spawned orders whose reports name
 nobody on either leg, so it is refused rather than read as though the field
 had always been absent.
+
+Versions 13 and 14 were the pair before `QuoteLadder` existed: a market
+maker's whole set of levels on one symbol, replacing the prior set in one
+record where the journal previously carried one `Quote` per level. A build
+from that pair has no type for tag 35 at all, so it would stop on the tag and
+hand back a prefix of the history; the version pair says so first, and by
+name.
+
+`QuoteLadder` is also the first body written SHORT. Every other record's
+length is a property of its tag -- the decoder expects exactly `sizeof` the
+struct that owns the tag, and anything else is corruption. A ladder record
+carries its head plus the rungs it names, so its length is a property of the
+RECORD: the loader accepts any whole number of rungs up to the block, and then
+checks that length against the record's own `levels` byte. A record whose crc
+passes and whose length disagrees with its own count was laid out by rules
+this build does not have, so the load stops there rather than replaying a
+ladder nobody sent. Nothing else about the framing changed, and no other tag's
+body moved -- which is why a file written by this build holding only the older
+commands reads back exactly as it did.
 
 Versions 11 and 12 were the pair before `FillHeld` and `FillRejected` carried
 the taker's `clientOrderId`. A hold's own id (`heldId`) names the hold, not

@@ -146,6 +146,89 @@ struct Quote  // two-sided market-maker quote (replace prior quote on this symbo
   uint64_t clientOrderId{0};
 };
 
+// How many price points a ladder carries per side. 8 rather than 16: the
+// mirror feeders above this engine publish 5 levels a side today, so 8 leaves
+// room to grow without paying for slots nobody fills -- and an unfilled slot
+// is not free, because the wire body is as long as the ladder has levels (see
+// quoteLadderBodySize below). A maker that needs more sends a second ladder
+// on its own id block.
+inline constexpr uint8_t kQuoteLadderLevels = 8;
+
+// One price point of a ladder: the bid and the ask this level asks for.
+//
+// No ids of its own. The ladder names one id for each side (bidIdBase /
+// askIdBase) and level i is slot i of that block, so a ladder owns the ids
+// [bidIdBase, bidIdBase + kQuoteLadderLevels) and the matching ask range. Two
+// ids per level on the wire would be 16 bytes a level for numbers the
+// submitter derives anyway -- and, more importantly, would leave the engine
+// unable to name the levels a SHORTER ladder drops, which is the whole point
+// of replacing a set rather than updating it one Quote at a time.
+struct QuoteLadderLevel
+{
+  Price bidPrice{};
+  Quantity bidQty{};  // 0 = no bid at this level (the prior leg is still taken down)
+  Price askPrice{};
+  Quantity askQty{};  // 0 = no ask at this level
+};
+
+// A market maker's whole set of levels on one symbol, replaced atomically.
+//
+// Exactly equivalent to kQuoteLadderLevels Quote commands submitted back to
+// back -- `levels` of them carrying this ladder's rungs and the rest carrying
+// zero quantities on both sides, which is how a shorter ladder takes its
+// surplus levels down. Same leg order, same ids, same events, byte for byte
+// (see engine::QuoteLadderLegs and MatchingEngine::onQuoteLadder). What it is
+// NOT is a second matching path: it is one journal record and one sequencer
+// slot instead of K of each.
+//
+// The clientOrderId is the name the submitter gave the LADDER and every leg
+// carries it, the same rule a Quote already applies to its two legs; it is
+// deduplicated once, for the ladder as a whole.
+//
+// `levels` above kQuoteLadderLevels is clamped, not refused, and clamped
+// identically by the engine and by the journal writer -- so a replay of the
+// record applies exactly what the live run applied.
+struct QuoteLadder
+{
+  uint64_t accountId{};
+  uint64_t clientOrderId{0};
+  SeqNanos expiryNs{};         // GTD expiry for every leg (0 = none)
+  Quantity visibleQuantity{};  // iceberg peak per leg (0 = show the visible leg)
+  OrderId bidIdBase{};         // level i is bidIdBase + i
+  OrderId askIdBase{};         // level i is askIdBase + i
+  SymbolId symbol{};
+  uint8_t levels{0};  // live rungs; the rest of the block is taken down
+  STPMode stp{STPMode::None};
+  bool lastLook{false};
+  bool postOnly{false};
+  bool reduceOnly{false};
+  TimeInForce tif{TimeInForce::GTC};
+  uint8_t pad0_[6]{};  // explicit alignment padding (T057)
+  QuoteLadderLevel level[kQuoteLadderLevels]{};
+};
+
+// Rungs this ladder actually names. The clamp is the one place both the
+// engine and the journal ask, so a `levels` byte past the end of the block
+// cannot mean one thing live and another on replay.
+inline constexpr uint8_t quoteLadderLiveLevels(const QuoteLadder& l) noexcept
+{
+  return l.levels > kQuoteLadderLevels ? kQuoteLadderLevels : l.levels;
+}
+
+// Bytes a ladder occupies on the wire: the fixed head plus the rungs it
+// names. This is the one journaled body whose length is a property of the
+// record rather than of its type -- a 5-level ladder costs 5 levels, not 8,
+// which is what makes one record cheaper than the Quotes it replaces instead
+// of merely tidier. sizeof(QuoteLadder) is still the maximum, and still the
+// size the format fingerprint folds in.
+inline constexpr size_t kQuoteLadderHeadSize = offsetof(QuoteLadder, level);
+
+inline constexpr size_t quoteLadderBodySize(const QuoteLadder& l) noexcept
+{
+  return kQuoteLadderHeadSize +
+         static_cast<size_t>(quoteLadderLiveLevels(l)) * sizeof(QuoteLadderLevel);
+}
+
 struct LastLookDecision  // maker accepts or rejects a held last-look fill
 {
   uint64_t heldId{};
@@ -731,7 +814,7 @@ using InboundCommand =
                  RestorePosition, RestoreMmpCfg, RestoreClOrdIds, SnapshotEnd, RestoreReservation,
                  RestoreBalance, RestoreMmpFills, SetStpGroup, SetFundingSchedule, RestoreFunding,
                  ForceClosePosition, RestoreOrderStp, SetAdmissionProfile, SetRiskLimits,
-                 AdjustPosition>;
+                 AdjustPosition, QuoteLadder>;
 
 // The wire tag of each alternative, by its position in the variant.
 //
@@ -781,6 +864,7 @@ inline constexpr uint8_t kWireTag[] = {
     32,  // SetAdmissionProfile
     33,  // SetRiskLimits
     34,  // AdjustPosition
+    35,  // QuoteLadder
 };
 static_assert(std::size(kWireTag) == std::variant_size_v<InboundCommand>,
               "every alternative needs a wire tag, and only alternatives have one");
@@ -808,6 +892,13 @@ inline uint8_t wireTagOf(const InboundCommand& c) noexcept
   return kWireTag[c.index()];
 }
 
+// The ladder's own tag, named rather than spelled as a number in the two
+// places that have to treat it apart from the rest (its body length is a
+// property of the record, not of its type -- see quoteLadderBodySize). Read
+// off the variant, so it follows the alternative wherever the alternative
+// goes.
+inline constexpr uint8_t kQuoteLadderWireTag = kWireTag[InboundCommand{QuoteLadder{}}.index()];
+
 // Snapshot-only records, by TAG rather than by a range of variant positions.
 // The range was the same conflation in another place: reordering the variant
 // silently changed which records a client was allowed to send.
@@ -819,7 +910,7 @@ inline bool isSnapshotRecord(const InboundCommand& c) noexcept
   // A snapshot-only record this predicate does not recognise is treated as
   // live traffic: accepted from a client, journaled into the live stream, and
   // replayed as a command.
-  static_assert(std::variant_size_v<InboundCommand> == 35,
+  static_assert(std::variant_size_v<InboundCommand> == 36,
                 "new InboundCommand alternative: if it is snapshot-only, add its tag to "
                 "kSnapshotOnlyTags -- otherwise it is treated as live traffic a client may send");
   const uint8_t tag = wireTagOf(c);

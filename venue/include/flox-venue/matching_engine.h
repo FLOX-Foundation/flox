@@ -318,6 +318,10 @@ class MatchingEngine
   // ---- two-sided market-maker quote (replace prior bid/ask) ----
   // engine/quote_mmp.inl
   void onQuote(const Quote& q);
+  // The same set of levels in one command. Walks the quote path once per rung,
+  // so it is K Quotes by construction rather than by resemblance.
+  void onQuoteLadder(const QuoteLadder& l);
+  void applyQuote(const Quote& q, bool clOrdIdChecked);
 
   // ---- market-maker protection: pull all quotes on a fill-rate breach ----
   void onTradeObserved(const Trade& t);

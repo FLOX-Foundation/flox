@@ -95,7 +95,8 @@ constexpr const char* kCommandName[] = {"NewOrder",
                                         "RestoreOrderStp",
                                         "SetAdmissionProfile",
                                         "SetRiskLimits",
-                                        "AdjustPosition"};
+                                        "AdjustPosition",
+                                        "QuoteLadder"};
 
 static_assert(std::size(kCommandName) == std::variant_size_v<InboundCommand>,
               "a new InboundCommand alternative needs its name here, or a record of it would be "
