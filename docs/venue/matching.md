@@ -410,104 +410,118 @@ deterministic replay possible; see [Runtime and recovery](runtime.md).
 
 ### Where the code lives
 
-`matching_engine.h` is the class: the nested types, the data members, and a
-declaration for every method, in one list. The method **definitions** sit next
-to it in `flox-venue/engine/*.inl`, one file per section, included at the
-bottom of the header. Nothing is conditional and nothing is optional -- the
-header is not usable without them, and they are not usable without it (each
-one refuses a direct `#include`). The split buys one thing: a change to
-clearing is a diff in `clearing.inl` rather than a diff somewhere inside five
-thousand lines shared with everything else.
+`MatchingEngine<Book>` is a template for exactly one reason: one of its
+members is the resting book, and there is more than one book. Everything else
+about it -- what an order is allowed to be, what a hold costs, who may send
+what, what a print settles into, what a snapshot says -- is the same code
+whichever book is underneath, and none of it has any business being
+re-instantiated per book type.
 
-| File | What is defined there |
+So the engine is three things and a list. The three: a **dispatcher**
+(`submit` reads a command and calls the handler for it), the **book**, and the
+**matcher** that crosses against it. The list is its components. What is left
+in the template is the code that touches the book or the matcher -- `onNew`,
+`onCancel`, `onModify`, `onQuote`, `onStop`, `validate`, the cross path,
+`runAuction`, `repeg`, the expiry and mass-cancel loops -- plus the instrument
+config it owns and a thin delegate for every published method.
+
+Two kinds of file sit in `flox-venue/engine/`:
+
+- **`*.inl` -- fragments of the template.** `matching_engine.h` is the class:
+  the nested types, the data members, and a declaration for every method, in
+  one list. The **definitions** sit in the fragments, one file per section,
+  included at the bottom of the header. Nothing is conditional and nothing is
+  optional -- the header is not usable without them, and they are not usable
+  without it (each one refuses a direct `#include`). The split buys one thing:
+  a change to clearing is a diff in `clearing.inl` rather than a diff
+  somewhere inside five thousand lines shared with everything else.
+- **`*.h` -- components.** An ordinary class, not a template. The engine owns
+  one as a member, binds it to `cfg_` and the event sink where it needs them,
+  and calls it from the places its methods used to be called from. Each
+  compiles on its own and is tested on its own, without an engine, a book or a
+  matcher -- and each exists ONCE in the binary however many book types the
+  engine is instantiated with.
+
+| Fragment | What is defined there |
 |---|---|
 | `engine/dispatch.inl` | construction, `submit`, `tick`, the engine's own accessors and config setters |
 | `engine/validate.inl` | `validate`, `validateConditional`, admission, the perp risk gate, fill limits, `onNew` |
-| `engine/session.inl` | trading status, halt, close/open, delist, pre-open, `runAuction`, the `TradingStatusChanged` publication |
+| `engine/session.inl` | the session transition reaching the feed and the book: `applySession`, `publishStatus`, `cancelEntireBook`, `runAuction` |
 | `engine/orders.inl` | stops and triggers, `onModify`, `onCancel`, order ownership |
-| `engine/publications.inl` | the engine's side of the publications: `publishDerivatives`, mass cancel, the per-account index forwarding (the trading-status publication is in `engine/session.inl`) |
-| `engine/quote_mmp.inl` | two-sided quotes, market-maker protection |
-| `engine/ledger_fees.inl` | fees, reservations, deposits/withdrawals, `settleTrade` |
+| `engine/publications.inl` | the engine's side of the publications: `publishDerivatives`, the mass-cancel loop, the per-account index forwarding |
+| `engine/quote_mmp.inl` | `onQuote`, the MMP enforcement pass |
+| `engine/ledger_fees.inl` | reservations, deposits/withdrawals, `settleTrade` |
 | `engine/clearing.inl` | the engine's side of clearing: the published methods, `settlePerp`, the order-IM moves |
 | `engine/checkpoint.inl` | `stateHash`, `configHash`, `writeSnapshot`, `cloneForSnapshot`, and the helpers for the state no component owns |
 | `engine/checkpoint_restore.inl` | `applySnapshotRecord`, `applySnapshotBegin`, `applyComponentRestore` and the `applyRestore*` handlers |
-| `engine/expiry_pegs.inl` | GTD expiry, pegged orders, OCO |
+| `engine/expiry_pegs.inl` | the GTD expiry sweep, the peg reprice pass, the OCO sibling cancels |
 | `engine/last_look.inl` | the engine's side of the last-look seam (see below) |
 
-Conduct -- what a submission is allowed to be, and what happens to an order
-once it rests -- is not a section of the template but a set of ordinary
-classes beside it. They hold the state and reach the decisions; the engine
-keeps the loops, because those are what need the book, the ledger and the
-sink. Each one is a header of its own, small enough to read in a sitting and
-testable without an engine (`venue/tests/test_venue_engine_conduct.cpp`).
+#### The components
 
-| Component | What it owns |
-|---|---|
-| `engine/clordid_window.h` | `ClOrdIdWindow`: the per-account clientOrderId dedup index, in two rotating generations, and the verdict on a resend |
-| `engine/stp.h` | `StpState`: self-trade-prevention modes of resting orders, the scope two accounts are compared in, and the verdict on a self-matching auction pair |
-| `engine/expiry.h` | `ExpiryBook`: GTD deadlines, and which orders are due at a given sequencer time |
-| `engine/pegs.h` | `PegBook`: peg specs, the order a reprice pass walks them in, and the peg target for a given book |
-| `engine/mmp.h` | `MmpState`: per-account fill windows, the breach list, and the re-arm after a pull |
-| `engine/sorted_keys.h` | `sortedKeysOf`: the canonical key traversal every hash and snapshot section uses |
+Each row is a class that used to be loose members and loose methods of
+`MatchingEngine<Book>`. The third column is the division that decides every
+one of them: the component holds the state and reaches the verdict, the engine
+keeps the loop, because the loop is what needs the book, the ledger and the
+sink.
 
-Each component serializes and hashes its own fields, so a snapshot section and
-its digest are written in one place rather than three.
+| Component | Header | What it owns | What stayed in the template |
+|---|---|---|---|
+| `engine::Credit` | `engine/credit.h` | the admission table and the entitlement gate, the external credit hook, buying-power reservations, the per-fill perp risk allowance | `validate` and `onNew` (hot path, direct calls); `restingReduceOnlyRaw` and `perpRiskGate`, which read the book and the positions; the public setters as delegates |
+| `engine::Clearing` | `engine/clearing.h` | perp positions, the funding calendar, liquidations, ADL, force-close, the money that moves on all of it | `consumeOrderIM` / `releaseOrderIM` (they read the order reservations); `settlePerp`; the point at which `DerivativesUpdated` goes out; the published surface as delegates |
+| `engine::LastLook` | `engine/last_look.h` | the holds, the decision on each, the outcomes and the conduct statistics | `LastLookHost` -- the three book operations and the facts only the engine can answer -- plus one-line delegates |
+| `engine::Session` | `engine/session.h` | the trading state, the transition table that moves it, the memo of what was last published | `applySession`, `publishStatus` / `emitStatus`, `cancelEntireBook`, `runAuction` |
+| `engine::Publications` | `engine/publications.h` | the derivatives and cancel-report formatting, and the `account -> resting ids` index | the mass-cancel loop: cancelling is reservations, positions and holds as well as an id |
+| `engine::Fees` | `engine/fees.h` | the fee schedule, what a print costs each side, and the ledger move behind the report | the three settlement sites that ask it (ledgerless, spot, perp); `setFeeSchedule` as a delegate |
+| `engine::OcoBook` | `engine/oco.h` | group membership in both directions, the groups a fill decided, and which members lost | `processOco` and `cancelOcoSibling`: the book, the reservation and the report |
+| `engine::QuoteLegs` | `engine/quote.h` | the child orders a quote names, and every field each of them carries | `onQuote`: ownership, dedup, cancelling the two prior legs, submitting the new ones |
+| `engine::Integrity` | `engine/integrity.h` | the two refusals that must never happen -- a snapshot record in live traffic, a trade that could not settle -- counted and reported | the two published counters as delegates |
+| `ClOrdIdWindow` | `engine/clordid_window.h` | the per-account clientOrderId dedup index in two rotating generations, and the verdict on a resend | `clOrdIdDuplicate`, one line; the reject the verdict causes |
+| `StpState` | `engine/stp.h` | self-trade-prevention modes of resting orders, the scope two accounts are compared in, the verdict on a self-matching auction pair | `runAuction` executing that verdict: decrement or cancel |
+| `ExpiryBook` | `engine/expiry.h` | GTD deadlines, and which orders are due at a given sequencer time | `expireOrders`: the book, the stop book, the holds, the events |
+| `PegBook` | `engine/pegs.h` | peg specs, the order a reprice pass walks them in, the target price for a given market | `repeg`: cancel, re-price, re-reserve, re-add, report |
+| `MmpState` | `engine/mmp.h` | per-account fill windows, the breach list, the re-arm after a pull | `mmpEnforce`: `cancelAllForAccount` and `MmpTriggered` |
+| `sortedKeysOf` | `engine/sorted_keys.h` | the canonical key traversal every hash and snapshot section uses | -- |
 
-One piece is not a fragment but a class of its own:
-`flox-venue/engine/session.h` holds the session state machine -- the trading
-state, the transitions between states, and the memo of what was last
-published. It is not a template, because none of it touches the resting book;
-the engine owns an instance and does the two things the session cannot do for
-itself, reaching the feed and reaching the book. The same state machine
-therefore exists once however many book types the engine is instantiated with.
+Nothing in that table is virtual and nothing in it is a template (the one
+exception is described next). Where a component has to call back into engine
+state that is not its own, the callback arrives as `Hooks` -- a context
+pointer plus plain function pointers, built from captureless lambdas, so the
+seam costs an indirect call and no vtable. `SymbolConfig` lives in
+`flox-venue/symbol_config.h` rather than at the top of `matching_engine.h` so
+that a component can hold it by reference without including the engine that
+includes the component.
 
-Some of the engine never needed the book, and where that is true the code has
-moved out of the template into a plain class the engine holds by value. These
-are components, not fragments: each is an ordinary header that compiles on its
-own and is tested on its own, without an engine, a book or a matcher.
+#### The seam to the book
 
-| Component | Header | What it owns |
-|---|---|---|
-| `engine::Credit` | `engine/credit.h` | entitlement (the admission table and the gate), the external credit hook, buying-power reservations, and the per-fill perp risk allowance |
+One component does reach the book, and the shape of that reach is the reason
+the rest of them do not. `engine::LastLook` touches the resting book exactly
+three times -- lift an order off its level, put one back at the TAIL of its
+level, read a maker as it rests now -- and all three are on the decision path,
+which runs at maker latency rather than at matching latency.
 
-`engine::Credit` answers questions about the ACCOUNT: may this counterparty
-send this order, does the external risk owner allow it, what has to be
-ring-fenced in the ledger before it may rest, what comes back when it stops
-resting, and how much of a prospective fill each leg's risk limits leave. It
-never reads the book. Where the book does come into an answer -- the
-reduce-only quantity the account already has resting -- the engine measures it
-and passes the number in, exactly as it passes in a position. The instrument
-config and the ledger arrive as arguments too, so a copy of the component
-cannot reach another engine's state.
+That seam is a **concept**, `engine::LastLookHost`, not an abstract base
+class. Both were written and both were measured over 100k hold/resolve cycles
+through a real engine: the virtual version cost 3-5% on the accept path,
+because thirteen host operations per cycle each went through a vtable; the
+concept version inlines and costs under 2%, inside the machine's own noise.
+So `engine::LastLook` is an ordinary class with ordinary state, and only its
+methods that take the host are templates. Its host,
+`MatchingEngine<Book>::LastLookHost`, lives in `engine/last_look.inl` and is
+thirteen operations wide: three on the book, two on the event sink (the raw
+one and the tracking wrapper), and eight facts nobody but the engine can
+answer -- the reference price, the live last-look config, whether the hold is
+still allowed, the next trade sequence number, the reservation release on a
+refused leg, the cleanup of a finished order, the STP mode to remember, and
+the adoption of a resting taker.
 
-`validate` and `onNew` stay in the template, on the hot path, and call the
-component directly. Nothing is virtual: the calls compile to the same direct
-branches they were when these were loose members of `MatchingEngine`, and
-`engine::Credit` is tested by `venue/tests/test_venue_engine_credit.cpp`
-without an engine in sight.
+Every other component takes the opposite deal: it answers a narrower question
+and never sees the book at all. Where the book does come into an answer, the
+engine measures it and passes the number in -- the reduce-only quantity an
+account already has resting, the position a fill limit is judged against, the
+market a peg target is computed from.
 
-`SymbolConfig` moved to `flox-venue/symbol_config.h` for the same reason: it
-is instrument configuration, not engine internals, and a component that has
-to obey a tick size should not have to include the whole engine to learn what
-one is. `matching_engine.h` includes it, so nothing that named it before has
-to change.
-
-The public surface is unchanged by the layout, and
-`venue/tests/support/engine_surface.h` says so at compile time.
-
-#### Components
-
-Some sections are not merely a file of definitions any more but a class of
-their own, in `flox-venue/engine/<name>.h`. A component is a plain class, not
-a template: the engine owns one, binds it to `cfg_` and the event sink at
-construction, and calls it from the places its methods used to be called from.
-What a component cannot reach -- engine state that is not its own -- arrives
-as `Hooks`: a context pointer plus plain function pointers, so the seam costs
-an indirect call and no vtable.
-
-| Component | State | What the engine kept |
-|---|---|---|
-| `engine/clearing.h` -- `engine::Clearing` | perp positions, the funding calendar, the ledger the money moves in | `positionQty` and the rest of the published surface as delegates; `consumeOrderIM` / `releaseOrderIM` (they read the order reservations); `settlePerp`'s fee charge; the `DerivativesUpdated` publication |
+#### The checkpoint is composition
 
 Each component carries its own snapshot records: `hash*`, `write*` and
 `restore*` methods the engine calls at the point in its traversal where those
@@ -515,19 +529,18 @@ records have always been written. The tags, the record order and the bytes are
 unchanged -- `kSnapshotFormatVersion` did not move -- and the golden replay
 (`venue/tests/golden/replay_hashes.txt`) is what proves it.
 
-So the four checkpoint functions are composition and little else.
-`stateHash` and `writeSnapshot` are a list of calls in file order --
-`clearing_.hashFunding`, `credit_.hashAdmission`, `stp_.hashInto`,
-`pegs_.hashInto`, `lastLook_.hashInto`, `mmp_.hashInto`,
-`clOrdIds_.hashInto`, and their `write*` twins -- `applySnapshotRecord` is a
-branch per record that hands it to whoever keeps that state
-(`applyComponentRestore` holds the ones that need nothing from the engine but
-a single check), and `cloneForSnapshot` is one `copy*` call per component.
-Two things a component cannot answer arrive as arguments rather than as a
-dependency: the maker-tracking flag a hold carries comes in as a callable
-(`lastLook_.hashInto(h, tracked)`), and the matcher's firm-group table is
-read through by `engine::StpState`, which is already the component that
-reads it for a matching decision.
+So the four checkpoint functions are calls and little else. `stateHash` and
+`writeSnapshot` are a list in file order -- `clearing_.hashFunding`,
+`credit_.hashAdmission`, `stp_.hashInto`, `pegs_.hashInto`,
+`lastLook_.hashInto`, `mmp_.hashInto`, `clOrdIds_.hashInto`, and their
+`write*` twins. `applySnapshotRecord` is a branch per record that hands it to
+whoever keeps that state (`applyComponentRestore` holds the ones that need
+nothing from the engine but a single check). `cloneForSnapshot` is one copy
+per component. Two facts a component cannot answer arrive as arguments rather
+than as a dependency: the maker-tracking flag a hold carries comes in as a
+callable (`lastLook_.hashInto(h, tracked)`), and the matcher's firm-group
+table is read through by `engine::StpState`, which is already the component
+that reads it for a matching decision.
 
 What is left in the engine is the state that belongs to no component: the
 book, the stop book, the instrument's own config records and the bound
@@ -547,62 +560,23 @@ writes a snapshot of an engine with every section non-empty and compares the
 sequence of record names against a reference recorded before the functions
 were composed. Swap two sections and it is the one thing that goes red.
 
-`SymbolConfig` lives in `flox-venue/symbol_config.h` rather than at the top of
-`matching_engine.h`, so a component can hold it by reference without including
-the engine that includes the component.
+#### What holds the split honest
 
-One section has moved further out than that. The holds themselves -- their
-records, their decisions, their outcomes and their conduct statistics -- live
-in `flox-venue/engine/last_look.h` as `engine::LastLook`, which is **not** a
-template. A hold reaches the resting book three times (lift an order off its
-level, put one back at the tail, read a maker as it rests), and all three are
-on the decision path, which runs at maker latency rather than at matching
-latency. So the book arrives through `engine::LastLook::Host`, an abstract
-seam whose only implementation is `MatchingEngine<Book>::LastLookHost` in
-`engine/last_look.inl`; the same seam carries the event sink and the few facts
-only the engine can answer (the reference price, the perp re-check on an
-accept, the reservation release on a refused residual). What is left in the
-fragment is that implementation plus thin delegates -- `openHolds`,
-`hasHold`, `forEachHold`, `lastLookStats` and the rest are one line each.
+| Check | What it would catch |
+|---|---|
+| `venue/tests/golden/replay_hashes.txt` | any change at all to the event stream or the state hash over the corpus |
+| `venue/tests/support/engine_surface.h` | a published method that changed shape or went missing, at compile time |
+| `venue/tests/test_venue_checkpoint_layout.cpp` | two snapshot sections swapped -- invisible to everything else |
+| `venue/tests/test_venue_engine_*.cpp` | each component, asked directly, without an engine |
+| `scripts/check_gate_reachability.py` | an order path that stopped consulting the entitlement gate |
+| `scripts/check_iteration_order.py` | a container walked without a verdict on whether its order is observable |
 
-The seam costs one indirect call per book operation on a path that runs once
-per maker decision; measured over 100k hold/resolve cycles it is inside the
-noise of the machine (see `venue/tests/test_venue_engine_last_look.cpp`,
-which also tests the component against a book that is a `std::vector`).
-
-Some sections have moved out of the template entirely, into a plain class the
-engine owns as a member. They are not fragments: they compile once, they can
-be tested on their own, and they do not have to be re-instantiated for every
-book type.
-
-| Component | Header | What it owns |
-|---|---|---|
-| `engine::Publications` | `flox-venue/engine/publications.h` | the outbound stream (derivatives, cancel reports) and the per-account resting-order index |
-
-`engine::Publications` is the one place that decides what those outbound
-events LOOK like and in what order a set of them goes out: the derivatives
-publication, the cancel report, and the `account -> resting ids` index a mass
-cancel walks. It holds the event sink by reference and calls it directly --
-no virtual on the publication path, which the engine takes on every trade.
-The trading-status publication is NOT here -- it lives next to the state it
-reports, in `engine::Session` (`engine/session.h`).
-
-What it does NOT own is the book. A mass cancel keeps its loop in the engine,
-because cancelling is reservations, positions and holds as well as an id; the
-component decides only WHICH ids and in WHAT ORDER (sorted, so the event
-sequence does not depend on which standard library the venue was built
-against). The derivatives publication is the same division: `Publications`
-formats it, clearing decides when it goes out.
-
-It carries no checkpoint of its own: the tracking maps are an index over the
-book, which is hashed already. Self-trade prevention stays with
-`engine::StpState` (`engine/stp.h`) -- `hashInto` there mixes the STP table
-into the state hash and `writeSnapshot` writes the `RestoreOrderStp` records,
-unmoved by this split.
-
-`venue/tests/test_venue_engine_publications.cpp` tests it against a fake
-sink, comparing SERIALIZED EVENT BYTES rather than fields, so a field that
-stops being filled cannot pass for lack of an assertion naming it.
+The per-component tests are `test_venue_engine_credit.cpp`,
+`test_venue_engine_clearing.cpp`, `test_venue_engine_last_look.cpp`,
+`test_venue_engine_session.cpp`, `test_venue_engine_publications.cpp`,
+`test_venue_engine_conduct.cpp` (the conduct components) and
+`test_venue_engine_composition.cpp` (fees, OCO, quote legs, the integrity
+counters, and the engine's composition of them).
 
 ### Pre-trade risk
 

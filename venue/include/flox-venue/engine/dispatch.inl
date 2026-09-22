@@ -170,9 +170,7 @@ void MatchingEngine<Book>::submit(const InboundCommand& cmd, SeqNanos tsNs)
   // journaled stray record is dropped identically.
   if (isSnapshotRecord(cmd))
   {
-    ++droppedSnapshotRecords_;
-    std::fprintf(stderr, "flox-venue: dropped snapshot-only record (tag %zu) from live traffic\n",
-                 cmd.index());
+    integrity_.dropSnapshotRecord(cmd.index());
     return;
   }
   now_ = tsNs;

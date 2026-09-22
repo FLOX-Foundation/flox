@@ -12,10 +12,14 @@
 #include "flox-venue/engine/clordid_window.h"
 #include "flox-venue/engine/credit.h"
 #include "flox-venue/engine/expiry.h"
+#include "flox-venue/engine/fees.h"
+#include "flox-venue/engine/integrity.h"
 #include "flox-venue/engine/last_look.h"
 #include "flox-venue/engine/mmp.h"
+#include "flox-venue/engine/oco.h"
 #include "flox-venue/engine/pegs.h"
 #include "flox-venue/engine/publications.h"
+#include "flox-venue/engine/quote.h"
 #include "flox-venue/engine/session.h"
 #include "flox-venue/engine/sorted_keys.h"
 #include "flox-venue/engine/stp.h"
@@ -308,7 +312,6 @@ class MatchingEngine
   void trackResting(OrderId id, uint64_t account, STPMode stp);
   void forgetOrder(OrderId id);
   void releaseReservationPro(OrderId id, int64_t fromQtyRaw, int64_t toQtyRaw);
-  void unlinkOco(OrderId id);
   void cancelAllForAccount(uint64_t account, CancelReason reason = CancelReason::UserRequested);
   void onMassCancel(const MassCancel& mc);
 
@@ -320,10 +323,6 @@ class MatchingEngine
   void onTradeObserved(const Trade& t);
   void mmpAdd(uint64_t account, Quantity qty);
   void mmpEnforce();
-
-  // ---- fees ----
-  // engine/ledger_fees.inl
-  void emitFees(const Trade& t);
 
   // ---- settlement ledger ----
   // One reservation entry, named where it always was so the checkpoint and
@@ -346,9 +345,7 @@ class MatchingEngine
   bool hasHoldsFor(OrderId id) const;
   void releaseReservationExceptHeld(OrderId id);
   void cleanupOrderIfDone(OrderId id);
-  void reportUnsettled(const Trade& t, uint64_t account, const char* why);
   void settleTrade(const Trade& t);
-  void chargeFee(OrderId id, uint64_t acct, double feeD, bool maker);
 
   // ---- linear-perp clearing ----
   //
@@ -390,9 +387,7 @@ class MatchingEngine
 
   // engine/checkpoint_restore.inl
   SeqNanos expiryOf(OrderId id) const;
-  uint64_t ocoOf(OrderId id) const;
   std::vector<std::pair<NewOrder, Price>> sortedStops() const;
-  void linkOco(OrderId id, uint64_t group);
   bool applySnapshotBegin(const SnapshotBegin& b);
   std::optional<bool> applyComponentRestore(const InboundCommand& cmd);
   bool applyRestoreOrder(const RestoreOrder& r);
@@ -493,11 +488,10 @@ class MatchingEngine
   // GTD deadlines: which resting or conditional orders are due, and when.
   ExpiryBook expiry_;
 
-  std::unordered_map<OrderId, uint64_t> orderOco_;  // orderId -> OCO group
-
-  std::unordered_map<uint64_t, std::vector<OrderId>> ocoMembers_;  // group -> member orderIds
-
-  std::vector<std::pair<uint64_t, OrderId>> ocoPending_;  // (group, winner) collected while matching
+  // One-cancels-the-other: group membership in both directions, and the
+  // groups a fill decided this submit. Exactly the three containers that used
+  // to sit here, in the same order, so the class is laid out as it was.
+  engine::OcoBook oco_;
 
   // Peg specs and the price each one should track (re-priced each submit).
   PegBook pegs_;
@@ -507,9 +501,9 @@ class MatchingEngine
   // matching takes the mode off the aggressor inside the matcher.
   StpState stp_;
 
-  flox::FeeSchedule fees_;
-
-  bool feesEnabled_{false};
+  // The fee schedule and what a print costs under it. Configuration, like the
+  // credit hook: installed by the embedder, never journaled or hashed.
+  engine::Fees fees_;
 
   // Market-maker protection: per-account fill windows and the breach list the
   // submit boundary drains.
@@ -532,14 +526,12 @@ class MatchingEngine
   // engine/clordid_window.h). Rebuilt naturally by journal replay.
   ClOrdIdWindow clOrdIds_;
 
-  // Snapshot-only records seen (and dropped) on the live submit path.
-  uint64_t droppedSnapshotRecords_{0};
-
-  // Clearing-integrity counter (diagnostic, not hashed state): trades left
-  // unsettled rather than settled by creating value. Its last-look sibling --
-  // accepts refused at decision time by a perp risk limit -- is counted inside
-  // engine::LastLook.
-  uint64_t unsettledTrades_{0};
+  // The two refusals that are not supposed to happen: snapshot-only records
+  // seen on the live submit path, and trades left unsettled rather than
+  // settled by creating value. Diagnostics, not hashed state. The last-look
+  // sibling of the second -- accepts refused at decision time by a perp risk
+  // limit -- is counted inside engine::LastLook.
+  engine::Integrity integrity_;
 
   // Recovery mode flag: this snapshot carried exact RestoreBalance splits, so
   // RestoreReservation / RestorePosition must not move ledger money (v1

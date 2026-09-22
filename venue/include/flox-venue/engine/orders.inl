@@ -430,7 +430,7 @@ void MatchingEngine<Book>::onCancel(const CancelOrder& c)
     // A pending stop holds no reservation, but it does hold an OCO
     // membership: leaving it behind means a later trigger of the sibling
     // looks for an order that no longer exists.
-    unlinkOco(c.id);
+    oco_.unlink(c.id);
     forgetOrder(c.id);
     sink_(OrderCanceled{c.id, c.symbol, CancelReason::UserRequested, stopAcct, stopClOrd});
   }

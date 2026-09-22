@@ -185,7 +185,7 @@ uint64_t MatchingEngine<Book>::hashBookAndStops(uint64_t h) const
           h = mix(h, o.clientOrderId);  // same rule: absent means the hash is unchanged
         }
         h = mix(h, static_cast<uint64_t>(expiryOf(o.id).raw()));
-        h = mix(h, ocoOf(o.id));
+        h = mix(h, oco_.groupOf(o.id));
       });
 
   for (const auto& [o, trig] : sortedStops())
@@ -319,7 +319,7 @@ void MatchingEngine<Book>::writeBookAndStops(Journal& out, int64_t ts) const
                        o.side, o.hidden, o.peak, o.lastLook,
                        o.reduceOnly, o.postOnly, o.clientOrderId};
         r.expiryNs = expiryOf(o.id);
-        r.ocoGroup = ocoOf(o.id);
+        r.ocoGroup = oco_.groupOf(o.id);
         out.append(InboundCommand{r}, ts);
       });
 
@@ -333,7 +333,7 @@ void MatchingEngine<Book>::writeBookAndStops(Journal& out, int64_t ts) const
 template <class Book>
 uint64_t MatchingEngine<Book>::droppedSnapshotRecords() const noexcept
 {
-  return droppedSnapshotRecords_;
+  return integrity_.droppedSnapshotRecords();
 }
 
 // `emptyBook` must be a PRISTINE book instance carrying only construction
@@ -360,14 +360,11 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.timeCounter_ = timeCounter_;
   e.pub_.copyStateFrom(pub_);
   e.expiry_ = expiry_;
-  e.orderOco_ = orderOco_;
-  e.ocoMembers_ = ocoMembers_;
-  e.ocoPending_ = ocoPending_;  // empty at a command boundary; copied for completeness
+  e.oco_ = oco_;  // pending is empty at a command boundary; copied for completeness
   e.pegs_ = pegs_;
   e.stp_ = stp_;
   e.credit_.copyStateFrom(credit_);
   e.fees_ = fees_;
-  e.feesEnabled_ = feesEnabled_;
   e.mmp_ = mmp_;
   e.lastLook_.copyHoldsFrom(lastLook_);
   e.clOrdIds_ = clOrdIds_;

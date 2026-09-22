@@ -337,12 +337,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
   }
   if (o.ocoGroup > 0)
   {
-    orderOco_[o.id] = o.ocoGroup;  // link before matching so a taker fill triggers OCO too
-    ocoMembers_[o.ocoGroup].push_back(o.id);
+    oco_.link(o.id, o.ocoGroup);  // link before matching so a taker fill triggers OCO too
   }
   // Any early exit before the order commits (parks as a stop, or passes every
   // gate and reaches matching/resting) must unlink it from its OCO group --
-  // otherwise a rejected leg lingers in ocoMembers_ and later cancels a reused
+  // otherwise a rejected leg lingers in the group and later cancels a reused
   // id. `committed` is set once the order is live; the guard cleans up the rest.
   bool committed = false;
   struct OcoCleanup
@@ -355,7 +354,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     {
       if (linked && !*committed)
       {
-        self->unlinkOco(id);
+        self->oco_.unlink(id);
       }
     }
   } ocoCleanup{this, o.id, o.ocoGroup > 0, &committed};
