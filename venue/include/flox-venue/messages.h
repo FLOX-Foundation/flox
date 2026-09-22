@@ -627,6 +627,15 @@ struct RestoreHeld  // one open last-look hold (mirrors MatchingEngine::Held)
   // after a restart reports under the names they chose.
   uint64_t makerClientOrderId{0};
   uint64_t takerClientOrderId{0};
+  // T059: each leg's CONFIRMED cumulative fill as of the moment this hold
+  // was taken (mirrors Held::makerCumQtyAtHold/takerCumQtyAtHold). Needed so
+  // a hold that resolves after a restart reports the same FIX 14 (CumQty) it
+  // would have without the restart, on both the reject-restore path
+  // (rebuilding a maker/taker that left the book entirely) and FillRejected
+  // itself. Appended -- both new fields are 8-byte Quantity after two 8-byte
+  // uint64_t, so no new padding.
+  Quantity makerCumQtyAtHold{};
+  Quantity takerCumQtyAtHold{};
 };
 
 struct RestorePosition  // one perp position (qty, average entry, posted margin)
@@ -953,6 +962,11 @@ struct OrderAccepted  // order accepted / working
   // reconciles reports against the identifier it chose, not the one the venue
   // assigned, so every report about an order carries it.
   uint64_t clientOrderId{0};
+  // T059: FIX 14 (CumQty) -- appended field, wire codecs place it last. Most
+  // accepts are 0 (a fresh order has filled nothing yet); nonzero when a
+  // triggered stop or a crossing new order fills part of itself BEFORE the
+  // residual rests (MatchOutcome::filled at the moment this accept fires).
+  Quantity cumQty{};
 };
 
 struct OrderRejected
@@ -1012,6 +1026,12 @@ struct OrderExecuted  // per-order execution report on a fill
   // reconciles reports against the identifier it chose, not the one the venue
   // assigned, so every report about an order carries it.
   uint64_t clientOrderId{0};
+  // T059: FIX 14 (CumQty) -- appended field, wire codecs place it last. The
+  // total filled over this leg's whole life, AS OF this fill (inclusive): a
+  // maker's running RestingOrder::cumQty after this fill, or a taker's
+  // running total across its own crossing sweep (which may include prior
+  // fills from before a modify re-entered matching).
+  Quantity cumQty{};
 };
 
 struct OrderCanceled
@@ -1047,6 +1067,12 @@ struct OrderModified
   // reconciles reports against the identifier it chose, not the one the venue
   // assigned, so every report about an order carries it.
   uint64_t clientOrderId{0};
+  // T059: FIX 14 (CumQty) -- appended field, wire codecs place it last. The
+  // order's running total filled over its whole life, unaffected by this
+  // modify (a reprice/resize never trades); carried across a re-enter
+  // (price/qty change) so an order that filled before being amended does
+  // not report cumQty resetting to 0.
+  Quantity cumQty{};
 };
 
 struct OrderTriggered  // a stop / take-profit activated and was injected into matching
@@ -1088,6 +1114,13 @@ struct FillHeld  // last-look: a fill is held pending the maker's decision
   // leg gave the venue its name at submission and the venue had it in the
   // Held record all along.
   uint64_t clientOrderId{0};
+  // T059: FIX 14 (CumQty) -- appended field, wire codecs place it last. The
+  // taker's CONFIRMED fill total as of the moment this hold opened -- prior
+  // real (non-held) fills earlier in the same crossing sweep, if any. Never
+  // includes this hold's own qty (still pending, not yet confirmed) or a
+  // sibling hold on the same taker that has not resolved yet. Mirrors
+  // Held::takerCumQtyAtHold (engine/last_look.h).
+  Quantity cumQty{};
 };
 
 struct FillRejected  // last-look: the held fill was rejected (or timed out)
@@ -1108,6 +1141,11 @@ struct FillRejected  // last-look: the held fill was rejected (or timed out)
   // reject is the report that never gets a second chance, so this is where a
   // client that named its own order needs the name back most.
   uint64_t clientOrderId{0};
+  // T059: FIX 14 (CumQty) -- appended field, wire codecs place it last. Same
+  // value FillHeld reported when this hold opened (Held::takerCumQtyAtHold):
+  // the taker's confirmed fill total as of hold creation, not touched by
+  // this rejection since nothing here traded.
+  Quantity cumQty{};
 };
 
 struct MmpTriggered  // market-maker protection fired: the account was mass-canceled

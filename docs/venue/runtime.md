@@ -321,6 +321,23 @@ written by a build without the field holds resting orders whose replayed
 `CumQty` silently resets to 0 across a recovery -- wrong for exactly the
 counterparty this fix protects -- so it is refused rather than read that way.
 
+Versions 17 and 18 were the pair before `OrderAccepted`, `OrderExecuted`,
+`OrderModified`, `FillHeld` and `FillRejected` carried FIX `CumQty` (14)
+(T059): the five order/last-look reports T058 left without it. Closing the
+last-look half of that gap needed `Held` (the engine's in-memory record of an
+open hold) to remember each leg's confirmed cumulative fill as of the moment
+the hold opened -- `makerCumQtyAtHold`/`takerCumQtyAtHold` -- so a hold that
+resolves (accepted or rejected) reports the real running total instead of 0,
+and so a rejected hold can undo the book's own optimistic `cumQty` bump at
+hold-creation time on the maker's side without losing what it was before.
+`RestoreHeld` (the snapshot mirror of `Held`, journaled the same way
+`RestoreOrder` is) carries the same two fields, so a hold that resolves after
+a recovery still reports the value it would have without the restart. A file
+written by a build without the fields holds open last-look holds whose
+replayed `CumQty` silently resets to 0 across a recovery -- the same class of
+gap 15/16 closed for a plain resting order's cancel, this time for a hold --
+so it is refused rather than read that way.
+
 Bumping the version is a deliberate edit, and the build stops you from
 forgetting it. The sizes of all 36 journaled command structs are folded into a
 compile-time fingerprint next to the version constant; adding a field to any of

@@ -104,8 +104,9 @@ MatchingEngine<Book>::MatchingEngine(SymbolConfig cfg, EventSink sink, Book book
   if (cfg_.lastLookWindowNs.count() > 0)
   {
     matcher_.setLastLookHook(
-        [this](const RestingOrder& maker, Quantity fill, const NewOrder& taker)
-        { createHeld(maker, fill, taker); });
+        [this](const RestingOrder& maker, Quantity fill, const NewOrder& taker,
+               Quantity takerCumSoFar)
+        { createHeld(maker, fill, taker, takerCumSoFar); });
     // The matcher removes resting orders on two of its own paths (STP and a
     // fill-time risk block). Both must resolve that order's open holds first,
     // like every engine-side cancel path does -- otherwise the removal frees

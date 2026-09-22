@@ -302,6 +302,8 @@ bool MatchingEngine<Book>::applyRestoreHeld(const RestoreHeld& r)
   // whole generation is discarded as corrupt.
   h.makerClientOrderId = r.makerClientOrderId;
   h.takerClientOrderId = r.takerClientOrderId;
+  h.makerCumQtyAtHold = r.makerCumQtyAtHold;
+  h.takerCumQtyAtHold = r.takerCumQtyAtHold;
   lastLook_.insertRestored(h);
   // Tracking follows the recorded live truth rather than being re-derived: a
   // held maker stays tracked even fully off the book (see createHeld), and

@@ -144,7 +144,10 @@ void MatchingEngine<Book>::repeg()
     RestingOrder nr = *ro;
     nr.price = Price::fromRaw(target);
     book_.addResting(nr.side, nr);
-    sink_(OrderModified{id, cfg_.id, Price::fromRaw(target), nr.leaves, false, nr.accountId, nr.clientOrderId});
+    // T059: nr is a copy of the canceled resting order (*ro), so nr.cumQty is
+    // already its real running total -- a reprice never trades.
+    sink_(OrderModified{id, cfg_.id, Price::fromRaw(target), nr.leaves, false, nr.accountId,
+                        nr.clientOrderId, nr.cumQty});
   }
 }
 

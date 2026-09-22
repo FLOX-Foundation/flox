@@ -95,11 +95,27 @@
   the end of the block on these two templates, since clOrdId was previously
   the last field on both. The C++ codec's seqOffsetIn has its own
   version-gated branch for it.
+
+  Version 10 (T059): the five remaining order-report templates that still
+  lacked FIX 14 (CumQty) each gained a trailing `cumQty` field (QtyRaw,
+  sinceVersion="10"), appended after each template's existing last field
+  (`clOrdId`):
+   - Accepted (10): what the order filled of itself (as aggressor) before
+     this accept, nonzero after a triggered stop or a crossing new order
+     partially fills before its residual rests.
+   - Executed (11): the running total as of this fill (inclusive).
+   - Replaced (15): the running total, unaffected by a reprice/resize.
+   - FillHeld (17) / FillRejected (18): the taker's CONFIRMED total as of the
+     moment the hold opened (never includes the held qty itself, which is
+     still pending).
+  Every one of these moves where `seq` sits relative to the end of the
+  block, the same way version 9 did on Canceled/Rejected. The C++ codec's
+  seqOffsetIn has its own version-gated branch for it.
 -->
 <sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
                    package="flox.venue.oe"
                    id="92"
-                   version="9"
+                   version="10"
                    semanticVersion="1.0"
                    description="Flox venue order entry + execution reports"
                    byteOrder="littleEndian">
@@ -215,7 +231,9 @@
 
   <!-- ============ outbound: venue -> client (execution reports) ============ -->
 
-  <!-- Order accepted / working. -->
+  <!-- Order accepted / working. cumQty is what the order filled of itself
+       (as aggressor) before this accept: 0 unless a triggered stop or a
+       crossing new order partially filled before its residual rests. -->
   <sbe:message name="Accepted" id="10">
     <field name="orderId"      id="1" type="OrderId"/>
     <field name="symbol"       id="2" type="Symbol"/>
@@ -225,9 +243,11 @@
     <field name="restingOnBook" id="6" type="Flag"/>
     <field name="seq"     id="7" type="SeqNum" sinceVersion="1"/>
     <field name="clOrdId"  id="8" type="OrderId" sinceVersion="4"/>
+    <field name="cumQty"   id="9" type="QtyRaw" sinceVersion="10"/>
   </sbe:message>
 
-  <!-- Order (partially) executed. -->
+  <!-- Order (partially) executed. cumQty is the running total as of this
+       fill (inclusive). -->
   <sbe:message name="Executed" id="11">
     <field name="orderId"   id="1" type="OrderId"/>
     <field name="symbol"    id="2" type="Symbol"/>
@@ -238,6 +258,7 @@
     <field name="complete"  id="7" type="Flag"/>
     <field name="seq"     id="8" type="SeqNum" sinceVersion="1"/>
     <field name="clOrdId"  id="9" type="OrderId" sinceVersion="4"/>
+    <field name="cumQty"   id="10" type="QtyRaw" sinceVersion="10"/>
   </sbe:message>
 
   <!-- Trade print. -->
@@ -277,7 +298,8 @@
     <field name="cumQty"   id="6" type="QtyRaw" sinceVersion="9"/>
   </sbe:message>
 
-  <!-- Order replaced (priorityKept = kept time priority in place). -->
+  <!-- Order replaced (priorityKept = kept time priority in place). cumQty is
+       the running total, unaffected by a reprice/resize. -->
   <sbe:message name="Replaced" id="15">
     <field name="orderId"      id="1" type="OrderId"/>
     <field name="symbol"       id="2" type="Symbol"/>
@@ -286,6 +308,7 @@
     <field name="priorityKept" id="5" type="Flag"/>
     <field name="seq"     id="6" type="SeqNum" sinceVersion="1"/>
     <field name="clOrdId"  id="7" type="OrderId" sinceVersion="4"/>
+    <field name="cumQty"  id="8" type="QtyRaw" sinceVersion="10"/>
   </sbe:message>
 
   <!-- Conditional order triggered (refPrice = reference that crossed). -->
@@ -301,7 +324,8 @@
        displayed remaining after the held qty left the book (public feed sync).
        takerSide is the aggressor's side; the maker's is the opposite one.
        clOrdId is the identifier the TAKER gave its order, 0 when it gave
-       none. -->
+       none. cumQty is the taker's CONFIRMED total as of the moment this hold
+       opened (never includes this held qty itself, still pending). -->
   <sbe:message name="FillHeld" id="17">
     <field name="heldId"            id="1" type="OrderId"/>
     <field name="symbol"            id="2" type="Symbol"/>
@@ -313,12 +337,14 @@
     <field name="seq"       id="8" type="SeqNum" sinceVersion="1"/>
     <field name="takerSide" id="9" type="EnumU8" sinceVersion="6"/>
     <field name="clOrdId"   id="10" type="OrderId" sinceVersion="7"/>
+    <field name="cumQty"    id="11" type="QtyRaw" sinceVersion="10"/>
   </sbe:message>
 
   <!-- Last look: the held fill was rejected (or timed out). Carries the
        counterparty order, price and size so the taker has a usable report.
        clOrdId is the identifier the TAKER gave its order, 0 when it gave
-       none. -->
+       none. cumQty is the same value FillHeld reported when this hold
+       opened. -->
   <sbe:message name="FillRejected" id="18">
     <field name="heldId"  id="1" type="OrderId"/>
     <field name="symbol"  id="2" type="Symbol"/>
@@ -328,6 +354,7 @@
     <field name="qty"     id="6" type="QtyRaw"/>
     <field name="seq"     id="7" type="SeqNum" sinceVersion="1"/>
     <field name="clOrdId" id="8" type="OrderId" sinceVersion="7"/>
+    <field name="cumQty"  id="9" type="QtyRaw" sinceVersion="10"/>
   </sbe:message>
 
   <!-- Session layer: the requested resend fromSeq is older than the retained

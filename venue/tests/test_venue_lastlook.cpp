@@ -237,9 +237,9 @@ void test_held_fill_names_the_taker_side()
 
   // And it reaches a client: appended to the FillHeld root block, after the
   // sequence number, which a reader must still find where the frame's own
-  // version says it is. clientOrderId (T050) trails takerSide, so the side
-  // byte is no longer the last byte of the frame -- it sits 8 bytes (one u64)
-  // before the end.
+  // version says it is. clientOrderId (T050) trails takerSide, and cumQty
+  // (T059) trails clientOrderId, so the side byte is no longer the last byte
+  // of the frame -- it sits 16 bytes (two u64) before the end.
   for (Side taker : {Side::BUY, Side::SELL})
   {
     FillHeld f{};
@@ -254,7 +254,7 @@ void test_held_fill_names_the_taker_side()
     std::vector<uint8_t> buf;
     SbeOrderEntryCodec::encode(OutboundEvent{f}, buf, /*seq=*/77);
     CHECK(buf.size() == sbe::kHeaderSize + SbeOrderEntryCodec::kBlockFillHeld);
-    CHECK(buf[buf.size() - 1 - 8] == static_cast<uint8_t>(taker));
+    CHECK(buf[buf.size() - 1 - 16] == static_cast<uint8_t>(taker));
     CHECK(SbeOrderEntryCodec::seqOf(buf.data(), buf.size()) == 77u);
   }
 }

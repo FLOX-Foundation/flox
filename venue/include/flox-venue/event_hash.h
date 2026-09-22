@@ -45,6 +45,13 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     {
       h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
     }
+    if (!x->cumQty.isZero())
+    {
+      // T059: only when the accept follows a fill (a triggered stop or a
+      // crossing new order that partially filled itself before resting) --
+      // the common accept-with-nothing-filled-yet case hashes as before.
+      h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
+    }
   }
   else if (const auto* x = std::get_if<OrderRejected>(&e))
   {
@@ -103,6 +110,13 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     {
       h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
     }
+    if (!x->cumQty.isZero())
+    {
+      // T059: an execution report always follows a real fill, so cumQty is
+      // near-never actually 0 here -- guarded anyway, same convention as
+      // every other appended field on this digest.
+      h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
+    }
   }
   else if (const auto* x = std::get_if<OrderCanceled>(&e))
   {
@@ -147,6 +161,11 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     {
       h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
     }
+    if (!x->cumQty.isZero())
+    {
+      // T059: 0 whenever the order has never filled -- most reprices/resizes.
+      h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
+    }
   }
   else if (const auto* x = std::get_if<OrderTriggered>(&e))
   {
@@ -173,6 +192,12 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     {
       h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
     }
+    if (!x->cumQty.isZero())
+    {
+      // T059: 0 unless the taker already had a confirmed fill earlier in the
+      // same sweep before this hold opened.
+      h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
+    }
   }
   else if (const auto* x = std::get_if<FillRejected>(&e))
   {
@@ -188,6 +213,11 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     if (x->clientOrderId != 0)
     {
       h = mix(h, x->clientOrderId);  // only when given: an order without one hashes as before
+    }
+    if (!x->cumQty.isZero())
+    {
+      // T059: same value FillHeld reported when this hold opened.
+      h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
     }
   }
   else if (const auto* x = std::get_if<MmpTriggered>(&e))

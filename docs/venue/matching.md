@@ -679,8 +679,11 @@ Before the first trade there is no reference price, so no band exists yet.
 any other maker). When an aggressor hits a resting `lastLook` maker, the hit
 size is reserved OUT of the book, `FillHeld` is emitted (with `heldId`, the
 maker's `makerDisplayAfter` for the public feed, `takerSide` -- the
-aggressor's side, the maker's being the opposite one -- and the taker's own
-`clientOrderId`, 0 if it gave none), and the maker has the window to answer
+aggressor's side, the maker's being the opposite one -- the taker's own
+`clientOrderId`, 0 if it gave none, and `cumQty` (T059): the taker's
+CONFIRMED fill total as of the moment this hold opened, from any real,
+non-held fill earlier in the same crossing sweep -- never the held quantity
+itself, which is still pending), and the maker has the window to answer
 with `LastLookDecision{heldId, accept}`.
 
 - **Ownership.** Only the maker account that owns the held quote may decide;
@@ -717,9 +720,11 @@ with `LastLookDecision{heldId, accept}`.
     the matching residual reason. The restored taker rests **passively** -- it
     does not re-aggress, so the book may be transiently crossed against the
     rejecting maker until new flow arrives.
-  - `FillRejected{heldId, takerId, makerId, price, qty, clientOrderId}` reports
-    what did not happen; `clientOrderId` is the taker's own, same rule as
-    `FillHeld`.
+  - `FillRejected{heldId, takerId, makerId, price, qty, clientOrderId,
+    cumQty}` reports what did not happen; `clientOrderId` is the taker's own,
+    same rule as `FillHeld`, and `cumQty` (T059) is the same value `FillHeld`
+    reported when this hold opened -- a reject settles no trade, so it does
+    not move.
 - **Timeout on a quiet symbol.** Hold expiry runs on every submit AND on
   `tick(nowNs)` (idempotent sweep). Under `SequencedShard`, pass
   `idleSweepIntervalNs > 0` to arm the idle sweeper: while holds are open it
@@ -745,16 +750,20 @@ with `LastLookDecision{heldId, accept}`.
   hold/accept/reject the published depth equals the matching book.
 - **Wire.** SBE templates 17 (`FillHeld`) / 18 (`FillRejected`) in
   `order-entry-sbe.xml`; REST/JSON `{"type":"fillHeld"|"fillRejected", ...}`.
-  `FillHeld`'s `takerSide` is appended after `seq` at schema version 6, and
-  both templates gained a trailing `clOrdId` at version 7 (after `takerSide`
-  on `FillHeld`, after `seq` on `FillRejected`), so a version-6 reader skips
-  it via `blockLength` and a reader looking for `seq` goes by the frame's own
-  version rather than by a fixed byte offset.
+  `FillHeld`'s `takerSide` is appended after `seq` at schema version 6, both
+  templates gained a trailing `clOrdId` at version 7 (after `takerSide` on
+  `FillHeld`, after `seq` on `FillRejected`), and both gained a further
+  trailing `cumQty` at version 10 (T059, after `clOrdId` on both) -- so a
+  version-6 reader skips the later fields via `blockLength` and a reader
+  looking for `seq` goes by the frame's own version rather than by a fixed
+  byte offset.
   FIX has no honest ExecType for a pending held fill, so `FillHeld` uses the
   documented custom value `150=U` and `FillRejected` uses `150=H` (Trade
-  Cancel), both with custom tags `20001=heldId`, `20002=makerId`, and tag `11`
+  Cancel), both with custom tags `20001=heldId`, `20002=makerId`, tag `11`
   (`ClOrdID`) carrying the taker's name whenever it gave one -- same rule as
-  every other execution report (see "Client order id dedup" below).
+  every other execution report (see "Client order id dedup" below) -- and tag
+  `14` (`CumQty`, T059) carrying the taker's confirmed total as of hold
+  creation.
 - Pro-rata instruments do not honour last look (documented matcher scope
   limitation), and admission refuses the combination. If one appears anyway
   (admission bypassed), the pro-rata allocation SKIPS that maker rather than

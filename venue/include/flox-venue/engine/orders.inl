@@ -97,9 +97,11 @@ bool MatchingEngine<Book>::onStop(const NewOrder& o)
   {
     expiry_.set(o.id, o.expiryNs);
   }
+  // T059: a pending stop has not triggered, so it has filled nothing -- cumQty
+  // is always 0.
   sink_(OrderAccepted{o.id, o.symbol, o.side, o.triggerPrice, o.quantity, false, Quantity{},
-                      o.accountId, o.clientOrderId});  // pending, not on book
-  processTriggers();                                   // may already be in-the-money
+                      o.accountId, o.clientOrderId, Quantity{}});  // pending, not on book
+  processTriggers();                                               // may already be in-the-money
   return true;
 }
 
@@ -180,10 +182,16 @@ void MatchingEngine<Book>::processTriggers()
       RestingOrder rro{agg->id, agg->accountId, agg->price, out.leaves, agg->side};
       rro.clientOrderId = agg->clientOrderId;
       rro.reduceOnly = agg->reduceOnly;
+      // T059: the triggered stop crossed as an aggressor before its residual
+      // rests -- out.filled is what it filled of itself. Stamped onto the
+      // RestingOrder for the same reason as validate.inl's residualRests
+      // branch: a later report on this order must not start its cumQty over
+      // at 0.
+      rro.cumQty = out.filled;
       book_.addResting(agg->side, rro);
       trackResting(agg->id, agg->accountId, agg->stp);
       sink_(OrderAccepted{agg->id, cfg_.id, agg->side, agg->price, out.leaves, true, Quantity{},
-                          agg->accountId, agg->clientOrderId});
+                          agg->accountId, agg->clientOrderId, out.filled});
     }
     else if (out.residualCanceled)
     {
@@ -251,6 +259,12 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   // keeps postOnly: the order is the same order, and the submitter is still
   // reconciling against the name it chose.
   const uint64_t curClientOrderId = cur->clientOrderId;
+  // T059: the order's running cumQty from before this modify. A reduce-in-
+  // place never trades (unaffected); a re-enter starts a fresh cross() whose
+  // own MatchOutcome::filled knows nothing about fills from the order's
+  // earlier life, so this is added back onto every report the re-enter path
+  // emits below.
+  const Quantity curCumQty = cur->cumQty;
   const Price newPrice = (m.newPrice.raw() == 0) ? curPrice : m.newPrice;
 
   // Validate the new price/qty before mutating so a bad modify leaves the
@@ -294,7 +308,8 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   {
     book_.reduce(m.id, m.newQty);
     releaseReservationPro(m.id, curLeaves.raw(), m.newQty.raw());
-    sink_(OrderModified{m.id, m.symbol, newPrice, m.newQty, true, acct, curClientOrderId});
+    sink_(OrderModified{m.id, m.symbol, newPrice, m.newQty, true, acct, curClientOrderId,
+                        curCumQty});
     return;
   }
 
@@ -335,18 +350,19 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   if (const RejectReason r = perpRiskGate(re); r != RejectReason::None)
   {
     forgetOrder(m.id);  // order was already canceled above -> stays gone
-    sink_(OrderRejected{m.id, m.symbol, r, acct, curClientOrderId});
+    sink_(OrderRejected{m.id, m.symbol, r, acct, curClientOrderId, curCumQty});
     return;
   }
   if (!reserveFunds(re))  // cannot fund the modified order -> reject; order is gone
   {
     forgetOrder(m.id);
-    sink_(OrderRejected{m.id, m.symbol, RejectReason::InsufficientFunds, acct, curClientOrderId});
+    sink_(OrderRejected{m.id, m.symbol, RejectReason::InsufficientFunds, acct, curClientOrderId,
+                        curCumQty});
     return;
   }
   const MatchOutcome out =
       matcher_.cross(re, book_, [this]()
-                     { return ++tradeSeq_; }, emit_);
+                     { return ++tradeSeq_; }, emit_, curCumQty);
   stampFreshHolds();
   // The amended order left the book at the top of this path, so every way the
   // match can end has to say where it went. Reporting only the resting case
@@ -357,17 +373,20 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   {
     releaseReservation(m.id);
     forgetOrder(m.id);
-    sink_(OrderRejected{m.id, m.symbol, out.reject, acct, curClientOrderId});
+    sink_(OrderRejected{m.id, m.symbol, out.reject, acct, curClientOrderId, curCumQty});
     return;
   }
   if (out.residualCanceled)
   {
     // Self-trade prevention or a fill-time risk block killed the re-entering
     // order. Held slices stay reserved: their accept still has to settle.
+    // T059: out.filled is only what this re-cross filled; curCumQty is what
+    // the order filled in its life BEFORE the modify -- both count toward
+    // the order's real running total.
     releaseReservationExceptHeld(m.id);
     forgetOrder(m.id);
     sink_(OrderCanceled{m.id, m.symbol, out.residualCancelReason, acct, curClientOrderId,
-                        out.leaves, out.filled});
+                        out.leaves, curCumQty + out.filled});
     processTriggers();
     return;
   }
@@ -377,6 +396,8 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
     mro.clientOrderId = curClientOrderId;
     mro.reduceOnly = re.reduceOnly;
     mro.postOnly = re.postOnly;
+    // T059: same reasoning as the residualCanceled branch above.
+    mro.cumQty = curCumQty + out.filled;
     mro.lastLook = re.lastLook && cfg_.lastLookWindowNs.count() > 0;
     if (re.visibleQuantity.raw() > 0 && re.visibleQuantity < out.leaves)
     {
@@ -387,7 +408,8 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
     book_.addResting(side, mro);
     trackResting(m.id, acct, re.stp);
   }
-  sink_(OrderModified{m.id, m.symbol, newPrice, out.leaves, false, acct, curClientOrderId});
+  sink_(OrderModified{m.id, m.symbol, newPrice, out.leaves, false, acct, curClientOrderId,
+                      curCumQty + out.filled});
   processTriggers();  // a reprice-into-cross may have moved the last price
 }
 

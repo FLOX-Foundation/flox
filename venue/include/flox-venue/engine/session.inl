@@ -433,8 +433,15 @@ void MatchingEngine<Book>::runAuction()
     // Post-consume displayed peak (b2/a2 already refilled) for the public feed.
     const Quantity bDisp = b2 ? b2->leaves : Quantity{};
     const Quantity aDisp = a2 ? a2->leaves : Quantity{};
-    emit_(OrderExecuted{bidId, cfg_.id, fill, bl, false, bl.isZero(), P, bDisp, bAcct, bClOrd});
-    emit_(OrderExecuted{askId, cfg_.id, fill, al, false, al.isZero(), P, aDisp, aAcct, aClOrd});
+    // T059: running cumQty after this print. b2/a2, when found, already
+    // reflect it (consumeById incremented it); when the leg left the book
+    // entirely, fall back to the pre-consume snapshot (bCum/aCum) plus fill.
+    const Quantity bCumAfter = b2 ? b2->cumQty : (bCum + fill);
+    const Quantity aCumAfter = a2 ? a2->cumQty : (aCum + fill);
+    emit_(OrderExecuted{bidId, cfg_.id, fill, bl, false, bl.isZero(), P, bDisp, bAcct, bClOrd,
+                        bCumAfter});
+    emit_(OrderExecuted{askId, cfg_.id, fill, al, false, al.isZero(), P, aDisp, aAcct, aClOrd,
+                        aCumAfter});
   }
 }
 

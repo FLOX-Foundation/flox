@@ -491,3 +491,533 @@ TEST(LeavesCumQty, LadderBookProRataPartialFillThenCancelReportsRunningCumQty)
   EXPECT_EQ(canceled->leavesQty, qty(6));
   EXPECT_EQ(canceled->cumQty, qty(4)) << "4 filled via LadderBook::consumeById (crossProRata)";
 }
+
+// ---- T059: FIX 14 (CumQty) on OrderAccepted / OrderExecuted / OrderModified
+// / FillHeld / FillRejected -- the five reports T058 left without it. See
+// the note's audit table (T058) for what was already covered.
+//
+// A lastLook-enabled config for the FillHeld/FillRejected tests below.
+venue::SymbolConfig cfgLastLook()
+{
+  venue::SymbolConfig c = cfg();
+  c.lastLookWindowNs = DurationNs{1'000'000'000};
+  return c;
+}
+
+// ---- FixCodec / SbeOrderEntryCodec: pure functions of the event -----------
+
+TEST(LeavesCumQty, FixCodecWritesTag14OnOrderAccepted)
+{
+  OrderAccepted a;
+  a.id = 10;
+  a.symbol = SYM;
+  a.side = Side::BUY;
+  a.price = px(100.0);
+  a.leavesQty = qty(3);
+  a.restingOnBook = true;
+  a.account = 1;
+  a.cumQty = qty(2);
+
+  const std::string wire = FixCodec::encode(OutboundEvent{a});
+  EXPECT_EQ(tag(wire, 14), "2");
+}
+
+TEST(LeavesCumQty, SbeCodecWritesCumQtyOnAcceptedAfterClOrdId)
+{
+  OrderAccepted a;
+  a.id = 10;
+  a.symbol = SYM;
+  a.side = Side::BUY;
+  a.price = px(100.0);
+  a.leavesQty = qty(3);
+  a.restingOnBook = true;
+  a.account = 1;
+  a.clientOrderId = 5;
+  a.cumQty = qty(2);
+
+  std::vector<uint8_t> f;
+  SbeOrderEntryCodec::encode(OutboundEvent{a}, f, /*seq=*/1);
+  ASSERT_FALSE(f.empty());
+  EXPECT_EQ(sbe::readHeader(f.data()).blockLength, SbeOrderEntryCodec::kBlockAccepted);
+  // orderId(8) symbol(4) side(1) price(8) leavesQty(8) restingOnBook(1) seq(8) clOrdId(8) cumQty(8)
+  EXPECT_EQ(rootU64(f, 38), 5u) << "clOrdId keeps its version-4 offset";
+  EXPECT_EQ(static_cast<int64_t>(rootU64(f, 46)), qty(2).raw()) << "cumQty, appended after clOrdId";
+  EXPECT_EQ(SbeOrderEntryCodec::seqOf(f.data(), f.size()), 1u);
+}
+
+TEST(LeavesCumQty, FixCodecWritesTag14OnOrderExecuted)
+{
+  OrderExecuted x;
+  x.id = 10;
+  x.symbol = SYM;
+  x.lastQty = qty(2);
+  x.leavesQty = qty(3);
+  x.aggressor = true;
+  x.complete = false;
+  x.lastPx = px(100.0);
+  x.account = 1;
+  x.cumQty = qty(5);
+
+  const std::string wire = FixCodec::encode(OutboundEvent{x});
+  EXPECT_EQ(tag(wire, 14), "5");
+}
+
+TEST(LeavesCumQty, SbeCodecWritesCumQtyOnExecutedAfterClOrdId)
+{
+  OrderExecuted x;
+  x.id = 10;
+  x.symbol = SYM;
+  x.lastQty = qty(2);
+  x.leavesQty = qty(3);
+  x.aggressor = true;
+  x.complete = false;
+  x.lastPx = px(100.0);
+  x.account = 1;
+  x.clientOrderId = 6;
+  x.cumQty = qty(5);
+
+  std::vector<uint8_t> f;
+  SbeOrderEntryCodec::encode(OutboundEvent{x}, f, /*seq=*/2);
+  ASSERT_FALSE(f.empty());
+  EXPECT_EQ(sbe::readHeader(f.data()).blockLength, SbeOrderEntryCodec::kBlockExecuted);
+  // orderId(8) symbol(4) lastQty(8) lastPx(8) leavesQty(8) aggressor(1) complete(1) seq(8) clOrdId(8) cumQty(8)
+  EXPECT_EQ(rootU64(f, 46), 6u) << "clOrdId keeps its version-4 offset";
+  EXPECT_EQ(static_cast<int64_t>(rootU64(f, 54)), qty(5).raw()) << "cumQty, appended after clOrdId";
+  EXPECT_EQ(SbeOrderEntryCodec::seqOf(f.data(), f.size()), 2u);
+}
+
+TEST(LeavesCumQty, FixCodecWritesTag14OnOrderModified)
+{
+  OrderModified m;
+  m.id = 10;
+  m.symbol = SYM;
+  m.price = px(99.0);
+  m.leavesQty = qty(6);
+  m.account = 1;
+  m.cumQty = qty(4);
+
+  const std::string wire = FixCodec::encode(OutboundEvent{m});
+  EXPECT_EQ(tag(wire, 14), "4");
+}
+
+TEST(LeavesCumQty, SbeCodecWritesCumQtyOnReplacedAfterClOrdId)
+{
+  OrderModified m;
+  m.id = 10;
+  m.symbol = SYM;
+  m.price = px(99.0);
+  m.leavesQty = qty(6);
+  m.account = 1;
+  m.clientOrderId = 7;
+  m.cumQty = qty(4);
+
+  std::vector<uint8_t> f;
+  SbeOrderEntryCodec::encode(OutboundEvent{m}, f, /*seq=*/3);
+  ASSERT_FALSE(f.empty());
+  EXPECT_EQ(sbe::readHeader(f.data()).blockLength, SbeOrderEntryCodec::kBlockReplaced);
+  // orderId(8) symbol(4) price(8) leavesQty(8) priorityKept(1) seq(8) clOrdId(8) cumQty(8)
+  EXPECT_EQ(rootU64(f, 37), 7u) << "clOrdId keeps its version-4 offset";
+  EXPECT_EQ(static_cast<int64_t>(rootU64(f, 45)), qty(4).raw()) << "cumQty, appended after clOrdId";
+  EXPECT_EQ(SbeOrderEntryCodec::seqOf(f.data(), f.size()), 3u);
+}
+
+TEST(LeavesCumQty, FixCodecWritesTag14OnFillHeldAndFillRejected)
+{
+  FillHeld fh;
+  fh.heldId = 5;
+  fh.symbol = SYM;
+  fh.makerId = 1;
+  fh.takerId = 2;
+  fh.price = px(100.0);
+  fh.qty = qty(3);
+  fh.cumQty = qty(2);
+  EXPECT_EQ(tag(FixCodec::encode(OutboundEvent{fh}), 14), "2");
+
+  FillRejected fr;
+  fr.heldId = 5;
+  fr.symbol = SYM;
+  fr.takerId = 2;
+  fr.makerId = 1;
+  fr.price = px(100.0);
+  fr.qty = qty(3);
+  fr.cumQty = qty(2);
+  EXPECT_EQ(tag(FixCodec::encode(OutboundEvent{fr}), 14), "2");
+}
+
+TEST(LeavesCumQty, SbeCodecWritesCumQtyOnFillHeldAndFillRejectedAfterClOrdId)
+{
+  FillHeld fh;
+  fh.heldId = 5;
+  fh.symbol = SYM;
+  fh.makerId = 1;
+  fh.takerId = 2;
+  fh.price = px(100.0);
+  fh.qty = qty(3);
+  fh.clientOrderId = 8;
+  fh.cumQty = qty(2);
+
+  std::vector<uint8_t> f;
+  SbeOrderEntryCodec::encode(OutboundEvent{fh}, f, /*seq=*/4);
+  ASSERT_FALSE(f.empty());
+  EXPECT_EQ(sbe::readHeader(f.data()).blockLength, SbeOrderEntryCodec::kBlockFillHeld);
+  // heldId(8) symbol(4) makerId(8) takerId(8) price(8) qty(8) makerDisplayAfter(8) seq(8) takerSide(1) clOrdId(8) cumQty(8)
+  EXPECT_EQ(rootU64(f, 61), 8u) << "clOrdId keeps its version-7 offset";
+  EXPECT_EQ(static_cast<int64_t>(rootU64(f, 69)), qty(2).raw()) << "cumQty, appended after clOrdId";
+  EXPECT_EQ(SbeOrderEntryCodec::seqOf(f.data(), f.size()), 4u);
+
+  FillRejected fr;
+  fr.heldId = 5;
+  fr.symbol = SYM;
+  fr.takerId = 2;
+  fr.makerId = 1;
+  fr.price = px(100.0);
+  fr.qty = qty(3);
+  fr.clientOrderId = 9;
+  fr.cumQty = qty(2);
+
+  std::vector<uint8_t> fr2;
+  SbeOrderEntryCodec::encode(OutboundEvent{fr}, fr2, /*seq=*/5);
+  ASSERT_FALSE(fr2.empty());
+  EXPECT_EQ(sbe::readHeader(fr2.data()).blockLength, SbeOrderEntryCodec::kBlockFillRejected);
+  // heldId(8) symbol(4) takerId(8) makerId(8) price(8) qty(8) seq(8) clOrdId(8) cumQty(8)
+  EXPECT_EQ(rootU64(fr2, 52), 9u) << "clOrdId keeps its version-7 offset";
+  EXPECT_EQ(static_cast<int64_t>(rootU64(fr2, 60)), qty(2).raw()) << "cumQty, appended after clOrdId";
+  EXPECT_EQ(SbeOrderEntryCodec::seqOf(fr2.data(), fr2.size()), 5u);
+}
+
+// ---- engine integration: OrderAccepted ------------------------------------
+
+// A crossing new order that partially fills BEFORE its residual rests
+// (validate.inl's residualRests branch): the accept must carry what it
+// already filled of itself, not 0.
+TEST(LeavesCumQty, OrderAcceptedAfterAPartialFillOnEntryCarriesCumQty)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  eng.submit(InboundCommand{order(100, Side::SELL, 100.0, 3)}, 1);  // resting maker, qty 3
+  eng.submit(InboundCommand{order(200, Side::BUY, 100.0, 5)}, 2);   // crosses 3, rests 2
+
+  const auto* accepted = cap.firstWhere<OrderAccepted>(
+      +[](const OrderAccepted& x)
+      { return x.id == 200; });
+  ASSERT_NE(accepted, nullptr);
+  EXPECT_EQ(accepted->leavesQty, qty(2));
+  EXPECT_EQ(accepted->cumQty, qty(3)) << "3 filled of itself before this residual rests";
+  EXPECT_TRUE(accepted->restingOnBook);
+
+  const std::string wire = FixCodec::encode(OutboundEvent{*accepted});
+  EXPECT_EQ(tag(wire, 151), "2");
+  EXPECT_EQ(tag(wire, 14), "3");
+
+  // The RestingOrder this order became must also carry the 3 forward, so a
+  // later cancel reports the real life-to-date total -- not just the accept.
+  CancelOrder c;
+  c.id = 200;
+  c.symbol = SYM;
+  c.accountId = 1;
+  eng.submit(InboundCommand{c}, 3);
+  const auto* canceled = cap.firstWhere<OrderCanceled>(
+      +[](const OrderCanceled& x)
+      { return x.id == 200; });
+  ASSERT_NE(canceled, nullptr);
+  EXPECT_EQ(canceled->cumQty, qty(3))
+      << "RestingOrder::cumQty must be seeded from the entry fill, not left at 0";
+}
+
+// T059 acceptance criteria: a triggered stop that partially fills before its
+// residual rests (orders.inl's processTriggers residualRests branch) reports
+// FIX 14 > 0 on the accept.
+TEST(LeavesCumQty, OrderAcceptedAfterATriggeredStopPartiallyFillsCarriesCumQty)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  eng.submit(InboundCommand{order(100, Side::SELL, 100.0, 2)}, 1);  // what the stop will partially fill
+
+  // Set the last-trade reference to 99 first (below the stop's trigger).
+  eng.submit(InboundCommand{order(90, Side::SELL, 99.0, 1)}, 2);
+  eng.submit(InboundCommand{order(91, Side::BUY, 99.0, 1, /*account=*/2, TimeInForce::IOC)}, 3);
+
+  // A STOP_LIMIT: pending until the reference reaches 100, then aggresses as
+  // a LIMIT at 101 -- crosses order 100 (qty 2) and rests the rest.
+  NewOrder stop = order(300, Side::BUY, 101.0, 5, /*account=*/3);
+  stop.type = OrderType::STOP_LIMIT;
+  stop.triggerPrice = px(100.0);
+  eng.submit(InboundCommand{stop}, 4);
+  ASSERT_TRUE(cap.firstWhere<OrderAccepted>(
+                  +[](const OrderAccepted& x)
+                  { return x.id == 300 && !x.restingOnBook; }) != nullptr)
+      << "parked in the stop book, not yet triggered";
+
+  // Trigger it: a trade prints at 100, moving the last-trade reference to
+  // (>=) the stop's trigger.
+  eng.submit(InboundCommand{order(95, Side::SELL, 100.0, 1)}, 5);
+  eng.submit(InboundCommand{order(96, Side::BUY, 100.0, 1, /*account=*/2, TimeInForce::IOC)}, 6);
+
+  const auto* accepted = cap.firstWhere<OrderAccepted>(
+      +[](const OrderAccepted& x)
+      { return x.id == 300 && x.restingOnBook; });
+  ASSERT_NE(accepted, nullptr) << "the triggered stop's residual accept";
+  EXPECT_EQ(accepted->leavesQty, qty(3)) << "5 - 2 filled against order 100";
+  EXPECT_GT(accepted->cumQty.raw(), 0) << "T059 acceptance criteria: 14 > 0";
+  EXPECT_EQ(accepted->cumQty, qty(2));
+
+  const std::string wire = FixCodec::encode(OutboundEvent{*accepted});
+  EXPECT_EQ(tag(wire, 14), "2");
+}
+
+// ---- engine integration: OrderExecuted ------------------------------------
+
+// A maker's SECOND partial fill reports the accumulated total, not just this
+// fill's own size.
+TEST(LeavesCumQty, OrderExecutedOnTheSecondPartialFillCarriesTheAccumulatedCumQty)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  eng.submit(InboundCommand{order(100, Side::SELL, 100.0, 10)}, 1);  // resting maker, qty 10
+  eng.submit(InboundCommand{order(200, Side::BUY, 100.0, 3)}, 2);    // fills 3
+  eng.submit(InboundCommand{order(201, Side::BUY, 100.0, 2)}, 3);    // fills 2 more
+
+  std::vector<const OrderExecuted*> makerFills;
+  for (const auto& e : cap.ev)
+  {
+    if (const auto* x = std::get_if<OrderExecuted>(&e); x != nullptr && x->id == 100)
+    {
+      makerFills.push_back(x);
+    }
+  }
+  ASSERT_EQ(makerFills.size(), 2u);
+  EXPECT_EQ(makerFills[0]->cumQty, qty(3)) << "first fill: running total is just this fill";
+  EXPECT_EQ(makerFills[1]->cumQty, qty(5)) << "second fill: 3 + 2 accumulated";
+
+  const std::string wire = FixCodec::encode(OutboundEvent{*makerFills[1]});
+  EXPECT_EQ(tag(wire, 14), "5");
+
+  // The taker leg of the second fill: a fresh order, so its own cumQty is
+  // just what it filled in its own (single-fill) sweep.
+  const auto* taker2 = cap.firstWhere<OrderExecuted>(
+      +[](const OrderExecuted& x)
+      { return x.id == 201; });
+  ASSERT_NE(taker2, nullptr);
+  EXPECT_EQ(taker2->cumQty, qty(2));
+}
+
+// ---- engine integration: OrderModified ------------------------------------
+
+// A reduce-in-place amend (same price, shrinking) never trades: cumQty from
+// before the modify must be carried through unchanged.
+TEST(LeavesCumQty, OrderModifiedReduceInPlaceKeepsTheCumQtyFromBeforeTheModify)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  eng.submit(InboundCommand{order(100, Side::SELL, 100.0, 10)}, 1);  // resting maker
+  eng.submit(InboundCommand{order(200, Side::BUY, 100.0, 4)}, 2);    // fills 4, maker leaves 6
+
+  ModifyOrder m;
+  m.id = 100;
+  m.symbol = SYM;
+  m.newPrice = px(100.0);  // same price -> reduce-in-place
+  m.newQty = qty(5);       // <= leaves(6), no hidden reserve
+  m.accountId = 1;
+  eng.submit(InboundCommand{m}, 3);
+
+  const auto* modified = cap.firstWhere<OrderModified>(
+      +[](const OrderModified& x)
+      { return x.id == 100 && x.priorityKept; });
+  ASSERT_NE(modified, nullptr);
+  EXPECT_EQ(modified->leavesQty, qty(5));
+  EXPECT_EQ(modified->cumQty, qty(4)) << "unaffected by a reduce, which never trades";
+
+  const std::string wire = FixCodec::encode(OutboundEvent{*modified});
+  EXPECT_EQ(tag(wire, 14), "4");
+}
+
+// A reprice (re-enter at the tail) that immediately crosses new liquidity:
+// the report must carry BOTH the order's pre-modify cumQty AND what this
+// re-entering cross just filled -- not either alone.
+TEST(LeavesCumQty, OrderModifiedReenterAddsThisCrosssFillsOnTopOfThePriorCumQty)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  eng.submit(InboundCommand{order(100, Side::SELL, 100.0, 10)}, 1);  // resting maker
+  eng.submit(InboundCommand{order(200, Side::BUY, 100.0, 4)}, 2);    // fills 4, maker leaves 6
+  eng.submit(InboundCommand{order(150, Side::BUY, 99.5, 3)}, 3);     // new resting bid, below 100
+
+  ModifyOrder m;
+  m.id = 100;
+  m.symbol = SYM;
+  m.newPrice = px(99.0);  // repriced below 99.5 -> re-enters, crosses order 150
+  m.newQty = qty(6);
+  m.accountId = 1;
+  eng.submit(InboundCommand{m}, 4);
+
+  const auto* modified = cap.firstWhere<OrderModified>(
+      +[](const OrderModified& x)
+      { return x.id == 100 && !x.priorityKept; });
+  ASSERT_NE(modified, nullptr);
+  EXPECT_EQ(modified->leavesQty, qty(3)) << "6 - 3 filled against order 150";
+  EXPECT_EQ(modified->cumQty, qty(7)) << "4 from before the modify + 3 from this re-entering cross";
+
+  const std::string wire = FixCodec::encode(OutboundEvent{*modified});
+  EXPECT_EQ(tag(wire, 14), "7");
+
+  // The re-rested order's own RestingOrder::cumQty must also carry the 7
+  // forward, verified via a subsequent cancel.
+  CancelOrder c;
+  c.id = 100;
+  c.symbol = SYM;
+  c.accountId = 1;
+  eng.submit(InboundCommand{c}, 5);
+  const auto* canceled = cap.firstWhere<OrderCanceled>(
+      +[](const OrderCanceled& x)
+      { return x.id == 100; });
+  ASSERT_NE(canceled, nullptr);
+  EXPECT_EQ(canceled->cumQty, qty(7));
+}
+
+// ---- engine integration: FillHeld / FillRejected --------------------------
+
+// The taker's cumQty on a hold is what it had already confirmed EARLIER in
+// the same sweep -- a real fill against a non-last-look maker before the
+// hold opened -- never the held quantity itself (still pending).
+TEST(LeavesCumQty, FillHeldCarriesTheTakersConfirmedCumQtyFromEarlierInTheSweep)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfgLastLook(), cap.sink());
+
+  eng.submit(InboundCommand{order(90, Side::SELL, 99.0, 2)}, 1);  // plain maker, fills for real
+
+  NewOrder llMaker = order(100, Side::SELL, 100.0, 5, /*account=*/1);
+  llMaker.lastLook = true;
+  eng.submit(InboundCommand{llMaker}, 2);
+
+  // Taker sweeps both: 2 real against order 90, then up to 4 held against
+  // the last-look maker (its whole remaining size).
+  eng.submit(InboundCommand{order(200, Side::BUY, 101.0, 6, /*account=*/2)}, 3);
+
+  const auto* held = cap.first<FillHeld>();
+  ASSERT_NE(held, nullptr);
+  EXPECT_EQ(held->qty, qty(4));
+  EXPECT_EQ(held->cumQty, qty(2)) << "confirmed against order 90 before this hold opened";
+
+  const std::string heldWire = FixCodec::encode(OutboundEvent{*held});
+  EXPECT_EQ(tag(heldWire, 14), "2");
+
+  // Rejecting the hold must report the SAME cumQty on FillRejected, and on
+  // the report that rebuilds the taker's residual (fully held out of the
+  // book, so this is its first-ever accept).
+  eng.submit(InboundCommand{LastLookDecision{held->heldId, SYM, /*accept=*/false, {}, 1}}, 4);
+
+  const auto* rejected = cap.first<FillRejected>();
+  ASSERT_NE(rejected, nullptr);
+  EXPECT_EQ(rejected->cumQty, qty(2));
+  EXPECT_EQ(tag(FixCodec::encode(OutboundEvent{*rejected}), 14), "2");
+
+  const auto* rebuiltAccept = cap.firstWhere<OrderAccepted>(
+      +[](const OrderAccepted& x)
+      { return x.id == 200; });
+  ASSERT_NE(rebuiltAccept, nullptr)
+      << "the taker's whole order was 2 (real) + 4 (held) = 6, so it never rested before this";
+  EXPECT_EQ(rebuiltAccept->cumQty, qty(2));
+}
+
+// Same setup, but the taker is IOC: a rejected hold's residual never rests,
+// so it cancels instead -- and that cancel's CumQty must be the same
+// hold-time snapshot, not 0 (the pre-T059 behaviour).
+TEST(LeavesCumQty, FillRejectedIocResidualCancelCarriesTheTakersCumQty)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfgLastLook(), cap.sink());
+
+  eng.submit(InboundCommand{order(90, Side::SELL, 99.0, 2)}, 1);
+
+  NewOrder llMaker = order(100, Side::SELL, 100.0, 5, /*account=*/1);
+  llMaker.lastLook = true;
+  eng.submit(InboundCommand{llMaker}, 2);
+
+  NewOrder taker = order(200, Side::BUY, 101.0, 6, /*account=*/2);
+  taker.tif = TimeInForce::IOC;
+  eng.submit(InboundCommand{taker}, 3);
+
+  const auto* held = cap.first<FillHeld>();
+  ASSERT_NE(held, nullptr);
+  EXPECT_EQ(held->cumQty, qty(2));
+
+  eng.submit(InboundCommand{LastLookDecision{held->heldId, SYM, /*accept=*/false, {}, 1}}, 4);
+
+  const auto* canceled = cap.firstWhere<OrderCanceled>(
+      +[](const OrderCanceled& x)
+      { return x.id == 200; });
+  ASSERT_NE(canceled, nullptr);
+  EXPECT_EQ(canceled->leavesQty, qty(4)) << "the held residual, now killed (IOC never rests)";
+  EXPECT_EQ(canceled->cumQty, qty(2)) << "T058 left this at 0; T059 threads the hold-time snapshot";
+  EXPECT_EQ(tag(FixCodec::encode(OutboundEvent{*canceled}), 14), "2");
+}
+
+// A maker that filled for real, THEN had a slice held and REJECTED, must not
+// double-count: the book's own optimistic cumQty bump at hold-creation time
+// (fillBest runs before the maker's decision is known) has to be undone on
+// reject, or every later report on this order overstates its history.
+TEST(LeavesCumQty, ARejectedHoldDoesNotInflateTheMakersCumQty)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfgLastLook(), cap.sink());
+
+  NewOrder llMaker = order(100, Side::SELL, 100.0, 10, /*account=*/1);
+  llMaker.lastLook = true;
+  eng.submit(InboundCommand{llMaker}, 1);
+
+  // Confirmed fill first, via a hold that gets ACCEPTED: order 100 is
+  // lastLook, so every fill against it -- this one included -- goes through
+  // a hold; accept is what turns it into a real, confirmed print.
+  eng.submit(InboundCommand{order(200, Side::BUY, 100.0, 3, /*account=*/2)}, 2);
+  const auto* firstHeldPtr = cap.first<FillHeld>();
+  ASSERT_NE(firstHeldPtr, nullptr);
+  // Copied by value: cap.ev is a vector, and the submit below appends to it,
+  // which may reallocate and dangle firstHeldPtr.
+  const FillHeld firstHeld = *firstHeldPtr;
+  eng.submit(InboundCommand{LastLookDecision{firstHeld.heldId, SYM, /*accept=*/true, {}, 1}}, 3);
+  const auto* firstExec = cap.firstWhere<OrderExecuted>(
+      +[](const OrderExecuted& x)
+      { return x.id == 100; });
+  ASSERT_NE(firstExec, nullptr);
+  EXPECT_EQ(firstExec->cumQty, qty(3)) << "confirmed: order 100 has really filled 3 so far";
+
+  // Now a SECOND hold on the same maker, this time rejected. Book-side
+  // bookkeeping optimistically bumped cumQty by this held qty (2) the
+  // moment the hold opened; the reject must undo exactly that.
+  eng.submit(InboundCommand{order(201, Side::BUY, 100.0, 2, /*account=*/2)}, 4);
+  const FillHeld* secondHeld = nullptr;
+  for (const auto& e : cap.ev)
+  {
+    if (const auto* x = std::get_if<FillHeld>(&e); x != nullptr && x->heldId != firstHeld.heldId)
+    {
+      secondHeld = x;
+    }
+  }
+  ASSERT_NE(secondHeld, nullptr);
+  eng.submit(InboundCommand{LastLookDecision{secondHeld->heldId, SYM, /*accept=*/false, {}, 1}}, 5);
+
+  const auto* restored = cap.firstWhere<OrderModified>(
+      +[](const OrderModified& x)
+      { return x.id == 100; });
+  ASSERT_NE(restored, nullptr) << "order 100 still rests (leaves 7 after the first real fill)";
+  EXPECT_EQ(restored->cumQty, qty(3))
+      << "still 3 -- the rejected hold's 2 must not have stuck to the running total";
+
+  // Confirmed independently via a plain cancel of what remains.
+  CancelOrder c;
+  c.id = 100;
+  c.symbol = SYM;
+  c.accountId = 1;
+  eng.submit(InboundCommand{c}, 6);
+  const auto* canceled = cap.firstWhere<OrderCanceled>(
+      +[](const OrderCanceled& x)
+      { return x.id == 100; });
+  ASSERT_NE(canceled, nullptr);
+  EXPECT_EQ(canceled->cumQty, qty(3));
+}
