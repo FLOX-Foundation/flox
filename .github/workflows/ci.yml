@@ -271,9 +271,9 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-gcc14-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        key: ccache-${{ runner.os }}-gcc14-linux-gcc-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
-          ccache-${{ runner.os }}-gcc14-
+          ccache-${{ runner.os }}-gcc14-linux-gcc-
 
     - name: Install Python packages
       # pybind11 pinned below 3.1.0: 3.1.0 changed the signatures stubgen
