@@ -744,6 +744,14 @@ class FixInitiator
 
   void setSessionDown(SessionDownReason reason, const std::string& text, int64_t nowNs)
   {
+    // Every path that reports why the session is down is, definitionally, a
+    // path where the session is no longer up. Clearing loggedOn_ here --
+    // instead of at each of the four call sites (EOF/write failure via
+    // logout(), HeartbeatMissed, counterparty Logout) -- is what keeps a
+    // future fifth path from repeating the same miss: a caller judging
+    // reachability by loggedOn() would otherwise keep sending into a socket
+    // this object already knows is gone.
+    loggedOn_ = false;
     sessionDown_ = SessionDown{reason, nowNs, text};
   }
 

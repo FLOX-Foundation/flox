@@ -67,7 +67,10 @@ while (session.poll(nowNs())) {
 
 `poll()` returns false when the session ends, for any of the three reasons a
 FIX session ends: a Logout was exchanged, liveness was lost, or the transport
-went away.
+went away. `loggedOn()` goes false at the same moment, however the session
+ended -- a caller that judges reachability by the flag rather than by `poll()`'s
+return value sees the same answer either way, instead of one that stays true
+through a transport loss it never got a Logout for.
 
 Sending is typed:
 

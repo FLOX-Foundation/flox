@@ -408,6 +408,65 @@ void test_logout_both_directions()
   }
 }
 
+// (6b) loggedOn() must go false the moment the session is lost, for every
+// way it can be lost -- not just the connect()-time reset. A consumer that
+// judges reachability by loggedOn() otherwise keeps sending into a session
+// that setSessionDown() already knows is gone. One scenario per path; all
+// four end up inside setSessionDown(), which is where the flag is cleared.
+void test_logged_on_false_after_session_loss()
+{
+  std::printf("test_logged_on_false_after_session_loss\n");
+  {
+    // EOF: the transport saw the peer close the TCP connection with no FIX
+    // Logout of its own. FixInitiator has no socket to watch, so whatever
+    // detects the close reports it the only way it can -- the same logout()
+    // a write failure or an operator stop would call.
+    Harness h;
+    Peer p;
+    h.logon(p);
+    CHECK(h.initiator.loggedOn());
+    CHECK(h.initiator.logout("read EOF", 0));
+    CHECK(!h.initiator.loggedOn());
+    CHECK(h.initiator.sessionDown().reason == fix::SessionDownReason::Lost);
+    CHECK(h.initiator.sessionDown().text == "read EOF");
+  }
+  {
+    // Write error: a failed send() on the transport, reported the same way.
+    Harness h;
+    Peer p;
+    h.logon(p);
+    CHECK(h.initiator.loggedOn());
+    CHECK(h.initiator.logout("write failed", 0));
+    CHECK(!h.initiator.loggedOn());
+    CHECK(h.initiator.sessionDown().reason == fix::SessionDownReason::Lost);
+    CHECK(h.initiator.sessionDown().text == "write failed");
+  }
+  {
+    // HeartbeatMissed: our own TestRequest goes unanswered past the second
+    // 1.2x grace window. Same nowNs values as test_heartbeat_and_testrequest.
+    Harness h;
+    Peer p;
+    h.logon(p);
+    CHECK(h.initiator.loggedOn());
+    CHECK(h.initiator.onTick(30 * kSec));   // inbound silence: TestRequest goes out
+    CHECK(!h.initiator.onTick(60 * kSec));  // TestRequest unanswered: session ends
+    CHECK(!h.initiator.loggedOn());
+    CHECK(h.initiator.sessionDown().reason == fix::SessionDownReason::HeartbeatMissed);
+  }
+  {
+    // Logout: the counterparty ends the session on its own initiative.
+    Harness h;
+    Peer p;
+    h.logon(p);
+    CHECK(h.initiator.loggedOn());
+    CHECK(h.initiator.onFrame(p.admin("5", {{58, "venue closing"}}), 0) ==
+          fix::FixInitiator::Verdict::Disconnect);
+    CHECK(!h.initiator.loggedOn());
+    CHECK(h.initiator.sessionDown().reason == fix::SessionDownReason::Lost);
+    CHECK(h.initiator.sessionDown().text == "venue closing");
+  }
+}
+
 // (7) A sequence number below what we expect is a corrupted session, and a
 // message with no 34 at all is not a FIX 4.4 message.
 void test_sequence_violations_end_the_session()
@@ -665,6 +724,7 @@ TEST(FixInitiator, SessionRules)
   test_inbound_gap_holds_back_until_closed();
   test_serve_their_resend();
   test_logout_both_directions();
+  test_logged_on_false_after_session_loss();
   test_sequence_violations_end_the_session();
   test_inbound_report_types();
   test_sidecar_round_trip_and_damage();

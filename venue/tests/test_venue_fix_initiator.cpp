@@ -360,6 +360,7 @@ void test_logon_order_report_logout()
   CHECK(c.initiator.loggedOn());
 
   CHECK(c.initiator.logout("done", wallNs()));
+  CHECK(!c.initiator.loggedOn());
   alive = true;
   c.pump([]
          { return false; }, 1500, &alive);
@@ -1099,6 +1100,7 @@ void test_session_down_reports_lost_after_logout()
   const auto down = c.initiator.sessionDown();
   CHECK(down.reason == fix::SessionDownReason::Lost);
   CHECK(down.text == "operator requested");
+  CHECK(!c.initiator.loggedOn());
 
   c.tcp.close();
   gw->stop();
@@ -1133,6 +1135,7 @@ void test_session_down_reports_heartbeat_missed()
 
   const auto down = c.initiator.sessionDown();
   CHECK(down.reason == fix::SessionDownReason::HeartbeatMissed);
+  CHECK(!c.initiator.loggedOn());
 
   c.tcp.close();
   gw->stop();
