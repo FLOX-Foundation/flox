@@ -187,13 +187,6 @@ SeqNanos MatchingEngine<Book>::expiryOf(OrderId id) const
   return expiry_.expiryOf(id);
 }
 
-template <class Book>
-uint64_t MatchingEngine<Book>::ocoOf(OrderId id) const
-{
-  auto it = orderOco_.find(id);
-  return it == orderOco_.end() ? 0 : it->second;
-}
-
 // Pending conditional orders with their current triggers, sorted by order id
 // (the stop book's internal container order is not state: firing and cancel
 // are id-deterministic, so the canonical order for hash/serialization is id).
@@ -207,13 +200,6 @@ std::vector<std::pair<NewOrder, Price>> MatchingEngine<Book>::sortedStops() cons
             [](const auto& a, const auto& b)
             { return a.first.id < b.first.id; });
   return v;
-}
-
-template <class Book>
-void MatchingEngine<Book>::linkOco(OrderId id, uint64_t group)
-{
-  orderOco_[id] = group;
-  ocoMembers_[group].push_back(id);
 }
 
 template <class Book>
@@ -267,7 +253,7 @@ bool MatchingEngine<Book>::applyRestoreOrder(const RestoreOrder& r)
   }
   if (r.ocoGroup > 0)
   {
-    linkOco(r.id, r.ocoGroup);
+    oco_.link(r.id, r.ocoGroup);
   }
   // Buying power is NOT re-derived here: the order's exact reservation
   // arrives as its own RestoreReservation record (live amounts are
@@ -285,7 +271,7 @@ bool MatchingEngine<Book>::applyRestoreStop(const RestoreStop& r)
   }
   if (r.order.ocoGroup > 0)
   {
-    linkOco(r.order.id, r.order.ocoGroup);  // a parked stop keeps its OCO link
+    oco_.link(r.order.id, r.order.ocoGroup);  // a parked stop keeps its OCO link
   }
   // No processTriggers: a restore is not a market event; an in-the-money
   // stop at write time would already have fired live.

@@ -46,7 +46,7 @@ void MatchingEngine<Book>::expireOrders()
     else if (stops_.cancel(id))  // never triggered -> expire the conditional
     {
       const uint64_t acct = ownerOf(id);
-      unlinkOco(id);
+      oco_.unlink(id);
       forgetOrder(id);
       sink_(OrderCanceled{id, cfg_.id, CancelReason::Expired, acct, stopClOrd});
     }
@@ -144,37 +144,23 @@ void MatchingEngine<Book>::repeg()
 }
 
 // OCO: after matching, cancel the losing siblings of every group that had a
-// fill this submit. The filled ("winner") order is left alone.
+// fill this submit. Which orders lost, and in what order they are named, is
+// engine::OcoBook's verdict; the winner is left alone by never appearing in
+// the list. Cancelling is the engine's half -- the book, the reservations and
+// the reports are all here.
 template <class Book>
 void MatchingEngine<Book>::processOco()
 {
-  if (ocoPending_.empty())
+  if (oco_.nothingPending())
   {
     return;
   }
-  for (const auto& [group, winner] : ocoPending_)
+  std::vector<OrderId> losers;
+  oco_.drainLosers(losers);
+  for (OrderId id : losers)
   {
-    auto git = ocoMembers_.find(group);
-    if (git == ocoMembers_.end())
-    {
-      continue;  // already resolved this submit
-    }
-    std::vector<OrderId> members = git->second;  // copy: cancel mutates maps
-    // Deterministic sibling order by id: group membership is a SET (the
-    // insertion order is not state -- a checkpoint restore rebuilds it in
-    // canonical book order), so the cancel/event order must not depend on it.
-    std::sort(members.begin(), members.end());
-    ocoMembers_.erase(git);
-    for (OrderId id : members)
-    {
-      orderOco_.erase(id);
-      if (id != winner)
-      {
-        cancelOcoSibling(id);
-      }
-    }
+    cancelOcoSibling(id);
   }
-  ocoPending_.clear();
 }
 
 template <class Book>

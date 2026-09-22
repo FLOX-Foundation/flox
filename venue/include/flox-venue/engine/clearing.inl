@@ -187,14 +187,9 @@ void MatchingEngine<Book>::settlePerp(const Trade& t)
   const uint64_t sellerAcct = takerBuys ? t.makerAccount : t.takerAccount;
   clearing_.updatePerpPosition(buyerAcct, buyerId, true, t.quantity.raw(), t.price.raw());
   clearing_.updatePerpPosition(sellerAcct, sellerId, false, t.quantity.raw(), t.price.raw());
-  if (feesEnabled_)
+  if (fees_.enabled())
   {
-    const double notionalD =
-        static_cast<double>(
-            notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
-        kMoneyScale;
-    chargeFee(t.makerId, t.makerAccount, fees_.feeFor(now_.raw(), notionalD, true), true);
-    chargeFee(t.takerId, t.takerAccount, fees_.feeFor(now_.raw(), notionalD, false), false);
+    fees_.settle(t, cfg_, now_.raw(), *ledger_, venueAccount_, sink_);
   }
 }
 

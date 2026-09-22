@@ -82,50 +82,15 @@ void MatchingEngine<Book>::onQuote(const Quote& q)
     sink_(OrderCanceled{q.askId, cfg_.id, CancelReason::UserRequested, acct,
                         ro->clientOrderId});
   }
-  if (q.bidQty.raw() > 0)
+  // What the quote asks for, read off it once: the bid leg, then the ask
+  // leg, each carrying every field the quote carried (engine::QuoteLegs). The
+  // dedup slot was consumed above, for the quote as a whole, so neither leg
+  // asks for one of its own.
+  std::array<NewOrder, 2> legs;
+  const uint8_t n = engine::QuoteLegs::build(q, cfg_.id, legs);
+  for (uint8_t i = 0; i < n; ++i)
   {
-    NewOrder b;
-    b.id = q.bidId;
-    b.symbol = cfg_.id;
-    b.side = Side::BUY;
-    b.type = OrderType::LIMIT;
-    b.price = q.bidPrice;
-    b.quantity = q.bidQty;
-    b.accountId = q.accountId;
-    b.stp = q.stp;
-    b.lastLook = q.lastLook;
-    b.postOnly = q.postOnly;
-    b.reduceOnly = q.reduceOnly;
-    b.tif = q.tif;
-    b.visibleQuantity = q.visibleQuantity;
-    b.expiryNs = q.expiryNs;
-    // The name the submitter gave the QUOTE, not a per-leg id it never
-    // chose -- both legs carry it so their reports can be told apart from
-    // any other order and joined back to each other. The dedup slot for
-    // this value was already consumed above, once, for the quote as a
-    // whole -- skip it here.
-    b.clientOrderId = q.clientOrderId;
-    onNew(b, /*clOrdIdChecked=*/true);
-  }
-  if (q.askQty.raw() > 0)
-  {
-    NewOrder a;
-    a.id = q.askId;
-    a.symbol = cfg_.id;
-    a.side = Side::SELL;
-    a.type = OrderType::LIMIT;
-    a.price = q.askPrice;
-    a.quantity = q.askQty;
-    a.accountId = q.accountId;
-    a.stp = q.stp;
-    a.lastLook = q.lastLook;
-    a.postOnly = q.postOnly;
-    a.reduceOnly = q.reduceOnly;
-    a.tif = q.tif;
-    a.visibleQuantity = q.visibleQuantity;
-    a.expiryNs = q.expiryNs;
-    a.clientOrderId = q.clientOrderId;
-    onNew(a, /*clOrdIdChecked=*/true);
+    onNew(legs[i], /*clOrdIdChecked=*/true);
   }
 }
 
@@ -141,16 +106,9 @@ void MatchingEngine<Book>::onTradeObserved(const Trade& t)
   }
   // OCO: a fill on either side wins its group; sibling cancellation is deferred
   // to after matching (processOco) so we never mutate the book mid-match.
-  if (!orderOco_.empty())
+  if (!oco_.empty())
   {
-    if (auto it = orderOco_.find(t.makerId); it != orderOco_.end())
-    {
-      ocoPending_.emplace_back(it->second, t.makerId);
-    }
-    if (auto it = orderOco_.find(t.takerId); it != orderOco_.end())
-    {
-      ocoPending_.emplace_back(it->second, t.takerId);
-    }
+    oco_.noteFill(t.makerId, t.takerId);
   }
 }
 

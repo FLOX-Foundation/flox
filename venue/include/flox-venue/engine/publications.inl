@@ -132,16 +132,11 @@ void MatchingEngine<Book>::forgetOrder(OrderId id)
     return;
   }
   expiry_.erase(id);
-  unlinkOco(id);
+  oco_.unlink(id);
   pegs_.erase(id);
   stp_.forget(id);
 }
 
-// Remove an order from its OCO group, keeping orderOco_ and ocoMembers_ in
-// sync. The fill path (processOco) erases ocoMembers_ itself; EVERY other exit
-// (cancel / expiry / MMP / halt / liquidation / reject) must route through
-// here, or a departed leg lingers in ocoMembers_ and later cancels a reused
-// OrderId when the surviving sibling resolves (and the group vector leaks).
 // Free the reservation covering the quantity an order just lost. Any path
 // that shrinks a resting order owes this: buying power held against size
 // that no longer rests is the account's money, frozen for nothing.
@@ -149,26 +144,6 @@ template <class Book>
 void MatchingEngine<Book>::releaseReservationPro(OrderId id, int64_t fromQtyRaw, int64_t toQtyRaw)
 {
   credit_.releaseReservationPro(id, fromQtyRaw, toQtyRaw, ledger_);
-}
-
-template <class Book>
-void MatchingEngine<Book>::unlinkOco(OrderId id)
-{
-  auto it = orderOco_.find(id);
-  if (it == orderOco_.end())
-  {
-    return;
-  }
-  if (auto gm = ocoMembers_.find(it->second); gm != ocoMembers_.end())
-  {
-    auto& v = gm->second;
-    v.erase(std::remove(v.begin(), v.end(), id), v.end());
-    if (v.empty())
-    {
-      ocoMembers_.erase(gm);
-    }
-  }
-  orderOco_.erase(it);
 }
 
 template <class Book>

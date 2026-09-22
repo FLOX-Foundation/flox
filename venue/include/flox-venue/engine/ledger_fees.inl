@@ -23,8 +23,7 @@ namespace flox::venue
 template <class Book>
 void MatchingEngine<Book>::setFeeSchedule(flox::FeeSchedule fees)
 {
-  fees_ = std::move(fees);
-  feesEnabled_ = true;
+  fees_.setSchedule(std::move(fees));
 }
 
 // Bind a settlement ledger. When set, order entry reserves buying power
@@ -96,13 +95,13 @@ Amount MatchingEngine<Book>::totalPositionMargin() const
 }
 
 // Trades that printed but could not be settled without creating value, so
-// nothing moved (see reportUnsettled). Must stay at zero: a non-zero value
+// nothing moved (see engine::Integrity). Must stay at zero: a non-zero value
 // means a fill reached clearing with neither a reservation nor the balance to
 // pay for it, and the venue refused to invent the difference.
 template <class Book>
 uint64_t MatchingEngine<Book>::unsettledTrades() const noexcept
 {
-  return unsettledTrades_;
+  return integrity_.unsettledTrades();
 }
 
 template <class Book>
@@ -115,23 +114,6 @@ template <class Book>
 uint64_t MatchingEngine<Book>::venueAccount() const noexcept
 {
   return venueAccount_;
-}
-
-template <class Book>
-void MatchingEngine<Book>::emitFees(const Trade& t)
-{
-  if (!feesEnabled_)
-  {
-    return;
-  }
-  const double notional =
-      static_cast<double>(
-          notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
-      kMoneyScale;
-  sink_(FeeCharged{t.makerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_.raw(), notional, true)),
-                   true, t.makerAccount});
-  sink_(FeeCharged{t.takerId, cfg_.id, Volume::fromDouble(fees_.feeFor(now_.raw(), notional, false)),
-                   false, t.takerAccount});
 }
 
 template <class Book>
@@ -243,21 +225,6 @@ void MatchingEngine<Book>::cleanupOrderIfDone(OrderId id)
   forgetOrder(id);
 }
 
-// A printed trade could not be settled without creating value, so nothing was
-// moved. Counted and logged rather than event-carried: the counter is a
-// diagnostic (like droppedSnapshotRecords), and adding an event here would
-// change the outbound stream on a path that must stay unreachable.
-template <class Book>
-void MatchingEngine<Book>::reportUnsettled(const Trade& t, uint64_t account, const char* why)
-{
-  ++unsettledTrades_;
-  std::fprintf(stderr,
-               "flox-venue: trade %llu on symbol %u NOT settled (%s, account %llu) -- "
-               "no value moved\n",
-               static_cast<unsigned long long>(t.tradeId), static_cast<unsigned>(cfg_.id), why,
-               static_cast<unsigned long long>(account));
-}
-
 template <class Book>
 void MatchingEngine<Book>::settleTrade(const Trade& t)
 {
@@ -280,7 +247,10 @@ void MatchingEngine<Book>::settleTrade(const Trade& t)
                                    takerBuys ? t.makerId : t.takerId, false, t.quantity.raw(),
                                    t.price.raw());
     }
-    emitFees(t);  // no settlement: fee events only
+    if (fees_.enabled())
+    {
+      fees_.emit(t, cfg_, now_.raw(), sink_);  // no settlement: fee events only
+    }
     return;
   }
   if (cfg_.linearPerp)
@@ -314,7 +284,7 @@ void MatchingEngine<Book>::settleTrade(const Trade& t)
   // any path that ever stops doing so.
   if (buyerUnreserved && !ledger_->debit(buyerAcct, cfg_.quoteAsset, notional))
   {
-    reportUnsettled(t, buyerAcct, "buyer cannot fund quote");
+    integrity_.reportUnsettled(t.tradeId, cfg_.id, "buyer cannot fund quote", buyerAcct);
     return;
   }
   if (sellerUnreserved && !ledger_->debit(sellerAcct, cfg_.baseAsset, qtyRaw))
@@ -323,7 +293,7 @@ void MatchingEngine<Book>::settleTrade(const Trade& t)
     {
       ledger_->credit(buyerAcct, cfg_.quoteAsset, notional);  // exact undo of the debit above
     }
-    reportUnsettled(t, sellerAcct, "seller cannot deliver base");
+    integrity_.reportUnsettled(t.tradeId, cfg_.id, "seller cannot deliver base", sellerAcct);
     return;
   }
 
@@ -351,25 +321,10 @@ void MatchingEngine<Book>::settleTrade(const Trade& t)
   }
   ledger_->credit(sellerAcct, cfg_.quoteAsset, notional);
 
-  if (feesEnabled_)
+  if (fees_.enabled())
   {
-    const double notionalD =
-        static_cast<double>(
-            notionalRaw(t.price.raw(), t.quantity.raw(), cfg_.priceScale, cfg_.qtyScale)) /
-        kMoneyScale;
-    chargeFee(t.makerId, t.makerAccount, fees_.feeFor(now_.raw(), notionalD, true), true);
-    chargeFee(t.takerId, t.takerAccount, fees_.feeFor(now_.raw(), notionalD, false), false);
+    fees_.settle(t, cfg_, now_.raw(), *ledger_, venueAccount_, sink_);
   }
-}
-
-template <class Book>
-void MatchingEngine<Book>::chargeFee(OrderId id, uint64_t acct, double feeD, bool maker)
-{
-  const Amount fee = static_cast<Amount>(Volume::fromDouble(feeD).raw());
-  // Signed move: participant -fee, venue +fee (conserves value; fee<0 = rebate).
-  ledger_->credit(acct, cfg_.quoteAsset, -fee);
-  ledger_->credit(venueAccount_, cfg_.quoteAsset, fee);
-  sink_(FeeCharged{id, cfg_.id, Volume::fromDouble(feeD), maker, acct});
 }
 
 }  // namespace flox::venue
