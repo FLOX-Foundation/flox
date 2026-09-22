@@ -23,6 +23,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/sbe_order_entry_codec.h"
+#include "flox/book/ladder_book.h"
 
 #include <gtest/gtest.h>
 
@@ -53,6 +54,10 @@ SymbolConfig cfg()
   c.minQty = qty(0.001);
   return c;
 }
+
+// basePriceRaw 0, tick 0.01, enough levels to cover [0, 1000] with maxOrders
+// generous for these small scenarios.
+LadderBook::Config lc() { return LadderBook::Config{0, px(0.01).raw(), 100000, 1024}; }
 
 NewOrder order(OrderId id, Side side, double price, double quantity, uint64_t account = 1,
                TimeInForce tif = TimeInForce::GTC, OrderType type = OrderType::LIMIT)
@@ -359,4 +364,130 @@ TEST(LeavesCumQty, CancelOfAPendingStopReportsItsFullQuantityAsLeaves)
   ASSERT_NE(canceled, nullptr);
   EXPECT_EQ(canceled->leavesQty, qty(4));
   EXPECT_EQ(canceled->cumQty, qty(0));
+}
+
+// ---- Coverage gap closed: MatchingBook/LadderBook consumeById -------------
+// fillFront (MatchingBook)/fillBest (LadderBook) -- the plain FIFO fill path
+// -- were already exercised above (the IOC-residual and plain-cancel tests).
+// consumeById is a DIFFERENT mutation point on both books, reached only by
+// an auction uncross (engine/session.inl) or pro-rata matching (matcher.h's
+// crossProRata), neither of which the tests above ever drive. A mutation
+// that deletes `order.cumQty += by;` in *_book.h's consumeById passed the
+// full suite and golden replay silently until these were added.
+
+// Auction uncross (session.inl:427-428): the SAME four orders and clearing
+// price as VenueAuction's "residual" case (test_venue_auction.cpp) -- BUY
+// 101x5, SELL 99x5, BUY 100x3, SELL 100x2, uncrossed at 100 for 7 units.
+// Order 3 (BUY 100x3) is the one left with a residual: it fills 2 of its 3
+// via MatchingBook::consumeById, 1 left resting. Canceling it afterward is
+// the only way to observe consumeById's running total on the wire.
+TEST(LeavesCumQty, AuctionUncrossPartialFillThenCancelReportsRunningCumQty)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+  eng.beginPreOpen();
+  eng.submit(InboundCommand{order(1, Side::BUY, 101.0, 5)}, 0);
+  eng.submit(InboundCommand{order(2, Side::SELL, 99.0, 5)}, 1);
+  eng.submit(InboundCommand{order(3, Side::BUY, 100.0, 3)}, 2);
+  eng.submit(InboundCommand{order(4, Side::SELL, 100.0, 2)}, 3);
+  eng.openContinuous();  // uncross: 7 units at 100, order 3 left with 1
+
+  CancelOrder c;
+  c.id = 3;
+  c.symbol = SYM;
+  c.accountId = 1;  // order() defaults every order here to account 1
+  eng.submit(InboundCommand{c}, 4);
+
+  const auto* canceled = cap.firstWhere<OrderCanceled>(
+      +[](const OrderCanceled& x)
+      { return x.id == 3; });
+  ASSERT_NE(canceled, nullptr);
+  EXPECT_EQ(canceled->leavesQty, qty(1)) << "3 requested - 2 filled at uncross = 1 left resting";
+  EXPECT_EQ(canceled->cumQty, qty(2))
+      << "2 filled via MatchingBook::consumeById during the uncross, not fillFront";
+
+  const std::string wire = FixCodec::encode(OutboundEvent{*canceled});
+  EXPECT_EQ(tag(wire, 151), "1");
+  EXPECT_EQ(tag(wire, 14), "2");
+}
+
+// Pro-rata continuous matching (matcher.h:863, crossProRata): a single
+// resting maker is consumed by id in the same "allocate per level" loop a
+// competing multi-maker level would use -- with one maker, its whole
+// allocation is simply its request, but the consumption still goes through
+// consumeById exactly as it does with several makers at the level.
+TEST(LeavesCumQty, ProRataPartialFillThenCancelReportsRunningCumQty)
+{
+  Capture cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink(), MatchingBook{}, MatchPolicy::ProRata);
+
+  eng.submit(InboundCommand{order(100, Side::SELL, 100.0, 10)}, 1);  // resting maker, qty 10
+  eng.submit(InboundCommand{order(200, Side::BUY, 100.0, 4)}, 2);    // pro-rata taker, qty 4
+
+  CancelOrder c;
+  c.id = 100;
+  c.symbol = SYM;
+  c.accountId = 1;
+  eng.submit(InboundCommand{c}, 3);
+
+  const auto* canceled = cap.firstWhere<OrderCanceled>(
+      +[](const OrderCanceled& x)
+      { return x.id == 100; });
+  ASSERT_NE(canceled, nullptr);
+  EXPECT_EQ(canceled->leavesQty, qty(6)) << "10 - 4 filled pro-rata = 6 left resting";
+  EXPECT_EQ(canceled->cumQty, qty(4)) << "4 filled via MatchingBook::consumeById (crossProRata)";
+
+  const std::string wire = FixCodec::encode(OutboundEvent{*canceled});
+  EXPECT_EQ(tag(wire, 151), "6");
+  EXPECT_EQ(tag(wire, 14), "4");
+}
+
+// ---- Same two book-mutation points, on flox::LadderBook --------------------
+// The golden-replay corpus instantiates MatchingEngine<MatchingBook> only
+// (test_venue_golden_replay.cpp), so it gives LadderBook's fillBest/
+// consumeById no coverage at all, mutated or not. These are direct unit
+// tests against LadderBook instead, mirroring the MatchingBook cases above.
+
+TEST(LeavesCumQty, LadderBookFifoPartialFillThenCancelReportsRunningCumQty)
+{
+  Capture cap;
+  MatchingEngine<LadderBook> eng(cfg(), cap.sink(), LadderBook{lc()});
+
+  eng.submit(InboundCommand{order(100, Side::SELL, 100.0, 5)}, 1);  // resting maker, qty 5
+  eng.submit(InboundCommand{order(200, Side::BUY, 100.0, 2)}, 2);   // FIFO taker fills 2 (LadderBook::fillBest)
+
+  CancelOrder c;
+  c.id = 100;
+  c.symbol = SYM;
+  c.accountId = 1;
+  eng.submit(InboundCommand{c}, 3);
+
+  const auto* canceled = cap.firstWhere<OrderCanceled>(
+      +[](const OrderCanceled& x)
+      { return x.id == 100; });
+  ASSERT_NE(canceled, nullptr);
+  EXPECT_EQ(canceled->leavesQty, qty(3));
+  EXPECT_EQ(canceled->cumQty, qty(2)) << "2 filled via LadderBook::fillBest";
+}
+
+TEST(LeavesCumQty, LadderBookProRataPartialFillThenCancelReportsRunningCumQty)
+{
+  Capture cap;
+  MatchingEngine<LadderBook> eng(cfg(), cap.sink(), LadderBook{lc()}, MatchPolicy::ProRata);
+
+  eng.submit(InboundCommand{order(100, Side::SELL, 100.0, 10)}, 1);  // resting maker, qty 10
+  eng.submit(InboundCommand{order(200, Side::BUY, 100.0, 4)}, 2);    // pro-rata taker (LadderBook::consumeById)
+
+  CancelOrder c;
+  c.id = 100;
+  c.symbol = SYM;
+  c.accountId = 1;
+  eng.submit(InboundCommand{c}, 3);
+
+  const auto* canceled = cap.firstWhere<OrderCanceled>(
+      +[](const OrderCanceled& x)
+      { return x.id == 100; });
+  ASSERT_NE(canceled, nullptr);
+  EXPECT_EQ(canceled->leavesQty, qty(6));
+  EXPECT_EQ(canceled->cumQty, qty(4)) << "4 filled via LadderBook::consumeById (crossProRata)";
 }

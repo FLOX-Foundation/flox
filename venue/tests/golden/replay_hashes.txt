@@ -24,6 +24,7 @@ stp_cancel_both_continuous             31b2911463963425  fc19dd0073f69048  6400f
 stp_groups_and_admission               a708716bb9c30402  fc19dd0073f69048  971a3f49570f0234
 stp_group_auction_uncross              2594848d637a7bd2  fc19dd0073f69048  36ee15d6b3a67da7
 auction_preopen_continuous             9edab4f634aa2300  fc19dd0073f69048  0d057f326eb05d1a
+auction_uncross_residual_cancel        9f9c3fb182417705  fc19dd0073f69048  e491406b65503500
 session_status_transitions             3c4588d9a083a1d8  fc19dd0073f69048  cb58316bcd41c143
 perp_funding_liquidation               89f8124cc7961b45  fc19dd0070df52c3  f61849bd359faf40
 perp_adl_bankruptcy                    70417ac9a8a4a833  fc19dd0070f0868e  0c8e2c04ae7d6d8a
