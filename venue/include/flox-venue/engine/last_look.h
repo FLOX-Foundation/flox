@@ -58,6 +58,17 @@ struct Held
   // submitter does.
   uint64_t makerClientOrderId{0};
   uint64_t takerClientOrderId{0};
+  // T059: each leg's CONFIRMED cumulative fill as of the moment this hold
+  // opened -- the maker's RestingOrder::cumQty and the taker's running total
+  // within its own crossing sweep, both read BEFORE this hold's own qty is
+  // reserved out of the book (create()). FillHeld/FillRejected report the
+  // taker's value as FIX 14 (CumQty); both values are also what a reject
+  // that rebuilds a leg fully off the book restores onto it, since the
+  // book's own real-fill bookkeeping (fillBest/consumeById) optimistically
+  // bumps RestingOrder::cumQty at hold-creation time, before the maker's
+  // decision is known.
+  Quantity makerCumQtyAtHold{};
+  Quantity takerCumQtyAtHold{};
 };
 
 // The venue knobs a hold reads. Fetched from the host on use rather than
@@ -221,7 +232,7 @@ class LastLook
 
   template <LastLookHost Host>
   void create(Host& host, const RestingOrder& maker, Quantity fill, const NewOrder& taker,
-              SeqNanos now)
+              SeqNanos now, Quantity takerCumSoFar = {})
   {
     const Config cfg = host.lastLookConfig();
     const uint64_t id = ++seq_;
@@ -252,6 +263,12 @@ class LastLook
     h.makerClientOrderId = maker.clientOrderId;
     h.takerClientOrderId = taker.clientOrderId;
     h.takerReduceOnly = taker.reduceOnly;
+    // T059: each leg's confirmed cumQty as of right now -- maker.cumQty is
+    // the RestingOrder's running total BEFORE this fill (the book has not
+    // mutated it yet; that happens in the caller, after this call returns),
+    // and takerCumSoFar is the caller's own running total for this sweep.
+    h.makerCumQtyAtHold = maker.cumQty;
+    h.takerCumQtyAtHold = takerCumSoFar;
     held_[id] = h;
     fresh_.push_back(id);
     open_.store(held_.size(), std::memory_order_relaxed);
@@ -262,7 +279,8 @@ class LastLook
         (fill < maker.leaves) ? (maker.leaves - fill)
                               : ((maker.peak < maker.hidden) ? maker.peak : maker.hidden);
     host.publish(FillHeld{id, cfg.symbol, maker.id, taker.id, maker.price, fill, displayAfter,
-                          maker.accountId, taker.accountId, h.takerSide, taker.clientOrderId});
+                          maker.accountId, taker.accountId, h.takerSide, taker.clientOrderId,
+                          h.takerCumQtyAtHold});
     // NOTE: the maker stays tracked (orderAccount_/byAccount_) even when the
     // hold empties its displayed size and fillBest removes it from the book --
     // the id is still live (a reject restores it) and mass-cancel paths must
@@ -494,6 +512,16 @@ class LastLook
       {
         h = mix(h, x.takerClientOrderId);
       }
+      // T059: only when set, same guard as the client order ids above -- a
+      // hold on a leg that never filled before it opened hashes as before.
+      if (!x.makerCumQtyAtHold.isZero())
+      {
+        h = mix(h, static_cast<uint64_t>(x.makerCumQtyAtHold.raw()));
+      }
+      if (!x.takerCumQtyAtHold.isZero())
+      {
+        h = mix(h, static_cast<uint64_t>(x.takerCumQtyAtHold.raw()));
+      }
       h = mix(h, tracked(x.maker) ? 1U : 0U);
     }
     return h;
@@ -511,6 +539,8 @@ class LastLook
       RestoreHeld r{x.id, x.taker, x.takerAccount, x.takerSide, {}, x.maker, x.makerAccount, x.price, x.qty, x.deadline, x.takerTif, x.takerType, {}, x.takerPrice, x.takerExpiryNs, x.makerReduceOnly, x.takerReduceOnly};
       r.makerClientOrderId = x.makerClientOrderId;
       r.takerClientOrderId = x.takerClientOrderId;
+      r.makerCumQtyAtHold = x.makerCumQtyAtHold;
+      r.takerCumQtyAtHold = x.takerCumQtyAtHold;
       r.makerTracked = tracked(x.maker);
       r.refAtHoldRaw = x.refAtHoldRaw;
       out.append(InboundCommand{r}, ts);
@@ -557,9 +587,15 @@ class LastLook
       const Quantity makerLeaves =
           mk ? Quantity::fromRaw(mk->leaves.raw() + mk->hidden.raw()) : Quantity{};
       const Quantity makerDisp = mk ? mk->leaves : Quantity{};  // displayed peak, public feed
+      // T059: an accept confirms this fill, so the book's own optimistic
+      // cumQty bump at hold-creation time (fillBest, in matcher.h) is now
+      // correct -- read it straight off the still-resting order. If the
+      // maker left the book entirely, fall back to the snapshot taken when
+      // the hold opened plus this now-confirmed fill.
+      const Quantity makerCumAfter = mk ? mk->cumQty : (h.makerCumQtyAtHold + h.qty);
       host.publishTracked(OrderExecuted{h.maker, cfg.symbol, h.qty, makerLeaves, false,
                                         makerLeaves.isZero(), h.price, makerDisp, h.makerAccount,
-                                        h.makerClientOrderId});
+                                        h.makerClientOrderId, makerCumAfter});
       // The taker leg is done exactly when nothing of its order is still
       // outstanding: not resting (a GTC/GTD residual may already sit in the
       // book, untouched by this hold -- see restoreTaker/onNew's
@@ -576,9 +612,20 @@ class LastLook
       const Quantity takerLeaves =
           Quantity::fromRaw(takerRestLeaves.raw() + heldQtyFor(h.taker).raw());
       const Quantity takerDisp = tk ? tk->leaves : Quantity{};  // displayed peak, public feed
+      // T059: confirmed-before-this-hold (takerCumQtyAtHold) + this fill,
+      // now confirmed (h.qty) + whatever a still-resting residual of the
+      // SAME order id has filled separately since it started resting
+      // (tk->cumQty; 0 when nothing rests). Does not see a SIBLING hold on
+      // this taker that already resolved+accepted between this hold's
+      // creation and now -- neither the sibling's fill nor this one flows
+      // through the other's book entry, and nothing tracks a non-resting
+      // order's running total; the same class of honesty limit T058 already
+      // documented for the IOC-residual cancel case below.
+      const Quantity takerCumAfter =
+          h.takerCumQtyAtHold + h.qty + (tk ? tk->cumQty : Quantity{});
       host.publishTracked(OrderExecuted{h.taker, cfg.symbol, h.qty, takerLeaves, true,
                                         takerLeaves.isZero(), h.price, takerDisp, h.takerAccount,
-                                        h.takerClientOrderId});
+                                        h.takerClientOrderId, takerCumAfter});
     }
     else
     {
@@ -593,7 +640,8 @@ class LastLook
       restoreMaker(host, h, cfg.symbol);
       restoreTaker(host, h, cfg.symbol);
       host.publish(FillRejected{h.id, cfg.symbol, h.taker, h.maker, h.price, h.qty,
-                                h.takerAccount, h.makerAccount, h.takerClientOrderId});
+                                h.takerAccount, h.makerAccount, h.takerClientOrderId,
+                                h.takerCumQtyAtHold});
     }
     // Whichever way the hold resolved: if this was the last hold on a leg and
     // that leg no longer rests, free its leftover reservation and tracking
@@ -675,9 +723,16 @@ class LastLook
     if (auto ro = host.takeResting(h.maker); ro.has_value())
     {
       ro->leaves += h.qty;  // the returned slice was displayed when it was held
+      // T059: undo the book's own optimistic cumQty bump from hold creation
+      // (fillBest ran before the maker's decision was known -- see Held's
+      // comment). A reject means this hold's qty never traded, so it must
+      // not count toward the order's running total. Relative, not an
+      // overwrite: correct regardless of any OTHER real fill this order took
+      // on its still-resting remainder while the hold was open.
+      ro->cumQty -= h.qty;
       host.reinsertTail(ro->side, *ro);
       host.publish(OrderModified{h.maker, symbol, ro->price, ro->leaves, false, h.makerAccount,
-                                 ro->clientOrderId});
+                                 ro->clientOrderId, ro->cumQty});
     }
     else
     {
@@ -686,11 +741,15 @@ class LastLook
       rebuilt.clientOrderId = h.makerClientOrderId;
       rebuilt.lastLook = true;
       rebuilt.reduceOnly = h.makerReduceOnly;
+      // T059: this hold took the order's entire remaining size, so its whole
+      // history is exactly what it had filled before the hold opened --
+      // nothing else could have touched it in between (it was off the book).
+      rebuilt.cumQty = h.makerCumQtyAtHold;
       host.reinsertTail(makerSide, rebuilt);
       // Still tracked in orderAccount_/byAccount_: a fully-held maker is never
       // forgotten while its hold is open (see create()).
       host.publish(OrderModified{h.maker, symbol, h.price, h.qty, false, h.makerAccount,
-                                 h.makerClientOrderId});
+                                 h.makerClientOrderId, rebuilt.cumQty});
     }
   }
 
@@ -706,18 +765,26 @@ class LastLook
       if (auto ro = host.takeResting(h.taker); ro.has_value())
       {
         ro->leaves += h.qty;  // combine with the already-resting remainder, tail requeue
+        // T059: this residual's own cumQty is untouched by this hold (a
+        // reject settles no trade); h.qty never rode through it, so nothing
+        // to undo here, unlike the maker side above.
         host.reinsertTail(ro->side, *ro);
         host.publish(OrderModified{h.taker, symbol, ro->price, ro->leaves, false, h.takerAccount,
-                                   ro->clientOrderId});
+                                   ro->clientOrderId, ro->cumQty});
       }
       else
       {
         RestingOrder rebuilt{h.taker, h.takerAccount, h.takerPrice, h.qty, h.takerSide};
         rebuilt.clientOrderId = h.takerClientOrderId;
+        // T059: this hold held the taker's entire remaining size (nothing
+        // else rested), so its life-to-date total is exactly what it had
+        // confirmed before the hold opened -- the held qty itself never
+        // traded (this is a reject).
+        rebuilt.cumQty = h.takerCumQtyAtHold;
         host.reinsertTail(h.takerSide, rebuilt);
         host.adoptRestingTaker(h);
         host.publish(OrderAccepted{h.taker, symbol, h.takerSide, h.takerPrice, h.qty, true,
-                                   h.qty, h.takerAccount, h.takerClientOrderId});
+                                   h.qty, h.takerAccount, h.takerClientOrderId, rebuilt.cumQty});
       }
       return;
     }
@@ -728,19 +795,15 @@ class LastLook
                                 : (h.takerTif == TimeInForce::FOK)
                                     ? CancelReason::FillOrKillResidual
                                     : CancelReason::ImmediateOrCancelResidual;
-    // T058: h.qty is exactly the residual being killed (LeavesQty). CumQty is
-    // NOT reconstructable here: the taker order's fill-so-far as of the
-    // original cross() that created this hold is long out of scope by the
-    // time a held fill resolves (asynchronously, on the maker's own
-    // decision), and Held does not carry a snapshot of it. Left at 0 --
-    // correct whenever this taker's only fill was the held one now being
-    // killed (the common case), understated if the same order filled
-    // against an earlier, non-held maker in the same original cross.
-    // Threading a cumQty-at-hold-time value through Held would also grow
-    // RestoreHeld (checkpointed) and is left as a follow-up, not folded into
-    // this change.
+    // T059: h.qty is exactly the residual being killed (LeavesQty); cumQty
+    // is now h.takerCumQtyAtHold -- the taker's confirmed total as of when
+    // this hold opened (T058 left this at 0, since Held did not carry the
+    // value yet; see Held::takerCumQtyAtHold). Still understated if a
+    // SIBLING hold on the same taker resolved+accepted in between (neither
+    // fill flows through the other's bookkeeping) -- the same class of
+    // honesty limit documented on the accept branch above.
     host.publish(OrderCanceled{h.taker, symbol, reason, h.takerAccount, h.takerClientOrderId,
-                               h.qty, Quantity{}});
+                               h.qty, h.takerCumQtyAtHold});
   }
 
   std::unordered_map<uint64_t, Held> held_;

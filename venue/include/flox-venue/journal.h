@@ -254,10 +254,18 @@ static_assert(sizeof(QuoteLadder) ==
 // one: 16 already names the scale-checked build's PREVIOUS format (see
 // "moves by two" in docs/venue/runtime.md), so the unchecked build's new
 // number cannot land on it without colliding with that older format.
+// 17/18 -> 19/20 (T059): RestoreHeld (tag unchanged) grows two fields,
+// makerCumQtyAtHold/takerCumQtyAtHold -- each leg's confirmed running fill
+// total as of the moment a last-look hold opened, restored so a hold that
+// resolves after a recovery still reports the real FIX CumQty on
+// FillHeld/FillRejected and on the reports that rebuild a leg the hold took
+// fully off the book, instead of resetting to 0. Every other journaled body
+// is unchanged and still fixed-length; only RestoreHeld's sizeof moved. Pair
+// moves by two, same reasoning as 15/16 -> 17/18.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 18;
+inline constexpr uint8_t kRecordVersion = 20;
 #else
-inline constexpr uint8_t kRecordVersion = 17;
+inline constexpr uint8_t kRecordVersion = 19;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
@@ -321,12 +329,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0xfa88d2a74a0ec9e7ULL,
+static_assert(bodyLayoutFingerprint() == 0x8e533d29192e4487ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0x90586e450848191fULL,
+static_assert(bodyLayoutFingerprint() == 0x5253a9cbeedfb32fULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");

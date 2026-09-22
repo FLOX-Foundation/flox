@@ -348,7 +348,9 @@ TEST(ClientOrderId, TheBinaryReportCarriesItWithoutDisplacingTheSequence)
   EXPECT_EQ(SbeOrderEntryCodec::seqOf(buf.data(), buf.size()), 42u)
       << "the sequence number is still where a reader looks for it";
 
-  const size_t clOrdAt = buf.size() - 8;
+  // T059: cumQty (i64) now trails clOrdId on Accepted, so clOrdId is the
+  // second-to-last field, not the last.
+  const size_t clOrdAt = buf.size() - 16;
   uint64_t got = 0;
   std::memcpy(&got, buf.data() + clOrdAt, sizeof got);
   EXPECT_EQ(got, kClientId) << "and the submitter's name is the trailing field";
@@ -384,9 +386,10 @@ TEST(ClientOrderId, AHeldFillAndItsRejectCarryTheTakersName)
   std::vector<uint8_t> heldBuf;
   SbeOrderEntryCodec::encode(OutboundEvent{*heldPtr}, heldBuf, /*seq=*/1);
   EXPECT_EQ(heldBuf.size(), sbe::kHeaderSize + SbeOrderEntryCodec::kBlockFillHeld);
+  // T059: cumQty (i64) now trails clOrdId on FillHeld.
   uint64_t heldClOrd = 0;
-  std::memcpy(&heldClOrd, heldBuf.data() + heldBuf.size() - 8, sizeof heldClOrd);
-  EXPECT_EQ(heldClOrd, kClientId) << "trailing field of the FillHeld root block";
+  std::memcpy(&heldClOrd, heldBuf.data() + heldBuf.size() - 16, sizeof heldClOrd);
+  EXPECT_EQ(heldClOrd, kClientId) << "second-to-last field of the FillHeld root block";
 
   // Copied by value before the next submit(): cap.ev is a vector, and the
   // decision below appends to it, which may reallocate and dangle heldPtr.
@@ -408,9 +411,10 @@ TEST(ClientOrderId, AHeldFillAndItsRejectCarryTheTakersName)
   std::vector<uint8_t> rejBuf;
   SbeOrderEntryCodec::encode(OutboundEvent{*rejected}, rejBuf, /*seq=*/2);
   EXPECT_EQ(rejBuf.size(), sbe::kHeaderSize + SbeOrderEntryCodec::kBlockFillRejected);
+  // T059: cumQty (i64) now trails clOrdId on FillRejected.
   uint64_t rejClOrd = 0;
-  std::memcpy(&rejClOrd, rejBuf.data() + rejBuf.size() - 8, sizeof rejClOrd);
-  EXPECT_EQ(rejClOrd, kClientId) << "trailing field of the FillRejected root block";
+  std::memcpy(&rejClOrd, rejBuf.data() + rejBuf.size() - 16, sizeof rejClOrd);
+  EXPECT_EQ(rejClOrd, kClientId) << "second-to-last field of the FillRejected root block";
 }
 
 // An order that gave no name gets no tag on a hold either -- same rule as

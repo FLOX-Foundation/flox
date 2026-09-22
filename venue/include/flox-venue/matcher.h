@@ -129,8 +129,13 @@ class Matcher
 
   MatchPolicy policy() const noexcept { return policy_; }
 
+  // takerCumSoFar (T059): the taker's own CONFIRMED fill total within this
+  // cross, as of the moment this hold opens -- prior real (non-held) fills
+  // earlier in the same sweep, never including this held qty itself (not
+  // yet confirmed). Lets the hold's FillHeld/FillRejected report FIX 14
+  // (CumQty) honestly.
   using LastLookHook = std::function<void(const RestingOrder& maker, Quantity fill,
-                                          const NewOrder& taker)>;
+                                          const NewOrder& taker, Quantity takerCumSoFar)>;
   void setLastLookHook(LastLookHook hook) { onLastLook_ = std::move(hook); }
 
   // Called before the matcher itself removes a resting order (self-trade
@@ -207,13 +212,20 @@ class Matcher
   uint64_t fillOrKillRiskConstrained() const noexcept { return fokRiskConstrained_; }
   uint64_t fillOrKillRejected() const noexcept { return fokRejected_; }
 
+  // priorCumQty (T059, default 0): the taker's own life-to-date cumulative
+  // fill BEFORE this call -- nonzero only when the caller re-enters matching
+  // for an order that already traded in an earlier life (onModify's
+  // re-enter-at-the-tail path). Every taker-leg OrderExecuted/OrderAccepted/
+  // OrderCanceled this call emits reports priorCumQty + what fills here, so
+  // an amended order's CumQty does not reset to 0 across the amend.
   MatchOutcome cross(const NewOrder& order, Book& book,
-                     const std::function<uint64_t()>& nextTradeId, const EventSink& sink) const
+                     const std::function<uint64_t()>& nextTradeId, const EventSink& sink,
+                     Quantity priorCumQty = {}) const
   {
     planActive_ = false;
     if (policy_ == MatchPolicy::ProRata)
     {
-      return crossProRata(order, book, nextTradeId, sink);
+      return crossProRata(order, book, nextTradeId, sink, priorCumQty);
     }
     using namespace detail;
     MatchOutcome out;
@@ -311,7 +323,7 @@ class Matcher
       if (m->lastLook && onLastLook_)
       {
         const Quantity heldQty = allowed;
-        onLastLook_(*m, heldQty, order);
+        onLastLook_(*m, heldQty, order, priorCumQty + out.filled);
         book.fillBest(restingSide, heldQty);
         leaves -= heldQty;
         continue;
@@ -330,6 +342,9 @@ class Matcher
       // be read before fillBest, which refills/re-queues and may invalidate `m`.
       const Quantity makerDisplayAfter =
           (fill < m->leaves) ? (m->leaves - fill) : qmin(m->peak, m->hidden);
+      // T059: maker's running cumQty after this fill. Read before fillBest,
+      // same invalidation reason as makerDisplayAfter above.
+      const Quantity makerCumAfter = m->cumQty + fill;
 
       sink(Trade{nextTradeId(), order.symbol, makerPrice, fill, makerId, order.id, order.side,
                  makerAccount, order.accountId});
@@ -341,9 +356,9 @@ class Matcher
 
       sink(OrderExecuted{makerId, order.symbol, fill, makerTotalAfter, false,
                          makerTotalAfter.isZero(), makerPrice, makerDisplayAfter, makerAccount,
-                         makerClOrd});
+                         makerClOrd, makerCumAfter});
       sink(OrderExecuted{order.id, order.symbol, fill, leaves, true, leaves.isZero(), makerPrice,
-                         leaves, order.accountId, order.clientOrderId});
+                         leaves, order.accountId, order.clientOrderId, priorCumQty + out.filled});
     }
 
     out.leaves = leaves;
@@ -677,8 +692,8 @@ class Matcher
   // the remaining (firm) participants of the level unchanged. A level whose
   // firm size is zero stops the sweep.
   MatchOutcome crossProRata(const NewOrder& order, Book& book,
-                            const std::function<uint64_t()>& nextTradeId,
-                            const EventSink& sink) const
+                            const std::function<uint64_t()>& nextTradeId, const EventSink& sink,
+                            Quantity priorCumQty = {}) const
   {
     using namespace detail;
     MatchOutcome out;
@@ -858,6 +873,9 @@ class Matcher
             Quantity::fromRaw(level[i].leaves.raw() + level[i].hidden.raw() - alloc[i]);
         const Quantity makerDisplayAfter =
             (fill < level[i].leaves) ? (level[i].leaves - fill) : qmin(level[i].peak, level[i].hidden);
+        // T059: maker's running cumQty after this fill, read before consumeById
+        // for the same invalidation reason as makerDisplayAfter above.
+        const Quantity makerCumAfter = level[i].cumQty + fill;
         sink(Trade{nextTradeId(), order.symbol, levelPrice, fill, makerId, order.id, order.side,
                    level[i].accountId, order.accountId});
         book.consumeById(makerId, fill);
@@ -866,9 +884,9 @@ class Matcher
         out.filled += fill;
         sink(OrderExecuted{makerId, order.symbol, fill, makerTotalAfter, false,
                            makerTotalAfter.isZero(), levelPrice, makerDisplayAfter,
-                           level[i].accountId, level[i].clientOrderId});
+                           level[i].accountId, level[i].clientOrderId, makerCumAfter});
         sink(OrderExecuted{order.id, order.symbol, fill, leaves, true, leaves.isZero(), levelPrice,
-                           leaves, order.accountId, order.clientOrderId});
+                           leaves, order.accountId, order.clientOrderId, priorCumQty + out.filled});
       }
       if (want < tot)
       {

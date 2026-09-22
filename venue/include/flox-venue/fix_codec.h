@@ -365,6 +365,7 @@ class FixCodec
       add(39, "0");   // OrdStatus New
       add(151, qn(a->leavesQty));
       add(44, px(a->price));
+      add(14, qn(a->cumQty));  // T059: what this order filled of itself before this accept
     }
     else if (const auto* x = std::get_if<OrderExecuted>(&ev))
     {
@@ -377,6 +378,7 @@ class FixCodec
       add(31, px(x->lastPx));            // LastPx -- price of this fill
       add(6, px(x->lastPx));             // AvgPx (single-fill report)
       add(151, qn(x->leavesQty));        // LeavesQty
+      add(14, qn(x->cumQty));            // T059: CumQty -- total filled as of this fill
     }
     else if (const auto* c = std::get_if<OrderCanceled>(&ev))
     {
@@ -413,6 +415,7 @@ class FixCodec
       add(39, "5");
       add(151, qn(m->leavesQty));
       add(44, px(m->price));
+      add(14, qn(m->cumQty));  // T059: running total, unaffected by a reprice/resize
     }
     else if (const auto* fh = std::get_if<FillHeld>(&ev))
     {
@@ -430,6 +433,7 @@ class FixCodec
       add(31, px(fh->price));
       add(20001, std::to_string(fh->heldId));
       add(20002, std::to_string(fh->makerId));
+      add(14, qn(fh->cumQty));  // T059: taker's confirmed total as of hold creation
     }
     else if (const auto* fr = std::get_if<FillRejected>(&ev))
     {
@@ -446,6 +450,7 @@ class FixCodec
       add(20001, std::to_string(fr->heldId));
       add(20002, std::to_string(fr->makerId));
       add(58, "LastLookRejected");
+      add(14, qn(fr->cumQty));  // T059: same value FillHeld reported when this hold opened
     }
     else
     {

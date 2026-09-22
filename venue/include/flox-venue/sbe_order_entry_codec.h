@@ -103,7 +103,22 @@ class SbeOrderEntryCodec
   //    takerSide) was already the last field, Canceled/Rejected keep
   //    growing past it -- seqOffsetIn has its own version>=9 branch for
   //    these two templates so it keeps subtracting the right trailing width.
-  static constexpr uint16_t kVersion = 9;
+  // Schema version 10 (T059): the five remaining templates that report on an
+  // order but still lacked FIX 14 (CumQty) each gained a trailing `cumQty`
+  // (i64, sinceVersion=10), appended after each template's existing last
+  // field (`clOrdId` on Accepted/Executed/Replaced/FillHeld/FillRejected):
+  //  - Accepted: what the order filled of itself (as aggressor) before this
+  //    accept -- nonzero after a triggered stop or a crossing new order
+  //    partially fills before its residual rests.
+  //  - Executed: the running total as of this fill (inclusive).
+  //  - Replaced: the running total, unaffected by a reprice/resize.
+  //  - FillHeld / FillRejected: the taker's CONFIRMED total as of the moment
+  //    the hold opened (never includes the held qty itself, which is still
+  //    pending).
+  //    This moves `seq` again on all five templates, the same way version 9
+  //    did on Canceled/Rejected -- seqOffsetIn has its own version>=10
+  //    branch.
+  static constexpr uint16_t kVersion = 10;
 
   enum class InTmpl : uint16_t
   {
@@ -163,15 +178,15 @@ class SbeOrderEntryCodec
   static constexpr uint16_t kLadderRung = 32;
   static constexpr uint16_t kBlockQuoteLadder =
       kLadderHead + static_cast<uint16_t>(kQuoteLadderLevels) * kLadderRung;
-  static constexpr uint16_t kBlockAccepted = 46;  // v4: + trailing clOrdId (u64)
-  static constexpr uint16_t kBlockExecuted = 54;  // v4: + trailing clOrdId (u64)
+  static constexpr uint16_t kBlockAccepted = 54;  // v4: + clOrdId (u64); v10: + cumQty (i64)
+  static constexpr uint16_t kBlockExecuted = 62;  // v4: + clOrdId (u64); v10: + cumQty (i64)
   static constexpr uint16_t kBlockTrade = 53;
   static constexpr uint16_t kBlockCanceled = 45;  // v4: + clOrdId (u64); v9: + leavesQty, cumQty (i64 each)
   static constexpr uint16_t kBlockRejected = 37;  // v4: + clOrdId (u64); v9: + cumQty (i64)
-  static constexpr uint16_t kBlockReplaced = 45;  // v4: + trailing clOrdId (u64)
+  static constexpr uint16_t kBlockReplaced = 53;  // v4: + clOrdId (u64); v10: + cumQty (i64)
   static constexpr uint16_t kBlockTriggered = 28;
-  static constexpr uint16_t kBlockFillHeld = 69;      // v7: + trailing clOrdId (u64)
-  static constexpr uint16_t kBlockFillRejected = 60;  // v7: + trailing clOrdId (u64)
+  static constexpr uint16_t kBlockFillHeld = 77;      // v7: + clOrdId (u64); v10: + cumQty (i64)
+  static constexpr uint16_t kBlockFillRejected = 68;  // v7: + clOrdId (u64); v10: + cumQty (i64)
   static constexpr uint16_t kBlockSnapshotRequired = 8;
   static constexpr uint16_t kBlockSnapshotEndV1 = 28;  // pre-lastSeq layout (schema v1)
   static constexpr uint16_t kBlockSnapshotEnd = 36;    // v2: + trailing lastSeq (u64)
@@ -408,6 +423,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, a->restingOnBook ? 1 : 0);
       sbe::putU64(out, seq);
       sbe::putU64(out, a->clientOrderId);
+      sbe::putI64(out, a->cumQty.raw());  // v10 (T059): filled before this accept
     }
     else if (const auto* x = std::get_if<OrderExecuted>(&ev))
     {
@@ -421,6 +437,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, x->complete ? 1 : 0);
       sbe::putU64(out, seq);
       sbe::putU64(out, x->clientOrderId);
+      sbe::putI64(out, x->cumQty.raw());  // v10 (T059): running total as of this fill
     }
     else if (const auto* t = std::get_if<Trade>(&ev))
     {
@@ -493,6 +510,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, m->priorityKept ? 1 : 0);
       sbe::putU64(out, seq);
       sbe::putU64(out, m->clientOrderId);
+      sbe::putI64(out, m->cumQty.raw());  // v10 (T059): running total, unaffected by this modify
     }
     else if (const auto* g = std::get_if<OrderTriggered>(&ev))
     {
@@ -515,6 +533,7 @@ class SbeOrderEntryCodec
       sbe::putU64(out, seq);
       sbe::putU8(out, static_cast<uint8_t>(fh->takerSide));
       sbe::putU64(out, fh->clientOrderId);
+      sbe::putI64(out, fh->cumQty.raw());  // v10 (T059): taker's confirmed total as of hold creation
     }
     else if (const auto* fr = std::get_if<FillRejected>(&ev))
     {
@@ -527,6 +546,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, fr->qty.raw());
       sbe::putU64(out, seq);
       sbe::putU64(out, fr->clientOrderId);
+      sbe::putI64(out, fr->cumQty.raw());  // v10 (T059): same value FillHeld reported at hold creation
     }
     else if (const auto* bu = std::get_if<venue::BalanceUpdate>(&ev))
     {
@@ -583,12 +603,13 @@ class SbeOrderEntryCodec
   // is, so that is what decides.
   static constexpr uint16_t seqOffsetIn(const sbe::Header& h)
   {
+    const bool isAccepted = h.templateId == u16(OutTmpl::Accepted);
+    const bool isExecuted = h.templateId == u16(OutTmpl::Executed);
     const bool isCanceled = h.templateId == u16(OutTmpl::Canceled);
     const bool isRejected = h.templateId == u16(OutTmpl::Rejected);
+    const bool isReplaced = h.templateId == u16(OutTmpl::Replaced);
     const bool hasClOrdIdAfterSeq =
-        h.version >= 4 &&
-        (h.templateId == u16(OutTmpl::Accepted) || h.templateId == u16(OutTmpl::Executed) ||
-         isCanceled || isRejected || h.templateId == u16(OutTmpl::Replaced));
+        h.version >= 4 && (isAccepted || isExecuted || isCanceled || isRejected || isReplaced);
     const bool isFillHeld = h.templateId == u16(OutTmpl::FillHeld);
     const bool isFillRejected = h.templateId == u16(OutTmpl::FillRejected);
     uint16_t trailing = 8;
@@ -619,6 +640,17 @@ class SbeOrderEntryCodec
       {
         trailing += 8;
       }
+    }
+    // T059 (v10): Accepted, Executed and Replaced each gained a trailing
+    // cumQty (8 bytes, after clOrdId); FillHeld and FillRejected too (8
+    // bytes, after clOrdId -- their own trailing width above already
+    // accounts for clOrdId at version>=7). Every one of them pushes `seq`
+    // further from the end of the block, gated by version like every
+    // earlier addition, so a v9 frame keeps decoding at its own offset.
+    if (h.version >= 10 &&
+        (isAccepted || isExecuted || isReplaced || isFillHeld || isFillRejected))
+    {
+      trailing += 8;
     }
     return h.blockLength >= trailing ? static_cast<uint16_t>(h.blockLength - trailing) : 0;
   }

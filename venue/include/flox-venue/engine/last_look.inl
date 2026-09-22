@@ -263,9 +263,9 @@ uint64_t MatchingEngine<Book>::toleranceRejectedHolds() const noexcept
 
 template <class Book>
 void MatchingEngine<Book>::createHeld(const RestingOrder& maker, Quantity fill,
-                                      const NewOrder& taker)
+                                      const NewOrder& taker, Quantity takerCumSoFar)
 {
-  lastLook_.create(lastLookHost_, maker, fill, taker, now_);
+  lastLook_.create(lastLookHost_, maker, fill, taker, now_, takerCumSoFar);
 }
 
 template <class Book>

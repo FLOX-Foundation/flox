@@ -132,6 +132,10 @@ class MatchingEngine
     Side side{};
     Price price{};
     Quantity leaves{};  // total remaining (displayed + hidden)
+    // T059: RestingOrder::cumQty as it stands now, so a reconnect resync's
+    // synthesized OrderAccepted (session_verbs.h) reports the real running
+    // total instead of always 0.
+    Quantity cumQty{};
   };
 
   struct PendingStopView
@@ -437,7 +441,8 @@ class MatchingEngine
     MatchingEngine& e_;
   };
 
-  void createHeld(const RestingOrder& maker, Quantity fill, const NewOrder& taker);
+  void createHeld(const RestingOrder& maker, Quantity fill, const NewOrder& taker,
+                  Quantity takerCumSoFar);
   void releaseHeldLeg(OrderId id, Quantity qty);
   void stampFreshHolds();
   int64_t referenceRaw() const;

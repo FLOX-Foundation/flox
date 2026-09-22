@@ -458,7 +458,10 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     {
       pegs_.set(o.id, PegBook::Peg{o.side, o.peg, o.pegOffsetRaw});
     }
-    sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, ro.leaves, o.accountId, o.clientOrderId});
+    // T059: pre-open accumulation never matches, so this order has filled
+    // nothing yet -- cumQty is always 0.
+    sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, ro.leaves, o.accountId,
+                        o.clientOrderId, Quantity{}});
     return;
   }
 
@@ -500,6 +503,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     ro.lastLook = o.lastLook && cfg_.lastLookWindowNs.count() > 0;  // window 0 = feature off
     ro.reduceOnly = o.reduceOnly;                                   // carried so a later modify preserves it
     ro.postOnly = o.postOnly;                                       // same reason
+    // T059: this order may have partially filled itself (as aggressor)
+    // before its residual rests -- out.filled is that fill. Stamped onto the
+    // RestingOrder now so a later report (cancel, exec, modify) on this
+    // order carries the real running total instead of starting over at 0.
+    ro.cumQty = out.filled;
     if (o.visibleQuantity.raw() > 0 && o.visibleQuantity < out.leaves)
     {
       ro.peak = o.visibleQuantity;    // iceberg: show a peak, hide the rest
@@ -518,7 +526,8 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     }
     // Public feed shows only the displayed peak (ro.leaves); the hidden iceberg
     // reserve (out.leaves - ro.leaves) is not leaked. Non-iceberg: they match.
-    sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves, o.accountId, o.clientOrderId});
+    sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves, o.accountId,
+                        o.clientOrderId, out.filled});
   }
   else if (out.residualCanceled)
   {

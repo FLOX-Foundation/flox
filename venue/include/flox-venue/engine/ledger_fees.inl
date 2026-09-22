@@ -64,8 +64,8 @@ typename MatchingEngine<Book>::AccountSnapshot MatchingEngine<Book>::snapshotAcc
     {
       if (const RestingOrder* r = book_.find(id))
       {
-        s.openOrders.push_back(
-            {id, r->side, r->price, Quantity::fromRaw(r->leaves.raw() + r->hidden.raw())});
+        s.openOrders.push_back({id, r->side, r->price,
+                                Quantity::fromRaw(r->leaves.raw() + r->hidden.raw()), r->cumQty});
       }
     }
     std::sort(s.openOrders.begin(), s.openOrders.end(),
