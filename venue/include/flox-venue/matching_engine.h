@@ -40,6 +40,7 @@
 #include <deque>
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -373,13 +374,30 @@ class MatchingEngine
   template <class Map>
   static std::vector<typename Map::key_type> sortedKeys(const Map& m);
 
+  // The remainder the checkpoint cannot delegate: the book, the stop book,
+  // the instrument's own config records and the bound ledger belong to no
+  // engine/*.h component, so the engine still walks them itself. A pair per
+  // direction, because the remainder is not contiguous in the file -- the
+  // config records lead it, the book sits in the middle, the balances close
+  // it, and the order IS the format.
+  using BalanceRow = std::tuple<uint64_t, AssetId, Amount, Amount>;
+  std::vector<BalanceRow> sortedBalances() const;
+  uint64_t hashBookAndStops(uint64_t h) const;
+  uint64_t hashBalances(uint64_t h) const;
+  void writeConfigSection(Journal& out, int64_t ts) const;
+  void writeBookAndStops(Journal& out, int64_t ts) const;
+  void writeBalances(Journal& out, int64_t ts) const;
+
   // engine/checkpoint_restore.inl
   SeqNanos expiryOf(OrderId id) const;
   uint64_t ocoOf(OrderId id) const;
   std::vector<std::pair<NewOrder, Price>> sortedStops() const;
   void linkOco(OrderId id, uint64_t group);
+  bool applySnapshotBegin(const SnapshotBegin& b);
+  std::optional<bool> applyComponentRestore(const InboundCommand& cmd);
   bool applyRestoreOrder(const RestoreOrder& r);
   bool applyRestoreStop(const RestoreStop& r);
+  bool applyRestoreBalance(const RestoreBalance& r);
   bool applyRestoreHeld(const RestoreHeld& r);
   bool applyRestoreReservation(const RestoreReservation& r);
   bool applyRestorePosition(const RestorePosition& r);

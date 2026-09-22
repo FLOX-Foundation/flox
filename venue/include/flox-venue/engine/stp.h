@@ -84,6 +84,34 @@ class StpState
     }
   }
 
+  // ---- checkpoint: the firm-group table ---------------------------------
+  // The groups live in the matcher (they feed matching decisions) and are
+  // journaled as SetStpGroup commands, but this component is already the one
+  // that reads them -- see scopeOf below -- so the canonical traversal is
+  // here rather than a second copy of it in the engine. Read through, never
+  // copied. An empty table writes and folds nothing.
+  uint64_t hashGroupsInto(const std::unordered_map<uint64_t, uint64_t>& groups, uint64_t h) const
+  {
+    for (uint64_t acct : sortedKeysOf(groups))
+    {
+      h = mix(h, 0xB00BU);
+      h = mix(h, acct);
+      h = mix(h, groups.at(acct));
+    }
+    return h;
+  }
+
+  // Re-emitted as the command that set them, applied through the ordinary
+  // submit path on load (config section).
+  void writeGroups(const std::unordered_map<uint64_t, uint64_t>& groups, SymbolId symbol,
+                   Journal& out, int64_t ts) const
+  {
+    for (uint64_t acct : sortedKeysOf(groups))
+    {
+      out.append(InboundCommand{SetStpGroup{symbol, acct, groups.at(acct)}}, ts);
+    }
+  }
+
   // The scope two accounts are compared in: the firm group if the account is
   // in one, else the account itself. `groups` is the matcher's own table, read
   // through rather than copied so the two can never disagree about who counts

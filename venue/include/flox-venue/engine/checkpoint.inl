@@ -53,153 +53,21 @@ uint64_t MatchingEngine<Book>::stateHash() const
   h = mix(h, static_cast<uint64_t>(timeCounter_));
   h = mix(h, static_cast<uint64_t>(now_.raw()));
 
-  book_.forEachOrder(
-      [&](const RestingOrder& o)
-      {
-        h = mix(h, 0xB001U);
-        h = mix(h, o.id);
-        h = mix(h, o.accountId);
-        h = mix(h, static_cast<uint64_t>(o.price.raw()));
-        h = mix(h, static_cast<uint64_t>(o.leaves.raw()));
-        h = mix(h, static_cast<uint64_t>(o.hidden.raw()));
-        h = mix(h, static_cast<uint64_t>(o.peak.raw()));
-        h = mix(h, static_cast<uint64_t>(o.side));
-        h = mix(h, o.lastLook ? 1U : 0U);
-        h = mix(h, o.reduceOnly ? 1U : 0U);
-        if (o.postOnly)
-        {
-          h = mix(h, 0xB00FU);  // only when set: a book without post-only orders hashes as before
-        }
-        if (o.clientOrderId != 0)
-        {
-          h = mix(h, o.clientOrderId);  // same rule: absent means the hash is unchanged
-        }
-        h = mix(h, static_cast<uint64_t>(expiryOf(o.id).raw()));
-        h = mix(h, ocoOf(o.id));
-      });
-
-  for (const auto& [o, trig] : sortedStops())
-  {
-    h = mix(h, 0xB002U);
-    h = mix(h, o.id);
-    h = mix(h, o.accountId);
-    h = mix(h, static_cast<uint64_t>(o.side));
-    h = mix(h, static_cast<uint64_t>(o.type));
-    h = mix(h, static_cast<uint64_t>(o.price.raw()));
-    h = mix(h, static_cast<uint64_t>(o.quantity.raw()));
-    h = mix(h, static_cast<uint64_t>(o.tif));
-    h = mix(h, static_cast<uint64_t>(o.visibleQuantity.raw()));
-    h = mix(h, static_cast<uint64_t>(o.triggerPrice.raw()));
-    h = mix(h, static_cast<uint64_t>(o.trailingOffset.raw()));
-    h = mix(h, o.lastLook ? 1U : 0U);
-    h = mix(h, o.reduceOnly ? 1U : 0U);
-    h = mix(h, static_cast<uint64_t>(o.expiryNs.raw()));
-    h = mix(h, o.ocoGroup);
-    if (o.clientOrderId != 0)
-    {
-      h = mix(h, o.clientOrderId);
-    }
-    h = mix(h, static_cast<uint64_t>(trig.raw()));
-  }
-
-  for (uint64_t acct : sortedKeys(credit_.admissionProfiles()))
-  {
-    const AdmissionProfile& p = credit_.admissionProfiles().at(acct);
-    h = mix(h, 0xB00DU);
-    h = mix(h, acct);
-    h = mix(h, p.allowedTypes);
-    h = mix(h, p.allowedTif);
-    h = mix(h, static_cast<uint64_t>(p.deny));
-  }
+  // Each component folds its own state, at the point of the traversal the
+  // engine folded it at before: the order IS the format, so a section that
+  // moved would fail every snapshot already on disk.
+  h = hashBookAndStops(h);
+  h = credit_.hashAdmission(h);
   h = stp_.hashInto(h);
   h = pegs_.hashInto(h);
-
-  for (uint64_t hid : lastLook_.sortedIds())
-  {
-    const Held& x = lastLook_.at(hid);
-    h = mix(h, 0xB004U);
-    h = mix(h, x.id);
-    h = mix(h, x.taker);
-    h = mix(h, x.takerAccount);
-    h = mix(h, static_cast<uint64_t>(x.takerSide));
-    h = mix(h, x.maker);
-    h = mix(h, x.makerAccount);
-    h = mix(h, static_cast<uint64_t>(x.price.raw()));
-    h = mix(h, static_cast<uint64_t>(x.qty.raw()));
-    h = mix(h, static_cast<uint64_t>(x.deadline.raw()));
-    h = mix(h, static_cast<uint64_t>(x.takerTif));
-    h = mix(h, static_cast<uint64_t>(x.takerType));
-    h = mix(h, static_cast<uint64_t>(x.takerPrice.raw()));
-    h = mix(h, static_cast<uint64_t>(x.takerExpiryNs.raw()));
-    h = mix(h, x.makerReduceOnly ? 1U : 0U);
-    h = mix(h, x.takerReduceOnly ? 1U : 0U);
-    if (x.makerClientOrderId != 0)
-    {
-      h = mix(h, x.makerClientOrderId);
-    }
-    if (x.takerClientOrderId != 0)
-    {
-      h = mix(h, x.takerClientOrderId);
-    }
-    // Live-tracking truth of the maker (see RestoreHeld::makerTracked).
-    h = mix(h, pub_.tracked(x.maker) ? 1U : 0U);
-  }
-
-  for (OrderId id : sortedKeys(credit_.reservations()))
-  {
-    const Reservation& r = credit_.reservations().at(id);
-    h = mix(h, 0xB009U);
-    h = mix(h, id);
-    h = mix(h, r.account);
-    h = mix(h, r.asset);
-    h = mix(h, static_cast<uint64_t>(r.side));
-    h = mix(h, static_cast<uint64_t>(r.limitPriceRaw));
-    h = mixAmount(h, r.reservedRaw);
-  }
-
+  h = lastLook_.hashInto(h, [this](OrderId id)
+                         { return pub_.tracked(id); });
+  h = credit_.hashReservations(h);
   h = clearing_.hashPositions(h);
-
   h = mmp_.hashInto(h);
-
-  // Firm-group STP table (feeds matching decisions, journaled as SetStpGroup).
-  if (const auto& groups = matcher_.stpGroups(); !groups.empty())
-  {
-    for (uint64_t acct : sortedKeys(groups))
-    {
-      h = mix(h, 0xB00BU);
-      h = mix(h, acct);
-      h = mix(h, groups.at(acct));
-    }
-  }
-
+  h = stp_.hashGroupsInto(matcher_.stpGroups(), h);
   h = clOrdIds_.hashInto(h);
-
-  if (ledger_ != nullptr)
-  {
-    std::vector<std::tuple<uint64_t, AssetId, Amount, Amount>> bals;
-    ledger_->forEachBalanceSplit(
-        [&](uint64_t acct, AssetId asset, Amount avail, Amount rsvd)
-        {
-          if (avail != 0 || rsvd != 0)  // a zeroed entry is indistinguishable from absence
-          {
-            bals.emplace_back(acct, asset, avail, rsvd);
-          }
-        });
-    std::sort(bals.begin(), bals.end(),
-              [](const auto& a, const auto& b)
-              {
-                return std::get<0>(a) != std::get<0>(b) ? std::get<0>(a) < std::get<0>(b)
-                                                        : std::get<1>(a) < std::get<1>(b);
-              });
-    for (const auto& [acct, asset, avail, rsvd] : bals)
-    {
-      h = mix(h, 0xB008U);
-      h = mix(h, acct);
-      h = mix(h, asset);
-      h = mixAmount(h, avail);
-      h = mixAmount(h, rsvd);
-    }
-  }
+  h = hashBalances(h);
   return h;
 }
 
@@ -253,6 +121,154 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   const uint64_t h = stateHash();
   out.append(InboundCommand{SnapshotBegin{kSnapshotFormatVersion, ts, h, configHash()}}, ts);
 
+  writeConfigSection(out, ts);
+  clearing_.writeFunding(out, ts);
+  writeBalances(out, ts);
+  mmp_.writeSnapshot(out, ts);
+  clOrdIds_.writeSnapshot(out, ts);
+  writeBookAndStops(out, ts);
+  pegs_.writeSnapshot(out, ts);
+  stp_.writeSnapshot(out, ts);
+  clearing_.writePositions(out, ts);
+  lastLook_.writeSnapshot(out, ts, [this](OrderId id)
+                          { return pub_.tracked(id); });
+  credit_.writeReservations(out, ts);
+
+  SnapshotEnd end{};
+  end.stateHash = h;
+  end.tradeSeq = tradeSeq_;
+  end.heldSeq = lastLook_.seq();
+  end.timeCounter = timeCounter_;
+  end.nowNs = now_.raw();  // snapshot wire: raw
+  end.mdEpoch = 0;         // the engine carries no MD epoch today
+  end.lastPriceRaw = lastPrice_.raw();
+  end.hasLast = hasLast_;
+  end.markPriceRaw = markPrice_.raw();
+  end.hasMark = hasMark_;
+  end.haltUntilNs = session_.haltUntil().raw();
+  out.append(InboundCommand{end}, ts);
+}
+
+// ---- the remainder no component owns ------------------------------------
+//
+// The book, the stop book, the instrument's own config records and the bound
+// ledger. A pair of helpers per direction rather than one, because the
+// remainder is not contiguous in the file: the config records lead it, the
+// book sits in the middle, the balances close it, and the order IS the
+// format. Everything else the checkpoint touches belongs to a component in
+// engine/*.h and is folded and written by it.
+
+// Resting orders in the book's canonical traversal (price levels best-first,
+// FIFO within each level), then the pending conditionals by order id.
+template <class Book>
+uint64_t MatchingEngine<Book>::hashBookAndStops(uint64_t h) const
+{
+  book_.forEachOrder(
+      [&](const RestingOrder& o)
+      {
+        h = mix(h, 0xB001U);
+        h = mix(h, o.id);
+        h = mix(h, o.accountId);
+        h = mix(h, static_cast<uint64_t>(o.price.raw()));
+        h = mix(h, static_cast<uint64_t>(o.leaves.raw()));
+        h = mix(h, static_cast<uint64_t>(o.hidden.raw()));
+        h = mix(h, static_cast<uint64_t>(o.peak.raw()));
+        h = mix(h, static_cast<uint64_t>(o.side));
+        h = mix(h, o.lastLook ? 1U : 0U);
+        h = mix(h, o.reduceOnly ? 1U : 0U);
+        if (o.postOnly)
+        {
+          h = mix(h, 0xB00FU);  // only when set: a book without post-only orders hashes as before
+        }
+        if (o.clientOrderId != 0)
+        {
+          h = mix(h, o.clientOrderId);  // same rule: absent means the hash is unchanged
+        }
+        h = mix(h, static_cast<uint64_t>(expiryOf(o.id).raw()));
+        h = mix(h, ocoOf(o.id));
+      });
+
+  for (const auto& [o, trig] : sortedStops())
+  {
+    h = mix(h, 0xB002U);
+    h = mix(h, o.id);
+    h = mix(h, o.accountId);
+    h = mix(h, static_cast<uint64_t>(o.side));
+    h = mix(h, static_cast<uint64_t>(o.type));
+    h = mix(h, static_cast<uint64_t>(o.price.raw()));
+    h = mix(h, static_cast<uint64_t>(o.quantity.raw()));
+    h = mix(h, static_cast<uint64_t>(o.tif));
+    h = mix(h, static_cast<uint64_t>(o.visibleQuantity.raw()));
+    h = mix(h, static_cast<uint64_t>(o.triggerPrice.raw()));
+    h = mix(h, static_cast<uint64_t>(o.trailingOffset.raw()));
+    h = mix(h, o.lastLook ? 1U : 0U);
+    h = mix(h, o.reduceOnly ? 1U : 0U);
+    h = mix(h, static_cast<uint64_t>(o.expiryNs.raw()));
+    h = mix(h, o.ocoGroup);
+    if (o.clientOrderId != 0)
+    {
+      h = mix(h, o.clientOrderId);
+    }
+    h = mix(h, static_cast<uint64_t>(trig.raw()));
+  }
+  return h;
+}
+
+// The bound ledger's live balances, sorted by (account, asset), with a fully
+// zero entry dropped -- indistinguishable from absence, which is what lets an
+// account that has been drained hash as one that never existed. ONE
+// traversal, used by the hash and by the snapshot, so the two cannot drift
+// apart. No ledger: no rows.
+template <class Book>
+auto MatchingEngine<Book>::sortedBalances() const -> std::vector<BalanceRow>
+{
+  std::vector<BalanceRow> bals;
+  if (ledger_ == nullptr)
+  {
+    return bals;
+  }
+  ledger_->forEachBalanceSplit(
+      [&](uint64_t acct, AssetId asset, Amount avail, Amount rsvd)
+      {
+        if (avail != 0 || rsvd != 0)
+        {
+          bals.emplace_back(acct, asset, avail, rsvd);
+        }
+      });
+  // order: sorted below, before the vector is handed out
+  std::sort(bals.begin(), bals.end(),
+            [](const auto& a, const auto& b)
+            {
+              return std::get<0>(a) != std::get<0>(b) ? std::get<0>(a) < std::get<0>(b)
+                                                      : std::get<1>(a) < std::get<1>(b);
+            });
+  return bals;
+}
+
+// Available AND reserved per (account, asset): the reserved side is engine
+// state as much as the available side is, so a snapshot that carried only the
+// total could not tell a drained account from a fully committed one.
+template <class Book>
+uint64_t MatchingEngine<Book>::hashBalances(uint64_t h) const
+{
+  for (const auto& [acct, asset, avail, rsvd] : sortedBalances())
+  {
+    h = mix(h, 0xB008U);
+    h = mix(h, acct);
+    h = mix(h, asset);
+    h = mixAmount(h, avail);
+    h = mixAmount(h, rsvd);
+  }
+  return h;
+}
+
+// The config section: records an ordinary journal already carries, which
+// restore through the live submit path rather than a Restore* branch. They
+// lead the file because they decide what the Restore* records that follow
+// are allowed to rebuild.
+template <class Book>
+void MatchingEngine<Book>::writeConfigSection(Journal& out, int64_t ts) const
+{
   out.append(InboundCommand{ListInstrument{cfg_.id, cfg_.tickSize, cfg_.lotSize, cfg_.minPrice,
                                            cfg_.maxPrice}},
              ts);
@@ -262,25 +278,8 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   // admit orders the live one refused.
   out.append(InboundCommand{riskLimits()}, ts);
   out.append(InboundCommand{SetTriggerRef{cfg_.id, cfg_.triggerRef}}, ts);
-  // STP groups are engine state journaled as SetStpGroup commands; the
-  // snapshot re-emits the live table as the same records (config section,
-  // applied through the ordinary submit path on load).
-  if (const auto& groups = matcher_.stpGroups(); !groups.empty())
-  {
-    for (uint64_t acct : sortedKeys(groups))
-    {
-      out.append(InboundCommand{SetStpGroup{cfg_.id, acct, groups.at(acct)}}, ts);
-    }
-  }
-  // Admission profiles are engine state of the same kind: they decide what
-  // is accepted, so they are re-emitted as the command that set them and
-  // applied through the ordinary submit path on load.
-  for (uint64_t acct : sortedKeys(credit_.admissionProfiles()))
-  {
-    out.append(
-        InboundCommand{SetAdmissionProfile{cfg_.id, acct, credit_.admissionProfiles().at(acct)}},
-        ts);
-  }
+  stp_.writeGroups(matcher_.stpGroups(), cfg_.id, out, ts);
+  credit_.writeAdmission(out, cfg_.id, ts);
   // The halt, the auction phase, the session boundary and delisting all ride
   // the same existing AdminCmd path, in the order engine::Session hands them
   // back -- outermost last, exactly as tradingStatus() ranks them, and only
@@ -292,40 +291,27 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   {
     out.append(InboundCommand{AdminCmd{cfg_.id, sessionActions[i]}}, ts);
   }
-  clearing_.writeFunding(out, ts);
+}
 
-  if (ledger_ != nullptr)
+// One RestoreBalance per (account, asset) carrying the EXACT signed split.
+// Every live moment is representable, including a negative wallet
+// mid-liquidation and non-positive totals -- states the v1 Deposit-total
+// encoding could not express, which forced recovery a generation back.
+template <class Book>
+void MatchingEngine<Book>::writeBalances(Journal& out, int64_t ts) const
+{
+  for (const auto& [acct, asset, avail, rsvd] : sortedBalances())
   {
-    // Exact signed split per (account, asset): every live moment is
-    // representable, including a negative wallet mid-liquidation and
-    // non-positive totals (states the v1 Deposit-total encoding could not
-    // express, forcing recovery a generation back). A fully zero entry is
-    // skipped -- indistinguishable from absence, matching stateHash.
-    std::vector<std::tuple<uint64_t, AssetId, Amount, Amount>> bals;
-    ledger_->forEachBalanceSplit(
-        [&](uint64_t acct, AssetId asset, Amount avail, Amount rsvd)
-        {
-          if (avail != 0 || rsvd != 0)
-          {
-            bals.emplace_back(acct, asset, avail, rsvd);
-          }
-        });
-    std::sort(bals.begin(), bals.end(),
-              [](const auto& a, const auto& b)
-              {
-                return std::get<0>(a) != std::get<0>(b) ? std::get<0>(a) < std::get<0>(b)
-                                                        : std::get<1>(a) < std::get<1>(b);
-              });
-    for (const auto& [acct, asset, avail, rsvd] : bals)
-    {
-      out.append(InboundCommand{RestoreBalance{acct, asset, avail, rsvd}}, ts);
-    }
+    out.append(InboundCommand{RestoreBalance{acct, asset, avail, rsvd}}, ts);
   }
+}
 
-  mmp_.writeSnapshot(out, ts);
-
-  clOrdIds_.writeSnapshot(out, ts);
-
+// Resting orders in the traversal above, so tail-appending RestoreOrder
+// application reproduces the exact book layout, then the pending
+// conditionals.
+template <class Book>
+void MatchingEngine<Book>::writeBookAndStops(Journal& out, int64_t ts) const
+{
   book_.forEachOrder(
       [&](const RestingOrder& o)
       {
@@ -341,49 +327,6 @@ void MatchingEngine<Book>::writeSnapshot(Journal& out) const
   {
     out.append(InboundCommand{RestoreStop{o, trig}}, ts);
   }
-
-  pegs_.writeSnapshot(out, ts);
-
-  stp_.writeSnapshot(out, ts);
-
-  clearing_.writePositions(out, ts);
-
-  for (uint64_t hid : lastLook_.sortedIds())
-  {
-    const Held& x = lastLook_.at(hid);
-    RestoreHeld r{x.id, x.taker, x.takerAccount, x.takerSide, x.maker,
-                  x.makerAccount, x.price, x.qty, x.deadline, x.takerTif,
-                  x.takerType, x.takerPrice, x.takerExpiryNs, x.makerReduceOnly,
-                  x.takerReduceOnly};
-    r.makerClientOrderId = x.makerClientOrderId;
-    r.takerClientOrderId = x.takerClientOrderId;
-    r.makerTracked = pub_.tracked(x.maker);
-    r.refAtHoldRaw = x.refAtHoldRaw;
-    out.append(InboundCommand{r}, ts);
-  }
-
-  for (OrderId id : sortedKeys(credit_.reservations()))
-  {
-    const Reservation& r = credit_.reservations().at(id);
-    out.append(
-        InboundCommand{RestoreReservation{id, r.account, r.asset, r.side, r.limitPriceRaw,
-                                          r.reservedRaw}},
-        ts);
-  }
-
-  SnapshotEnd end{};
-  end.stateHash = h;
-  end.tradeSeq = tradeSeq_;
-  end.heldSeq = lastLook_.seq();
-  end.timeCounter = timeCounter_;
-  end.nowNs = now_.raw();  // snapshot wire: raw
-  end.mdEpoch = 0;         // the engine carries no MD epoch today
-  end.lastPriceRaw = lastPrice_.raw();
-  end.hasLast = hasLast_;
-  end.markPriceRaw = markPrice_.raw();
-  end.hasMark = hasMark_;
-  end.haltUntilNs = session_.haltUntil().raw();
-  out.append(InboundCommand{end}, ts);
 }
 
 // Live-traffic snapshot-tag drops (observability; see the guard in submit).
@@ -422,13 +365,12 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   e.ocoPending_ = ocoPending_;  // empty at a command boundary; copied for completeness
   e.pegs_ = pegs_;
   e.stp_ = stp_;
-  e.credit_.restoreAdmission(credit_.admissionProfiles());
+  e.credit_.copyStateFrom(credit_);
   e.fees_ = fees_;
   e.feesEnabled_ = feesEnabled_;
   e.mmp_ = mmp_;
   e.lastLook_.copyHoldsFrom(lastLook_);
   e.clOrdIds_ = clOrdIds_;
-  e.credit_.restoreReservations(credit_.reservations());
   e.clearing_.copyStateFrom(clearing_);
   e.session_.copyForSnapshotClone(session_);
   // order: not observable -- a keyed copy into the clone's own map; the
