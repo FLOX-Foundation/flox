@@ -180,20 +180,18 @@ void buildEverySection(MatchingEngine<MatchingBook>& eng)
   // A last-look maker and the taker that takes part of it: the remainder
   // rests, the taken part stays an open hold.
   //
-  // The maker deliberately carries NO clientOrderId. applyRestoreHeld does
-  // not assign the two client order ids RestoreHeld carries, so a hold whose
-  // legs have them restores with zeroes, the state hash disagrees with the
-  // writer's and the generation is discarded as corrupt. That is a bug in
-  // the restore path, not in the layout, and fixing it changes behaviour --
-  // out of scope here. The clientOrderId section is exercised by order 18
-  // instead; put an id back on this maker and the third test below goes red
-  // the day the restore path is fixed.
+  // Both legs carry a clientOrderId, so the RestoreHeld record in the pinned
+  // file is the fully-populated one: the two ids are the part of it the state
+  // hash folds in, and the third test below is what says the file this
+  // layout describes still restores.
   NewOrder maker = limit(10, Side::SELL, 101.00, 5.0, 3);
   maker.lastLook = true;
+  maker.clientOrderId = 554;
   maker.visibleQuantity = qty(2.0);  // iceberg: hidden reserve rides RestoreOrder
   send(InboundCommand{maker});
   NewOrder taker = limit(11, Side::BUY, 101.00, 2.0, 4);
   taker.tif = TimeInForce::IOC;
+  taker.clientOrderId = 555;
   send(InboundCommand{taker});
 
   NewOrder gtd = limit(12, Side::BUY, 99.00, 2.0, 4);
@@ -256,7 +254,10 @@ std::vector<std::string> snapshotLayout(const MatchingEngine<MatchingBook>& eng,
 //
 // recorded on 1fb24b4aa0604a5974fc94b5450f30219ff32fb7 (origin/main) by this
 // test, before the checkpoint functions were composed out of their
-// components.
+// components. One entry has been added since: naming the hold's maker gave
+// account 3 a dedup entry of its own, so the clOrdId section writes two
+// records where it wrote one. No section moved, and the hold is still the
+// single RestoreHeld it always was.
 // clang-format off
 const std::vector<std::string> kRecordedLayout = {
     "SnapshotBegin",
@@ -274,7 +275,9 @@ const std::vector<std::string> kRecordedLayout = {
     "RestoreBalance", "RestoreBalance", "RestoreBalance",
     "RestoreMmpCfg", "RestoreMmpCfg",        // market-maker protection: config
     "RestoreMmpFills", "RestoreMmpFills",    // ... then the window fills
-    "RestoreClOrdIds",                       // clientOrderId dedup generations
+    // clientOrderId dedup generations, one record per account with ids: the
+    // hold's maker (account 3) and the two account-4 orders
+    "RestoreClOrdIds", "RestoreClOrdIds",
     // the book: levels best-first, FIFO within, so tail-appending restore
     // reproduces the live layout
     "RestoreOrder", "RestoreOrder", "RestoreOrder", "RestoreOrder",

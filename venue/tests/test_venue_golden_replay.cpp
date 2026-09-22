@@ -956,6 +956,67 @@ std::vector<Scenario> corpus()
                      "golden_snap_delisted", /*viaClone*/ true);
                }});
 
+  // Checkpoint taken with two open holds whose legs were NAMED by their
+  // submitters. RestoreHeld carries both client order ids and stateHash folds
+  // a non-zero one in, so a restore that drops them cannot even load the file:
+  // SnapshotEnd refuses it and checkpointed()'s own allApplied check goes red.
+  // Past that, the reports the two decisions produce after the restart have to
+  // name the orders the way the submitters did -- which is the stream half of
+  // the digest.
+  //
+  // The decisions are commands in the stream rather than HoldResponder
+  // answers: both holds have to still be open AT the checkpoint, and that is
+  // not something a randomized responder can be asked for. `viaClone` routes
+  // the checkpoint through the path production takes.
+  s.push_back({"snapshot_midstream_held_clordid",
+               []
+               {
+                 SymbolConfig c = spotCfg();
+                 c.lastLookWindowNs = DurationNs{1'000'000};
+                 c.lastLookAcceptOnTimeout = false;
+                 const auto named = [](OrderId id, Side side, double p, double q,
+                                       uint64_t acct, uint64_t clOrdId, bool lastLook)
+                 {
+                   NewOrder o;
+                   o.id = id;
+                   o.symbol = SYM;
+                   o.side = side;
+                   o.type = OrderType::LIMIT;
+                   o.price = px(p);
+                   o.quantity = qty(q);
+                   o.accountId = acct;
+                   o.clientOrderId = clOrdId;
+                   o.lastLook = lastLook;
+                   return o;
+                 };
+                 std::vector<InboundCommand> cmds;
+                 // -- the pre-checkpoint half: two holds, four named legs
+                 cmds.emplace_back(Deposit{1, QUOTE, quoteRaw(100000.0), SYM});
+                 cmds.emplace_back(Deposit{2, BASE, baseRaw(100.0), SYM});
+                 cmds.emplace_back(Deposit{3, BASE, baseRaw(100.0), SYM});
+                 cmds.emplace_back(Deposit{4, QUOTE, quoteRaw(100000.0), SYM});
+                 cmds.emplace_back(named(10, Side::SELL, 100.00, 5.0, 2, 9001, true));
+                 cmds.emplace_back(named(11, Side::BUY, 100.00, 5.0, 1, 9002, false));
+                 cmds.emplace_back(named(12, Side::SELL, 100.50, 4.0, 3, 9003, true));
+                 cmds.emplace_back(named(13, Side::BUY, 100.50, 4.0, 4, 9004, false));
+                 // -- the post-restore half: one hold accepted, one refused,
+                 //    then the legs the refusal put back are canceled, so the
+                 //    ids travel through OrderExecuted, FillRejected,
+                 //    OrderModified, OrderAccepted and OrderCanceled alike
+                 cmds.emplace_back(InboundCommand{LastLookDecision{1, SYM, true, 2}});
+                 cmds.emplace_back(InboundCommand{LastLookDecision{2, SYM, false, 3}});
+                 cmds.emplace_back(InboundCommand{CancelOrder{13, SYM, 4}});
+                 cmds.emplace_back(InboundCommand{CancelOrder{12, SYM, 3}});
+                 cmds.emplace_back(Deposit{1, BASE, baseRaw(10.0), SYM});
+                 cmds.emplace_back(named(14, Side::SELL, 101.00, 1.0, 1, 9005, false));
+                 cmds.emplace_back(InboundCommand{CancelOrder{14, SYM, 1}});
+                 cmds.emplace_back(InboundCommand{CancelOrder{999, SYM, 1}});
+                 return checkpointed(
+                     c, cmds, [](Run& r)
+                     { r.eng.setLedger(&r.led, VENUE_ACCT); }, false,
+                     "golden_snap_held_clordid", /*viaClone*/ true);
+               }});
+
   return s;
 }
 
