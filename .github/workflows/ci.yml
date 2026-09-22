@@ -271,7 +271,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-gcc14-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}
+        key: ccache-${{ runner.os }}-gcc14-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ runner.os }}-gcc14-
 
@@ -674,7 +674,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-clang18-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}
+        key: ccache-${{ runner.os }}-clang18-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ runner.os }}-clang18-
 
@@ -795,7 +795,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-gcc14-sanitizer-${{ matrix.sanitizer }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}
+        key: ccache-${{ runner.os }}-gcc14-sanitizer-${{ matrix.sanitizer }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ runner.os }}-gcc14-sanitizer-${{ matrix.sanitizer }}-
 
@@ -905,7 +905,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-appleclang-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}
+        key: ccache-${{ runner.os }}-appleclang-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ runner.os }}-appleclang-
 
@@ -1017,7 +1017,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.SCCACHE_DIR }}
-        key: sccache-${{ runner.os }}-msvc-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}
+        key: sccache-${{ runner.os }}-msvc-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
           sccache-${{ runner.os }}-msvc-
 
@@ -1158,7 +1158,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.SCCACHE_DIR }}
-        key: sccache-${{ runner.os }}-clangcl-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}
+        key: sccache-${{ runner.os }}-clangcl-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
           sccache-${{ runner.os }}-clangcl-
 
@@ -1372,7 +1372,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-gcc14-connectors-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}
+        key: ccache-${{ runner.os }}-gcc14-connectors-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ runner.os }}-gcc14-connectors-
 
@@ -1515,7 +1515,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-gcc14-venue-optional-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}
+        key: ccache-${{ runner.os }}-gcc14-venue-optional-${{ hashFiles('CMakeLists.txt', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
         restore-keys: |
           ccache-${{ runner.os }}-gcc14-venue-optional-
 
