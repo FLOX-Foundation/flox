@@ -25,6 +25,44 @@ The reference book is the oracle: any ladder divergence fails with the command
 index. Depth is CI-friendly by default; set `FLOX_FUZZ_OPS` for a deep run
 (2M commands verified).
 
+## Golden replay, on both books
+
+`test_venue_golden_replay` is the opposite kind of check from the differential
+fuzz above: a fixed corpus of ~25 hand-written scenarios (spot, perp, last
+look, STP, auctions, session transitions, checkpoint mid-stream, quote
+ladders), not a random stream, each pinned to a recorded `stateHash`,
+`configHash` and event-stream hash in `venue/tests/golden/replay_hashes.txt`.
+It exists to catch a refactor that changes behaviour nobody wrote a narrower
+test for.
+
+The corpus is templated on the resting-book implementation
+(`corpus<Book>()`), and `CorpusMatchesTheTable` runs it twice: once on
+`MatchingEngine<MatchingBook>`, whose numbers are what the table records and
+what `FLOX_UPDATE_GOLDEN=1` rewrites, and once on `MatchingEngine<LadderBook>`,
+checked against the SAME table with no separate `replay_hashes_ladder.txt`.
+That is a contract, not a convenience: `stateHash`/`configHash`
+(`venue/include/flox-venue/engine/checkpoint.inl`) fold in only `SymbolConfig`
+and the book's content through `Book::forEachOrder`'s canonical traversal
+(price levels best-first, FIFO within each level) -- never a book's own
+internal representation -- so for the same config and the same command
+stream the two engines are required to land on byte-identical numbers,
+provided the `LadderBook` instance is sized wide and deep enough to never
+silently drop an order (see `makeBook<Book>()` in the test file). One table
+is therefore the strongest available check: a second table could only ever
+record the same numbers or a real divergence, and a real divergence is
+exactly the failure this test exists to report.
+
+This is what closes the coverage gap the differential fuzz's random stream
+does not reach reliably: `LadderBook`'s two real-fill mutation points
+(`fillBest`, `consumeById`) are exercised by unit tests, but before this,
+nothing outside the differential fuzz's random 200k-command mix ran them
+through the SAME hand-picked scenarios (an auction uncross's partial fill,
+an iceberg refill, a pro-rata allocation) that the `MatchingBook` pass
+already pins. A mutation at either point now reddens the `LadderBook` half
+of `CorpusMatchesTheTable` while the `MatchingBook` half and every other
+test stay green -- confirmed by mutating each of `fillBest` and
+`consumeById` in turn.
+
 ## Conservation fuzz
 
 `test_venue_conservation_fuzz` asserts money properties over a random stream

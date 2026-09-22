@@ -53,6 +53,7 @@
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 #include "flox-venue/workload.h"
+#include "flox/book/ladder_book.h"
 #include "support/engine_surface.h"
 #include "support/recovery_scenario.h"
 #include "support/tmp_path.h"
@@ -72,6 +73,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 using namespace flox;
@@ -188,18 +190,49 @@ std::string hex(uint64_t v)
 
 // ---- the driver -----------------------------------------------------------
 
+// A pristine book instance, sized for the corpus's price band. MatchingBook
+// needs no per-symbol config (a std::map has no capacity to reserve); a
+// LadderBook's dense ladders and node pool do, and the two facts that decide
+// them -- the price band and the tick -- come straight off SymbolConfig,
+// which every scenario in this corpus already sets (min/maxPrice, tickSize),
+// so there is nothing scenario-specific to plumb through here. maxOrders
+// matches test_venue_differential_fuzz.cpp's figure: this corpus never
+// exceeds a few thousand resting orders, so 1<<20 is headroom, not a tuned
+// number -- the same one already carries a 2M-command fuzz run in CI.
+template <class Book>
+Book makeBook(const SymbolConfig& c)
+{
+  if constexpr (std::is_same_v<Book, LadderBook>)
+  {
+    LadderBook::Config lc;
+    lc.basePriceRaw = c.minPrice.raw();
+    lc.tickRaw = c.tickSize.raw();
+    lc.numLevels = static_cast<int32_t>((c.maxPrice.raw() - c.minPrice.raw()) / lc.tickRaw) + 1;
+    lc.maxOrders = 1 << 20;
+    return Book{lc};
+  }
+  else
+  {
+    return Book{};
+  }
+}
+
 // One engine plus the digest its events fold into. Not copyable or movable:
-// the sink captures `this`, and a moved Run would keep feeding the old one.
-struct Run
+// the sink captures `this`, and a moved RunT would keep feeding the old one.
+// Templated on the resting-book implementation so the SAME scenario code in
+// corpus<Book>() below drives MatchingEngine<MatchingBook> and
+// MatchingEngine<LadderBook> alike -- see the contract note above corpus().
+template <class Book>
+struct RunT
 {
   Digest& dig;
   Digest* tap{nullptr};  // optional second digest, for the continuity check
   Ledger led;
   std::vector<OutboundEvent> since;  // events of the last submit
-  MatchingEngine<MatchingBook> eng;
+  MatchingEngine<Book> eng;
   int64_t ts{1};
 
-  Run(const SymbolConfig& c, Digest& d)
+  RunT(const SymbolConfig& c, Digest& d)
       : dig(d), eng(c, [this](const OutboundEvent& e)
                     {
                        dig.event(e);
@@ -207,11 +240,11 @@ struct Run
                        {
                          tap->event(e);
                        }
-                       since.push_back(e); })
+                       since.push_back(e); }, makeBook<Book>(c))
   {
   }
-  Run(const Run&) = delete;
-  Run& operator=(const Run&) = delete;
+  RunT(const RunT&) = delete;
+  RunT& operator=(const RunT&) = delete;
 
   void push(const InboundCommand& cmd)
   {
@@ -230,11 +263,12 @@ struct Run
   }
 };
 
-using Setup = std::function<void(Run&)>;
+template <class Book>
+using Setup = std::function<void(RunT<Book>&)>;
 
 // gtest's fixture already has a member named Run, so a TEST body cannot name
 // the type unqualified.
-using EngineRun = Run;
+using EngineRun = RunT<MatchingBook>;
 
 // Last-look responder. A LastLookDecision names a heldId the engine invents,
 // so the answer cannot be generated ahead of time -- the corpus reacts to the
@@ -254,7 +288,8 @@ struct HoldResponder
   };
   std::vector<Pending> queue;
 
-  void observe(const Run& r, int64_t nowTs)
+  template <class Book>
+  void observe(const RunT<Book>& r, int64_t nowTs)
   {
     for (const OutboundEvent& e : r.since)
     {
@@ -274,7 +309,8 @@ struct HoldResponder
     }
   }
 
-  void drain(Run& r, SymbolId sym)
+  template <class Book>
+  void drain(RunT<Book>& r, SymbolId sym)
   {
     for (size_t i = 0; i < queue.size();)
     {
@@ -290,7 +326,8 @@ struct HoldResponder
   }
 };
 
-void drive(Run& r, const std::vector<InboundCommand>& cmds, HoldResponder* holds, SymbolId sym)
+template <class Book>
+void drive(RunT<Book>& r, const std::vector<InboundCommand>& cmds, HoldResponder* holds, SymbolId sym)
 {
   for (const InboundCommand& cmd : cmds)
   {
@@ -373,11 +410,12 @@ std::vector<InboundCommand> concat(std::vector<InboundCommand> a,
 
 // ---- plain scenarios ------------------------------------------------------
 
-Hashes plain(const SymbolConfig& c, const std::vector<InboundCommand>& cmds, const Setup& setup,
+template <class Book>
+Hashes plain(const SymbolConfig& c, const std::vector<InboundCommand>& cmds, const Setup<Book>& setup,
              bool lastLook, int64_t finalTick)
 {
   Digest d;
-  Run r(c, d);
+  RunT<Book> r(c, d);
   if (setup)
   {
     setup(r);
@@ -407,15 +445,16 @@ Hashes plain(const SymbolConfig& c, const std::vector<InboundCommand>& cmds, con
 // invisible to a snapshot written straight off the live engine, whose own
 // copy of that field was never wrong. Default false leaves every existing
 // scenario's bytes, and golden hashes, untouched.
+template <class Book>
 Hashes checkpointed(const SymbolConfig& c, const std::vector<InboundCommand>& cmds,
-                    const Setup& setup, bool lastLook, const char* pathStem,
+                    const Setup<Book>& setup, bool lastLook, const char* pathStem,
                     bool viaClone = false)
 {
   const size_t half = cmds.size() / 2;
 
   Digest contD;
   Digest contTail;
-  Run cont(c, contD);
+  RunT<Book> cont(c, contD);
   if (setup)
   {
     setup(cont);
@@ -445,7 +484,7 @@ Hashes checkpointed(const SymbolConfig& c, const std::vector<InboundCommand>& cm
   Digest splitTail;
   Hashes out{};
   {
-    Run a(c, d);
+    RunT<Book> a(c, d);
     if (setup)
     {
       setup(a);
@@ -471,7 +510,7 @@ Hashes checkpointed(const SymbolConfig& c, const std::vector<InboundCommand>& cm
       Journal out2(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
       if (viaClone)
       {
-        auto clone = a.eng.cloneForSnapshot();
+        auto clone = a.eng.cloneForSnapshot(makeBook<Book>(c));
         clone.engine->writeSnapshot(out2);
       }
       else
@@ -483,7 +522,7 @@ Hashes checkpointed(const SymbolConfig& c, const std::vector<InboundCommand>& cm
     const auto records = Journal::loadTimed(path);
     std::remove(path.c_str());
 
-    Run b(c, d);
+    RunT<Book> b(c, d);
     if (setup)
     {
       setup(b);
@@ -543,8 +582,42 @@ struct Scenario
   std::function<Hashes()> run;
 };
 
+// Templated on the resting-book implementation. Every scenario below reads
+// or writes only through RunT<Book>/MatchingEngine<Book>, never MatchingBook
+// or LadderBook by name, so instantiating corpus<LadderBook>() drives the
+// IDENTICAL command streams through the O(1) ladder book instead of the
+// std::map reference book.
+//
+// Contract, worked out from matching_engine.h rather than assumed: stateHash
+// and configHash (venue/include/flox-venue/engine/checkpoint.inl) fold in
+// cfg_ (the SymbolConfig every scenario already supplies) and the book's
+// content through Book::forEachOrder's canonical traversal (price levels
+// best-first, FIFO within each level) -- never a book's own internal
+// representation (LadderBook::Config's base/tick/levels/capacity are absent
+// from both hashes). event_hash.h hashes only OutboundEvent fields, which
+// are engine-level, not book-level. So for the SAME SymbolConfig and the
+// SAME command stream, MatchingEngine<MatchingBook> and
+// MatchingEngine<LadderBook> are contractually required to produce
+// byte-identical state, config AND stream hashes -- provided the LadderBook
+// is provisioned wide and deep enough to never silently drop an order
+// (out-of-band price, exhausted node pool), which makeBook<Book>() above
+// guarantees for this corpus. test_venue_differential_fuzz.cpp already
+// proves the event-stream half of this over a random 200k-command mix; the
+// TWO calls to corpus<...>() in CorpusMatchesTheTable below reuse the SAME
+// hand-picked corpus (not a random stream) and check LadderBook against
+// exactly the recorded MatchingBook numbers -- ONE table, not a second
+// `replay_hashes_ladder.txt`, because the contract says there is nothing for
+// a second table to record that isn't already a divergence. See
+// docs/venue/verification.md ("Golden replay, on both books").
+//
+// A LadderBook mutation at either of its two real-fill points (fillBest,
+// consumeById -- T058's coverage-gap note) changes RestingOrder::cumQty or
+// leaves on the LadderBook side only, so it reddens the LadderBook pass here
+// while the MatchingBook pass (and every existing unit test) stays green.
+template <class Book>
 std::vector<Scenario> corpus()
 {
+  using Run = RunT<Book>;
   std::vector<Scenario> s;
 
   // The one command stream the journal/recovery tests are built on, driven
@@ -554,8 +627,8 @@ std::vector<Scenario> corpus()
   s.push_back({"journal_recovery_scenario",
                []
                {
-                 return plain(test::scenarioConfig(), test::scenarioCommands(), [](Run& r)
-                              { r.eng.setLedger(&r.led, test::kScenarioVenueAccount); }, false, 0);
+                 return plain<Book>(test::scenarioConfig(), test::scenarioCommands(), [](Run& r)
+                                    { r.eng.setLedger(&r.led, test::kScenarioVenueAccount); }, false, 0);
                }});
 
   // The same stream, but written to a real journal and replayed out of it --
@@ -593,8 +666,8 @@ std::vector<Scenario> corpus()
   s.push_back({"mixed_flow_no_ledger",
                []
                {
-                 return plain(spotCfg(), workload::mixedFlow(params(0xC0FFEE123456789ULL, 20000)),
-                              nullptr, false, 3'000'000);
+                 return plain<Book>(spotCfg(), workload::mixedFlow(params(0xC0FFEE123456789ULL, 20000)),
+                                    nullptr, false, 3'000'000);
                }});
 
   // The same flow with a ledger and a fee schedule bound: settlement,
@@ -602,7 +675,7 @@ std::vector<Scenario> corpus()
   s.push_back({"mixed_flow_cleared",
                []
                {
-                 return plain(
+                 return plain<Book>(
                      spotCfg(),
                      concat(deposits(8, 100000.0, 10'000'000.0),
                             workload::mixedFlow(params(0xC0FFEE123456789ULL, 20000))),
@@ -652,8 +725,8 @@ std::vector<Scenario> corpus()
                  SymbolConfig c = spotCfg();
                  c.lastLookWindowNs = DurationNs{40};
                  c.lastLookAcceptOnTimeout = false;
-                 return plain(c, concat(deposits(6, 100000.0, 10'000'000.0), workload::makerFlow(params(0xA11CE5EEDULL, 8000, 6))), [](Run& r)
-                              { r.eng.setLedger(&r.led, VENUE_ACCT); }, true, 0);
+                 return plain<Book>(c, concat(deposits(6, 100000.0, 10'000'000.0), workload::makerFlow(params(0xA11CE5EEDULL, 8000, 6))), [](Run& r)
+                                    { r.eng.setLedger(&r.led, VENUE_ACCT); }, true, 0);
                }});
 
   // The venue-side tolerance band and accept-on-timeout: the other two
@@ -666,8 +739,8 @@ std::vector<Scenario> corpus()
                  c.lastLookWindowNs = DurationNs{25};
                  c.lastLookAcceptOnTimeout = true;
                  c.lastLookToleranceRaw = px(0.05).raw();
-                 return plain(c, concat(deposits(6, 100000.0, 10'000'000.0), workload::makerFlow(params(0xBEEF1234ULL, 8000, 6))), [](Run& r)
-                              { r.eng.setLedger(&r.led, VENUE_ACCT); }, true, 0);
+                 return plain<Book>(c, concat(deposits(6, 100000.0, 10'000'000.0), workload::makerFlow(params(0xBEEF1234ULL, 8000, 6))), [](Run& r)
+                                    { r.eng.setLedger(&r.led, VENUE_ACCT); }, true, 0);
                }});
 
   // A last-look decision from an account that does not own the held maker
@@ -725,8 +798,8 @@ std::vector<Scenario> corpus()
   s.push_back({"mmp_quote_mass_cancel",
                []
                {
-                 return plain(spotCfg(), concat(deposits(6, 100000.0, 10'000'000.0), workload::makerFlow(params(0x5EED0001ULL, 8000, 6))), [](Run& r)
-                              {
+                 return plain<Book>(spotCfg(), concat(deposits(6, 100000.0, 10'000'000.0), workload::makerFlow(params(0x5EED0001ULL, 8000, 6))), [](Run& r)
+                                    {
                                 r.eng.setLedger(&r.led, VENUE_ACCT);
                                 for (uint64_t a = 1; a <= 6; ++a)
                                 {
@@ -833,7 +906,7 @@ std::vector<Scenario> corpus()
   s.push_back({"stp_groups_and_admission",
                []
                {
-                 return plain(
+                 return plain<Book>(
                      spotCfg(),
                      concat(deposits(6, 100000.0, 10'000'000.0),
                             workload::makerFlow(params(0x57500042ULL, 8000, 6))),
@@ -1057,8 +1130,8 @@ std::vector<Scenario> corpus()
   s.push_back({"perp_funding_liquidation",
                []
                {
-                 return plain(perpCfg(/*adl*/ false), concat(deposits(8, 0.0, 200000.0), workload::perpFlow(params(0x9DEADBEEFULL, 15000))), [](Run& r)
-                              {
+                 return plain<Book>(perpCfg(/*adl*/ false), concat(deposits(8, 0.0, 200000.0), workload::perpFlow(params(0x9DEADBEEFULL, 15000))), [](Run& r)
+                                    {
                                 r.eng.setLedger(&r.led, VENUE_ACCT);
                                 r.eng.setFundingSchedule(DurationNs{8000}, SeqNanos::fromRaw(8000)); }, false, 0);
                }});
@@ -1074,8 +1147,8 @@ std::vector<Scenario> corpus()
                {
                  workload::Params p = params(0xAD155EEDULL, 15000);
                  p.markSpanTicks = 4000;  // +/-40 on a mid of 100
-                 return plain(perpCfg(/*adl*/ true), concat(concat(deposits(8, 0.0, 600.0), {InboundCommand{Deposit{VENUE_ACCT, QUOTE, {}, quoteRaw(500000.0), SYM}}}), workload::perpFlow(p)), [](Run& r)
-                              {
+                 return plain<Book>(perpCfg(/*adl*/ true), concat(concat(deposits(8, 0.0, 600.0), {InboundCommand{Deposit{VENUE_ACCT, QUOTE, {}, quoteRaw(500000.0), SYM}}}), workload::perpFlow(p)), [](Run& r)
+                                    {
                                 r.eng.setLedger(&r.led, VENUE_ACCT);
                                 r.eng.setFundingSchedule(DurationNs{8000}, SeqNanos::fromRaw(8000)); }, false, 0);
                }});
@@ -1129,7 +1202,7 @@ std::vector<Scenario> corpus()
   s.push_back({"snapshot_midstream_spot",
                []
                {
-                 return checkpointed(
+                 return checkpointed<Book>(
                      spotCfg(),
                      concat(deposits(8, 100000.0, 10'000'000.0),
                             workload::mixedFlow(params(0x51A95407ULL, 8000))),
@@ -1151,7 +1224,7 @@ std::vector<Scenario> corpus()
                  SymbolConfig c = spotCfg();
                  c.lastLookWindowNs = DurationNs{40};
                  c.clOrdIdWindowNs = 2000;
-                 return checkpointed(
+                 return checkpointed<Book>(
                      c,
                      concat(deposits(6, 100000.0, 10'000'000.0),
                             workload::makerFlow(params(0x11AA5EEDULL, 6000, 6))),
@@ -1173,7 +1246,7 @@ std::vector<Scenario> corpus()
   s.push_back({"snapshot_midstream_perp",
                []
                {
-                 return checkpointed(
+                 return checkpointed<Book>(
                      perpCfg(/*adl*/ false),
                      concat(deposits(8, 0.0, 200000.0),
                             workload::perpFlow(params(0x9E97AA51ULL, 8000))),
@@ -1217,7 +1290,7 @@ std::vector<Scenario> corpus()
                  cmds.emplace_back(probe2);
                  cmds.emplace_back(InboundCommand{CancelOrder{999, SYM, {}, 0}});
                  cmds.emplace_back(InboundCommand{Deposit{2, BASE, {}, baseRaw(1.0), SYM}});
-                 return checkpointed(
+                 return checkpointed<Book>(
                      c, cmds, [](Run& r)
                      { r.eng.setLedger(&r.led, VENUE_ACCT); }, false,
                      "golden_snap_delisted", /*viaClone*/ true);
@@ -1278,7 +1351,7 @@ std::vector<Scenario> corpus()
                  cmds.emplace_back(named(14, Side::SELL, 101.00, 1.0, 1, 9005, false));
                  cmds.emplace_back(InboundCommand{CancelOrder{14, SYM, {}, 1}});
                  cmds.emplace_back(InboundCommand{CancelOrder{999, SYM, {}, 1}});
-                 return checkpointed(
+                 return checkpointed<Book>(
                      c, cmds, [](Run& r)
                      { r.eng.setLedger(&r.led, VENUE_ACCT); }, false,
                      "golden_snap_held_clordid", /*viaClone*/ true);
@@ -1420,7 +1493,7 @@ bool updateRequested()
 
 TEST(VenueGoldenReplay, CorpusMatchesTheTable)
 {
-  const auto scenarios = corpus();
+  const auto scenarios = corpus<MatchingBook>();
   std::vector<std::pair<std::string, Hashes>> produced;
   produced.reserve(scenarios.size());
   for (const Scenario& s : scenarios)
@@ -1513,6 +1586,51 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
       ADD_FAILURE() << "scenario '" << name << "' is in " << tablePath()
                     << " but no longer in the corpus. A scenario that stopped running"
                     << " protects nothing; remove the row deliberately.";
+    }
+  }
+
+  // LadderBook: the SAME corpus, checked against the SAME table -- no second
+  // replay_hashes_ladder.txt. The contract comment above corpus<Book>()
+  // works out why the table is exactly as strong a check for LadderBook as
+  // for MatchingBook: stateHash/configHash/stream hash fold in only cfg_ and
+  // RestingOrder content via Book::forEachOrder's canonical traversal, never
+  // a book's own representation, so the two engines are contractually
+  // required to land on the SAME three numbers per scenario. This is what
+  // catches a mutation at LadderBook's two real-fill points
+  // (LadderBook::fillBest, LadderBook::consumeById) that the MatchingBook
+  // pass above cannot see by construction -- the gap T058 found and left
+  // open (see .notes/tracks/W26-venue-hardening/T058-fix-order-canceled-leaves-qty.md,
+  // "Mutation-coverage follow-up").
+  for (const Scenario& s : corpus<LadderBook>())
+  {
+    const auto it = table.find(s.name);
+    if (it == table.end())
+    {
+      continue;  // already reported above, by the MatchingBook pass
+    }
+    const Hashes got = s.run();
+    const Hashes& want = it->second;
+    if (got.state != want.state || got.config != want.config || got.stream != want.stream)
+    {
+      std::string what;
+      if (got.state != want.state)
+      {
+        what += "\n  stateHash   expected " + hex(want.state) + "  got " + hex(got.state);
+      }
+      if (got.config != want.config)
+      {
+        what += "\n  configHash  expected " + hex(want.config) + "  got " + hex(got.config);
+      }
+      if (got.stream != want.stream)
+      {
+        what += "\n  streamHash  expected " + hex(want.stream) + "  got " + hex(got.stream);
+      }
+      ADD_FAILURE() << "LADDERBOOK GOLDEN REPLAY DIVERGED in scenario '" << s.name << "'" << what
+                    << "\n  MatchingEngine<LadderBook> disagrees with the SAME table row"
+                    << " MatchingEngine<MatchingBook> matches."
+                    << "\n  By contract (see the comment above corpus<Book>() in this file) the"
+                    << " two must agree exactly; this is never fixed by FLOX_UPDATE_GOLDEN,"
+                    << "\n  which only ever records the MatchingBook pass.";
     }
   }
 }
