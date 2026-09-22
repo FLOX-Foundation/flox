@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "flox/clearing/leveraged_position.h"
 #include "flox/common.h"
 
 #include <algorithm>
@@ -29,21 +30,6 @@ struct MarginTier
 {
   double minNotional{0.0};
   double mmFraction{0.0};
-};
-
-// A single open position the LiquidationEngine watches. Side +ve =
-// long, -ve = short (signed quantity). Equity is the residual
-// account balance backing this position; if liquidation slippage
-// burns through it, the deficit hits the insurance fund.
-struct LeveragedPosition
-{
-  uint64_t accountId{0};
-  SymbolId symbol{};
-  double quantity{0.0};  // signed: + long, - short
-  double entryPrice{0.0};
-  double equity{0.0};              // margin posted backing this position
-  double contractMultiplier{1.0};  // notional / PnL scale (options 100, ES 50; perp 1.0)
-  bool isLongOption{false};        // premium-paid long option: not margined, max loss = premium
 };
 
 // ADL ranking strategy. Real venues compute the closeout queue

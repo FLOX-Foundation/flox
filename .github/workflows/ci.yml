@@ -1677,3 +1677,115 @@ jobs:
 
     - name: Conservation fuzz
       run: ./build/venue/test_venue_conservation_fuzz
+
+  # The build profile a downstream consumer that runs the execution venue
+  # configures: the venue engine, its perimeter, the FIX initiator and the
+  # utilities those need. Nothing else in this tree is configured at all --
+  # not the backtest module, not the exchange connectors, not the bindings,
+  # not the demo or the benchmarks -- so none of their dependencies are
+  # looked for either.
+  #
+  # Separate from venue-optional rather than folded into it: that job proves
+  # the venue is optional, this one proves the REST of the tree is. They fail
+  # for opposite reasons and neither one covers the other.
+  #
+  # What it asserts, in order of how much it would cost to find out later:
+  # the closure of venue/lite_surface.txt reaches nowhere the profile forbids
+  # (seconds, and it fails before a compiler starts); the consumer's 37
+  # headers compile as one TU with the rest of the tree absent; the venue's
+  # own suite -- golden replay included -- passes in that configuration.
+  venue-lite:
+    needs: [format-check]
+    runs-on: ubuntu-24.04
+    # Observed: ~7 min cold, ~2 min warm. The 5-minute warm ceiling in the
+    # task this job came from is the number to watch.
+    timeout-minutes: 20
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # Same reason as venue-optional: apt-get gives the compiler a fresh
+      # mtime on every ephemeral runner, and ccache's default mtime check
+      # then misses everything.
+      CCACHE_COMPILERCHECK: content
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    # No libssl-dev, no libcurl, no zlib, no lz4: if this list ever has to
+    # grow, the profile has stopped being lite and the diff says so.
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev ccache
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-venue-lite-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-venue-lite-
+
+    - name: ccache zero stats
+      run: ccache -z
+
+    # Before the compiler, not after: a closure that has grown into
+    # flox/backtest/ or flox/aggregator/ is a two-second answer.
+    - name: Check the lite surface closure reaches nowhere it should not
+      run: python3 scripts/lite_closure.py
+
+    - name: Configure
+      run: |
+        cmake --preset venue-lite \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+    - name: Build
+      run: cmake --build build-venue-lite -j"$(nproc)"
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
+
+    - name: Test
+      run: ctest --preset venue-lite -j"$(nproc)"
+
+    # The profile's claim is about what is NOT there. Assert it on the
+    # artefacts rather than trusting the configure log.
+    - name: Verify nothing outside the venue was built
+      run: |
+        test -f build-venue-lite/venue/libflox-venue.a
+        test -f build-venue-lite/venue/venue_lite_surface
+        for f in build-venue-lite/libflox_capi.so build-venue-lite/demo/demo; do
+          test ! -e "$f" || { echo "::error::$f was built in the lite profile"; exit 1; }
+        done
+        ! ctest --test-dir build-venue-lite -N | grep -qE "Test +#[0-9]+: test_(backtest|indicator|replay)" \
+          || { echo "::error::a core-suite test was configured in the lite profile"; exit 1; }
+        ctest --test-dir build-venue-lite -N | grep -q "venue_lite_surface" \
+          || { echo "::error::the surface contract was not configured"; exit 1; }
+
+    # What the consumer actually takes. install(DIRECTORY include/) would put
+    # the whole tree back, so the count is the assertion.
+    - name: Verify the install surface is the closure and nothing else
+      run: |
+        cmake --install build-venue-lite --prefix "$PWD/lite-prefix" >/dev/null
+        installed=$(find lite-prefix/include -name '*.h' -o -name '*.inl' | wc -l)
+        expected=$(python3 scripts/lite_closure.py --paths | wc -l)
+        echo "installed $installed headers, closure is $expected"
+        test "$installed" -eq "$expected" \
+          || { echo "::error::the lite profile installs $installed headers, the closure is $expected"; exit 1; }
+        ! find lite-prefix/include -path '*/flox/backtest/*' -o -path '*/flox/aggregator/*' \
+          -o -path '*/flox-connectors/*' | grep -q . \
+          || { echo "::error::a forbidden directory reached the install surface"; exit 1; }
+
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}

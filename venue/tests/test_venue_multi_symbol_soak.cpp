@@ -13,7 +13,7 @@
 #include "flox-venue/metrics.h"
 #include "flox-venue/symbol_router.h"
 
-#include "flox/backtest/fee_schedule.h"
+#include "flox/clearing/fee_schedule.h"
 
 #include <gtest/gtest.h>
 #include <array>

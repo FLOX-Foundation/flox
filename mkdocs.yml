@@ -214,6 +214,7 @@ nav:
   - Venue:
       - Overview: venue/index.md
       - Building with/without the venue: venue/build.md
+      - Build profiles (venue-lite): venue/build-profiles.md
       - Matching: venue/matching.md
       - Clearing and the ledger: venue/clearing.md
       - Derivatives risk: venue/risk.md

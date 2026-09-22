@@ -11179,7 +11179,7 @@
           "name": "ATR"
         },
         {
-          "header": "include/flox/backtest/account.h",
+          "header": "include/flox/clearing/account.h",
           "kind": "type",
           "name": "Account"
         },
@@ -11764,12 +11764,12 @@
           "name": "FastDiv64"
         },
         {
-          "header": "include/flox/backtest/fee_schedule.h",
+          "header": "include/flox/clearing/fee_schedule.h",
           "kind": "type",
           "name": "FeeSchedule"
         },
         {
-          "header": "include/flox/backtest/fee_schedule.h",
+          "header": "include/flox/clearing/fee_schedule.h",
           "kind": "type",
           "name": "FeeTier"
         },
@@ -12224,7 +12224,7 @@
           "name": "LatencySample"
         },
         {
-          "header": "include/flox/backtest/liquidation_engine.h",
+          "header": "include/flox/clearing/leveraged_position.h",
           "kind": "type",
           "name": "LeveragedPosition"
         },
@@ -14305,6 +14305,11 @@
         },
         {
           "kind": "method",
+          "name": "dispatch",
+          "parent": "BarEvent"
+        },
+        {
+          "kind": "method",
           "name": "bar",
           "parent": "BarMatrix"
         },
@@ -14976,6 +14981,11 @@
         {
           "kind": "method",
           "name": "clear",
+          "parent": "BookUpdateEvent"
+        },
+        {
+          "kind": "method",
+          "name": "dispatch",
           "parent": "BookUpdateEvent"
         },
         {
@@ -20900,6 +20910,11 @@
         },
         {
           "kind": "method",
+          "name": "dispatch",
+          "parent": "OrderEvent"
+        },
+        {
+          "kind": "method",
           "name": "dispatchTo",
           "parent": "OrderEvent"
         },
@@ -25207,6 +25222,11 @@
           "kind": "method",
           "name": "signalTypeName",
           "parent": "TraceSignalHandler"
+        },
+        {
+          "kind": "method",
+          "name": "dispatch",
+          "parent": "TradeEvent"
         },
         {
           "kind": "method",

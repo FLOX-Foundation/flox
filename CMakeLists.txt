@@ -20,6 +20,60 @@ endif()
 
 option(FLOX_ENABLE_DEV_SETUP "Install pre-commit hook" OFF)
 
+# ──────────────────────────────────────────────────────────────────────
+# FLOX_VENUE_LITE -- the execution-venue profile.
+#
+# A downstream consumer that runs the execution venue compiles against 37 of
+# this tree's headers (venue/lite_surface.txt): the sequencer and its
+# storage, the matching engine, the network perimeter, the FIX initiator, and
+# the utilities those need. Everything else here -- the backtest module, the
+# exchange connectors and their DEX curves, Python/Node/C-API/Codon/QuickJS,
+# the demo, the benchmarks -- is weight that consumer carries and never
+# calls, and each of them drags a dependency: OpenSSL, CURL, zlib,
+# ixwebsocket, simdjson, LZ4, pybind11.
+#
+# So this is not a list of targets to skip at build time. It is a list of
+# subdirectories that are never added and find_package calls that never run:
+# a lite configure asks the system for nothing the venue does not use. The
+# options below are FORCEd rather than defaulted because a stale cache from
+# a full configure would otherwise leave half of them on.
+#
+# What stays: the venue module (engine + perimeter), the parts of the core
+# library the venue links, and the FIX initiator. What the profile installs
+# is the closure of venue/lite_surface.txt and those targets -- see the
+# install section at the end of this file and docs/venue/build-profiles.md.
+#
+# Declared before every option it overrides, so the overrides are in place
+# on a first configure.
+# ──────────────────────────────────────────────────────────────────────
+option(FLOX_VENUE_LITE "Build only the execution venue: engine, perimeter, FIX initiator, utilities" OFF)
+
+if(FLOX_VENUE_LITE)
+  macro(_flox_lite_force name value)
+    set(${name} ${value} CACHE BOOL "Forced by FLOX_VENUE_LITE" FORCE)
+  endmacro()
+
+  _flox_lite_force(FLOX_BUILD_VENUE ON)
+
+  # The reason this profile exists. Before the clearing primitives moved out
+  # of flox/backtest/ (FeeSchedule, Account, LeveragedPosition -> flox/clearing/),
+  # the venue could not be built without the backtest module, so a consumer
+  # who never ran a backtest compiled all of it.
+  _flox_lite_force(FLOX_ENABLE_BACKTEST OFF)
+
+  foreach(_off
+      FLOX_BUILD_BENCHMARKS FLOX_BUILD_DEMO FLOX_BUILD_TOOLS
+      FLOX_BUILD_PYTHON FLOX_BUILD_NODE FLOX_BUILD_CAPI
+      FLOX_BUILD_CODON FLOX_BUILD_QUICKJS FLOX_BUILD_CONNECTORS
+      FLOX_ENABLE_ONNX FLOX_ENABLE_AF_XDP FLOX_ENABLE_TRACY
+      FLOX_ENABLE_LZ4)
+    _flox_lite_force(${_off} OFF)
+  endforeach()
+
+  message(STATUS "FLOX_VENUE_LITE: venue engine, perimeter, FIX initiator and utilities only")
+endif()
+
+
 if(FLOX_ENABLE_DEV_SETUP)
   message(STATUS "Developer setup enabled")
 
@@ -38,16 +92,31 @@ endif()
 
 include_directories(include)
 
-file(GLOB_RECURSE SRC_FILES
-    src/aggregator/*.cpp
-    src/engine/*.cpp
-    src/execution/*.cpp
-    src/log/*.cpp
-    src/replay/*.cpp
-    src/report/*.cpp
-    src/risk/*.cpp
-    src/run/*.cpp
-)
+# The core library's sources. The lite profile compiles the subset the venue
+# links and nothing else: no replay (10k lines, and the only thing in the
+# core that needs LZ4), no report, no risk, no run. Derived by building the
+# venue and its tests against it -- what is missing shows up as an undefined
+# symbol, not as a wrong answer.
+if(FLOX_VENUE_LITE)
+  file(GLOB_RECURSE SRC_FILES
+      src/clearing/*.cpp
+      src/engine/*.cpp
+      src/execution/*.cpp
+      src/log/*.cpp
+  )
+else()
+  file(GLOB_RECURSE SRC_FILES
+      src/aggregator/*.cpp
+      src/clearing/*.cpp
+      src/engine/*.cpp
+      src/execution/*.cpp
+      src/log/*.cpp
+      src/replay/*.cpp
+      src/report/*.cpp
+      src/risk/*.cpp
+      src/run/*.cpp
+  )
+endif()
 
 # The venue module reuses backtest-side primitives (FeeSchedule,
 # RateLimitPolicy, LiquidationEngine, Account), so it implies the backtest
@@ -97,7 +166,15 @@ if(FLOX_BUILD_VENUE AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 endif()
 
 option(FLOX_ENABLE_BACKTEST "Enable backtest module" OFF)
-if(FLOX_BUILD_VENUE AND NOT FLOX_ENABLE_BACKTEST)
+# What is left of the implication after the clearing primitives moved into
+# the core: the venue LIBRARY needs nothing from flox/backtest/ any more, but
+# one venue test (test_venue_derivatives) drives the backtest liquidation
+# engine through flox-venue/liquidation_monitor.h, a header-only helper that
+# is compiled by nothing else. So the implication stays for the full profile,
+# where it costs nothing and keeps every existing build byte-identical, and
+# the lite profile is exempt: it builds with FLOX_ENABLE_BACKTEST=OFF and
+# drops that one test, which is the criterion this profile was written to.
+if(FLOX_BUILD_VENUE AND NOT FLOX_ENABLE_BACKTEST AND NOT FLOX_VENUE_LITE)
   message(STATUS "FLOX_BUILD_VENUE=ON implies FLOX_ENABLE_BACKTEST=ON; enabling.")
   set(FLOX_ENABLE_BACKTEST ON CACHE BOOL "Enable backtest module" FORCE)
 endif()
@@ -398,7 +475,13 @@ endif()
 option(FLOX_BUILD_TESTS "Build tests" OFF)
 if (FLOX_BUILD_TESTS)
   enable_testing()
-  add_subdirectory(tests)
+  # tests/ is the core suite: it drives the backtest module, the replay
+  # pipeline and the indicator graph, none of which the lite profile builds.
+  # The venue's own suite registers from venue/CMakeLists.txt further down,
+  # and that is what the lite profile runs.
+  if(NOT FLOX_VENUE_LITE)
+    add_subdirectory(tests)
+  endif()
 endif()
 
 # Venue module (option declared above, next to the backtest implication).
@@ -513,7 +596,37 @@ install(TARGETS flox
 # dependency hands a consumer a header that cannot compile, with nothing to
 # say why -- so it is not shipped in that build. Same rule as the venue's TLS
 # gateway; scripts/check_installed_headers_declared.py is what asks.
-if(FLOX_ENABLE_ONNX)
+#
+# The lite profile installs the transitive closure of venue/lite_surface.txt
+# and nothing else -- read from scripts/lite_closure.py at configure time, so
+# the installed surface is the closure by construction and not a second list
+# to keep in step. The same call is the direction gate: a closure that has
+# grown into flox/backtest/ or flox/aggregator/ fails the configure here,
+# before anything is built.
+if(FLOX_VENUE_LITE)
+  execute_process(
+    COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/lite_closure.py" --paths
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE FLOX_LITE_CLOSURE
+    ERROR_VARIABLE FLOX_LITE_CLOSURE_ERR
+    RESULT_VARIABLE FLOX_LITE_CLOSURE_RC)
+  if(NOT FLOX_LITE_CLOSURE_RC EQUAL 0)
+    message(FATAL_ERROR
+      "scripts/lite_closure.py rejected the venue-lite surface:\n"
+      "${FLOX_LITE_CLOSURE}${FLOX_LITE_CLOSURE_ERR}")
+  endif()
+  string(STRIP "${FLOX_LITE_CLOSURE}" FLOX_LITE_CLOSURE)
+  string(REPLACE "\n" ";" FLOX_LITE_CLOSURE "${FLOX_LITE_CLOSURE}")
+  list(LENGTH FLOX_LITE_CLOSURE _flox_lite_n)
+  message(STATUS "FLOX_VENUE_LITE: installing ${_flox_lite_n} headers, the closure of venue/lite_surface.txt")
+  foreach(_h ${FLOX_LITE_CLOSURE})
+    # include/flox/util/crc32.h and venue/include/flox-venue/journal.h both
+    # install under include/, at the path after their own include root.
+    string(REGEX REPLACE "^(venue/)?include/" "" _rel "${_h}")
+    get_filename_component(_dir "${_rel}" DIRECTORY)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/${_h}" DESTINATION "include/${_dir}")
+  endforeach()
+elseif(FLOX_ENABLE_ONNX)
   install(DIRECTORY include/ DESTINATION include)
 else()
   install(DIRECTORY include/ DESTINATION include PATTERN "onnx_inference.h" EXCLUDE)

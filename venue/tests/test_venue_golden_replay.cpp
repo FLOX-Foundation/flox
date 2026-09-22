@@ -57,7 +57,7 @@
 #include "support/recovery_scenario.h"
 #include "support/tmp_path.h"
 
-#include "flox/backtest/fee_schedule.h"
+#include "flox/clearing/fee_schedule.h"
 
 #include <gtest/gtest.h>
 

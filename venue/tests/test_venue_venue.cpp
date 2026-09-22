@@ -16,7 +16,7 @@
 #include "flox-venue/sbe_order_entry_codec.h"
 #include "flox-venue/session_registry.h"
 
-#include "flox/backtest/fee_schedule.h"
+#include "flox/clearing/fee_schedule.h"
 #include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
