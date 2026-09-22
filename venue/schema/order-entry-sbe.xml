@@ -90,7 +90,7 @@
   leavesQty: a rejected order is never left resting, so that is always 0.
   cumQty is 0 at every call site this engine has today (a reject only ever
   fires pre-trade), carried for FIX-spec completeness. Both appended after
-  `clOrdId`, so a version-8 reader skips them via blockLength -- but unlike
+  `clOrdId`, so a version-8 reader skips them via blockLength, but unlike
   every earlier addition here, this one moves where `seq` sits relative to
   the end of the block on these two templates, since clOrdId was previously
   the last field on both. The C++ codec's seqOffsetIn has its own
