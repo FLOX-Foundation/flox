@@ -8,6 +8,8 @@
  */
 #pragma once
 
+#include "flox-venue/event_hash.h"
+#include "flox-venue/journal.h"
 #include "flox-venue/messages.h"
 
 #include "flox/book/resting_order.h"
@@ -454,6 +456,68 @@ class LastLook
     held_ = other.held_;
     seq_ = other.seq_;
     open_.store(held_.size(), std::memory_order_relaxed);
+  }
+
+  // The holds in the state hash, in id order. `tracked(orderId)` answers the
+  // one thing a hold carries that this component cannot see: whether the
+  // maker is still in the engine's resting-order index (a held maker stays
+  // tracked even fully off the book -- see createHeld and
+  // RestoreHeld::makerTracked). Duck-typed like the Host, so the hold table
+  // stays free of the publication side.
+  template <class Tracked>
+  uint64_t hashInto(uint64_t h, Tracked&& tracked) const
+  {
+    for (uint64_t hid : sortedIds())
+    {
+      const Held& x = held_.at(hid);
+      h = mix(h, 0xB004U);
+      h = mix(h, x.id);
+      h = mix(h, x.taker);
+      h = mix(h, x.takerAccount);
+      h = mix(h, static_cast<uint64_t>(x.takerSide));
+      h = mix(h, x.maker);
+      h = mix(h, x.makerAccount);
+      h = mix(h, static_cast<uint64_t>(x.price.raw()));
+      h = mix(h, static_cast<uint64_t>(x.qty.raw()));
+      h = mix(h, static_cast<uint64_t>(x.deadline.raw()));
+      h = mix(h, static_cast<uint64_t>(x.takerTif));
+      h = mix(h, static_cast<uint64_t>(x.takerType));
+      h = mix(h, static_cast<uint64_t>(x.takerPrice.raw()));
+      h = mix(h, static_cast<uint64_t>(x.takerExpiryNs.raw()));
+      h = mix(h, x.makerReduceOnly ? 1U : 0U);
+      h = mix(h, x.takerReduceOnly ? 1U : 0U);
+      if (x.makerClientOrderId != 0)
+      {
+        h = mix(h, x.makerClientOrderId);  // only when set: a hold without one hashes as before
+      }
+      if (x.takerClientOrderId != 0)
+      {
+        h = mix(h, x.takerClientOrderId);
+      }
+      h = mix(h, tracked(x.maker) ? 1U : 0U);
+    }
+    return h;
+  }
+
+  // One RestoreHeld per open hold, id order -- the same traversal the hash
+  // folds. `tracked` as above: the recorded live truth, so recovery does not
+  // have to re-derive it.
+  template <class Tracked>
+  void writeSnapshot(Journal& out, int64_t ts, Tracked&& tracked) const
+  {
+    for (uint64_t hid : sortedIds())
+    {
+      const Held& x = held_.at(hid);
+      RestoreHeld r{x.id, x.taker, x.takerAccount, x.takerSide,
+                    x.maker, x.makerAccount, x.price, x.qty,
+                    x.deadline, x.takerTif, x.takerType, x.takerPrice,
+                    x.takerExpiryNs, x.makerReduceOnly, x.takerReduceOnly};
+      r.makerClientOrderId = x.makerClientOrderId;
+      r.takerClientOrderId = x.takerClientOrderId;
+      r.makerTracked = tracked(x.maker);
+      r.refAtHoldRaw = x.refAtHoldRaw;
+      out.append(InboundCommand{r}, ts);
+    }
   }
 
  private:

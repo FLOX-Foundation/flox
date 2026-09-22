@@ -36,34 +36,7 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
 {
   if (const auto* b = std::get_if<SnapshotBegin>(&cmd))
   {
-    if (b->formatVersion != kSnapshotFormatVersion)
-    {
-      // Name both numbers. The caller discards the generation either way,
-      // and an operator reading the log should not have to guess whether
-      // the file is old, new, or damaged.
-      std::fprintf(stderr,
-                   "flox-venue: snapshot rejected for symbol %llu: contents are format version "
-                   "%u, this build reads version %u only\n",
-                   static_cast<unsigned long long>(cfg_.id),
-                   static_cast<unsigned>(b->formatVersion),
-                   static_cast<unsigned>(kSnapshotFormatVersion));
-      return false;
-    }
-    // Constructor-config guard: a snapshot written by an engine with other
-    // structural parameters (scales, assets, policy, ...) must not restore
-    // -- the raw fixed-point state would be silently reinterpreted.
-    if (b->configHash != 0 && b->configHash != configHash())
-    {
-      std::fprintf(stderr,
-                   "flox-venue: snapshot rejected for symbol %llu: constructor-config hash "
-                   "mismatch (snapshot %016llx, engine %016llx) -- scales/assets/policy differ "
-                   "from the writer's\n",
-                   static_cast<unsigned long long>(cfg_.id),
-                   static_cast<unsigned long long>(b->configHash),
-                   static_cast<unsigned long long>(configHash()));
-      return false;
-    }
-    return true;
+    return applySnapshotBegin(*b);
   }
   if (const auto* r = std::get_if<RestoreOrder>(&cmd))
   {
@@ -73,19 +46,9 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
   {
     return applyRestoreStop(*r);
   }
-  if (const auto* r = std::get_if<RestoreOrderStp>(&cmd))
+  if (const auto* r = std::get_if<RestoreBalance>(&cmd))
   {
-    stp_.restore(r->id, static_cast<STPMode>(r->mode));
-    return true;
-  }
-  if (const auto* r = std::get_if<RestorePeg>(&cmd))
-  {
-    if (!book_.contains(r->id))
-    {
-      return false;  // a peg spec must reference a restored resting order
-    }
-    pegs_.set(r->id, PegBook::Peg{r->side, r->ref, r->offsetRaw});
-    return true;
+    return applyRestoreBalance(*r);
   }
   if (const auto* r = std::get_if<RestoreHeld>(&cmd))
   {
@@ -95,6 +58,86 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
   {
     return applyRestorePosition(*r);
   }
+  if (const auto* r = std::get_if<RestoreReservation>(&cmd))
+  {
+    return applyRestoreReservation(*r);
+  }
+  if (const auto* e = std::get_if<SnapshotEnd>(&cmd))
+  {
+    return applySnapshotEnd(*e);
+  }
+  if (const std::optional<bool> handled = applyComponentRestore(cmd); handled.has_value())
+  {
+    return *handled;
+  }
+  // Anything not named above is a live command replayed from the snapshot's
+  // own segment, and goes through the live path -- which is correct, and is
+  // also why a NEW snapshot-only record that nobody added a branch for would
+  // be handed to submit(), drop out of its chain, and be reported as applied.
+  static_assert(std::variant_size_v<InboundCommand> == 35,
+                "new InboundCommand alternative: if it is a snapshot-only record, give it a "
+                "branch above or in applyComponentRestore -- falling through to submit() "
+                "reports it as applied when it was not");
+  submit(cmd, tsNs);  // existing record types apply through the live path
+  return true;
+}
+
+// The two guards a snapshot has to clear before any of it is believed: the
+// record format this build reads, and the constructor configuration the
+// writer had. Both name the numbers -- the caller discards the generation
+// either way, and an operator reading the log should not have to guess
+// whether the file is old, new, or damaged.
+template <class Book>
+bool MatchingEngine<Book>::applySnapshotBegin(const SnapshotBegin& b)
+{
+  if (b.formatVersion != kSnapshotFormatVersion)
+  {
+    std::fprintf(stderr,
+                 "flox-venue: snapshot rejected for symbol %llu: contents are format version "
+                 "%u, this build reads version %u only\n",
+                 static_cast<unsigned long long>(cfg_.id),
+                 static_cast<unsigned>(b.formatVersion),
+                 static_cast<unsigned>(kSnapshotFormatVersion));
+    return false;
+  }
+  // A snapshot written by an engine with other structural parameters
+  // (scales, assets, policy, ...) must not restore -- the raw fixed-point
+  // state would be silently reinterpreted.
+  if (b.configHash != 0 && b.configHash != configHash())
+  {
+    std::fprintf(stderr,
+                 "flox-venue: snapshot rejected for symbol %llu: constructor-config hash "
+                 "mismatch (snapshot %016llx, engine %016llx) -- scales/assets/policy differ "
+                 "from the writer's\n",
+                 static_cast<unsigned long long>(cfg_.id),
+                 static_cast<unsigned long long>(b.configHash),
+                 static_cast<unsigned long long>(configHash()));
+    return false;
+  }
+  return true;
+}
+
+// The records a component owns: handed to whoever keeps that state, with the
+// engine adding only the check the component cannot make for itself -- a peg
+// spec must reference a restored resting order, a clOrdId batch must fit the
+// wire array. std::nullopt means the record is not one of these.
+template <class Book>
+std::optional<bool> MatchingEngine<Book>::applyComponentRestore(const InboundCommand& cmd)
+{
+  if (const auto* r = std::get_if<RestoreOrderStp>(&cmd))
+  {
+    stp_.restore(r->id, static_cast<STPMode>(r->mode));
+    return true;
+  }
+  if (const auto* r = std::get_if<RestorePeg>(&cmd))
+  {
+    if (!book_.contains(r->id))
+    {
+      return false;
+    }
+    pegs_.set(r->id, PegBook::Peg{r->side, r->ref, r->offsetRaw});
+    return true;
+  }
   if (const auto* r = std::get_if<RestoreMmpCfg>(&cmd))
   {
     mmp_.restoreCfg(r->account, r->qtyLimit, r->windowNs);
@@ -103,18 +146,6 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
   if (const auto* r = std::get_if<RestoreMmpFills>(&cmd))
   {
     return mmp_.restoreFills(*r);
-  }
-  if (const auto* r = std::get_if<RestoreBalance>(&cmd))
-  {
-    if (ledger_ != nullptr)
-    {
-      ledger_->restore(r->account, r->asset, r->availableRaw, r->reservedRaw);
-      // Balances are now exact: the RestoreReservation / RestorePosition
-      // records that follow must NOT re-reserve (the reserved side is
-      // already in place); they only rebuild the engine-side tables.
-      exactBalanceRestore_ = true;
-    }
-    return true;
   }
   if (const auto* r = std::get_if<RestoreClOrdIds>(&cmd))
   {
@@ -130,23 +161,23 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
     clearing_.restoreFunding(*r);
     return true;
   }
-  if (const auto* r = std::get_if<RestoreReservation>(&cmd))
+  return std::nullopt;
+}
+
+// The exact signed split for one (account, asset). It precedes the
+// reservation and position records, and it says so: with the balances exact
+// the ledger's reserved side is already in place, so those records must NOT
+// re-reserve -- they only rebuild the engine-side tables. A snapshot with no
+// balance records at all (v1, Deposit totals) leaves the flag false and keeps
+// the re-reservation path.
+template <class Book>
+bool MatchingEngine<Book>::applyRestoreBalance(const RestoreBalance& r)
+{
+  if (ledger_ != nullptr)
   {
-    return applyRestoreReservation(*r);
+    ledger_->restore(r.account, r.asset, r.availableRaw, r.reservedRaw);
+    exactBalanceRestore_ = true;
   }
-  if (const auto* e = std::get_if<SnapshotEnd>(&cmd))
-  {
-    return applySnapshotEnd(*e);
-  }
-  // Anything not named above is a live command replayed from the snapshot's
-  // own segment, and goes through the live path -- which is correct, and is
-  // also why a NEW snapshot-only record that nobody added a branch for would
-  // be handed to submit(), drop out of its chain, and be reported as applied.
-  static_assert(std::variant_size_v<InboundCommand> == 35,
-                "new InboundCommand alternative: if it is a snapshot-only record, give it a "
-                "branch above -- falling through to submit() reports it as applied when it "
-                "was not");
-  submit(cmd, tsNs);  // existing record types apply through the live path
   return true;
 }
 

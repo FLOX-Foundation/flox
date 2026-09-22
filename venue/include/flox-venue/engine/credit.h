@@ -22,6 +22,9 @@
  */
 #pragma once
 
+#include "flox-venue/engine/sorted_keys.h"
+#include "flox-venue/event_hash.h"
+#include "flox-venue/journal.h"
 #include "flox-venue/ledger.h"
 #include "flox-venue/matcher.h"
 #include "flox-venue/messages.h"
@@ -415,10 +418,10 @@ class Credit
 
   // ---- reservation table ------------------------------------------------
   //
-  // Handed out rather than walked here: the checkpoint folds it into the state
-  // hash and writes it out (over SORTED keys, which is the only traversal of
-  // this table that reaches anything observable), and clearing, settlement and
-  // last look each adjust one entry they already know the id of.
+  // Handed out because clearing, settlement and last look each adjust one
+  // entry they already know the id of. The traversal that reaches something
+  // observable -- the checkpoint's, over SORTED keys -- is this component's
+  // own; see the checkpoint section below.
 
   const std::unordered_map<OrderId, Reservation>& reservations() const noexcept
   {
@@ -451,6 +454,75 @@ class Credit
   void restoreAdmission(const std::unordered_map<uint64_t, AdmissionProfile>& m)
   {
     admission_ = m;
+  }
+
+  // ---- checkpoint: credit's own records ----------------------------------
+  // The admission table and the reservation table are hashed and written at
+  // four different points of the engine's traversal -- admission leads the
+  // config section and the reservations close the file -- so these are two
+  // pairs of methods rather than one. The record order, the tags and the
+  // bytes are what the engine wrote inline.
+  uint64_t hashAdmission(uint64_t h) const
+  {
+    for (uint64_t acct : sortedKeysOf(admission_))
+    {
+      const AdmissionProfile& p = admission_.at(acct);
+      h = mix(h, 0xB00DU);
+      h = mix(h, acct);
+      h = mix(h, p.allowedTypes);
+      h = mix(h, p.allowedTif);
+      h = mix(h, static_cast<uint64_t>(p.deny));
+    }
+    return h;
+  }
+
+  uint64_t hashReservations(uint64_t h) const
+  {
+    for (OrderId id : sortedKeysOf(reserve_))
+    {
+      const Reservation& r = reserve_.at(id);
+      h = mix(h, 0xB009U);
+      h = mix(h, id);
+      h = mix(h, r.account);
+      h = mix(h, r.asset);
+      h = mix(h, static_cast<uint64_t>(r.side));
+      h = mix(h, static_cast<uint64_t>(r.limitPriceRaw));
+      h = mixAmount(h, r.reservedRaw);
+    }
+    return h;
+  }
+
+  // Admission profiles are engine state re-emitted as the command that set
+  // them, applied through the ordinary submit path on load: they decide what
+  // is accepted, so a recovered engine that lost them would accept orders the
+  // live one refused.
+  void writeAdmission(Journal& out, SymbolId symbol, int64_t ts) const
+  {
+    for (uint64_t acct : sortedKeysOf(admission_))
+    {
+      out.append(InboundCommand{SetAdmissionProfile{symbol, acct, admission_.at(acct)}}, ts);
+    }
+  }
+
+  // The exact live amounts, not a formula re-derivation: they are
+  // history-dependent (partial fills, held slices, STP), so nothing downstream
+  // could reconstruct them.
+  void writeReservations(Journal& out, int64_t ts) const
+  {
+    for (OrderId id : sortedKeysOf(reserve_))
+    {
+      const Reservation& r = reserve_.at(id);
+      out.append(InboundCommand{RestoreReservation{id, r.account, r.asset, r.side,
+                                                   r.limitPriceRaw, r.reservedRaw}},
+                 ts);
+    }
+  }
+
+  // The credit half of the snapshot clone: the two tables, and nothing else.
+  void copyStateFrom(const Credit& other)
+  {
+    admission_ = other.admission_;
+    reserve_ = other.reserve_;
   }
 
   // ---- execution limits -------------------------------------------------
@@ -533,6 +605,15 @@ class Credit
   }
 
  private:
+  // Amount is __int128; mix() takes 64 bits at a time. Spelled out here, as
+  // in clearing.h, so the component stays standalone.
+  static uint64_t mixAmount(uint64_t h, Amount a) noexcept
+  {
+    h = mix(h, static_cast<uint64_t>(static_cast<unsigned __int128>(a)));
+    h = mix(h, static_cast<uint64_t>(static_cast<unsigned __int128>(a) >> 64));
+    return h;
+  }
+
   CreditCheck credit_;
 
   RejectReason creditReason_{RejectReason::InsufficientFunds};

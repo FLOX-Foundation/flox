@@ -429,8 +429,8 @@ thousand lines shared with everything else.
 | `engine/quote_mmp.inl` | two-sided quotes, market-maker protection |
 | `engine/ledger_fees.inl` | fees, reservations, deposits/withdrawals, `settleTrade` |
 | `engine/clearing.inl` | the engine's side of clearing: the published methods, `settlePerp`, the order-IM moves |
-| `engine/checkpoint.inl` | `stateHash`, `configHash`, `writeSnapshot`, `cloneForSnapshot` |
-| `engine/checkpoint_restore.inl` | `applySnapshotRecord` and the `applyRestore*` handlers |
+| `engine/checkpoint.inl` | `stateHash`, `configHash`, `writeSnapshot`, `cloneForSnapshot`, and the helpers for the state no component owns |
+| `engine/checkpoint_restore.inl` | `applySnapshotRecord`, `applySnapshotBegin`, `applyComponentRestore` and the `applyRestore*` handlers |
 | `engine/expiry_pegs.inl` | GTD expiry, pegged orders, OCO |
 | `engine/last_look.inl` | the engine's side of the last-look seam (see below) |
 
@@ -514,6 +514,38 @@ Each component carries its own snapshot records: `hash*`, `write*` and
 records have always been written. The tags, the record order and the bytes are
 unchanged -- `kSnapshotFormatVersion` did not move -- and the golden replay
 (`venue/tests/golden/replay_hashes.txt`) is what proves it.
+
+So the four checkpoint functions are composition and little else.
+`stateHash` and `writeSnapshot` are a list of calls in file order --
+`clearing_.hashFunding`, `credit_.hashAdmission`, `stp_.hashInto`,
+`pegs_.hashInto`, `lastLook_.hashInto`, `mmp_.hashInto`,
+`clOrdIds_.hashInto`, and their `write*` twins -- `applySnapshotRecord` is a
+branch per record that hands it to whoever keeps that state
+(`applyComponentRestore` holds the ones that need nothing from the engine but
+a single check), and `cloneForSnapshot` is one `copy*` call per component.
+Two things a component cannot answer arrive as arguments rather than as a
+dependency: the maker-tracking flag a hold carries comes in as a callable
+(`lastLook_.hashInto(h, tracked)`), and the matcher's firm-group table is
+read through by `engine::StpState`, which is already the component that
+reads it for a matching decision.
+
+What is left in the engine is the state that belongs to no component: the
+book, the stop book, the instrument's own config records and the bound
+ledger. It sits behind a pair of helpers per direction --
+`hashBookAndStops` / `writeBookAndStops`, `hashBalances` / `writeBalances`,
+and `writeConfigSection` -- rather than one, because the remainder is not
+contiguous in the file: the config records lead it, the book sits in the
+middle, the balances close it, and that order IS the format. One traversal,
+`sortedBalances`, serves both the hash and the snapshot so the two cannot
+drift apart.
+
+The record ORDER is pinned by a test of its own. The state hash says the
+state is what it was and the golden replay says the behaviour is; neither
+sees the layout, because restore is driven by each record's own tag rather
+than by its position. So `venue/tests/test_venue_checkpoint_layout.cpp`
+writes a snapshot of an engine with every section non-empty and compares the
+sequence of record names against a reference recorded before the functions
+were composed. Swap two sections and it is the one thing that goes red.
 
 `SymbolConfig` lives in `flox-venue/symbol_config.h` rather than at the top of
 `matching_engine.h`, so a component can hold it by reference without including
