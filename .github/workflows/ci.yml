@@ -1005,8 +1005,25 @@ jobs:
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
+    # Retried like the vcpkg installs below: choco's own community feed
+    # has timed out mid-run here (504 from community.chocolatey.org),
+    # same class of flaky network dependency as vcpkg.exe/portfile
+    # downloads, so it gets the same backoff instead of failing the job
+    # on one bad response.
     - name: Install ninja and sccache
-      run: choco install ninja sccache -y
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        for ($i = 1; $i -le 3; $i++) {
+          choco install ninja sccache -y
+          if ($LASTEXITCODE -eq 0) { break }
+          Write-Host "::warning::choco install ninja sccache failed (attempt $i/3, exit $LASTEXITCODE)"
+          if ($i -lt 3) { Start-Sleep -Seconds (20 * $i) }
+        }
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::error::choco install ninja sccache failed after 3 attempts"
+          exit 1
+        }
 
     # cl.exe's default Release config carries no /Zi (no shared PDB), which
     # is the one MSVC + sccache combination known to race under parallel
@@ -1150,8 +1167,22 @@ jobs:
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
+    # Retried like windows-msvc's identical step and the vcpkg installs
+    # below: choco's own feed is a flaky network dependency too.
     - name: Install dependencies
-      run: choco install ninja llvm sccache -y
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+        for ($i = 1; $i -le 3; $i++) {
+          choco install ninja llvm sccache -y
+          if ($LASTEXITCODE -eq 0) { break }
+          Write-Host "::warning::choco install ninja llvm sccache failed (attempt $i/3, exit $LASTEXITCODE)"
+          if ($i -lt 3) { Start-Sleep -Seconds (20 * $i) }
+        }
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::error::choco install ninja llvm sccache failed after 3 attempts"
+          exit 1
+        }
 
     - name: Restore sccache
       id: sccache-restore
