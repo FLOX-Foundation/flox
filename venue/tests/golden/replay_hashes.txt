@@ -28,3 +28,4 @@ snapshot_midstream_spot                d43ca76b299ae960  fc19dd0073f69048  69eaa
 snapshot_midstream_lastlook            8e42687fa424629a  fc19236df12ef7b3  e5a5947bc60e3dbb
 snapshot_midstream_perp                2e43bc42748d6271  fc19dd0070df52c3  1c206e65b9314b0b
 snapshot_midstream_delisted            7868af69d1a0fe9b  fc19dd0073f69048  e8ece1429e0bf7b3
+snapshot_midstream_held_clordid        ca56f6ad2a0d0996  8052ef67ccdd52af  977a832dcd74251e

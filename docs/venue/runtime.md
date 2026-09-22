@@ -345,7 +345,12 @@ deterministic):
 - snapshot-only `Restore*` records: book orders (applied straight to the tail
   of their level, no matching pass -- a crossing restore marks the file
   corrupt), pending stops with their current triggers, peg specs, open
-  last-look holds, perp positions, MMP config, MMP sliding-window fills
+  last-look holds (both legs exactly as they were named: the hold record
+  carries the maker's and the taker's `clientOrderId` and the loader restores
+  them, so a hold that resolves after a restart reports under the names its
+  submitters chose -- and, since `stateHash` folds a non-zero one in, a loader
+  that dropped them would reject its own file), perp positions, MMP config,
+  MMP sliding-window fills
   (`RestoreMmpFills`, exact -- a maker one fill from its limit is still one
   fill from it after recovery), and the clientOrderId dedup sets in
   fixed-size batches;

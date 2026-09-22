@@ -309,6 +309,12 @@ bool MatchingEngine<Book>::applyRestoreHeld(const RestoreHeld& r)
   h.makerReduceOnly = r.makerReduceOnly;
   h.takerReduceOnly = r.takerReduceOnly;
   h.refAtHoldRaw = r.refAtHoldRaw;
+  // The names the submitters gave the two legs. Without them a restored hold
+  // resolves under zeroes -- and, because stateHash folds a non-zero id in,
+  // the reconstructed state does not hash to what the writer measured and the
+  // whole generation is discarded as corrupt.
+  h.makerClientOrderId = r.makerClientOrderId;
+  h.takerClientOrderId = r.takerClientOrderId;
   lastLook_.insertRestored(h);
   // Tracking follows the recorded live truth rather than being re-derived: a
   // held maker stays tracked even fully off the book (see createHeld), and
