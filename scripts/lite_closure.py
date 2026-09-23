@@ -112,6 +112,49 @@ def verdict(header):
     return "outside the directories the lite profile allows"
 
 
+def closure_of(seeds):
+    """Breadth-first walk of the #include graph starting at `seeds`.
+
+    Shared by the consumer-surface closure below and by
+    scripts/mirror_paths.py's wider closure over the whole venue module --
+    one walk, one direction gate (`verdict`), so the two closures cannot
+    silently disagree about what "reaches a forbidden directory" means.
+
+    Returns (closure, missing, violations): `closure` is the sorted set of
+    every header reached (including the seeds), `missing` is
+    (header, includer) pairs for headers that do not resolve under
+    include/ or venue/include/, and `violations` is (header, reason) pairs
+    for headers `verdict` rejects.
+    """
+    seen = {}
+    queue = deque()
+    for header in seeds:
+        if header not in seen:
+            seen[header] = None
+            queue.append(header)
+
+    missing = []
+    while queue:
+        header = queue.popleft()
+        resolved = resolve(header)
+        if resolved is None:
+            missing.append((header, seen[header]))
+            continue
+        with open(resolved, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                match = INCLUDE.match(line)
+                if not match:
+                    continue
+                target = match.group(1)
+                if target not in seen:
+                    seen[target] = header
+                    queue.append(target)
+
+    closure = sorted(seen)
+    violations = [(h, verdict(h)) for h in closure if verdict(h) is not None]
+    return closure, missing, violations
+
+
 def main():
     paths_only = "--paths" in sys.argv[1:]
 

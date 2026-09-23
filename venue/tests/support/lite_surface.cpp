@@ -68,6 +68,7 @@
 
 // utilities
 #include "flox/common.h"
+#include "flox/log/console_logger.h"
 #include "flox/net/receive_path.h"
 #include "flox/net/socket.h"
 #include "flox/util/base/time.h"

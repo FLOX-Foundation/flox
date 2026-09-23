@@ -71,6 +71,30 @@ if(FLOX_VENUE_LITE)
   endforeach()
 
   message(STATUS "FLOX_VENUE_LITE: venue engine, perimeter, FIX initiator and utilities only")
+
+  # venue/lite_surface.txt is read once, here, rather than as a second list:
+  # its transitive closure (scripts/lite_closure.py --paths) is both the set
+  # of headers this configure installs (below, in the install section) and
+  # the filter that decides which core .cpp files SRC_FILES gets (right
+  # after this block) -- a src/<x>/<y>.cpp is compiled only if
+  # include/flox/<x>/<y>.h is on the closure. The same call is the direction
+  # gate: a closure that has grown into flox/backtest/ or flox/aggregator/
+  # fails the configure here, before anything is built.
+  execute_process(
+    COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/lite_closure.py" --paths
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE FLOX_LITE_CLOSURE
+    ERROR_VARIABLE FLOX_LITE_CLOSURE_ERR
+    RESULT_VARIABLE FLOX_LITE_CLOSURE_RC)
+  if(NOT FLOX_LITE_CLOSURE_RC EQUAL 0)
+    message(FATAL_ERROR
+      "scripts/lite_closure.py rejected the venue-lite surface:\n"
+      "${FLOX_LITE_CLOSURE}${FLOX_LITE_CLOSURE_ERR}")
+  endif()
+  string(STRIP "${FLOX_LITE_CLOSURE}" FLOX_LITE_CLOSURE)
+  string(REPLACE "\n" ";" FLOX_LITE_CLOSURE "${FLOX_LITE_CLOSURE}")
+  list(LENGTH FLOX_LITE_CLOSURE _flox_lite_closure_n)
+  message(STATUS "FLOX_VENUE_LITE: closure of venue/lite_surface.txt is ${_flox_lite_closure_n} headers")
 endif()
 
 
@@ -94,16 +118,33 @@ include_directories(include)
 
 # The core library's sources. The lite profile compiles the subset the venue
 # links and nothing else: no replay (10k lines, and the only thing in the
-# core that needs LZ4), no report, no risk, no run. Derived by building the
-# venue and its tests against it -- what is missing shows up as an undefined
-# symbol, not as a wrong answer.
+# core that needs LZ4), no report, no risk, no run. Not every .cpp under
+# these four directories, either -- most of what is in them (engine.cpp,
+# symbol_registry.cpp, algos.cpp, order_journey_tracer.cpp,
+# order_tracker.cpp, atomic_logger.cpp) exists for the full engine and the
+# venue links none of it. A src/<x>/<y>.cpp is kept only when
+# include/flox/<x>/<y>.h -- its own header -- is on the venue/lite_surface.txt
+# closure computed above; that is what decides the install surface too, so
+# both answers come from one list. Verified empirically, not read off the
+# header graph: build with the filter, link, and see what is missing.
 if(FLOX_VENUE_LITE)
-  file(GLOB_RECURSE SRC_FILES
+  file(GLOB_RECURSE _flox_lite_candidate_src
       src/clearing/*.cpp
       src/engine/*.cpp
       src/execution/*.cpp
       src/log/*.cpp
   )
+  set(SRC_FILES "")
+  foreach(_cpp ${_flox_lite_candidate_src})
+    file(RELATIVE_PATH _cpp_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${_cpp}")
+    string(REGEX REPLACE "^src/" "include/flox/" _cpp_hdr "${_cpp_rel}")
+    string(REGEX REPLACE "\\.cpp$" ".h" _cpp_hdr "${_cpp_hdr}")
+    if(_cpp_hdr IN_LIST FLOX_LITE_CLOSURE)
+      list(APPEND SRC_FILES "${_cpp}")
+    endif()
+  endforeach()
+  list(LENGTH SRC_FILES _flox_lite_src_n)
+  message(STATUS "FLOX_VENUE_LITE: ${_flox_lite_src_n} core .cpp files match the closure: ${SRC_FILES}")
 else()
   file(GLOB_RECURSE SRC_FILES
       src/aggregator/*.cpp
@@ -598,27 +639,12 @@ install(TARGETS flox
 # gateway; scripts/check_installed_headers_declared.py is what asks.
 #
 # The lite profile installs the transitive closure of venue/lite_surface.txt
-# and nothing else -- read from scripts/lite_closure.py at configure time, so
-# the installed surface is the closure by construction and not a second list
-# to keep in step. The same call is the direction gate: a closure that has
-# grown into flox/backtest/ or flox/aggregator/ fails the configure here,
-# before anything is built.
+# and nothing else -- FLOX_LITE_CLOSURE, computed once near the top of this
+# file (next to FLOX_VENUE_LITE) rather than read a second time here, so the
+# installed surface, the direction gate and the core .cpp filter above all
+# come from the same configure-time call.
 if(FLOX_VENUE_LITE)
-  execute_process(
-    COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/lite_closure.py" --paths
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    OUTPUT_VARIABLE FLOX_LITE_CLOSURE
-    ERROR_VARIABLE FLOX_LITE_CLOSURE_ERR
-    RESULT_VARIABLE FLOX_LITE_CLOSURE_RC)
-  if(NOT FLOX_LITE_CLOSURE_RC EQUAL 0)
-    message(FATAL_ERROR
-      "scripts/lite_closure.py rejected the venue-lite surface:\n"
-      "${FLOX_LITE_CLOSURE}${FLOX_LITE_CLOSURE_ERR}")
-  endif()
-  string(STRIP "${FLOX_LITE_CLOSURE}" FLOX_LITE_CLOSURE)
-  string(REPLACE "\n" ";" FLOX_LITE_CLOSURE "${FLOX_LITE_CLOSURE}")
-  list(LENGTH FLOX_LITE_CLOSURE _flox_lite_n)
-  message(STATUS "FLOX_VENUE_LITE: installing ${_flox_lite_n} headers, the closure of venue/lite_surface.txt")
+  message(STATUS "FLOX_VENUE_LITE: installing ${_flox_lite_closure_n} headers, the closure of venue/lite_surface.txt")
   foreach(_h ${FLOX_LITE_CLOSURE})
     # include/flox/util/crc32.h and venue/include/flox-venue/journal.h both
     # install under include/, at the path after their own include root.
