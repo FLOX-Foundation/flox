@@ -1789,3 +1789,100 @@ jobs:
       with:
         path: ${{ env.CCACHE_DIR }}
         key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+  # venue-lite proves the PROFILE: FLOX_VENUE_LITE=ON in this checkout
+  # configures, builds and tests nothing but the venue. It does not prove
+  # the venue is *separable* -- that a tree containing only
+  # scripts/mirror_paths.py's file list is a tree at all. That question is
+  # T013 step 3's rehearsal before the venue core is cut into its own
+  # repository (.notes/tracks/W9-build-and-repo-hygiene/T013-venue-lite-profile.md):
+  # a first attempt at the cut (git filter-repo into a local copy) found two
+  # things a header-only closure had not accounted for -- venue/src missing
+  # entirely, and venue's own test suite needing headers no downstream
+  # consumer's contract mentions (flox-venue/control_server.h, reached only
+  # by test_venue_admin_surface). scripts/mirror_paths.py is the fix, and
+  # this job is what keeps it honest: every push copies exactly its list
+  # into a scratch directory, with the rest of this checkout unreachable,
+  # and runs the same profile there.
+  venue-lite-standalone:
+    needs: [format-check]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_COMPILERCHECK: content
+      EXTRA_CMAKE_ARGS: >-
+        -DCMAKE_CXX_COMPILER=g++-14
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev ccache rsync
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-venue-lite-standalone-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-venue-lite-standalone-
+
+    - name: ccache zero stats
+      run: ccache -z
+
+    # scripts/mirror_paths.py's own gate: the wider, venue-module closure it
+    # walks (venue/src + venue/tests, minus the three the lite profile does
+    # not build, + venue/benchmarks, union'd with the consumer contract)
+    # must reach nowhere scripts/lite_closure.py's ALLOWED list forbids --
+    # same rule, same two seconds, before rsync runs.
+    - name: Check the mirror's wider closure reaches nowhere it should not
+      run: python3 scripts/mirror_paths.py --summary >/dev/null
+
+    - name: Copy the mirror paths into a scratch tree and run the profile there
+      run: KEEP=1 scripts/lite_standalone_check.sh "${{ runner.temp }}/venue-core-standalone"
+
+    # The claim is that nothing outside scripts/mirror_paths.py's list was
+    # even copied, let alone built -- assert it on the scratch tree rather
+    # than trusting the script's own count.
+    - name: Verify the scratch tree has no forbidden directory and no stray files
+      run: |
+        scratch="${{ runner.temp }}/venue-core-standalone"
+        ! find "$scratch/include" -path '*/flox/backtest/*' -o -path '*/flox/aggregator/*' \
+          -o -path '*/flox-connectors/*' 2>/dev/null | grep -q . \
+          || { echo "::error::a forbidden directory reached the standalone tree"; exit 1; }
+        for d in python node connectors demo tools tests; do
+          test ! -e "$scratch/$d" \
+            || { echo "::error::$scratch/$d exists -- mirror_paths.py listed something it should not have"; exit 1; }
+        done
+        # Excludes build-venue-lite/: that is the profile's own build
+        # output (object files, CMakeCache.txt, the test binaries), created
+        # by the script's own build step, not part of what was copied in.
+        # lite_standalone_check.sh already asserts source-file parity right
+        # after the rsync, before anything is built; this re-checks the
+        # same thing from outside the script, on what should be the same
+        # set of files.
+        mirrored=$(python3 scripts/mirror_paths.py | wc -l | tr -d ' ')
+        present=$(find "$scratch" -type f -not -path "$scratch/build-venue-lite/*" | wc -l | tr -d ' ')
+        test "$mirrored" -eq "$present" \
+          || { echo "::error::mirror_paths.py lists $mirrored files, $present source files are in the scratch tree"; exit 1; }
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
+
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}

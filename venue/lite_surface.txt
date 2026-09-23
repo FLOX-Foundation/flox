@@ -10,6 +10,12 @@
 # profile. scripts/lite_closure.py walks the transitive closure of these
 # includes and refuses directions the profile does not allow.
 #
+# The root CMakeLists.txt also reads this list (as --paths) to decide which
+# core .cpp files the lite build compiles: a src/<x>/<y>.cpp is kept only if
+# include/flox/<x>/<y>.h is on the closure. One header here is on the list
+# for that reason and not because the consumer includes it -- see the
+# "required by lite library" section below.
+#
 # Paths are as written in an #include, relative to include/ or
 # venue/include/. Blank lines and # comments are ignored.
 
@@ -59,3 +65,14 @@ flox/util/performance/busy_backoff.h
 flox/util/concurrency/thread_body.h
 flox/net/socket.h
 flox/net/receive_path.h
+
+# required by lite library, not by the consumer
+#
+# src/log/log_stream.cpp's LogStream destructor default-constructs a
+# ConsoleLogger as the fallback sink when nothing else was set, so the lite
+# core cannot link without flox::ConsoleLogger's declaration even though a
+# consumer of the venue never names the class. Listed here rather than kept
+# as a second, unwritten exception, so the closure, the install surface and
+# the CMake source filter all agree on why src/log/console_logger.cpp is in
+# the lite build.
+flox/log/console_logger.h
