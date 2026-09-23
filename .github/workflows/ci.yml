@@ -1864,10 +1864,17 @@ jobs:
           test ! -e "$scratch/$d" \
             || { echo "::error::$scratch/$d exists -- mirror_paths.py listed something it should not have"; exit 1; }
         done
+        # Excludes build-venue-lite/: that is the profile's own build
+        # output (object files, CMakeCache.txt, the test binaries), created
+        # by the script's own build step, not part of what was copied in.
+        # lite_standalone_check.sh already asserts source-file parity right
+        # after the rsync, before anything is built; this re-checks the
+        # same thing from outside the script, on what should be the same
+        # set of files.
         mirrored=$(python3 scripts/mirror_paths.py | wc -l | tr -d ' ')
-        present=$(find "$scratch" -type f | wc -l | tr -d ' ')
+        present=$(find "$scratch" -type f -not -path "$scratch/build-venue-lite/*" | wc -l | tr -d ' ')
         test "$mirrored" -eq "$present" \
-          || { echo "::error::mirror_paths.py lists $mirrored files, $present are in the scratch tree"; exit 1; }
+          || { echo "::error::mirror_paths.py lists $mirrored files, $present source files are in the scratch tree"; exit 1; }
 
     - name: ccache stats
       if: always()
