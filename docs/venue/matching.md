@@ -15,7 +15,11 @@ reference `MatchingBook` lives in the module (`flox-venue/matching_book.h`).
 
 They are interchangeable (`MatchingEngine<MatchingBook>` /
 `MatchingEngine<LadderBook>`), and a differential fuzz keeps them
-observationally identical; see [Verification](verification.md).
+observationally identical over a random stream; the golden replay corpus
+(`venue/tests/test_venue_golden_replay.cpp`) runs the SAME hand-picked
+scenarios on both and checks `LadderBook` against the exact numbers recorded
+for `MatchingBook` -- one table, because the two are contractually required
+to agree. See [Verification](verification.md).
 
 ```cpp
 LadderBook book(LadderBook::Config{
