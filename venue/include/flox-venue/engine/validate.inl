@@ -95,6 +95,20 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
   {
     return RejectReason::OrderTooLarge;  // fat-finger size
   }
+  // The account's own caps (W26-T064), refused the same way the symbol's
+  // are: an owner of risk above the venue that tightened one account gets
+  // the refusal it asked for, and a replay gets it too.
+  const auto* acctLimits = credit_.accountLimits(o.accountId);
+  if (acctLimits != nullptr && !acctLimits->maxOrderQty.isZero() && acctLimits->maxOrderQty < o.quantity)
+  {
+    return RejectReason::OrderTooLarge;  // the account's fat-finger size
+  }
+  if (acctLimits != nullptr && o.type == OrderType::LIMIT && !acctLimits->maxOrderNotional.isZero() &&
+      static_cast<Amount>(acctLimits->maxOrderNotional.raw()) <
+          notionalRaw(o.price.raw(), o.quantity.raw(), cfg_.priceScale, cfg_.qtyScale))
+  {
+    return RejectReason::OrderTooLarge;  // the account's fat-finger notional
+  }
   // Notional at the SYMBOL's scale, the same arithmetic reservations, margin
   // and fees use. `quantity * price` reads both raws under the compile-time
   // 1e8 scale instead, so on a symbol that declared its own the gate compares
@@ -244,7 +258,8 @@ int64_t MatchingEngine<Book>::legFillLimit(uint64_t account, Side side, bool red
                                            CancelReason& reason, int64_t posDeltaRaw) const
 {
   const int64_t posQ = clearing_.positionQty(account) + posDeltaRaw;
-  return credit_.legFillLimit(posQ, side, reduceOnly, want, reason, cfg_);
+  return credit_.legFillLimit(posQ, side, reduceOnly, want, reason, cfg_,
+                              credit_.positionCapRaw(account, cfg_));
 }
 
 // Fill-time risk re-check for one prospective bite (see the FillLimit hook).
@@ -293,7 +308,7 @@ FillLimit MatchingEngine<Book>::pairFillLimit(uint64_t makerAcct, Side makerSide
   const int64_t makerPosQ = clearing_.positionQty(makerAcct) + makerPosDeltaRaw;
   const int64_t takerPosQ = clearing_.positionQty(takerAcct) + takerPosDeltaRaw;
   return credit_.pairFillLimit(makerPosQ, makerSide, makerReduceOnly, takerPosQ, takerSide,
-                               takerReduceOnly, want, cfg_);
+                               takerReduceOnly, want, cfg_, makerAcct, takerAcct);
 }
 
 // True if `clOrdId` was already used by `account` inside the dedup window
@@ -401,11 +416,17 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     committed = onStop(o);  // parked in the stop book -> committed (keep OCO link)
     return;
   }
-  if (cfg_.maxOpenOrders > 0)
+  // The tighter of the symbol's and the account's open-order cap (W26-T064).
+  uint32_t openCap = cfg_.maxOpenOrders;
+  if (const auto* al = credit_.accountLimits(o.accountId); al != nullptr && al->maxOpenOrders > 0)
+  {
+    openCap = openCap == 0 ? al->maxOpenOrders : (al->maxOpenOrders < openCap ? al->maxOpenOrders : openCap);
+  }
+  if (openCap > 0)
   {
     // Ingress DoS / risk gate: cap live resting orders per account. Once at
     // the cap the account must cancel before adding more.
-    if (pub_.accountOrderCount(o.accountId) >= cfg_.maxOpenOrders)
+    if (pub_.accountOrderCount(o.accountId) >= openCap)
     {
       sink_(OrderRejected{o.id, o.symbol, RejectReason::TooManyOpenOrders, o.accountId, o.clientOrderId});
       return;

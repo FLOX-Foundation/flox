@@ -127,6 +127,14 @@ the margin requirement are changed with the sequenced `SetRiskLimits` command
 (control-plane verb `setRiskLimits`). A field mask says which limits the record
 carries, so raising one cannot zero another by omission.
 
+One account's own caps are set with the sequenced `SetAccountRiskLimits`
+command: the fat-finger size and notional, the open-order cap and the position
+cap, under a field mask like `SetRiskLimits`'. Where both the symbol's and the
+account's limit are set, the tighter one binds. The record is journaled before
+it is applied and written into the snapshot's config section, so a replay and
+a recovered engine refuse exactly the orders the live one refused -- a limit
+that lived outside the journal was a limit the replay never saw.
+
 The direct setters on the engine remain for pre-start wiring. On a running
 engine they apply immediately and ride nothing: a restart reverts them and a
 replica replaying the journal never sees the change. Use the command.

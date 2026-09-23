@@ -254,6 +254,10 @@ void MatchingEngine<Book>::submit(const InboundCommand& cmd, SeqNanos tsNs)
   {
     setAdmissionProfile(ap->account, ap->profile);  // sequenced -> journaled -> replayed
   }
+  else if (const auto* al = std::get_if<SetAccountRiskLimits>(&cmd))
+  {
+    credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed (W26-T064)
+  }
   else if (const auto* sg = std::get_if<SetStpGroup>(&cmd))
   {
     if (sg->symbol == cfg_.id)
@@ -294,7 +298,7 @@ void MatchingEngine<Book>::submit(const InboundCommand& cmd, SeqNanos tsNs)
   // it is dropped, and the venue carries on as if it had never been sent.
   // Snapshot-only records are supposed to land here; a new LIVE command is
   // not, and nothing but this says so.
-  static_assert(std::variant_size_v<InboundCommand> == 36,
+  static_assert(std::variant_size_v<InboundCommand> == 37,
                 "new InboundCommand alternative: give it a branch in submit(), or confirm it "
                 "is snapshot-only and handled in applySnapshotRecord");
   processOco();

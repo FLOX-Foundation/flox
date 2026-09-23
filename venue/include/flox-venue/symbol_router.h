@@ -104,10 +104,14 @@ inline SymbolId symbolOf(const InboundCommand& c) noexcept
   {
     return ql->symbol;
   }
+  if (const auto* al = std::get_if<SetAccountRiskLimits>(&c))
+  {
+    return al->symbol;  // W26-T064: routed like SetAdmissionProfile, to the instrument it names
+  }
   // A live command missing from the chain above routes to symbol 0 and is
   // silently dropped by submit(). The count is pinned so a new alternative
   // cannot join that fate unnoticed.
-  static_assert(std::variant_size_v<InboundCommand> == 36,
+  static_assert(std::variant_size_v<InboundCommand> == 37,
                 "new InboundCommand alternative: route it above if it is a live command, or "
                 "confirm it is snapshot-only");
   return 0;  // snapshot-only records never route by symbol (recovery-path only)

@@ -188,6 +188,13 @@ class MatchingEngine
 
   // engine/validate.inl
   void setAdmissionProfile(uint64_t account, const AdmissionProfile& p);
+  // Pre-start wiring only; on a running engine submit the SetAccountRiskLimits
+  // command, which is sequenced, journaled and replayed (W26-T064).
+  void setAccountRiskLimits(const SetAccountRiskLimits& r) { credit_.setAccountLimits(r); }
+  const engine::Credit::AccountLimits* accountRiskLimits(uint64_t account) const noexcept
+  {
+    return credit_.accountLimits(account);
+  }
   const std::unordered_map<uint64_t, AdmissionProfile>& admissionProfiles() const noexcept;
   uint64_t admissionRejects() const noexcept;
 

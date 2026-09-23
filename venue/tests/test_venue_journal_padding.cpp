@@ -234,6 +234,7 @@ TEST(VenueJournalPadding, TwoDifferentlyPoisonedInstancesOfEveryTypeSerializeIde
   expectPaddingNeutralised<SetAdmissionProfile>("SetAdmissionProfile");
   expectPaddingNeutralised<SetRiskLimits>("SetRiskLimits");
   expectPaddingNeutralised<AdjustPosition>("AdjustPosition");
+  expectPaddingNeutralised<SetAccountRiskLimits>("SetAccountRiskLimits");
 }
 
 // The record named in the task: four bytes between formatVersion and

@@ -376,6 +376,94 @@ void run(const std::function<Book()>& mk, const char* label)
     eng.submit(InboundCommand{limit(4, Side::BUY, 99, 5, 7)});
     CHECK(eng.book().find(4) != nullptr);
   }
+  {  // W26-T064: one account's own fat-finger cap refuses that account and
+     // nobody else; the symbol's cap stays where it was.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
+    SetAccountRiskLimits caps;
+    caps.symbol = SYM;
+    caps.fields = AccountRiskLimitField::AccountRiskFatFinger;
+    caps.account = 7;
+    caps.maxOrderQty = qty(3);
+    eng.submit(InboundCommand{caps}, 1);
+    eng.submit(InboundCommand{limit(1, Side::BUY, 99, 10, 7)});
+    CHECK(cap.rejects(RejectReason::OrderTooLarge) == 1);
+    eng.submit(InboundCommand{limit(2, Side::BUY, 99, 10, 8)});
+    CHECK(cap.rejects(RejectReason::OrderTooLarge) == 1);  // account 8 is uncapped
+    eng.submit(InboundCommand{limit(3, Side::BUY, 99, 3, 7)});
+    CHECK(cap.rejects(RejectReason::OrderTooLarge) == 1);  // exactly the cap is admitted
+    CHECK(eng.riskLimits().maxOrderQty.isZero());          // the symbol's cap is untouched
+    CHECK(eng.accountRiskLimits(7) != nullptr && eng.accountRiskLimits(7)->maxOrderQty == qty(3));
+    CHECK(eng.accountRiskLimits(8) == nullptr);
+  }
+  {  // The tighter of the symbol's and the account's open-order cap binds.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
+    eng.setMaxOpenOrders(5);
+    SetAccountRiskLimits caps;
+    caps.symbol = SYM;
+    caps.fields = AccountRiskLimitField::AccountRiskMaxOpenOrders;
+    caps.account = 7;
+    caps.maxOpenOrders = 1;
+    eng.submit(InboundCommand{caps}, 1);
+    eng.submit(InboundCommand{limit(1, Side::BUY, 99, 1, 7)});
+    eng.submit(InboundCommand{limit(2, Side::BUY, 98, 1, 7)});
+    CHECK(cap.rejects(RejectReason::TooManyOpenOrders) == 1);
+    for (OrderId id = 10; id < 15; ++id)
+    {
+      eng.submit(InboundCommand{limit(id, Side::BUY, 97, 1, 8)});
+    }
+    CHECK(cap.rejects(RejectReason::TooManyOpenOrders) == 1);  // account 8: the symbol's five
+    eng.submit(InboundCommand{limit(15, Side::BUY, 97, 1, 8)});
+    CHECK(cap.rejects(RejectReason::TooManyOpenOrders) == 2);
+  }
+  {  // The field mask: a record that names one limit leaves the others as
+     // they were, and a record naming nothing is a no-op.
+    Cap cap;
+    MatchingEngine<Book> eng(cfg(), cap.sink(), mk());
+    SetAccountRiskLimits first;
+    first.symbol = SYM;
+    first.fields = AccountRiskLimitField::AccountRiskFatFinger | AccountRiskLimitField::AccountRiskMaxPosition;
+    first.account = 7;
+    first.maxOrderQty = qty(3);
+    first.maxPositionQty = qty(9);
+    eng.submit(InboundCommand{first}, 1);
+    SetAccountRiskLimits second;
+    second.symbol = SYM;
+    second.fields = AccountRiskLimitField::AccountRiskMaxOpenOrders;
+    second.account = 7;
+    second.maxOpenOrders = 2;
+    eng.submit(InboundCommand{second}, 2);
+    const auto* l = eng.accountRiskLimits(7);
+    CHECK(l != nullptr && l->maxOrderQty == qty(3) && l->maxPositionQty == qty(9) && l->maxOpenOrders == 2);
+    SetAccountRiskLimits none;
+    none.symbol = SYM;
+    none.account = 9;
+    eng.submit(InboundCommand{none}, 3);
+    CHECK(eng.accountRiskLimits(9) == nullptr);
+  }
+  {  // The table is engine state two replicas must agree on: it is in the
+     // state hash.
+    Cap ca, cb;
+    MatchingEngine<Book> a(cfg(), ca.sink(), mk());
+    MatchingEngine<Book> b(cfg(), cb.sink(), mk());
+    CHECK(a.stateHash() == b.stateHash());
+    SetAccountRiskLimits caps;
+    caps.symbol = SYM;
+    caps.fields = AccountRiskLimitField::AccountRiskMaxPosition;
+    caps.account = 7;
+    caps.maxPositionQty = qty(9);
+    a.submit(InboundCommand{caps}, 1);
+    // b takes a record that names no field: the same command, the same
+    // count and clock, and no entry -- only the table can tell them apart.
+    SetAccountRiskLimits none = caps;
+    none.fields = 0;
+    b.submit(InboundCommand{none}, 1);
+    CHECK(a.stateHash() != b.stateHash());
+    b.submit(InboundCommand{caps}, 2);
+    a.submit(InboundCommand{none}, 2);
+    CHECK(a.stateHash() == b.stateHash());
+  }
 }
 
 }  // namespace

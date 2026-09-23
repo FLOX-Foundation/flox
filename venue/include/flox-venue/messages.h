@@ -443,6 +443,42 @@ struct SetRiskLimits
   int32_t maintenanceMarginBps{};
 };
 
+// Which limits a SetAccountRiskLimits record carries.
+enum AccountRiskLimitField : uint16_t
+{
+  AccountRiskFatFinger = 1u << 0,  // maxOrderQty + maxOrderNotional
+  AccountRiskMaxOpenOrders = 1u << 1,
+  AccountRiskMaxPosition = 1u << 2,
+};
+
+// Risk limits on one ACCOUNT, sequenced (W26-T064).
+//
+// SetRiskLimits is the symbol's: every account on the instrument is bound by
+// it. An owner of risk above the venue -- a prime broker's limit desk, a
+// margin engine -- tightens ONE account, and it has to do so through the
+// journal: the journal is written before the decision, a replay decides
+// again, and a limit that lived outside the journal is a limit the replay
+// never saw, so an order the live engine refused is accepted on replay.
+// That is the defect this record closes. Applied in stream order like any
+// command; written into the snapshot's config section so a recovered engine
+// refuses what the live one refused; a field mask says which limits the
+// record carries, so tightening one cannot zero another by omission. Zero in
+// a carried field means "unchecked" for that account, the way it does on the
+// symbol. Where both the symbol's and the account's limit are set, the
+// tighter one binds.
+struct SetAccountRiskLimits
+{
+  SymbolId symbol{};   // routing key
+  uint8_t pad0_[2]{};  // explicit alignment padding
+  uint16_t fields{};   // bitmask of AccountRiskLimitField; 0 = no-op
+  uint64_t account{};
+  Quantity maxOrderQty{};
+  Volume maxOrderNotional{};
+  uint32_t maxOpenOrders{};
+  uint8_t pad1_[4]{};  // explicit alignment padding
+  Quantity maxPositionQty{};
+};
+
 struct SetStpGroup
 {
   SymbolId symbol{};   // routing key
@@ -836,7 +872,7 @@ using InboundCommand =
                  RestorePosition, RestoreMmpCfg, RestoreClOrdIds, SnapshotEnd, RestoreReservation,
                  RestoreBalance, RestoreMmpFills, SetStpGroup, SetFundingSchedule, RestoreFunding,
                  ForceClosePosition, RestoreOrderStp, SetAdmissionProfile, SetRiskLimits,
-                 AdjustPosition, QuoteLadder>;
+                 AdjustPosition, QuoteLadder, SetAccountRiskLimits>;
 
 // The wire tag of each alternative, by its position in the variant.
 //
@@ -887,6 +923,7 @@ inline constexpr uint8_t kWireTag[] = {
     33,  // SetRiskLimits
     34,  // AdjustPosition
     35,  // QuoteLadder
+    36,  // SetAccountRiskLimits
 };
 static_assert(std::size(kWireTag) == std::variant_size_v<InboundCommand>,
               "every alternative needs a wire tag, and only alternatives have one");
@@ -932,7 +969,7 @@ inline bool isSnapshotRecord(const InboundCommand& c) noexcept
   // A snapshot-only record this predicate does not recognise is treated as
   // live traffic: accepted from a client, journaled into the live stream, and
   // replayed as a command.
-  static_assert(std::variant_size_v<InboundCommand> == 36,
+  static_assert(std::variant_size_v<InboundCommand> == 37,
                 "new InboundCommand alternative: if it is snapshot-only, add its tag to "
                 "kSnapshotOnlyTags -- otherwise it is treated as live traffic a client may send");
   const uint8_t tag = wireTagOf(c);
