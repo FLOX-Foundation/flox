@@ -1,0 +1,117 @@
+name: Build and Test
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  venue-lite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_COMPILERCHECK: content
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev ccache
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-venue-lite-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-venue-lite-
+
+    - name: ccache zero stats
+      run: ccache -z
+
+    - name: Check the lite surface closure reaches nowhere it should not
+      run: python3 scripts/lite_closure.py
+
+    - name: Configure
+      run: |
+        cmake --preset venue-lite \
+              -DCMAKE_CXX_COMPILER=g++-14 \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+    - name: Build
+      run: cmake --build build-venue-lite -j"$(nproc)"
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
+
+    - name: Test
+      run: ctest --preset venue-lite -j"$(nproc)"
+
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+  venue-lite-standalone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_COMPILERCHECK: content
+      EXTRA_CMAKE_ARGS: >-
+        -DCMAKE_CXX_COMPILER=g++-14
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 libgtest-dev libgmock-dev ccache rsync
+
+    - name: Restore ccache
+      id: ccache-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-gcc14-venue-lite-standalone-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**', '**/CMakeLists.txt') }}-${{ github.run_id }}
+        restore-keys: |
+          ccache-${{ runner.os }}-gcc14-venue-lite-standalone-
+
+    - name: ccache zero stats
+      run: ccache -z
+
+    - name: Check the mirror's wider closure reaches nowhere it should not
+      run: python3 scripts/mirror_paths.py --summary >/dev/null
+
+    - name: Copy the mirror paths into a scratch tree and run the profile there
+      run: KEEP=1 scripts/lite_standalone_check.sh "${{ runner.temp }}/venue-core-standalone"
+
+    - name: ccache stats
+      if: always()
+      run: ccache -s
+
+    - name: Save ccache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}

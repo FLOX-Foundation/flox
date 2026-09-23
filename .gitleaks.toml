@@ -1,0 +1,17 @@
+# gitleaks configuration for this repository and for the venue-core mirror
+# cut out of it (scripts/publish_mirror.sh scans the cut history with this
+# file). Everything the default rules find is a finding unless listed here.
+title = "flox"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "The WebSocket handshake nonce hard-coded in the venue's network tests: RFC 6455's own example, not a credential."
+regexTarget = "line"
+regexes = [
+  '''Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==''',
+]
+paths = [
+  '''venue/tests/test_venue_(liveness|fix_session|parser_fuzz|network)\.cpp''',
+]
