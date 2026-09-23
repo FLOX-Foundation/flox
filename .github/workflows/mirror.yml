@@ -1,0 +1,91 @@
+name: Mirror venue-core
+
+# Publishes the venue core, with its history, to the read-only mirror
+# FLOX-Foundation/venue-core after every merge into main. What is cut and
+# how is scripts/publish_mirror.sh; the list of files is
+# scripts/mirror_paths.py, the same list scripts/lite_standalone_check.sh
+# proves builds on its own in ci.yml's venue-lite-standalone job.
+#
+# Only on push to main. Never on pull_request (a fork's PR must not be able
+# to run this), never on tags (the mirror carries no tags, ever), never on a
+# schedule. The deploy key is write-only to the mirror repository and is the
+# only credential here; the token this job runs with cannot write to
+# anything (permissions: contents: read).
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-venue-core
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Off until the operator turns it on: the repository variable
+    # VENUE_CORE_MIRROR set to "on" (Settings -> Variables). Until then every
+    # merge into main skips this job instead of failing it for a missing
+    # key; setting it back to anything else switches the mirror off again.
+    if: ${{ vars.VENUE_CORE_MIRROR == 'on' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0  # the whole history: the cut keeps it
+        persist-credentials: false
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Install git-filter-repo and gitleaks (both pinned)
+      run: |
+        set -euo pipefail
+        python3 -m pip install --quiet git-filter-repo==2.47.0
+        curl -sSL -o /tmp/gitleaks.tar.gz \
+          https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+        echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+        sudo tar -C /usr/local/bin -xzf /tmp/gitleaks.tar.gz gitleaks
+        gitleaks version
+
+    - name: Deploy key and host keys
+      env:
+        DEPLOY_KEY: ${{ secrets.VENUE_CORE_DEPLOY_KEY }}
+      run: |
+        set -euo pipefail
+        [ -n "$DEPLOY_KEY" ] || { echo "::error::VENUE_CORE_DEPLOY_KEY is not set"; exit 1; }
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/venue-core && chmod 600 ~/.ssh/venue-core
+        # GitHub's published host keys (https://api.github.com/meta), pinned
+        # rather than scanned at run time.
+        cat > ~/.ssh/known_hosts <<'KEYS'
+        github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+        github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+        KEYS
+        chmod 600 ~/.ssh/known_hosts
+
+    - name: Denylist
+      env:
+        DENYLIST: ${{ secrets.VENUE_CORE_DENYLIST }}
+      run: |
+        set -euo pipefail
+        # Words the mirror must not contain, anywhere in its history. Kept
+        # as a secret because the list itself is the thing that must not be
+        # in a public repository. Empty means the publish refuses: a scan
+        # that silently did not run is not a scan.
+        [ -n "$DENYLIST" ] || { echo "::error::VENUE_CORE_DENYLIST is not set"; exit 1; }
+        printf '%s\n' "$DENYLIST" > "$RUNNER_TEMP/denylist.txt"
+
+    - name: Cut and publish
+      env:
+        GIT_SSH_COMMAND: ssh -i ~/.ssh/venue-core -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+      run: |
+        set -euo pipefail
+        scripts/publish_mirror.sh --push \
+          --remote git@github.com:FLOX-Foundation/venue-core.git \
+          --denylist "$RUNNER_TEMP/denylist.txt" \
+          --work "$RUNNER_TEMP/mirror"
