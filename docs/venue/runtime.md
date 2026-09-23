@@ -400,7 +400,8 @@ deterministic):
   `intervalNs`). It is a record rather than three more fields on `SnapshotEnd`
   because `SnapshotEnd` is a strictly-sized journal body -- widening it would
   change the on-disk layout and cost a format-version bump (the compile-time
-  fingerprint next to `kRecordVersion` stops the build until it gets one).
+  fingerprint next to `kRecordVersion` stops the build until it gets one;
+  version 21/22 added `SetAccountRiskLimits`, tag 36, in the config section).
   An engine with no funding state at all writes no such record, and a file
   without one restores rate 0 and no schedule, exactly as before the record
   existed (read compatibility, pinned by a test);

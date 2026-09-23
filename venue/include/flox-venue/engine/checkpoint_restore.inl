@@ -74,7 +74,7 @@ bool MatchingEngine<Book>::applySnapshotRecord(const InboundCommand& cmd, int64_
   // own segment, and goes through the live path -- which is correct, and is
   // also why a NEW snapshot-only record that nobody added a branch for would
   // be handed to submit(), drop out of its chain, and be reported as applied.
-  static_assert(std::variant_size_v<InboundCommand> == 36,
+  static_assert(std::variant_size_v<InboundCommand> == 37,
                 "new InboundCommand alternative: if it is a snapshot-only record, give it a "
                 "branch above or in applyComponentRestore -- falling through to submit() "
                 "reports it as applied when it was not");

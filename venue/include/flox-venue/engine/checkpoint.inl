@@ -58,6 +58,7 @@ uint64_t MatchingEngine<Book>::stateHash() const
   // moved would fail every snapshot already on disk.
   h = hashBookAndStops(h);
   h = credit_.hashAdmission(h);
+  h = credit_.hashAccountLimits(h);
   h = stp_.hashInto(h);
   h = pegs_.hashInto(h);
   h = lastLook_.hashInto(h, [this](OrderId id)
@@ -286,6 +287,10 @@ void MatchingEngine<Book>::writeConfigSection(Journal& out, int64_t ts) const
   out.append(InboundCommand{SetTriggerRef{cfg_.id, cfg_.triggerRef}}, ts);
   stp_.writeGroups(matcher_.stpGroups(), cfg_.id, out, ts);
   credit_.writeAdmission(out, cfg_.id, ts);
+  // Per-account limits ride the config section for the same reason the
+  // symbol's do (W26-T064): a recovered engine without them admits what the
+  // live one refused.
+  credit_.writeAccountLimits(out, cfg_.id, ts);
   // The halt, the auction phase, the session boundary and delisting all ride
   // the same existing AdminCmd path, in the order engine::Session hands them
   // back -- outermost last, exactly as tradingStatus() ranks them, and only

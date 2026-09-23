@@ -1198,6 +1198,63 @@ std::vector<Scenario> corpus()
                  return r.hashes();
                }});
 
+  // W26-T064: one account's own caps, tightened by a sequenced command,
+  // refuse the orders the symbol's limits would admit -- and keep refusing
+  // them after a checkpoint in the middle of the stream. The pre-snapshot
+  // half sets the caps and shows both refusals (a size over the account's
+  // fat-finger cap; a fill the account's position cap leaves no room for);
+  // the post-snapshot half asks for the same again. A snapshot that lost
+  // the table admits the size-10 order and prints the capped fill, and this
+  // scenario's state and stream part from the golden.
+  s.push_back({"account_limits_tightened_across_checkpoint",
+               []
+               {
+                 const auto named = [](OrderId id, Side side, double p, double q, uint64_t acct)
+                 {
+                   NewOrder o;
+                   o.id = id;
+                   o.symbol = SYM;
+                   o.side = side;
+                   o.type = OrderType::LIMIT;
+                   o.price = px(p);
+                   o.quantity = qty(q);
+                   o.accountId = acct;
+                   return o;
+                 };
+                 SetAccountRiskLimits caps;
+                 caps.symbol = SYM;
+                 caps.fields = AccountRiskLimitField::AccountRiskFatFinger |
+                               AccountRiskLimitField::AccountRiskMaxPosition;
+                 caps.account = 1;
+                 caps.maxOrderQty = qty(5.0);
+                 caps.maxPositionQty = qty(8.0);
+                 // A perp, because the position cap is a perp rule; quote
+                 // collateral only, as the perp scenarios above deposit.
+                 std::vector<InboundCommand> cmds = deposits(3, 0.0, 10'000'000.0);
+                 cmds.emplace_back(caps);
+                 // -- the pre-checkpoint half
+                 cmds.emplace_back(named(1001, Side::BUY, 100.0, 10.0, 1));  // over the account's size cap: refused
+                 cmds.emplace_back(named(1002, Side::BUY, 100.0, 10.0, 2));  // the same size on an uncapped account: rests
+                 cmds.emplace_back(named(1003, Side::BUY, 100.0, 4.0, 1));   // rests
+                 cmds.emplace_back(named(1004, Side::SELL, 100.0, 4.0, 3));  // prints against 1003 (position 4), then 1002
+                 cmds.emplace_back(named(1005, Side::BUY, 100.0, 4.0, 1));   // rests: position would be 8, at the cap
+                 cmds.emplace_back(named(1006, Side::SELL, 100.0, 4.0, 3));  // prints: position 8
+                 cmds.emplace_back(named(1007, Side::BUY, 100.0, 2.0, 1));   // rests, but no room left under the cap
+                 cmds.emplace_back(named(1008, Side::SELL, 100.0, 2.0, 3));  // the account's cap blocks the fill
+                 cmds.emplace_back(named(1009, Side::SELL, 100.0, 2.0, 1));  // reduces: allowed
+                 // -- the post-checkpoint half: the same questions again
+                 cmds.emplace_back(named(1010, Side::BUY, 100.0, 10.0, 1));  // still refused
+                 cmds.emplace_back(named(1011, Side::BUY, 100.0, 10.0, 2));  // still rests
+                 cmds.emplace_back(named(1012, Side::BUY, 100.0, 3.0, 1));   // rests: position 6 + 3 > 8
+                 cmds.emplace_back(named(1013, Side::SELL, 100.0, 3.0, 3));  // capped at 2 of 3
+                 cmds.emplace_back(named(1014, Side::SELL, 100.0, 8.0, 1));  // flattens: allowed
+                 cmds.emplace_back(named(1015, Side::BUY, 100.0, 5.0, 1));   // exactly the size cap: admitted
+                 cmds.emplace_back(named(1016, Side::SELL, 100.0, 5.0, 3));
+                 return checkpointed<Book>(
+                     perpCfg(/*adl*/ false), cmds, [](Run& r)
+                     { r.eng.setLedger(&r.led, VENUE_ACCT); },
+                     false, "golden_snap_account_limits", /*viaClone*/ true);
+               }});
   // Checkpoint in the middle of a cleared spot stream.
   s.push_back({"snapshot_midstream_spot",
                []

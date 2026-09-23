@@ -29,6 +29,7 @@ session_status_transitions             3c4588d9a083a1d8  fc19dd0073f69048  06688
 perp_funding_liquidation               89f8124cc7961b45  fc19dd0070df52c3  cf5ee2f0ee519c05
 perp_adl_bankruptcy                    70417ac9a8a4a833  fc19dd0070f0868e  2b6a91d02fe103b0
 perp_adl_scripted                      17a056ea7a73878a  fc19dd0070f0868e  68471ffa3b5e1a5b
+account_limits_tightened_across_checkpoint cc62c97ee6be9486  fc19dd0070df52c3  256d05a32fd980ac
 snapshot_midstream_spot                9f44c165acdb38ab  fc19dd0073f69048  b0543a7c2b64af7c
 snapshot_midstream_lastlook            2634bd0c8f28e9c2  fc19236df12ef7b3  2e7c78743291494e
 snapshot_midstream_perp                f3419d7d3d044985  fc19dd0070df52c3  c9d9bb9b64f57c42

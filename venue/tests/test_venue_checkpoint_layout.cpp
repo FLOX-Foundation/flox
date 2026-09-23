@@ -96,7 +96,8 @@ constexpr const char* kCommandName[] = {"NewOrder",
                                         "SetAdmissionProfile",
                                         "SetRiskLimits",
                                         "AdjustPosition",
-                                        "QuoteLadder"};
+                                        "QuoteLadder",
+                                        "SetAccountRiskLimits"};
 
 static_assert(std::size(kCommandName) == std::variant_size_v<InboundCommand>,
               "a new InboundCommand alternative needs its name here, or a record of it would be "
@@ -163,6 +164,13 @@ void buildEverySection(MatchingEngine<MatchingBook>& eng)
   prof.allowedTypes = 0xFF;
   prof.allowedTif = 0x1F;
   eng.setAdmissionProfile(5, prof);
+  SetAccountRiskLimits caps;
+  caps.symbol = SYM;
+  caps.fields = AccountRiskLimitField::AccountRiskFatFinger | AccountRiskLimitField::AccountRiskMaxPosition;
+  caps.account = 5;
+  caps.maxOrderQty = qty(500.0);
+  caps.maxPositionQty = qty(2000.0);
+  eng.setAccountRiskLimits(caps);
   eng.setFundingSchedule(DurationNs{28'800'000'000'000}, SeqNanos::fromRaw(50'000'000));
 
   for (uint64_t acct = 1; acct <= 5; ++acct)
@@ -267,6 +275,8 @@ const std::vector<std::string> kRecordedLayout = {
     "ListInstrument", "SetBands", "SetRiskLimits", "SetTriggerRef",
     "SetStpGroup", "SetStpGroup",            // matcher: firm groups, by account
     "SetAdmissionProfile",                   // credit: who may send what
+    "SetAccountRiskLimits",                  // credit: one account's own caps (W26-T064), after the
+                                             // profile that admits it and before anything it bounds
     "AdminCmd", "AdminCmd",                  // session: Halt, then CloseSession
     "RestoreFunding",                        // clearing: the calendar and the rate
     // the ledger: exact signed available/reserved per (account, asset). Ahead
@@ -328,7 +338,8 @@ TEST(VenueCheckpointLayout, EverySectionIsExercised)
 
   const std::vector<std::string> actual = snapshotLayout(eng, path);
   for (const char* section : {"SnapshotBegin", "ListInstrument", "SetBands", "SetRiskLimits",
-                              "SetTriggerRef", "SetStpGroup", "SetAdmissionProfile", "AdminCmd",
+                              "SetTriggerRef", "SetStpGroup", "SetAdmissionProfile",
+                              "SetAccountRiskLimits", "AdminCmd",
                               "RestoreFunding", "RestoreBalance", "RestoreMmpCfg",
                               "RestoreMmpFills", "RestoreClOrdIds", "RestoreOrder", "RestoreStop",
                               "RestorePeg", "RestoreOrderStp", "RestorePosition", "RestoreHeld",

@@ -93,10 +93,12 @@ static_assert(std::is_trivially_copyable_v<SetAdmissionProfile>,
               "SetAdmissionProfile must be blittable");
 static_assert(std::is_trivially_copyable_v<SetRiskLimits>, "SetRiskLimits must be blittable");
 static_assert(std::is_trivially_copyable_v<AdjustPosition>, "AdjustPosition must be blittable");
+static_assert(std::is_trivially_copyable_v<SetAccountRiskLimits>,
+              "SetAccountRiskLimits must be blittable");
 static_assert(std::is_trivially_copyable_v<QuoteLadderLevel>,
               "QuoteLadderLevel must be blittable");
 static_assert(std::is_trivially_copyable_v<QuoteLadder>, "QuoteLadder must be blittable");
-static_assert(std::variant_size_v<InboundCommand> == 36,
+static_assert(std::variant_size_v<InboundCommand> == 37,
               "new InboundCommand alternative: extend expectedBodySize/appendDecoded and the "
               "blittable asserts above");
 
@@ -179,6 +181,8 @@ static_assert(std::has_unique_object_representations_v<SetAdmissionProfile>,
               "SetAdmissionProfile carries padding");
 static_assert(std::has_unique_object_representations_v<SetRiskLimits>,
               "SetRiskLimits carries padding");
+static_assert(std::has_unique_object_representations_v<SetAccountRiskLimits>,
+              "SetAccountRiskLimits carries padding");
 static_assert(std::has_unique_object_representations_v<AdjustPosition>,
               "AdjustPosition carries padding");
 static_assert(std::has_unique_object_representations_v<QuoteLadderLevel>,
@@ -262,10 +266,13 @@ static_assert(sizeof(QuoteLadder) ==
 // fully off the book, instead of resetting to 0. Every other journaled body
 // is unchanged and still fixed-length; only RestoreHeld's sizeof moved. Pair
 // moves by two, same reasoning as 15/16 -> 17/18.
+// 21/22 (W26-T064): a new journaled body, SetAccountRiskLimits (tag 36),
+// carried in the snapshot's config section. Every earlier body is unchanged;
+// the pair moves by two for the same reason 19/20 did.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 20;
+inline constexpr uint8_t kRecordVersion = 22;
 #else
-inline constexpr uint8_t kRecordVersion = 19;
+inline constexpr uint8_t kRecordVersion = 21;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
@@ -329,12 +336,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0x8e533d29192e4487ULL,
+static_assert(bodyLayoutFingerprint() == 0x52241945988b0cc3ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0x5253a9cbeedfb32fULL,
+static_assert(bodyLayoutFingerprint() == 0xed05163903ac1c33ULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
@@ -753,6 +760,8 @@ class Journal
         return sizeof(SetRiskLimits);
       case 34:
         return sizeof(AdjustPosition);
+      case 36:
+        return sizeof(SetAccountRiskLimits);
       case 35:
         // The MAXIMUM, not the only length: a ladder record is as long as the
         // rungs it names (bodySizeAccepted below). Every caller that wants
@@ -897,6 +906,9 @@ class Journal
         break;
       case 35:
         v.emplace_back(ts, quoteLadderFromBody(body, len));
+        break;
+      case 36:
+        v.emplace_back(ts, fromBody<SetAccountRiskLimits>(body));
         break;
     }
   }

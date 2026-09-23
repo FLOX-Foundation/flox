@@ -521,6 +521,47 @@ TEST(EngineCredit, ReduceOnlyMayOnlyCloseWhatIsOpenOnTheOtherSide)
             Quantity::fromDouble(2.0).raw());
 }
 
+// W26-T064: the account's own position cap, where it is tighter than the
+// symbol's, is the one a leg is measured against; an account with no entry
+// keeps the symbol's; the symbol's binds where it is the tighter one.
+TEST(EngineCredit, AnAccountsOwnPositionCapBindsWhereItIsTheTighterOne)
+{
+  engine::Credit c;
+  SymbolConfig cfg = perpCfg();
+  cfg.maxPositionQty = Quantity::fromDouble(10.0);
+  SetAccountRiskLimits caps;
+  caps.fields = AccountRiskLimitField::AccountRiskMaxPosition;
+  caps.account = 7;
+  caps.maxPositionQty = Quantity::fromDouble(2.0);
+  c.setAccountLimits(caps);
+  EXPECT_EQ(c.positionCapRaw(7, cfg), Quantity::fromDouble(2.0).raw());
+  EXPECT_EQ(c.positionCapRaw(8, cfg), Quantity::fromDouble(10.0).raw());
+  // A symbol with no cap of its own: the account's is the whole cap.
+  SymbolConfig uncapped = cfg;
+  uncapped.maxPositionQty = Quantity{};
+  EXPECT_EQ(c.positionCapRaw(7, uncapped), Quantity::fromDouble(2.0).raw());
+  EXPECT_EQ(c.positionCapRaw(8, uncapped), 0);
+  const Quantity want = Quantity::fromDouble(5.0);
+  // Account 7 flat, buying 5: two of them fit under its own cap.
+  FillLimit a = c.pairFillLimit(0, Side::BUY, false, 0, Side::SELL, false, want, cfg, 7, 8);
+  EXPECT_EQ(a.makerQty, Quantity::fromDouble(2.0));
+  EXPECT_EQ(a.takerQty, want);
+  EXPECT_EQ(a.qty, Quantity::fromDouble(2.0));
+  EXPECT_EQ(a.reason, CancelReason::PositionLimitExceeded);
+  // Selling builds a short under the same cap: 7 as the taker is cut to two.
+  FillLimit b = c.pairFillLimit(0, Side::BUY, false, 0, Side::SELL, false, want, cfg, 8, 7);
+  EXPECT_EQ(b.qty, Quantity::fromDouble(2.0));
+  EXPECT_TRUE(!b.takerBlocked);
+  // Two accounts with no entry of their own: the symbol's ten, so five fit.
+  FillLimit d = c.pairFillLimit(0, Side::BUY, false, 0, Side::SELL, false, want, cfg, 8, 9);
+  EXPECT_EQ(d.qty, want);
+  // A wider account cap does not loosen the symbol's.
+  caps.account = 8;
+  caps.maxPositionQty = Quantity::fromDouble(50.0);
+  c.setAccountLimits(caps);
+  EXPECT_EQ(c.positionCapRaw(8, cfg), Quantity::fromDouble(10.0).raw());
+}
+
 TEST(EngineCredit, PositionCapMeasuresTheRESULTINGPositionNotTheOrder)
 {
   engine::Credit c;

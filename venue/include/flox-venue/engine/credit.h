@@ -464,6 +464,102 @@ class Credit
     admission_ = m;
   }
 
+  // Per-account limits (W26-T064). A record carries the fields its mask
+  // names; the rest of the account's entry stays. An account with no entry
+  // is bound by the symbol's limits alone.
+  struct AccountLimits
+  {
+    Quantity maxOrderQty{};     // 0 = unchecked
+    Volume maxOrderNotional{};  // 0 = unchecked
+    uint32_t maxOpenOrders{0};  // 0 = unchecked
+    Quantity maxPositionQty{};  // 0 = unchecked
+  };
+  void setAccountLimits(const SetAccountRiskLimits& r)
+  {
+    if (r.fields == 0)
+    {
+      return;
+    }
+    AccountLimits& l = accountLimits_[r.account];
+    if ((r.fields & AccountRiskLimitField::AccountRiskFatFinger) != 0)
+    {
+      l.maxOrderQty = r.maxOrderQty;
+      l.maxOrderNotional = r.maxOrderNotional;
+    }
+    if ((r.fields & AccountRiskLimitField::AccountRiskMaxOpenOrders) != 0)
+    {
+      l.maxOpenOrders = r.maxOpenOrders;
+    }
+    if ((r.fields & AccountRiskLimitField::AccountRiskMaxPosition) != 0)
+    {
+      l.maxPositionQty = r.maxPositionQty;
+    }
+  }
+  const AccountLimits* accountLimits(uint64_t account) const noexcept
+  {
+    auto it = accountLimits_.find(account);
+    return it == accountLimits_.end() ? nullptr : &it->second;
+  }
+  const std::unordered_map<uint64_t, AccountLimits>& accountLimitsTable() const noexcept
+  {
+    return accountLimits_;
+  }
+  void restoreAccountLimits(const std::unordered_map<uint64_t, AccountLimits>& m)
+  {
+    accountLimits_ = m;
+  }
+  uint64_t hashAccountLimits(uint64_t h) const
+  {
+    for (uint64_t acct : sortedKeysOf(accountLimits_))
+    {
+      const AccountLimits& l = accountLimits_.at(acct);
+      h = mix(h, 0xB00EU);
+      h = mix(h, acct);
+      h = mix(h, static_cast<uint64_t>(l.maxOrderQty.raw()));
+      h = mix(h, static_cast<uint64_t>(l.maxOrderNotional.raw()));
+      h = mix(h, l.maxOpenOrders);
+      h = mix(h, static_cast<uint64_t>(l.maxPositionQty.raw()));
+    }
+    return h;
+  }
+  // The snapshot half: one record per account, every field carried, so the
+  // loader rebuilds the entry whole through the live submit path.
+  void writeAccountLimits(Journal& out, SymbolId symbol, int64_t ts) const
+  {
+    for (uint64_t acct : sortedKeysOf(accountLimits_))
+    {
+      const AccountLimits& l = accountLimits_.at(acct);
+      SetAccountRiskLimits r;
+      r.symbol = symbol;
+      r.fields = AccountRiskLimitField::AccountRiskFatFinger |
+                 AccountRiskLimitField::AccountRiskMaxOpenOrders |
+                 AccountRiskLimitField::AccountRiskMaxPosition;
+      r.account = acct;
+      r.maxOrderQty = l.maxOrderQty;
+      r.maxOrderNotional = l.maxOrderNotional;
+      r.maxOpenOrders = l.maxOpenOrders;
+      r.maxPositionQty = l.maxPositionQty;
+      out.append(InboundCommand{r}, ts);
+    }
+  }
+  // The position cap that binds `account` on this symbol: the tighter of the
+  // symbol's and the account's, 0 when neither is set.
+  int64_t positionCapRaw(uint64_t account, const SymbolConfig& cfg) const noexcept
+  {
+    const int64_t sym = cfg.maxPositionQty.raw();
+    const AccountLimits* l = accountLimits(account);
+    const int64_t acct = l == nullptr ? 0 : l->maxPositionQty.raw();
+    if (sym <= 0)
+    {
+      return acct;
+    }
+    if (acct <= 0)
+    {
+      return sym;
+    }
+    return acct < sym ? acct : sym;
+  }
+
   // ---- checkpoint: credit's own records ----------------------------------
   // The admission table and the reservation table are hashed and written at
   // four different points of the engine's traversal -- admission leads the
@@ -529,6 +625,7 @@ class Credit
   void copyStateFrom(const Credit& other)
   {
     admission_ = other.admission_;
+    accountLimits_ = other.accountLimits_;
     reserve_ = other.reserve_;
   }
 
@@ -539,9 +636,16 @@ class Credit
   // the question is asked, which on a dry run is the position plus whatever
   // the sweep has already planned for it. `reason` names the limit that cut it
   // (meaningful only when the result is below `want`).
+  // The symbol's cap alone: what every caller that names no account gets.
   int64_t legFillLimit(int64_t posQtyRaw, Side side, bool reduceOnly, int64_t want,
                        CancelReason& reason, const SymbolConfig& cfg) const
   {
+    return legFillLimit(posQtyRaw, side, reduceOnly, want, reason, cfg, cfg.maxPositionQty.raw());
+  }
+  int64_t legFillLimit(int64_t posQtyRaw, Side side, bool reduceOnly, int64_t want,
+                       CancelReason& reason, const SymbolConfig& cfg, int64_t capRaw) const
+  {
+    (void)cfg;  // the cap arrives resolved (positionCapRaw): the symbol's, the account's, or the tighter
     int64_t allowed = want;
     if (reduceOnly)
     {
@@ -557,13 +661,12 @@ class Credit
         reason = CancelReason::ReduceOnlyNotReducing;
       }
     }
-    if (!cfg.maxPositionQty.isZero())
+    if (capRaw > 0)
     {
       // Room left before the RESULTING position breaches the cap. Checking the
       // incoming order alone (the admission gate) lets several orders, each
       // under the cap, settle into a position past it.
-      const int64_t room = (side == Side::BUY) ? cfg.maxPositionQty.raw() - posQtyRaw
-                                               : cfg.maxPositionQty.raw() + posQtyRaw;
+      const int64_t room = (side == Side::BUY) ? capRaw - posQtyRaw : capRaw + posQtyRaw;
       if (room < allowed)
       {
         allowed = room;
@@ -581,16 +684,24 @@ class Credit
                           int64_t takerPosQtyRaw, Side takerSide, bool takerReduceOnly,
                           Quantity want, const SymbolConfig& cfg) const
   {
+    return pairFillLimit(makerPosQtyRaw, makerSide, makerReduceOnly, takerPosQtyRaw, takerSide,
+                         takerReduceOnly, want, cfg, /*makerAccount=*/0, /*takerAccount=*/0);
+  }
+  FillLimit pairFillLimit(int64_t makerPosQtyRaw, Side makerSide, bool makerReduceOnly,
+                          int64_t takerPosQtyRaw, Side takerSide, bool takerReduceOnly,
+                          Quantity want, const SymbolConfig& cfg, uint64_t makerAccount,
+                          uint64_t takerAccount) const
+  {
     FillLimit out;
     out.qty = want;
     out.makerQty = want;
     out.takerQty = want;
     CancelReason makerReason = CancelReason::ReduceOnlyNotReducing;
     CancelReason takerReason = CancelReason::ReduceOnlyNotReducing;
-    const int64_t makerAllowed =
-        legFillLimit(makerPosQtyRaw, makerSide, makerReduceOnly, want.raw(), makerReason, cfg);
-    const int64_t takerAllowed =
-        legFillLimit(takerPosQtyRaw, takerSide, takerReduceOnly, want.raw(), takerReason, cfg);
+    const int64_t makerAllowed = legFillLimit(makerPosQtyRaw, makerSide, makerReduceOnly, want.raw(),
+                                              makerReason, cfg, positionCapRaw(makerAccount, cfg));
+    const int64_t takerAllowed = legFillLimit(takerPosQtyRaw, takerSide, takerReduceOnly, want.raw(),
+                                              takerReason, cfg, positionCapRaw(takerAccount, cfg));
     out.makerQty = Quantity::fromRaw(makerAllowed);
     out.takerQty = Quantity::fromRaw(takerAllowed);
     // The maker is the leg reported as blocked when both are: it is the one the
@@ -629,6 +740,7 @@ class Credit
   // "everything permitted", so an engine that was never given profiles behaves
   // exactly as before.
   std::unordered_map<uint64_t, AdmissionProfile> admission_;
+  std::unordered_map<uint64_t, AccountLimits> accountLimits_;
 
   uint64_t admissionRejects_{0};  // observability: a counterparty sending what it may not
 
