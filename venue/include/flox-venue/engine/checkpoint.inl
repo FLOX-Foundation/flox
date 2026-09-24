@@ -212,6 +212,15 @@ uint64_t MatchingEngine<Book>::hashBookAndStops(uint64_t h) const
     h = mix(h, o.lastLook ? 1U : 0U);
     h = mix(h, o.reduceOnly ? 1U : 0U);
     h = mix(h, static_cast<uint64_t>(o.expiryNs.raw()));
+    // The deadline the engine actually sweeps, not only the one the record
+    // carries: a conditional whose expiry never reached the expiry book never
+    // expires, and folding the record's own field alone made that invisible.
+    // Only when set, the "zero == absent" rule the rest of the traversal
+    // follows -- a book without GTD conditionals hashes as it did before.
+    if (const SeqNanos due = expiryOf(o.id); static_cast<bool>(due))
+    {
+      h = mix(h, static_cast<uint64_t>(due.raw()));
+    }
     h = mix(h, o.ocoGroup);
     if (o.clientOrderId != 0)
     {

@@ -380,6 +380,71 @@ TEST(VenueCheckpoint, EngineSnapshotRoundTrip)
   std::remove(path.c_str());
 }
 
+// A good-till-date CONDITIONAL order is registered in the expiry book when it
+// is admitted -- a stop whose deadline passes before it ever triggers has to
+// expire, not wait forever for a price that may never come. Restoring one put
+// it back in the stop book and nowhere else, so the recovered venue held a
+// GTD stop that could never expire; and the state hash could not see the
+// difference, because the stop section folded the deadline off the RECORD
+// rather than off the expiry book the engine actually sweeps.
+TEST(VenueCheckpoint, ARestoredGtdStopStillExpires)
+{
+  const std::string path = pidPath("checkpoint_gtd_stop") + ".snap";
+  std::remove(path.c_str());
+
+  const int64_t deadline = 50'000'000;
+
+  MatchingEngine<MatchingBook> eng(cfg(), [](const OutboundEvent&) {});
+  NewOrder stop = limit(1, Side::SELL, 0.0, 2.0, 1);
+  stop.type = OrderType::STOP_MARKET;
+  stop.triggerPrice = px(90.0);
+  stop.tif = TimeInForce::GTD;
+  stop.expiryNs = SeqNanos::fromRaw(deadline);
+  eng.submit(InboundCommand{stop}, 1000);
+
+  {
+    Journal out(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    eng.writeSnapshot(out);
+    out.flush();
+  }
+
+  std::vector<OutboundEvent> recEv;
+  MatchingEngine<MatchingBook> rec(cfg(), [&](const OutboundEvent& e)
+                                   { recEv.push_back(e); });
+  for (const auto& [ts, cmd] : Journal::loadTimed(path))
+  {
+    ASSERT_TRUE(rec.applySnapshotRecord(cmd, ts)) << "record " << cmd.index();
+  }
+  EXPECT_EQ(rec.stateHash(), eng.stateHash());
+
+  // Past the deadline on both: the sweep runs before the command.
+  std::vector<OutboundEvent> liveEv;
+  MatchingEngine<MatchingBook> live(cfg(), [&](const OutboundEvent& e)
+                                    { liveEv.push_back(e); });
+  live.submit(InboundCommand{stop}, 1000);
+  live.submit(InboundCommand{TimeTick{SYM}}, deadline + 1000);
+  rec.submit(InboundCommand{TimeTick{SYM}}, deadline + 1000);
+
+  const auto expired = [](const std::vector<OutboundEvent>& ev)
+  {
+    for (const auto& e : ev)
+    {
+      if (const auto* c = std::get_if<OrderCanceled>(&e))
+      {
+        if (c->id == 1 && c->reason == CancelReason::Expired)
+        {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  EXPECT_TRUE(expired(liveEv)) << "the live engine expires its own GTD stop";
+  EXPECT_TRUE(expired(recEv)) << "the restored GTD stop never expires";
+  EXPECT_EQ(rec.stateHash(), live.stateHash());
+  std::remove(path.c_str());
+}
+
 // The core differential guarantee: a long random session with a checkpoint at
 // an arbitrary point recovers (snapshot + tail segments) into EXACTLY the
 // state a full-history replay produces -- state hash equal AND the event hash
