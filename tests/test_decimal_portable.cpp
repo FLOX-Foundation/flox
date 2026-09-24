@@ -34,6 +34,16 @@
 #include <utility>
 #include <vector>
 
+// The forced build has to be provably the software path, not merely a build
+// that happens to produce the same numbers: with kPortablePath pinned to
+// native, every test below still passes, so nothing at runtime can tell the
+// two binaries apart. This is the one check that can.
+#if FLOX_FORCE_PORTABLE_INT128
+static_assert(flox::Price::kPortablePath, "FLOX_FORCE_PORTABLE_INT128 must select the software path");
+#elif defined(__SIZEOF_INT128__)
+static_assert(!flox::Price::kPortablePath, "a toolchain with __int128 must take the native path");
+#endif
+
 using namespace flox;
 
 namespace
