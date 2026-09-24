@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/messages.h"
@@ -488,7 +489,7 @@ class LastLook
     for (uint64_t hid : sortedIds())
     {
       const Held& x = held_.at(hid);
-      h = mix(h, 0xB004U);
+      h = mix(h, hash_tags::kHold);
       h = mix(h, x.id);
       h = mix(h, x.taker);
       h = mix(h, x.takerAccount);

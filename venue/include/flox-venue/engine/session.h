@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/messages.h"
 
@@ -293,12 +294,12 @@ class Session
     h = mix(h, auction_ ? 1U : 0U);
     if (delisted_)
     {
-      h = mix(h, 0xB00EU);
+      h = mix(h, hash_tags::kSessionDelisted);
     }
     h = mix(h, static_cast<uint64_t>(haltUntil_.raw()));
     if (closed_)
     {
-      h = mix(h, 0xB00AU);
+      h = mix(h, hash_tags::kSessionClosed);
       h = mix(h, 1U);
     }
     return h;

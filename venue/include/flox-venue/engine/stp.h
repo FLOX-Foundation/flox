@@ -9,6 +9,7 @@
 #pragma once
 
 #include "flox-venue/engine/sorted_keys.h"
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/messages.h"
@@ -69,7 +70,7 @@ class StpState
   {
     for (OrderId id : sortedKeysOf(modes_))
     {
-      h = mix(h, 0xB00CU);
+      h = mix(h, hash_tags::kOrderStp);
       h = mix(h, static_cast<uint64_t>(id));
       h = mix(h, static_cast<uint64_t>(modes_.at(id)));
     }
@@ -94,7 +95,7 @@ class StpState
   {
     for (uint64_t acct : sortedKeysOf(groups))
     {
-      h = mix(h, 0xB00BU);
+      h = mix(h, hash_tags::kStpGroup);
       h = mix(h, acct);
       h = mix(h, groups.at(acct));
     }

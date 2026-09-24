@@ -22,6 +22,7 @@
 #include "flox-venue/engine/quote.h"
 #include "flox-venue/engine/session.h"
 #include "flox-venue/engine/sorted_keys.h"
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/engine/stp.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"

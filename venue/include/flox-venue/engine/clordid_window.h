@@ -9,6 +9,7 @@
 #pragma once
 
 #include "flox-venue/engine/sorted_keys.h"
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/messages.h"
@@ -88,7 +89,7 @@ class ClOrdIdWindow
   {
     for (uint64_t acct : sortedKeysOf(accounts_))
     {
-      h = mix(h, 0xB007U);
+      h = mix(h, hash_tags::kClOrdIdAccount);
       h = mix(h, acct);
       const Generations& seen = accounts_.at(acct);
       for (uint32_t g = 0; g < 2; ++g)
