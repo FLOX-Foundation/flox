@@ -294,7 +294,10 @@ class SimulatedExecutor : public IOrderExecutor
   // `resting` says the order is already sitting in the book rather than
   // arriving now. A resting limit order trades at the price it posted and
   // provides the liquidity; an arriving one crosses and pays the touch.
-  bool tryFillOrder(Order& order, bool resting);
+  // `triggerBoundRaw` (0 = none) is the price that armed a conditional order:
+  // its fill may be worse than that price but never better, whatever the
+  // market state the trigger happened to be evaluated against says.
+  bool tryFillOrder(Order& order, bool resting, int64_t triggerBoundRaw = 0);
   void processPendingOrders(SymbolId symbol, const MarketState& state);
   void processConditionalOrders(SymbolId symbol, const MarketState& state);
   void updateTrailingStops(SymbolId symbol, Price currentPrice);

@@ -1679,7 +1679,7 @@ SimulatedExecutor::LadderWalk SimulatedExecutor::consumeLadder(SymbolId symbol, 
   return walk;
 }
 
-bool SimulatedExecutor::tryFillOrder(Order& order, bool resting)
+bool SimulatedExecutor::tryFillOrder(Order& order, bool resting, int64_t triggerBoundRaw)
 {
   const MarketState& state = getMarketState(order.symbol);
   int64_t fillPriceRaw = 0;
@@ -1744,6 +1744,21 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting)
     isMaker = true;
   }
 
+  // A stop-limit armed at a price past its own limit cannot trade there: it
+  // rests instead, which is what a venue does with a stop-limit triggered on a
+  // gap. Decided before the walk, so a refused fill does not eat depth on its
+  // way out.
+  if (triggerBoundRaw != 0 && order.type != OrderType::MARKET)
+  {
+    const bool beyondLimit =
+        (order.side == Side::BUY && triggerBoundRaw > order.price.raw()) ||
+        (order.side == Side::SELL && triggerBoundRaw < order.price.raw());
+    if (beyondLimit)
+    {
+      return false;
+    }
+  }
+
   // A taker walks the visible ladder instead of printing its whole size at the
   // touch, and what it ate is gone for the next order in this same step. The
   // fill is reported once, at the volume-weighted price of the walk.
@@ -1765,6 +1780,19 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting)
                          ? (walk.notional / Quantity::fromRaw(walk.takenRaw)).raw()
                          : walk.worstPriceRaw;
     }
+  }
+
+  // A conditional order may not print better than the price that armed it. On
+  // bar data the trigger is tested against a synthetic bid = ask = extreme, so
+  // without this bound a take-profit sell at 105 books the bar's 110 high -- a
+  // price the order had no claim on, since it only existed once the bar was
+  // over. The bound is one-sided: a stop armed at 95 on a bar that traded to
+  // 90 still pays 90, because that is the adverse side and the order really
+  // was in the market for it.
+  if (triggerBoundRaw != 0)
+  {
+    fillPriceRaw = (order.side == Side::BUY) ? std::max(fillPriceRaw, triggerBoundRaw)
+                                             : std::min(fillPriceRaw, triggerBoundRaw);
   }
 
   // Apply slippage only to market-style fills (limit makers trade at posted price).
@@ -2655,6 +2683,12 @@ void SimulatedExecutor::triggerConditionalOrder(Order& order)
 {
   emitEvent(OrderEventStatus::TRIGGERED, order);
 
+  // The price that armed the order bounds how good its fill may be. A trailing
+  // stop carries its moving trigger in the trailing state, which the caller
+  // has already copied onto the order by the time it fires; an order with no
+  // trigger price at all carries no bound.
+  const int64_t triggerBoundRaw = order.triggerPrice.raw();
+
   if (order.type == OrderType::STOP_MARKET || order.type == OrderType::TAKE_PROFIT_MARKET ||
       order.type == OrderType::TRAILING_STOP)
   {
@@ -2667,7 +2701,7 @@ void SimulatedExecutor::triggerConditionalOrder(Order& order)
 
   // A triggered conditional order enters the book now, so it is the aggressor
   // if it crosses.
-  if (!tryFillOrder(order, /*resting=*/false))
+  if (!tryFillOrder(order, /*resting=*/false, triggerBoundRaw))
   {
     _pending_orders.push_back(order);
   }
@@ -2706,6 +2740,14 @@ void SimulatedExecutor::processConditionalOrders(SymbolId symbol, const MarketSt
           if (id == order.id)
           {
             triggered = checkTrailingStopTrigger(order, trailing, state);
+            if (triggered)
+            {
+              // The trailing trigger lives in the trailing state, not on the
+              // order. Copy it across so the TRIGGERED event reports the price
+              // that armed the order and the fill is bounded by it like any
+              // other stop's.
+              order.triggerPrice = trailing.currentTrigger;
+            }
             break;
           }
         }
