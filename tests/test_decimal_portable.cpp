@@ -29,6 +29,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <random>
 #include <utility>
@@ -126,6 +127,46 @@ TEST(DecimalPortable, PriceByPriceAgreesWithTheCrossTypeOperator)
 // of it here is a sign flip: an inventory walked down past INT64_MIN reads
 // back as a long book.
 
+// Two builds, two halves, same convention as tests/test_decimal.cpp: with
+// FLOX_SCALE_CHECKS on (any build without NDEBUG, CI's sanitizer jobs) the
+// overflow trips the assert before saturation runs; with it off, saturation
+// is what runs and has to give the defined, non-wrapped answer.
+#if FLOX_SCALE_CHECKS
+
+TEST(DecimalOverflow, MinusEqualsTripsTheAssertWithScaleChecksOn)
+{
+  EXPECT_DEATH(
+      {
+        Volume v = Volume::fromRaw(kMin + 5);
+        v -= Volume::fromRaw(10);
+      },
+      "overflow");
+}
+
+TEST(DecimalOverflow, BinaryPlusAndMinusTripTheAssertWithScaleChecksOn)
+{
+  EXPECT_DEATH({ (void)(Volume::fromRaw(kMax - 3) + Volume::fromRaw(100)); }, "overflow");
+  EXPECT_DEATH({ (void)(Volume::fromRaw(kMin + 3) - Volume::fromRaw(100)); }, "overflow");
+  EXPECT_DEATH({ (void)(Volume::fromRaw(kMax - 3) - Volume::fromRaw(-100)); }, "overflow");
+}
+
+TEST(DecimalOverflow, ScalarMultiplyTripsTheAssertWithScaleChecksOn)
+{
+  EXPECT_DEATH({ (void)(Quantity::fromRaw(kMax / 2 + 10) * int64_t{4}); }, "overflow");
+  EXPECT_DEATH({ (void)(int64_t{4} * Quantity::fromRaw(kMax / 2 + 10)); }, "overflow");
+  EXPECT_DEATH({ (void)(Quantity::fromRaw(kMin / 2 - 10) * int64_t{4}); }, "overflow");
+  EXPECT_DEATH({ (void)(int64_t{-4} * Quantity::fromRaw(kMax / 2 + 10)); }, "overflow");
+}
+
+TEST(DecimalOverflow, ScalarDivideByMinusOneTripsTheAssertAtTheBoundaryWithScaleChecksOn)
+{
+  EXPECT_DEATH({ (void)(Quantity::fromRaw(opaque(kMin)) / opaque(-1)); }, "overflow");
+  EXPECT_EQ((Quantity::fromRaw(opaque(-5)) / opaque(-1)).raw(), 5);
+  EXPECT_EQ((Quantity::fromRaw(opaque(kMax)) / opaque(-1)).raw(), kMin + 1);
+}
+
+#else
+
 TEST(DecimalOverflow, MinusEqualsSaturatesInsteadOfWrapping)
 {
   Volume v = Volume::fromRaw(kMin + 5);
@@ -164,6 +205,8 @@ TEST(DecimalOverflow, ScalarDivideByMinusOneSaturatesAtTheBoundary)
   EXPECT_EQ((Quantity::fromRaw(opaque(-5)) / opaque(-1)).raw(), 5);
   EXPECT_EQ((Quantity::fromRaw(opaque(kMax)) / opaque(-1)).raw(), kMin + 1);
 }
+
+#endif
 
 TEST(DecimalOverflow, OrdinaryValuesAreUntouchedByTheChecks)
 {
@@ -220,6 +263,16 @@ std::pair<Quantity, Volume> consumeOneHugeLevel(bool asks)
 }
 }  // namespace
 
+#if FLOX_SCALE_CHECKS
+
+TEST(OrderBookNotional, ADeepConsumeTripsTheAssertWithScaleChecksOn)
+{
+  EXPECT_DEATH({ (void)consumeOneHugeLevel(true); }, "overflow");
+  EXPECT_DEATH({ (void)consumeOneHugeLevel(false); }, "overflow");
+}
+
+#else
+
 TEST(OrderBookNotional, ADeepAskConsumeSaturatesInsteadOfGoingNegative)
 {
   const auto [filled, notional] = consumeOneHugeLevel(true);
@@ -235,6 +288,8 @@ TEST(OrderBookNotional, ADeepBidConsumeSaturatesInsteadOfGoingNegative)
   EXPECT_GT(notional.raw(), 0) << "the 128-bit notional wrapped into a negative Volume";
   EXPECT_EQ(notional.raw(), kMax);
 }
+
+#endif
 
 // The ordinary case still adds up, on both paths.
 TEST(OrderBookNotional, AnOrdinaryConsumeIsUnchanged)
@@ -301,10 +356,21 @@ TEST(DecimalPaths, EverySignCombinationAgrees)
       const Price a = Price::fromRaw(x);
       const Price b = Price::fromRaw(y);
       EXPECT_EQ(a.mulPath<true>(b).raw(), a.mulPath<false>(b).raw()) << "x=" << x << " y=" << y;
-      if (y != 0)
+      if (y == 0)
       {
-        EXPECT_EQ(a.divPath<true>(b).raw(), a.divPath<false>(b).raw()) << "x=" << x << " y=" << y;
+        continue;
       }
+#if FLOX_SCALE_CHECKS
+      // x * Scale / y past the int64 ceiling trips the overflow assert in a
+      // checked build (6e12 / 1 does); that half of the policy has its own
+      // tests above, and here it would only abort the comparison.
+      if (static_cast<long double>(std::llabs(x)) * Price::Scale / std::llabs(y) >
+          static_cast<long double>(kMax))
+      {
+        continue;
+      }
+#endif
+      EXPECT_EQ(a.divPath<true>(b).raw(), a.divPath<false>(b).raw()) << "x=" << x << " y=" << y;
     }
   }
 }
