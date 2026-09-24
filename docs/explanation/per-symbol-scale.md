@@ -53,7 +53,10 @@ runtime instead of in the type system:
 Fixed-point multiply and divide narrow their 128-bit intermediate back to
 `int64` through a checked cast. An out-of-range result trips the check in a
 debug build and clamps to the boundary otherwise, rather than wrapping into a
-wrong value.
+wrong value. A toolchain with no 128-bit integer at all -- MSVC -- gets the
+same arithmetic from a software multiply-and-divide rather than a narrower
+approximation of it; `FLOX_FORCE_PORTABLE_INT128=1` builds that path
+everywhere so it is tested and not merely present.
 
 ## Crossing into default-scale components
 

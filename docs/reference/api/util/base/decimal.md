@@ -58,6 +58,50 @@ Every fixed-point division checks its divisor first:
 This covers `Decimal / Decimal`, `Decimal / int64_t`, and the
 `Volume / Quantity` and `Volume / Price` overloads in `flox/common.h`.
 
+## Overflow
+
+Signed integer overflow is undefined behaviour in C++, not a wrap: the same
+accumulation has been observed to flip sign at `-O0` and to vanish at higher
+optimization levels, because the compiler is entitled to assume it cannot
+happen. Every arithmetic operator on a `Decimal` therefore checks its result
+instead of letting it happen:
+
+* `+`, `-`, `+=`, `-=` and the scalar `* int64_t` (both operand orders) detect
+  overflow through unsigned arithmetic and saturate at `INT64_MAX` /
+  `INT64_MIN`.
+* Fixed-point `*` and `/` carry the product at full width and only narrow the
+  quotient, which fits; an out-of-range quotient saturates the same way.
+* `Decimal / int64_t` covers `INT64_MIN / -1`, the one division that
+  overflows.
+* In a checked build (`FLOX_SCALE_CHECKS`) each of these trips the guardrail
+  first, so a debug or CI run stops at the operation rather than carrying a
+  boundary value forward.
+
+A value at the boundary is not a plausible price, quantity or notional, which
+is the point: it is visible in a log, where a wrapped negative notional is
+not.
+
+## Toolchains without a 128-bit integer
+
+Fixed-point `*`, `/` and `rescale()` want a 128-bit intermediate. GCC and
+Clang have `__int128`; MSVC does not, and those builds use the software
+multiply-and-divide in `flox/util/base/scale_check.h`. Both paths produce the
+same numbers, including the rounding (toward zero) and the saturation.
+
+That second path is the one nobody's machine compiles, so it is built
+deliberately:
+
+* `FLOX_FORCE_PORTABLE_INT128=1` compiles the native intermediate out of an
+  otherwise ordinary build. `tests/test_decimal_portable` is built twice, once
+  each way, so the MSVC arithmetic runs on macOS and Linux as well.
+* `Decimal::mulPath<Portable>`, `divPath<Portable>` and
+  `rescalePath<Portable>` take the choice as a template argument, so a single
+  binary can check the two against each other; `mulDivI64As<Portable>` is the
+  same switch one level down.
+
+Nothing but a test build should define the macro: the software path is slower
+and computes exactly the same result.
+
 ## Doubles outside the range
 
 `fromDouble` scales its argument before narrowing it to `int64_t`. A cast whose

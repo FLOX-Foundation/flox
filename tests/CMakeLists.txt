@@ -23,6 +23,26 @@ function(add_flox_test name)
   add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
+# The same test source built a second time under extra compile definitions.
+# The fixed-point suite uses it to build itself with FLOX_FORCE_PORTABLE_INT128,
+# so the software arithmetic every MSVC build runs is compiled and run on
+# macOS and Linux too, instead of waiting for a Windows CI job to find out.
+function(add_flox_test_variant name source)
+  add_executable(${name} ${source}.cpp)
+  target_compile_definitions(${name} PRIVATE FLOX_UNIT_TEST ${ARGN})
+  target_link_libraries(${name}
+    PRIVATE ${FLOX}
+    GTest::gtest
+    GTest::gtest_main
+    GTest::gmock
+    GTest::gmock_main
+  )
+  if(TARGET Threads::Threads)
+    target_link_libraries(${name} PRIVATE Threads::Threads)
+  endif()
+  add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
 add_flox_test(test_book_update_bus)
 add_flox_test(test_socket_portability)
 add_flox_test(test_thread_body)
@@ -41,6 +61,11 @@ add_flox_test(test_multi_feed_clock)
 add_flox_test(test_connection_factory)
 add_flox_test(test_connector_manager)
 add_flox_test(test_decimal)
+# Built twice: once the way this toolchain would, once with the native 128-bit
+# intermediate compiled out, so Decimal's MSVC arithmetic is run here too.
+add_flox_test(test_decimal_portable)
+add_flox_test_variant(test_decimal_portable_forced test_decimal_portable
+                      FLOX_FORCE_PORTABLE_INT128=1)
 add_flox_test(test_math_fastdiv)
 add_flox_test(test_scale)
 add_flox_test(test_u256)
