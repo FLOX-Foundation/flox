@@ -15,6 +15,11 @@
  * number is rejected, not silently coerced. Required enum/quantity fields are
  * strict -- a missing or invalid Side (54), a present-but-unknown OrdType (40),
  * or a missing OrderQty (38) rejects the message rather than guessing a default.
+ * The id fields FIX types as String -- ClOrdID (11), OrigClOrdID (41), Account
+ * (1), Symbol (55) -- are held to the same rule through fix_field_parse.h: a
+ * value this venue cannot carry as an integer is refused naming the field,
+ * never coerced to 0 or to UINT64_MAX where the next sender would land on top
+ * of it. Every refusal fills in the `reason` of the two-argument decode().
  * Outbound prices/quantities serialise exactly (100.25, not 100.250000).
  *
  * Framing, field parsing, the checksum, the session header and the SendingTime
@@ -26,6 +31,7 @@
 #pragma once
 
 #include "flox-venue/decimal_wire.h"
+#include "flox-venue/fix_field_parse.h"
 #include "flox-venue/messages.h"
 
 #include "flox/connector/fix/fix_wire.h"
@@ -34,6 +40,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -96,18 +103,44 @@ class FixCodec
   // immediately after it), so a later MassQuote replaces the very legs a
   // QuoteCancel would have taken down -- the "replaced atomically, same ids"
   // contract QuoteLadder already documents.
+  // The (account, symbol) pairs a quoting id block can be derived for. The
+  // fold is positional rather than arithmetic, so each field needs a width:
+  // Symbol keeps all 32 bits SymbolId has, and Account gets 24 -- 16,777,216
+  // accounts on one venue. A pair outside that is refused by decode() naming
+  // Account(1), never folded modulo anything: wrapping is how two makers end
+  // up sharing one ladder, which is the failure this range exists to make
+  // impossible rather than unlikely.
+  static constexpr uint64_t kQuoteAccountLimit = 1ULL << 24;
+
+  static constexpr bool quoteIdBlockInRange(uint64_t accountId) noexcept
+  {
+    return accountId < kQuoteAccountLimit;
+  }
+
+  // Defined for a pair quoteIdBlockInRange accepts; decode() refuses the rest
+  // before reaching here.
   static OrderId quoteLadderIdBase(uint64_t accountId, SymbolId symbol) noexcept
   {
     constexpr uint64_t kBlock = 2ULL * kQuoteLadderLevels;
-    // Folded with distinct multipliers so two different (account, symbol)
-    // pairs land in different blocks; offset above a range a hand-assigned
-    // ClOrdID (NewOrderSingle's 11, reused as the venue OrderId) would
-    // plausibly use, purely so the two ranges read as distinct in a capture
-    // -- a quotes-only session's DenyNewOrder profile is what actually keeps
-    // them from ever colliding for real.
+    // Account in the high bits, symbol in the low 32, one block width per
+    // pair: injective by construction over the whole range above. The
+    // multiply-and-add this replaces (account * 4099 + symbol) was not --
+    // (1, 4099) and (2, 0) both folded to 8198 and shared sixteen ids, so
+    // either maker's QuoteCancel took the other's ladder down -- and no
+    // choice of multiplier fixes that, it only moves which pairs collide.
+    //
+    // The marker keeps the block above a range a hand-assigned ClOrdID
+    // (NewOrderSingle's 11, reused as the venue OrderId) would plausibly use,
+    // purely so the two ranges read as distinct in a capture -- a quotes-only
+    // session's DenyNewOrder profile is what actually keeps them from ever
+    // colliding for real.
     constexpr uint64_t kMarker = 0x51'00000000ULL;  // 'Q'
-    return static_cast<OrderId>(kMarker +
-                                (accountId * 4099ULL + static_cast<uint64_t>(symbol)) * kBlock);
+    constexpr uint64_t kSymbolBits = 32;
+    static_assert((((kQuoteAccountLimit - 1) << kSymbolBits) | 0xFFFFFFFFULL) <=
+                      (std::numeric_limits<uint64_t>::max() - kMarker) / kBlock,
+                  "the widest pair in range must still fit above the marker without wrapping");
+    return static_cast<OrderId>(
+        kMarker + (((accountId << kSymbolBits) | static_cast<uint64_t>(symbol)) * kBlock));
   }
 
   // FIX integrity: if a CheckSum (tag 10) is present it MUST be correct --
@@ -116,7 +149,22 @@ class FixCodec
   static bool checksumValid(const std::string& msg) { return flox::fix::checksumValid(msg); }
 
   // ---- inbound: FIX message -> InboundCommand ----
+  //
+  // A refusal says WHAT it refused: `*reason` is set on every rejection to
+  // "<FixFieldName>(<tag>): <what was wrong>", which the session layer puts
+  // in the Text (58) of the answer it sends back. "Malformed" tells a market
+  // maker nothing about which of its tags to fix, and a codec that knows the
+  // tag and drops it on the floor is the reason it could not.
+  //
+  // The one-argument overload stays: it is the decoder hook the gateways
+  // install (the same shape the SBE decoder has), and a caller with nowhere
+  // to put a reason should not have to invent a string to get an answer.
   static std::optional<InboundCommand> decode(const std::string& msg)
+  {
+    return decode(msg, nullptr);
+  }
+
+  static std::optional<InboundCommand> decode(const std::string& msg, std::string* reason)
   {
     std::unordered_map<int, std::string> f = parseFields(msg);
 
@@ -124,16 +172,29 @@ class FixCodec
     { return f.count(t) != 0; };
     auto s = [&](int t)
     { return has(t) ? f[t] : std::string{}; };
+    auto refuse = [&](const char* name, int tag, const char* why) -> std::optional<InboundCommand>
+    {
+      if (reason != nullptr)
+      {
+        *reason = std::string(name) + "(" + std::to_string(tag) + "): " + why;
+      }
+      return std::nullopt;
+    };
 
     if (!checksumValid(msg))
     {
-      return std::nullopt;  // checksum mismatch -> reject
+      return refuse("CheckSum", 10, "does not match the bytes of the message");
     }
 
-    auto u64 = [&](int t)
-    { return static_cast<uint64_t>(std::strtoull(s(t).c_str(), nullptr, 10)); };
-    auto sym = [&](int t)
-    { return static_cast<SymbolId>(std::strtoul(s(t).c_str(), nullptr, 10)); };
+    // The id fields FIX types as String (ClOrdID, OrigClOrdID, Account,
+    // Symbol) and this venue carries as integers. Strict both ways: a value
+    // the integer cannot hold is refused naming the field, never coerced, so
+    // two senders can never be handed one id or one book. See
+    // fix_field_parse.h for what "cannot hold" covers.
+    auto u64 = [&](int t, uint64_t& out)
+    { return fixfield::parseU64(s(t), out); };
+    auto sym = [&](int t, SymbolId& out)
+    { return fixfield::parseU32(s(t), out); };
     // Strict fixed-point parse of a decimal FIX field; false if the tag is
     // absent or the value is not a clean decimal.
     auto fix = [&](int t, int64_t& out)
@@ -143,10 +204,26 @@ class FixCodec
     if (type == "D")  // NewOrderSingle
     {
       NewOrder o;
-      o.id = u64(11);
-      o.clientOrderId = u64(11);
-      o.symbol = sym(55);
-      o.accountId = u64(1);
+      // ClOrdID (11) becomes the venue order id, so a name this venue cannot
+      // carry is refused rather than folded onto 0 -- where the next client
+      // with an unparseable name would land too, on top of this one's order.
+      if (!has(11) || !u64(11, o.id))
+      {
+        return refuse("ClOrdID", 11, "required, and must be a decimal integer below 2^64");
+      }
+      o.clientOrderId = o.id;
+      // Symbol (55) and Account (1) stay optional -- a shard already knows
+      // its symbol and the session stamps the account -- but a value that IS
+      // present has to parse: a truncated Symbol routes to another
+      // instrument's book, a truncated Account bills another client.
+      if (has(55) && !sym(55, o.symbol))
+      {
+        return refuse("Symbol", 55, "must be a decimal integer below 2^32");
+      }
+      if (has(1) && !u64(1, o.accountId))
+      {
+        return refuse("Account", 1, "must be a decimal integer below 2^64");
+      }
 
       // Side (54) is required and must be Buy(1)/Sell(2) -- never a guessed default.
       const std::string side = s(54);
@@ -160,14 +237,14 @@ class FixCodec
       }
       else
       {
-        return std::nullopt;
+        return refuse("Side", 54, "required, and must be 1 (Buy) or 2 (Sell)");
       }
 
       // OrderQty (38) required.
       int64_t qtyRaw;
       if (!fix(38, qtyRaw))
       {
-        return std::nullopt;
+        return refuse("OrderQty", 38, "required, and must be a plain decimal quantity");
       }
       o.quantity = Quantity::fromRaw(qtyRaw);
 
@@ -190,7 +267,7 @@ class FixCodec
             o.type = OrderType::STOP_LIMIT;
             break;
           default:
-            return std::nullopt;
+            return refuse("OrdType", 40, "names no order type this venue runs");
         }
       }
       else
@@ -204,7 +281,7 @@ class FixCodec
       {
         if (!fix(44, v))
         {
-          return std::nullopt;
+          return refuse("Price", 44, "not a plain decimal price");
         }
         o.price = Price::fromRaw(v);
       }
@@ -212,7 +289,7 @@ class FixCodec
       {
         if (!fix(99, v))
         {
-          return std::nullopt;
+          return refuse("StopPx", 99, "not a plain decimal price");
         }
         o.triggerPrice = Price::fromRaw(v);
       }
@@ -220,22 +297,61 @@ class FixCodec
       {
         if (!fix(111, v))
         {
-          return std::nullopt;
+          return refuse("MaxFloor", 111, "not a plain decimal quantity");
         }
         o.visibleQuantity = Quantity::fromRaw(v);  // MaxFloor -> iceberg peak
       }
 
-      switch (std::atoi(s(59).c_str()))  // TimeInForce (absent/other -> GTC)
+      // TimeInForce (59): absent -> GTC, the FIX default for a venue with no
+      // session schedule. Present must name one of the four this venue can
+      // actually honour: 1 GTC, 3 IOC, 4 FOK, 6 GTD. Day (0), AtTheOpening
+      // (2), GoodTillCrossing (5) and AtTheClose (7) are real FIX 4.4 values
+      // that end at a session boundary or an auction this venue does not
+      // run, and mapping them onto GTC rests an order the sender asked to
+      // live for one session -- forever. There is no TIF for post-only: that
+      // arrives as ExecInst (18) 6 below, the way FIX spells it.
+      if (has(59))
       {
-        case 3:
-          o.tif = TimeInForce::IOC;
-          break;
-        case 4:
-          o.tif = TimeInForce::FOK;
-          break;
-        default:
+        const std::string tif = s(59);
+        if (tif == "1")
+        {
           o.tif = TimeInForce::GTC;
-          break;
+        }
+        else if (tif == "3")
+        {
+          o.tif = TimeInForce::IOC;
+        }
+        else if (tif == "4")
+        {
+          o.tif = TimeInForce::FOK;
+        }
+        else if (tif == "6")
+        {
+          // GTD is the one TimeInForce carrying a second required field:
+          // without ExpireTime (126) there is no date to be good till, and
+          // the order used to rest as a GTC that never expires.
+          o.tif = TimeInForce::GTD;
+          if (!has(126))
+          {
+            return refuse("ExpireTime", 126, "required by TimeInForce 6 (GTD)");
+          }
+          int64_t expiry = 0;
+          if (!fixfield::parseUtcTimestampNs(s(126), expiry))
+          {
+            return refuse("ExpireTime", 126,
+                          "not a UTC FIX UTCTimestamp, YYYYMMDD-HH:MM:SS with optional .sss");
+          }
+          // The one legitimate crossing into sequencer time: SeqNanos is
+          // captured from the wall clock at ingestion, and an expiry the
+          // client wrote as a UTC instant is a wall-clock instant until the
+          // sequencer stamps it.
+          o.expiryNs = SeqNanos::fromRaw(expiry);
+        }
+        else
+        {
+          return refuse("TimeInForce", 59,
+                        "names no time in force this venue runs: 1 GTC, 3 IOC, 4 FOK, 6 GTD");
+        }
       }
       const std::string execInst = s(18);
       if (execInst.find('6') != std::string::npos)  // ParticipateDoNotInitiate
@@ -250,48 +366,60 @@ class FixCodec
     }
     if (type == "F")  // OrderCancelRequest
     {
-      if (!has(41))
-      {
-        return std::nullopt;  // OrigClOrdID required
-      }
       CancelOrder c;
-      c.id = u64(41);
-      c.symbol = sym(55);
-      c.accountId = u64(1);
+      // OrigClOrdID (41) names the order to cancel: an unparseable one that
+      // decoded to 0 would cancel whatever order 0 is, not this client's.
+      if (!has(41) || !u64(41, c.id))
+      {
+        return refuse("OrigClOrdID", 41, "required, and must be a decimal integer below 2^64");
+      }
+      if (has(55) && !sym(55, c.symbol))
+      {
+        return refuse("Symbol", 55, "must be a decimal integer below 2^32");
+      }
+      if (has(1) && !u64(1, c.accountId))
+      {
+        return refuse("Account", 1, "must be a decimal integer below 2^64");
+      }
       return InboundCommand{c};
     }
     if (type == "G")  // OrderCancelReplaceRequest
     {
-      if (!has(41))
-      {
-        return std::nullopt;  // OrigClOrdID required
-      }
       ModifyOrder m;
-      m.id = u64(41);
-      m.symbol = sym(55);
+      if (!has(41) || !u64(41, m.id))
+      {
+        return refuse("OrigClOrdID", 41, "required, and must be a decimal integer below 2^64");
+      }
+      if (has(55) && !sym(55, m.symbol))
+      {
+        return refuse("Symbol", 55, "must be a decimal integer below 2^32");
+      }
       if (has(44))
       {
         int64_t pr;
         if (!fix(44, pr))
         {
-          return std::nullopt;
+          return refuse("Price", 44, "not a plain decimal price");
         }
         m.newPrice = Price::fromRaw(pr);
       }
       int64_t qtyRaw;
       if (!fix(38, qtyRaw))
       {
-        return std::nullopt;  // new OrderQty required
+        return refuse("OrderQty", 38, "required, and must be a plain decimal quantity");
       }
       m.newQty = Quantity::fromRaw(qtyRaw);
-      m.accountId = u64(1);
+      if (has(1) && !u64(1, m.accountId))
+      {
+        return refuse("Account", 1, "must be a decimal integer below 2^64");
+      }
       return InboundCommand{m};
     }
-    // MassQuote (35=i): a maker's whole ladder on one symbol, one command
-    // (T063). Wire mapping: 117 QuoteID -> QuoteLadder::clientOrderId (the
-    // ladder's own name, dedup slot consumed once for the whole ladder); 1
-    // Account -> QuoteLadder::accountId, required here (unlike NewOrderSingle,
-    // which tolerates an absent Account and lets the session stamp it) because
+    // MassQuote (35=i): a maker's whole ladder on one symbol, one command.
+    // Wire mapping: 117 QuoteID -> QuoteLadder::clientOrderId (the ladder's
+    // own name, dedup slot consumed once for the whole ladder); 1 Account ->
+    // QuoteLadder::accountId, required here (unlike NewOrderSingle, which
+    // tolerates an absent Account and lets the session stamp it) because
     // bidIdBase/askIdBase are DERIVED from it below -- a late stamp after
     // decode would leave the ladder's own accountId field disagreeing with
     // the id block it was built from. Each QuoteEntry (299 QuoteEntryID
@@ -302,15 +430,26 @@ class FixCodec
     // repeating MD entries.
     if (type == "i")
     {
-      if (!has(1) || !has(117))
+      QuoteLadder l;
+      if (!has(1) || !u64(1, l.accountId))
       {
-        return std::nullopt;  // Account and QuoteID are both required
+        return refuse("Account", 1, "required, and must be a decimal integer below 2^64");
+      }
+      if (!quoteIdBlockInRange(l.accountId))
+      {
+        return refuse("Account", 1,
+                      "above the range a quoting id block is derived for (below 2^24)");
+      }
+      if (!has(117) || !u64(117, l.clientOrderId))
+      {
+        return refuse("QuoteID", 117, "required, and must be a decimal integer below 2^64");
       }
       struct RawLevel
       {
         std::string symbolStr, bidPx, offerPx, bidSize, offerSize;
       };
       std::vector<RawLevel> raw;
+      bool orphan = false;
       for (const auto& [tag, val] : parseOrdered(msg))
       {
         switch (tag)
@@ -321,49 +460,59 @@ class FixCodec
           case 55:
             if (raw.empty())
             {
-              return std::nullopt;
+              orphan = true;
+              break;
             }
             raw.back().symbolStr = val;
             break;
           case 132:
             if (raw.empty())
             {
-              return std::nullopt;
+              orphan = true;
+              break;
             }
             raw.back().bidPx = val;
             break;
           case 133:
             if (raw.empty())
             {
-              return std::nullopt;
+              orphan = true;
+              break;
             }
             raw.back().offerPx = val;
             break;
           case 134:
             if (raw.empty())
             {
-              return std::nullopt;
+              orphan = true;
+              break;
             }
             raw.back().bidSize = val;
             break;
           case 135:
             if (raw.empty())
             {
-              return std::nullopt;
+              orphan = true;
+              break;
             }
             raw.back().offerSize = val;
             break;
           default:
             break;
         }
+        if (orphan)
+        {
+          return refuse("QuoteEntryID", 299, "a quote entry field arrived before any entry began");
+        }
       }
-      if (raw.empty() || raw.size() > kQuoteLadderLevels)
+      if (raw.empty())
       {
-        return std::nullopt;  // nothing to quote, or more levels than the ladder holds
+        return refuse("QuoteEntryID", 299, "a MassQuote with no quote entries quotes nothing");
       }
-      QuoteLadder l;
-      l.accountId = u64(1);
-      l.clientOrderId = u64(117);
+      if (raw.size() > kQuoteLadderLevels)
+      {
+        return refuse("QuoteEntryID", 299, "more quote entries than the ladder holds");
+      }
       l.levels = static_cast<uint8_t>(raw.size());
       SymbolId sym0 = 0;
       Price prevBid{};
@@ -371,25 +520,36 @@ class FixCodec
       for (size_t i = 0; i < raw.size(); ++i)
       {
         const RawLevel& e = raw[i];
-        if (e.symbolStr.empty() || e.bidPx.empty() || e.offerPx.empty() || e.bidSize.empty() ||
-            e.offerSize.empty())
+        SymbolId levelSym = 0;
+        if (e.symbolStr.empty() || !fixfield::parseU32(e.symbolStr, levelSym))
         {
-          return std::nullopt;  // every level must carry all five fields
+          return refuse("Symbol", 55,
+                        "every quote entry needs a Symbol, a decimal integer below 2^32");
         }
-        const SymbolId s = static_cast<SymbolId>(std::strtoul(e.symbolStr.c_str(), nullptr, 10));
         if (i == 0)
         {
-          sym0 = s;
+          sym0 = levelSym;
         }
-        else if (s != sym0)
+        else if (levelSym != sym0)
         {
-          return std::nullopt;  // one QuoteLadder is one symbol
+          return refuse("Symbol", 55, "one MassQuote is one symbol");
         }
         int64_t bidRaw, offerRaw, bidSzRaw, offerSzRaw;
-        if (!decwire::parse(e.bidPx, bidRaw) || !decwire::parse(e.offerPx, offerRaw) ||
-            !decwire::parse(e.bidSize, bidSzRaw) || !decwire::parse(e.offerSize, offerSzRaw))
+        if (e.bidPx.empty() || !decwire::parse(e.bidPx, bidRaw))
         {
-          return std::nullopt;
+          return refuse("BidPx", 132, "every quote entry needs a plain decimal bid price");
+        }
+        if (e.offerPx.empty() || !decwire::parse(e.offerPx, offerRaw))
+        {
+          return refuse("OfferPx", 133, "every quote entry needs a plain decimal offer price");
+        }
+        if (e.bidSize.empty() || !decwire::parse(e.bidSize, bidSzRaw))
+        {
+          return refuse("BidSize", 134, "every quote entry needs a plain decimal bid size");
+        }
+        if (e.offerSize.empty() || !decwire::parse(e.offerSize, offerSzRaw))
+        {
+          return refuse("OfferSize", 135, "every quote entry needs a plain decimal offer size");
         }
         const Price bid = Price::fromRaw(bidRaw);
         const Price ask = Price::fromRaw(offerRaw);
@@ -398,9 +558,13 @@ class FixCodec
         // always has. A MassQuote that does not honour it is refused rather
         // than silently sorted: sorting would submit a ladder the sender
         // never asked for under ITS OWN QuoteID.
-        if (i > 0 && (bid.raw() >= prevBid.raw() || ask.raw() <= prevAsk.raw()))
+        if (i > 0 && bid.raw() >= prevBid.raw())
         {
-          return std::nullopt;
+          return refuse("BidPx", 132, "quote entries must step away from the mid, bid descending");
+        }
+        if (i > 0 && ask.raw() <= prevAsk.raw())
+        {
+          return refuse("OfferPx", 133, "quote entries must step away from the mid, offer ascending");
         }
         prevBid = bid;
         prevAsk = ask;
@@ -422,19 +586,26 @@ class FixCodec
     // same operation from here.
     if (type == "Z")
     {
-      if (!has(1) || !has(55))
-      {
-        return std::nullopt;
-      }
       QuoteLadder l;
-      l.accountId = u64(1);
-      l.symbol = sym(55);
+      if (!has(1) || !u64(1, l.accountId))
+      {
+        return refuse("Account", 1, "required, and must be a decimal integer below 2^64");
+      }
+      if (!quoteIdBlockInRange(l.accountId))
+      {
+        return refuse("Account", 1,
+                      "above the range a quoting id block is derived for (below 2^24)");
+      }
+      if (!has(55) || !sym(55, l.symbol))
+      {
+        return refuse("Symbol", 55, "required, and must be a decimal integer below 2^32");
+      }
       l.levels = 0;
       l.bidIdBase = quoteLadderIdBase(l.accountId, l.symbol);
       l.askIdBase = l.bidIdBase + kQuoteLadderLevels;
       return InboundCommand{l};
     }
-    return std::nullopt;
+    return refuse("MsgType", 35, "not a message this venue's order entry decodes");
   }
 
   // MsgSeqNum (34) of a raw FIX message; 0 when absent (a structurally

@@ -78,6 +78,7 @@
 #pragma once
 
 #include "flox-venue/fix_codec.h"
+#include "flox-venue/fix_field_parse.h"
 #include "flox-venue/session_registry.h"
 
 #include "flox/util/crc32.h"
@@ -710,13 +711,29 @@ class FixConnection
   Verdict onMassQuoteOrCancel(std::unordered_map<int, std::string>& f, const std::string& msg,
                               int64_t nowNs)
   {
-    const uint64_t quoteId = f.count(117) != 0 ? std::strtoull(f[117].c_str(), nullptr, 10) : 0;
-    const SymbolId sym =
-        f.count(55) != 0 ? static_cast<SymbolId>(std::strtoul(f[55].c_str(), nullptr, 10)) : 0;
-    const auto cmd = FixCodec::decode(msg);
+    // Echoed back in the QuoteStatusReport below, so they are read with the
+    // codec's own strict parse: a QuoteID of "12ABC" is a request this venue
+    // refuses, and echoing 12 at it would name a ladder nobody sent.
+    uint64_t quoteId = 0;
+    SymbolId sym = 0;
+    if (f.count(117) != 0)
+    {
+      fixfield::parseU64(f[117], quoteId);
+    }
+    if (f.count(55) != 0)
+    {
+      fixfield::parseU32(f[55], sym);
+    }
+    std::string reason;
+    const auto cmd = FixCodec::decode(msg, &reason);
     if (!cmd || !std::holds_alternative<QuoteLadder>(*cmd))
     {
-      sendQuoteStatus(false, quoteId, sym, "MassQuote/QuoteCancel rejected: malformed", nowNs);
+      // The codec's own reason, not "malformed": it names the tag the maker
+      // has to fix, and this Text (58) is the only place the maker sees it.
+      sendQuoteStatus(false, quoteId, sym,
+                      "MassQuote/QuoteCancel rejected: " +
+                          (reason.empty() ? std::string("malformed") : reason),
+                      nowNs);
       return Verdict::Handled;
     }
     sendQuoteStatus(true, quoteId, sym, {}, nowNs);
