@@ -261,7 +261,32 @@ class SimulatedExecutor : public IOrderExecutor
     bool hasTrade{false};
   };
 
+  // The visible ladder as of the last book update, most aggressive level
+  // first. A taker consumes it, so its size decides the price the taker pays
+  // and the next order in the same step sees what the previous one left
+  // behind. Only onBookUpdate fills it in: a bar or a trade-only feed reports
+  // no depth, and those paths keep the single-price behaviour.
+  struct DepthLadder
+  {
+    std::vector<std::pair<int64_t, int64_t>> bids;  // (priceRaw, qtyRaw)
+    std::vector<std::pair<int64_t, int64_t>> asks;
+  };
+
+  struct LadderWalk
+  {
+    int64_t takenRaw{0};       // size the ladder could actually supply
+    int64_t worstPriceRaw{0};  // deepest level the walk reached
+    Volume notional{};         // sum(price * qty) over the levels consumed
+    bool walked{false};        // false when the symbol has no visible ladder
+  };
+
   MarketState& getMarketState(SymbolId symbol);
+  DepthLadder* findLadder(SymbolId symbol);
+  // Takes up to `qtyRaw` off `side` of the ladder, stopping at `limitPriceRaw`
+  // (0 = no price bound), removes what it took and republishes the touch that
+  // is left. Returns what the walk found.
+  LadderWalk consumeLadder(SymbolId symbol, Side side, int64_t qtyRaw,
+                           int64_t limitPriceRaw);
   const SlippageProfile& slippageFor(SymbolId symbol) const;
   int64_t applySlippage(int64_t priceRaw, Side side, SymbolId symbol,
                         Quantity qty, int64_t levelQtyRaw) const;
@@ -382,6 +407,8 @@ class SimulatedExecutor : public IOrderExecutor
 
   std::array<MarketState, kMaxSymbols> _marketStatesFlat{};
   std::vector<std::pair<SymbolId, MarketState>> _marketStatesOverflow;
+
+  std::unordered_map<SymbolId, DepthLadder> _ladders;
 
   // Orders submitted while a bar-callback window was open, in arrival order,
   // waiting for their symbol's next bar open.

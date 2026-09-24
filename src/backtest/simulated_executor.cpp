@@ -1208,6 +1208,31 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
     state.bestAskQtyRaw = asks[0].quantity.raw();
   }
 
+  // Snapshot the visible ladder. Takers eat it, so it is replaced wholesale on
+  // every update: what an order consumed is restored by the next book event,
+  // which is the venue reporting the level again.
+  {
+    DepthLadder& ladder = _ladders[symbol];
+    ladder.bids.clear();
+    ladder.asks.clear();
+    ladder.bids.reserve(bids.size());
+    ladder.asks.reserve(asks.size());
+    for (const auto& lvl : bids)
+    {
+      if (lvl.quantity.raw() > 0)
+      {
+        ladder.bids.emplace_back(lvl.price.raw(), lvl.quantity.raw());
+      }
+    }
+    for (const auto& lvl : asks)
+    {
+      if (lvl.quantity.raw() > 0)
+      {
+        ladder.asks.emplace_back(lvl.price.raw(), lvl.quantity.raw());
+      }
+    }
+  }
+
   if (_queueTracker.enabled())
   {
     // First update every level present in the snapshot.
@@ -1466,6 +1491,11 @@ void SimulatedExecutor::releaseHeldOrders(SymbolId symbol)
 
 void SimulatedExecutor::setBarMarketState(SymbolId symbol, Price price)
 {
+  // A bar reports no depth. Dropping the ladder keeps a stale book from being
+  // walked at prices this bar has already left behind: on bar data every size
+  // trades at the step price, which is the only thing the bar says.
+  _ladders.erase(symbol);
+
   MarketState& state = getMarketState(symbol);
   const int64_t priceRaw = price.raw();
   state.bestBidRaw = priceRaw;
@@ -1564,6 +1594,91 @@ Order* SimulatedExecutor::findPendingOrder(OrderId orderId)
   return nullptr;
 }
 
+SimulatedExecutor::DepthLadder* SimulatedExecutor::findLadder(SymbolId symbol)
+{
+  auto it = _ladders.find(symbol);
+  return it == _ladders.end() ? nullptr : &it->second;
+}
+
+SimulatedExecutor::LadderWalk SimulatedExecutor::consumeLadder(SymbolId symbol, Side side,
+                                                               int64_t qtyRaw,
+                                                               int64_t limitPriceRaw)
+{
+  LadderWalk walk;
+  DepthLadder* ladder = findLadder(symbol);
+  if (ladder == nullptr)
+  {
+    return walk;
+  }
+  auto& levels = (side == Side::BUY) ? ladder->asks : ladder->bids;
+  if (levels.empty())
+  {
+    return walk;
+  }
+  walk.walked = true;
+
+  int64_t left = qtyRaw;
+  size_t emptied = 0;
+  for (auto& [priceRaw, levelQtyRaw] : levels)
+  {
+    if (left <= 0)
+    {
+      break;
+    }
+    // A limit order stops where its own price stops; a market order (limit 0)
+    // keeps walking down the ladder.
+    if (limitPriceRaw != 0)
+    {
+      const bool eligible = (side == Side::BUY) ? (priceRaw <= limitPriceRaw)
+                                                : (priceRaw >= limitPriceRaw);
+      if (!eligible)
+      {
+        break;
+      }
+    }
+    const int64_t take = std::min(left, levelQtyRaw);
+    if (take > 0)
+    {
+      // Notional through the fixed-point helpers, not doubles: a raw price
+      // times a raw quantity is a 1e16-scaled product that only the widened
+      // Quantity * Price -> Volume path carries without wrapping.
+      walk.notional = walk.notional + (Quantity::fromRaw(take) * Price::fromRaw(priceRaw));
+      walk.takenRaw += take;
+      walk.worstPriceRaw = priceRaw;
+      left -= take;
+      levelQtyRaw -= take;
+    }
+    if (levelQtyRaw == 0)
+    {
+      ++emptied;
+    }
+  }
+
+  if (emptied > 0)
+  {
+    levels.erase(levels.begin(), levels.begin() + static_cast<std::ptrdiff_t>(emptied));
+  }
+
+  // Republish the touch the walk left behind. The market state and the ladder
+  // have to agree, or the next order's crossing check would be answered by a
+  // level that is no longer there.
+  MarketState& state = getMarketState(symbol);
+  const bool empty = levels.empty();
+  if (side == Side::BUY)
+  {
+    state.hasAsk = !empty;
+    state.bestAskRaw = empty ? 0 : levels.front().first;
+    state.bestAskQtyRaw = empty ? 0 : levels.front().second;
+  }
+  else
+  {
+    state.hasBid = !empty;
+    state.bestBidRaw = empty ? 0 : levels.front().first;
+    state.bestBidQtyRaw = empty ? 0 : levels.front().second;
+  }
+  return walk;
+}
+
 bool SimulatedExecutor::tryFillOrder(Order& order, bool resting)
 {
   const MarketState& state = getMarketState(order.symbol);
@@ -1627,6 +1742,29 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting)
   {
     fillPriceRaw = order.price.raw();
     isMaker = true;
+  }
+
+  // A taker walks the visible ladder instead of printing its whole size at the
+  // touch, and what it ate is gone for the next order in this same step. The
+  // fill is reported once, at the volume-weighted price of the walk.
+  //
+  // Size the ladder cannot cover is priced at the deepest level the walk
+  // reached -- for the whole order, not just the excess. Past that level the
+  // feed said nothing, and averaging the unknown remainder in at the touch is
+  // the one answer that is certainly wrong: it makes size free, which is the
+  // bug this replaces. The order still fills in full, so a thin book slows
+  // nothing down; it just stops being cheap.
+  if (!isMaker)
+  {
+    const int64_t limitRaw = (order.type == OrderType::MARKET) ? 0 : order.price.raw();
+    const LadderWalk walk =
+        consumeLadder(order.symbol, order.side, remainingQty.raw(), limitRaw);
+    if (walk.walked && walk.takenRaw > 0)
+    {
+      fillPriceRaw = (walk.takenRaw >= remainingQty.raw())
+                         ? (walk.notional / Quantity::fromRaw(walk.takenRaw)).raw()
+                         : walk.worstPriceRaw;
+    }
   }
 
   // Apply slippage only to market-style fills (limit makers trade at posted price).
