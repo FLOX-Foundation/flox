@@ -192,6 +192,21 @@ class EventBus : public ISubsystem
   // Must be called before start().
   void setHealthConfig(const HealthConfig& cfg) { _healthCfg = cfg; }
 
+  // How long the built-in monitor thread sleeps between sweeps: half the stall
+  // threshold, and never nothing. The arithmetic is integer milliseconds, so
+  // any threshold below 2 ms halves to zero -- and a zero sleep is not "poll
+  // often", it is a thread holding a core to run checkHealth(), an
+  // O(consumers) scan over atomics, with nothing in between. A millisecond
+  // threshold is a reasonable setting for a bus where a millisecond of stall
+  // matters; a spinning core is not what it should buy.
+  static constexpr std::chrono::milliseconds monitorPeriod(
+      std::chrono::milliseconds stallThreshold) noexcept
+  {
+    constexpr auto floor = std::chrono::milliseconds{1};
+    const auto half = stallThreshold / 2;
+    return half < floor ? floor : half;
+  }
+
   struct HealthSweep
   {
     uint32_t stalled{0};
@@ -608,7 +623,7 @@ class EventBus : public ISubsystem
     {
       _monitorThread.emplace([this]
                              {
-        const auto period = _healthCfg.stallThreshold / 2;
+        const auto period = monitorPeriod(_healthCfg.stallThreshold);
         while (_running.load(std::memory_order_acquire))
         {
           checkHealth();
