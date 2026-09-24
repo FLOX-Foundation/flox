@@ -1517,6 +1517,15 @@ bool BinaryLogReader::streamSegmentWithStats(const std::filesystem::path& path,
   // Sorted segments: stream straight through. The writer guaranteed
   // monotonicity at close, BinaryLogIterator preserves it (its
   // per-block sort is a no-op on the fast path for sorted blocks).
+  //
+  // The shared watermark is deliberately neither read nor advanced here. A
+  // sorted segment carries its own ordering guarantee, so it is not the
+  // reader's to judge against where the previous segment happened to end:
+  // two captures of overlapping windows, or a symbol-partitioned recording,
+  // are ordinary datasets, and dropping the head of the second one is losing
+  // recorded events. Whether such a dataset should exist at all is the
+  // validator's question (it reports overlapping segment ranges), not a
+  // licence for the reader to discard frames.
   if (iter.header().isSorted())
   {
     ReplayEvent event;

@@ -110,6 +110,11 @@ class BinaryLogWriter
     int64_t max_ts{0};
   };
   BlockSpan sortBlockBuffer();  // first and last timestamp in the block after sorting
+  // Records an uncompressed frame's timestamp against the segment's ordering
+  // promise. Uncompressed frames reach the file in arrival order, so the
+  // promise is decided one frame at a time; the compressed path decides it in
+  // flushBlock from each block's post-sort span instead.
+  void noteUncompressedEventOrder(int64_t event_ts_ns);
   void updateSegmentHeader();
   void writeIndex();
   void closeInternal();
@@ -138,7 +143,12 @@ class BinaryLogWriter
   uint16_t _block_event_count{0};
   int64_t _block_first_timestamp{0};
   int64_t _last_block_max_ts{0};
-  bool _segment_has_cross_block_inversion{false};
+  int64_t _last_event_ts{0};
+  bool _have_last_event_ts{false};
+  // True once this segment has seen a timestamp go backwards, whichever path
+  // wrote it. Cleared per segment in ensureOpen; read in closeInternal, where
+  // it decides SegmentFlags::Sorted.
+  bool _segment_has_inversion{false};
 
   mutable std::mutex _mutex;
 

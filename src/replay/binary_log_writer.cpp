@@ -179,7 +179,9 @@ bool BinaryLogWriter::ensureOpen()
   _block_event_count = 0;
   _block_first_timestamp = 0;
   _last_block_max_ts = 0;
-  _segment_has_cross_block_inversion = false;
+  _last_event_ts = 0;
+  _have_last_event_ts = false;
+  _segment_has_inversion = false;
 
   return true;
 }
@@ -252,6 +254,7 @@ bool BinaryLogWriter::writeFrame(EventType type, const void* payload, size_t siz
   }
   _segment_header.last_event_ns = event_ts;
   ++_segment_header.event_count;
+  noteUncompressedEventOrder(event_ts);
 
   // Build index: add entry at interval or for first event
   if (_config.create_index)
@@ -354,7 +357,7 @@ bool BinaryLogWriter::flushBlock()
   }
   if (_last_block_max_ts > 0 && span.min_ts < _last_block_max_ts)
   {
-    _segment_has_cross_block_inversion = true;
+    _segment_has_inversion = true;
   }
   _last_block_max_ts = span.max_ts;
   const int64_t block_index_ts = span.min_ts;
@@ -472,6 +475,7 @@ bool BinaryLogWriter::writeTrade(const TradeRecord& trade)
     }
     _segment_header.last_event_ns = trade.exchange_ts_ns;
     ++_segment_header.event_count;
+    noteUncompressedEventOrder(trade.exchange_ts_ns);
 
     if (_config.create_index)
     {
@@ -542,6 +546,7 @@ bool BinaryLogWriter::writeOptionQuote(const OptionQuoteRecord& quote)
     }
     _segment_header.last_event_ns = quote.exchange_ts_ns;
     ++_segment_header.event_count;
+    noteUncompressedEventOrder(quote.exchange_ts_ns);
 
     if (_config.create_index)
     {
@@ -628,6 +633,7 @@ bool BinaryLogWriter::writePoolState(const PoolStateRecordHeader& hdr, const voi
     }
     _segment_header.last_event_ns = record.exchange_ts_ns;
     ++_segment_header.event_count;
+    noteUncompressedEventOrder(record.exchange_ts_ns);
 
     if (_config.create_index)
     {
@@ -713,6 +719,7 @@ bool BinaryLogWriter::writeBook(const BookRecordHeader& hdr, std::span<const Boo
     }
     _segment_header.last_event_ns = hdr.exchange_ts_ns;
     ++_segment_header.event_count;
+    noteUncompressedEventOrder(hdr.exchange_ts_ns);
 
     if (_config.create_index)
     {
@@ -808,7 +815,14 @@ void BinaryLogWriter::closeInternal()
       flushBlock();
     }
 
-    if (isCompressed() && !_segment_has_cross_block_inversion)
+    // The flag is the writer's promise that exchange_ts_ns never goes
+    // backwards inside the segment, and an uncompressed segment written in
+    // order keeps that promise exactly as a compressed one does. Withholding
+    // it there made readers buffer and re-sort every uncompressed segment, and
+    // made streamForEach judge each one against a watermark carried from the
+    // segment before -- dropping the head of any segment whose range started
+    // behind the previous segment's.
+    if (!_segment_has_inversion)
     {
       _segment_header.flags |= SegmentFlags::Sorted;
     }
@@ -916,6 +930,16 @@ void BinaryLogWriter::setHasBookDeltas(bool v)
     _metadata = RecordingMetadata{};
   }
   _metadata->has_book_deltas = v;
+}
+
+void BinaryLogWriter::noteUncompressedEventOrder(int64_t event_ts_ns)
+{
+  if (_have_last_event_ts && event_ts_ns < _last_event_ts)
+  {
+    _segment_has_inversion = true;
+  }
+  _last_event_ts = event_ts_ns;
+  _have_last_event_ts = true;
 }
 
 BinaryLogWriter::BlockSpan BinaryLogWriter::sortBlockBuffer()

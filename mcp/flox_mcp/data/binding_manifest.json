@@ -14830,6 +14830,11 @@
         },
         {
           "kind": "method",
+          "name": "noteUncompressedEventOrder",
+          "parent": "BinaryLogWriter"
+        },
+        {
+          "kind": "method",
           "name": "setHasBookDeltas",
           "parent": "BinaryLogWriter"
         },

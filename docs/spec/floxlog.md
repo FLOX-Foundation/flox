@@ -73,6 +73,8 @@ A segment is a `SegmentHeader` followed by a stream of frames. If `Compressed` i
 
 A reader that sees an unknown flag set must reject the segment with a clear error. New flags need a new minor version of the format.
 
+`Sorted` is set at close on any segment -- compressed or not -- whose events all reached the writer in non-decreasing `exchange_ts_ns` order. It is a per-segment promise and says nothing about the segments around it: a reader may stream a `Sorted` segment as it stands, and must not drop its leading events because an earlier segment of the same dataset ended later in time. Segments whose time ranges overlap are a recording fault the validator reports; they are not licence to discard recorded frames.
+
 ### Frame stream
 
 A frame is a `FrameHeader` followed by `size` bytes of payload. Payload meaning depends on `type`:
