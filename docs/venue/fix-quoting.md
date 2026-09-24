@@ -8,6 +8,43 @@ non-FIX caller builds directly (`venue/include/flox-venue/messages.h`,
 perimeter accepted `D`/`F`/`G` (order entry) only -- a market maker speaking
 FIX could not quote at all.
 
+## What the inbound codec accepts and refuses
+
+`FixCodec::decode` is the same function for `D`/`F`/`G` and for
+`i`/`Z`, so the strictness below is the same on all of them. Every refusal
+fills in the reason of the two-argument
+`decode(const std::string&, std::string*)`, formatted as
+`<FixFieldName>(<tag>): <what was wrong>` -- `ClOrdID(11)`, `Account(1)`,
+`Symbol(55)`. `FixConnection` puts that string in the `Text` (58) of the
+`QuoteStatusReport` it answers a refused MassQuote/QuoteCancel with, which is
+the only place the sender ever sees it. The one-argument `decode` remains the
+decoder hook the gateways install.
+
+### The id fields
+
+FIX types `ClOrdID` (11), `OrigClOrdID` (41), `Account` (1) and `Symbol` (55)
+as String; this venue carries them as integers. A value it cannot carry is
+**refused naming the field**, never coerced -- see
+`venue/include/flox-venue/fix_field_parse.h`. Accepted: decimal digits only,
+and nothing else.
+
+| Wire value | Answer |
+|---|---|
+| `42`, `0`, `18446744073709551615` | accepted (the last is the largest id this venue can carry) |
+| `ORD-A1`, `BTC-USD`, `123ABC`, `4.2`, `0x10`, `4e2` | refused -- `strtoull` stopped at the first junk character and handed the engine what it had read so far, so two clients with alphanumeric names both became order id 0 |
+| `` (empty) | refused |
+| ` 42`, `42 ` | refused -- a leading space is not part of a decimal integer |
+| `+42`, `-1` | refused -- no sign; `-1` used to wrap to `UINT64_MAX`, the id a client that legitimately named `UINT64_MAX` gets |
+| `0042` | refused -- `0042` and `42` are two different ClOrdIDs, and accepting both would hand them one order id |
+| `99999999999999999999` | refused -- above `UINT64_MAX`; `strtoull` saturated it onto `UINT64_MAX` and set `ERANGE`, which nobody read |
+| `4294967296` in 55 | refused -- above `UINT32_MAX`; the cast to `SymbolId` truncated it to 0, another instrument's book |
+
+`ClOrdID` (11) is required on `D` and `OrigClOrdID` (41) on `F`/`G`, as FIX
+4.4 requires them. `Account` (1) and `Symbol` (55) stay optional on `D`/`F`/`G`
+-- the session stamps the account and a shard already knows its symbol -- but a
+value that *is* present has to parse. On `i` and `Z` both are required, for
+the reason the id block section below gives.
+
 ## MassQuote (35=i) in
 
 | Tag | Field | Maps to |
