@@ -33,6 +33,30 @@
 #define FLOX_CXX26 0
 #endif
 
+// --- Native 128-bit intermediate, and the switch that turns it off ---------
+// Most of the fixed-point arithmetic wants a 128-bit intermediate. GCC and
+// Clang have one (__int128); MSVC does not, so those builds take a software
+// path written out of 64-bit halves. A path only one toolchain compiles is a
+// path nobody tests, which is exactly how the hand-rolled fallback in
+// common.h shipped a backtest that returned -534 where 5000 was expected.
+//
+// FLOX_FORCE_PORTABLE_INT128=1 compiles the native intermediate out even
+// where the type exists, so the MSVC path is built and run on macOS and Linux
+// too. Nothing but a test build should define it: it is slower and produces
+// the same numbers. tests/CMakeLists.txt builds the fixed-point suite twice,
+// once each way; mulDivI64As<Portable> and Decimal's *Path members select a
+// path per call site, which is how one binary can check the two against each
+// other.
+#if !defined(FLOX_FORCE_PORTABLE_INT128)
+#define FLOX_FORCE_PORTABLE_INT128 0
+#endif
+
+#if defined(__SIZEOF_INT128__) && !FLOX_FORCE_PORTABLE_INT128
+#define FLOX_HAS_NATIVE_INT128 1
+#else
+#define FLOX_HAS_NATIVE_INT128 0
+#endif
+
 // --- P2900 contracts detection ---------------------------------------------
 // __cpp_contracts is the SD-6 feature-test macro for contract_assert.
 #if defined(__cpp_contracts) && __cpp_contracts >= 202502L
@@ -225,6 +249,29 @@ constexpr int64_t checkedAddI64(int64_t a, int64_t b) noexcept
   return static_cast<int64_t>(usum);
 }
 
+// Checked int64 subtraction, the mirror of checkedAddI64 and used by
+// Decimal::operator-= and the binary operator-. `a - b` on int64_t overflows
+// exactly as an addition does -- an inventory accumulator walked down past
+// INT64_MIN wraps to a large positive position, which reads as a long book
+// where a short one is held. Detected through unsigned arithmetic (defined
+// behavior) and saturated at the boundary.
+constexpr int64_t checkedSubI64(int64_t a, int64_t b) noexcept
+{
+  const uint64_t ua = static_cast<uint64_t>(a);
+  const uint64_t ub = static_cast<uint64_t>(b);
+  const uint64_t udiff = ua - ub;
+  // Signed overflow occurred iff the operands differ in sign and the result's
+  // sign differs from the minuend's.
+  const bool overflowed = static_cast<bool>(((ua ^ ub) & (ua ^ udiff)) >> 63);
+  FLOX_SCALE_CHECK(!overflowed,
+                   "fixed-point subtraction overflow (Decimal::operator- exceeds int64 range)");
+  if (overflowed)
+  {
+    return a >= 0 ? (std::numeric_limits<int64_t>::max)() : (std::numeric_limits<int64_t>::min)();
+  }
+  return static_cast<int64_t>(udiff);
+}
+
 // Full-width multiply-then-divide over fixed-point raws. Written out as
 // `(a * b) / d` in int64 the product overflows long before any of the three
 // operands does: a 200 USD fee raw against a 7-unit quantity raw is
@@ -339,7 +386,7 @@ constexpr int64_t mulDivI64(int64_t a, int64_t b, int64_t d) noexcept
     const bool negativeProduct = (a < 0) != (b < 0);
     return dividedByZeroI64(nonZeroProduct ? (negativeProduct ? -1 : 1) : 0);
   }
-#if defined(__SIZEOF_INT128__)
+#if FLOX_HAS_NATIVE_INT128
   using i128 = __int128_t;
   return checkedNarrowI64((i128)a * (i128)b / (i128)d);
 #else
@@ -363,6 +410,59 @@ constexpr int64_t mulDivI64Portable(int64_t a, int64_t b, int64_t d) noexcept
   const bool negative = ((a < 0) != (b < 0)) != (d < 0);
   return detail::mulDivMagnitude(detail::absToU64(a), detail::absToU64(b), detail::absToU64(d),
                                  negative);
+}
+
+// Checked int64 multiplication, used by Decimal::operator*(int64_t) -- the
+// scalar multiply, which unlike the fixed-point one has no Scale to divide
+// the product back down. A quantity raw scaled by a lot count is one
+// multiplication away from the int64 ceiling. Built on the same 64x64->128
+// helper the portable mulDiv uses, so there is one piece of widening
+// arithmetic in this file and not two.
+constexpr int64_t checkedMulI64(int64_t a, int64_t b) noexcept
+{
+  if (a == 0 || b == 0)
+  {
+    return 0;
+  }
+  const bool negative = (a < 0) != (b < 0);
+  uint64_t hi = 0;
+  uint64_t lo = 0;
+  detail::umul64(detail::absToU64(a), detail::absToU64(b), hi, lo);
+
+  constexpr uint64_t kMax = static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
+  const uint64_t limit = negative ? kMax + 1u : kMax;
+  const bool overflowed = (hi != 0) || (lo > limit);
+  FLOX_SCALE_CHECK(!overflowed,
+                   "fixed-point multiplication overflow (Decimal::operator*(int64_t) exceeds int64 range)");
+  if (overflowed)
+  {
+    return negative ? (std::numeric_limits<int64_t>::min)()
+                    : (std::numeric_limits<int64_t>::max)();
+  }
+  if (negative)
+  {
+    return static_cast<int64_t>(~lo + 1u);
+  }
+  return static_cast<int64_t>(lo);
+}
+
+// mulDivI64 with the path chosen at the call site rather than by the
+// toolchain. `mulDivI64As<false>` is whatever this build would use anyway;
+// `mulDivI64As<true>` is always the software path. A test can therefore run
+// both in one binary on any platform, and Decimal routes its operators
+// through it so the whole class can be built either way (see
+// FLOX_FORCE_PORTABLE_INT128 at the top of this file).
+template <bool Portable>
+constexpr int64_t mulDivI64As(int64_t a, int64_t b, int64_t d) noexcept
+{
+  if constexpr (Portable)
+  {
+    return mulDivI64Portable(a, b, d);
+  }
+  else
+  {
+    return mulDivI64(a, b, d);
+  }
 }
 
 }  // namespace flox

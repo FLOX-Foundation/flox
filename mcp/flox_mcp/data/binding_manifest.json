@@ -16120,6 +16120,11 @@
         },
         {
           "kind": "method",
+          "name": "divPath",
+          "parent": "Decimal"
+        },
+        {
+          "kind": "method",
           "name": "fromDouble",
           "parent": "Decimal"
         },
@@ -16135,12 +16140,22 @@
         },
         {
           "kind": "method",
+          "name": "mulPath",
+          "parent": "Decimal"
+        },
+        {
+          "kind": "method",
           "name": "raw",
           "parent": "Decimal"
         },
         {
           "kind": "method",
           "name": "rescale",
+          "parent": "Decimal"
+        },
+        {
+          "kind": "method",
+          "name": "rescalePath",
           "parent": "Decimal"
         },
         {

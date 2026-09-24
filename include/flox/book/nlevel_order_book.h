@@ -488,7 +488,7 @@ class NLevelOrderBook : public IOrderBook
       return {Quantity{}, Volume{}};
     }
 
-#if defined(__SIZEOF_INT128__)
+#if FLOX_HAS_NATIVE_INT128
     // Fast path: 128-bit accumulator with single division at end (GCC/Clang)
     int64_t remRaw = needQty.raw();
     __int128_t notionalRaw2 = 0;
@@ -511,8 +511,12 @@ class NLevelOrderBook : public IOrderBook
       remRaw -= takeRaw;
     }
 
+    // The quotient is narrowed through the same checked cast the rest of the
+    // fixed-point arithmetic uses. A deep consume accumulates past the int64
+    // range, and the bare static_cast that stood here wrapped it into a
+    // negative Volume -- a notional handed to risk with the wrong sign.
     return {Quantity::fromRaw(needQty.raw() - remRaw),
-            Volume::fromRaw(static_cast<int64_t>(notionalRaw2 / Volume::Scale))};
+            Volume::fromRaw(checkedNarrowI64(notionalRaw2 / Volume::Scale))};
 #else
     // Fallback: use type-safe operators (slower but portable)
     Quantity remaining = needQty;
@@ -547,7 +551,7 @@ class NLevelOrderBook : public IOrderBook
       return {Quantity{}, Volume{}};
     }
 
-#if defined(__SIZEOF_INT128__)
+#if FLOX_HAS_NATIVE_INT128
     // Fast path: 128-bit accumulator with single division at end (GCC/Clang)
     int64_t remRaw = needQty.raw();
     __int128_t notionalRaw2 = 0;
@@ -580,8 +584,12 @@ class NLevelOrderBook : public IOrderBook
       --tickNum;
     }
 
+    // The quotient is narrowed through the same checked cast the rest of the
+    // fixed-point arithmetic uses. A deep consume accumulates past the int64
+    // range, and the bare static_cast that stood here wrapped it into a
+    // negative Volume -- a notional handed to risk with the wrong sign.
     return {Quantity::fromRaw(needQty.raw() - remRaw),
-            Volume::fromRaw(static_cast<int64_t>(notionalRaw2 / Volume::Scale))};
+            Volume::fromRaw(checkedNarrowI64(notionalRaw2 / Volume::Scale))};
 #else
     // Fallback: use type-safe operators (slower but portable)
     Quantity remaining = needQty;
