@@ -119,13 +119,25 @@ void ReplayConnector::replayLoop()
 
       last_event_ts = event.timestamp_ns;
 
-      if (event.type == replay::EventType::Trade)
+      // Dispatch on the frame's own type. "Trade, else book" turned every
+      // side-channel frame into a book update: the reader parses an
+      // OptionQuote or a PoolState into its own member and leaves
+      // book_header holding the previous book event, so what went out was
+      // that book's symbol and timestamp with both sides emptied -- a
+      // wipe of a book nobody had touched. The format is additive, so a
+      // frame type this build does not publish is skipped, not guessed at.
+      switch (event.type)
       {
-        emitTradeFromRecord(event.trade);
-      }
-      else
-      {
-        emitBookFromRecord(event.book_header, event.bids, event.asks);
+        case replay::EventType::Trade:
+          emitTradeFromRecord(event.trade);
+          break;
+        case replay::EventType::BookSnapshot:
+        case replay::EventType::BookDelta:
+          emitBookFromRecord(event.book_header, event.bids, event.asks);
+          break;
+        case replay::EventType::OptionQuote:
+        case replay::EventType::PoolState:
+          break;
       }
 
       return true;
