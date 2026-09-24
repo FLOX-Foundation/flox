@@ -113,6 +113,33 @@ TEST(FixFieldParseTimestamp, IsTheInverseOfSendingTime)
 // environment, so the same wire value would mean a different instant on a
 // venue host in Singapore than on one in UTC. Set TZ to something far from UTC
 // and the answer must not move.
+namespace
+{
+// setenv/unsetenv are POSIX; Windows spells them _putenv_s, and its tzset is
+// _tzset. Same effect: the parser under test must not read either.
+void setTz(const char* value)
+{
+#ifdef _WIN32
+  _putenv_s("TZ", value);
+  _tzset();
+#else
+  setenv("TZ", value, 1);
+  tzset();
+#endif
+}
+
+void clearTz()
+{
+#ifdef _WIN32
+  _putenv_s("TZ", "");
+  _tzset();
+#else
+  unsetenv("TZ");
+  tzset();
+#endif
+}
+}  // namespace
+
 TEST(FixFieldParseTimestamp, DoesNotDependOnTheHostTimezone)
 {
   const char* saved = std::getenv("TZ");
@@ -123,8 +150,7 @@ TEST(FixFieldParseTimestamp, DoesNotDependOnTheHostTimezone)
 
   for (const char* tz : {"Asia/Singapore", "America/New_York", "Pacific/Kiritimati"})
   {
-    setenv("TZ", tz, 1);
-    tzset();
+    setTz(tz);
     int64_t ns = -1;
     ASSERT_TRUE(parseUtcTimestampNs("20260925-12:00:00.000", ns)) << tz;
     EXPECT_EQ(ns, utc) << tz;
@@ -132,13 +158,12 @@ TEST(FixFieldParseTimestamp, DoesNotDependOnTheHostTimezone)
 
   if (saved != nullptr)
   {
-    setenv("TZ", savedTz.c_str(), 1);
+    setTz(savedTz.c_str());
   }
   else
   {
-    unsetenv("TZ");
+    clearTz();
   }
-  tzset();
 }
 
 TEST(FixFieldParseTimestamp, MalformedShapesRefused)
