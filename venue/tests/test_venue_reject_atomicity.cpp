@@ -88,6 +88,16 @@ SymbolConfig perpCfg()
   return c;
 }
 
+// Perp AND last look: the combination that installs both the fill-limit hook
+// and the resting-hold hook (dispatch.inl), so a maker blocked at fill time
+// can also be one the matcher has to resolve holds for first.
+SymbolConfig perpLastLookCfg()
+{
+  SymbolConfig c = perpCfg();
+  c.lastLookWindowNs = DurationNs{1000000};
+  return c;
+}
+
 NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct)
 {
   NewOrder o;
@@ -272,36 +282,98 @@ TEST(RejectAtomicity, AnStpDecrementCancelCarriesTheRestingClientOrderId)
 // rested through a position change is pulled mid-sweep, by the matcher.
 TEST(RejectAtomicity, AFillTimeRiskCancelCarriesTheRestingClientOrderId)
 {
-  Ledger led;
-  led.deposit(1, QUOTE, quoteAmt(100000));
-  led.deposit(2, QUOTE, quoteAmt(100000));
-  led.deposit(3, QUOTE, quoteAmt(100000));
+  {
+    // Firm maker: the matcher pulls it straight out of the sweep.
+    Ledger led;
+    led.deposit(1, QUOTE, quoteAmt(100000));
+    led.deposit(2, QUOTE, quoteAmt(100000));
+    led.deposit(3, QUOTE, quoteAmt(100000));
 
-  Cap cap;
-  MatchingEngine<MatchingBook> eng(perpCfg(), cap.sink());
-  eng.setLedger(&led, VENUE_ACCT);
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(perpCfg(), cap.sink());
+    eng.setLedger(&led, VENUE_ACCT);
 
-  eng.submit(InboundCommand{limit(1, Side::BUY, 100, 10, 1)}, 1);
-  eng.submit(InboundCommand{limit(2, Side::SELL, 100, 10, 2)}, 2);
-  ASSERT_EQ(eng.positionQty(1), qty(10).raw());  // acct 1 long 10
+    eng.submit(InboundCommand{limit(1, Side::BUY, 100, 10, 1)}, 1);
+    eng.submit(InboundCommand{limit(2, Side::SELL, 100, 10, 2)}, 2);
+    ASSERT_EQ(eng.positionQty(1), qty(10).raw());  // acct 1 long 10
 
-  NewOrder exit = limit(3, Side::SELL, 110, 10, 1);  // reduce-only exit, resting
-  exit.reduceOnly = true;
-  exit.clientOrderId = 31337;
-  eng.submit(InboundCommand{exit}, 3);
+    NewOrder exit = limit(3, Side::SELL, 110, 10, 1);  // reduce-only exit, resting
+    exit.reduceOnly = true;
+    exit.clientOrderId = 31337;
+    eng.submit(InboundCommand{exit}, 3);
 
-  // The position shrinks to +4 behind the resting reduce-only order.
-  eng.submit(InboundCommand{limit(4, Side::SELL, 100, 6, 1)}, 4);
-  eng.submit(InboundCommand{limit(5, Side::BUY, 100, 6, 3)}, 5);
-  ASSERT_EQ(eng.positionQty(1), qty(4).raw());
+    // The position shrinks to +4 behind the resting reduce-only order.
+    eng.submit(InboundCommand{limit(4, Side::SELL, 100, 6, 1)}, 4);
+    eng.submit(InboundCommand{limit(5, Side::BUY, 100, 6, 3)}, 5);
+    ASSERT_EQ(eng.positionQty(1), qty(4).raw());
 
-  cap.clear();
-  eng.submit(InboundCommand{limit(6, Side::BUY, 110, 10, 2)}, 6);  // lift the whole exit
+    cap.clear();
+    eng.submit(InboundCommand{limit(6, Side::BUY, 110, 10, 2)}, 6);  // lift the whole exit
 
-  const OrderCanceled* c = cap.cancel(3, CancelReason::ReduceOnlyNotReducing);
-  ASSERT_NE(c, nullptr);
-  EXPECT_EQ(c->account, 1u);
-  EXPECT_EQ(c->clientOrderId, 31337u);
+    const OrderCanceled* c = cap.cancel(3, CancelReason::ReduceOnlyNotReducing);
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->account, 1u);
+    EXPECT_EQ(c->clientOrderId, 31337u);
+  }
+  {
+    // The same block on a maker the matcher cannot pull straight away: it has
+    // an open last-look hold, so the resting-hold hook runs first and
+    // RESHAPES the book underneath the sweep -- the held slice goes back onto
+    // the level at the tail, as a rebuilt record. The blocked order's
+    // identity, the name its owner chose included, has to be read off the
+    // book BEFORE that hook. The path exists only when last look and the perp
+    // fill-limit re-check are both on, so the config carries both.
+    Ledger led;
+    led.deposit(1, QUOTE, quoteAmt(100000));
+    led.deposit(2, QUOTE, quoteAmt(100000));
+    led.deposit(3, QUOTE, quoteAmt(100000));
+
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(perpLastLookCfg(), cap.sink());
+    eng.setLedger(&led, VENUE_ACCT);
+
+    eng.submit(InboundCommand{limit(1, Side::BUY, 100, 10, 1)}, 1);
+    eng.submit(InboundCommand{limit(2, Side::SELL, 100, 10, 2)}, 2);
+    ASSERT_EQ(eng.positionQty(1), qty(10).raw());
+
+    NewOrder exit = limit(3, Side::SELL, 110, 10, 1);  // reduce-only AND non-firm
+    exit.reduceOnly = true;
+    exit.lastLook = true;
+    exit.clientOrderId = 31337;
+    eng.submit(InboundCommand{exit}, 3);
+    ASSERT_TRUE(eng.book().contains(3));
+
+    // A partial lift is HELD, not traded: 3 of the 10 leave the book and the
+    // hold stays open on order 3.
+    eng.submit(InboundCommand{limit(4, Side::BUY, 110, 3, 2)}, 4);
+    ASSERT_EQ(eng.openHolds(), 1u);
+    ASSERT_EQ(restingOf(eng.book(), 3).leaves, qty(7));
+
+    // The position goes flat behind the resting reduce-only order, so it can
+    // no longer reduce anything.
+    eng.submit(InboundCommand{limit(5, Side::SELL, 100, 10, 1)}, 5);
+    eng.submit(InboundCommand{limit(6, Side::BUY, 100, 10, 3)}, 6);
+    ASSERT_EQ(eng.positionQty(1), 0);
+    ASSERT_EQ(eng.openHolds(), 1u);  // still open when the sweep below starts
+
+    cap.clear();
+    eng.submit(InboundCommand{limit(7, Side::BUY, 110, 7, 2)}, 7);
+
+    // The hook fired: the hold resolved and its slice went back on the book,
+    // which is what reshapes the level mid-sweep. Note the shape of the
+    // guard: when the hook reshapes anything it answers true and the sweep
+    // re-peeks, so the cancel below is only ever built from a record the hook
+    // left alone. The capture before the call is what keeps that true if the
+    // guard ever stops re-peeking.
+    EXPECT_EQ(cap.count<FillRejected>(), 1);
+    EXPECT_EQ(eng.openHolds(), 0u);
+
+    const OrderCanceled* c = cap.cancel(3, CancelReason::ReduceOnlyNotReducing);
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->account, 1u);
+    EXPECT_EQ(c->clientOrderId, 31337u);
+    EXPECT_FALSE(eng.book().contains(3));
+  }
 }
 
 // Control: an engine-side cancel already carries the name, and must keep it.
@@ -411,6 +483,85 @@ TEST(RejectAtomicity, AModifyOutsideTheBandLeavesTheHoldsIntact)
   EXPECT_EQ(after.leaves, qty(2));
 }
 
+// The motivating case for deciding the amend before touching anything: a
+// maker whose ENTIRE displayed size is held out of the book. It is absent
+// from book_ until the holds resolve -- rejectHoldsFor is what puts it back
+// -- yet it is live and the tracking index knows it. An amend on it must
+// therefore be answered by the amend's own validation, not by "unknown
+// order", and the hold must survive the refusal like any other.
+TEST(RejectAtomicity, AModifyOnAFullyHeldOutMakerIsValidatedNotDeclaredUnknown)
+{
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(lastLookCfg(), cap.sink());
+
+  NewOrder maker = limit(1, Side::SELL, 100, 5, 1);
+  maker.lastLook = true;
+  maker.clientOrderId = 11;
+  eng.submit(InboundCommand{maker}, 1);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 5, 2)}, 2);  // holds the WHOLE size
+
+  uint64_t heldId = 0;
+  for (const auto& e : cap.ev)
+  {
+    if (const auto* h = std::get_if<FillHeld>(&e))
+    {
+      heldId = h->heldId;
+    }
+  }
+  ASSERT_NE(heldId, 0u);
+  ASSERT_EQ(eng.openHolds(), 1u);
+  // Held out: absent from the book, and from the account snapshot too --
+  // that snapshot reads the book. Only the tracking index still knows the
+  // order is live, which is exactly why existence cannot come from book_.
+  ASSERT_EQ(eng.book().find(1), nullptr);
+  ASSERT_TRUE(eng.snapshotAccount(1).openOrders.empty());
+
+  cap.clear();
+  eng.submit(InboundCommand{ModifyOrder{1, SYM, {}, px(100), Quantity{}, 1}}, 3);
+
+  EXPECT_TRUE(cap.cancelRejected(1, RejectReason::InvalidQuantity));
+  EXPECT_FALSE(cap.cancelRejected(1, RejectReason::UnknownOrder));
+  EXPECT_EQ(eng.openHolds(), 1u);
+  EXPECT_TRUE(eng.hasHold(heldId));
+  EXPECT_EQ(cap.count<FillRejected>(), 0);
+  EXPECT_EQ(eng.book().find(1), nullptr);  // still held out, not restored
+}
+
+// A bare NewOrder -- no quote involved -- must be refused on the instrument's
+// own state with the reason that state carries. applyQuote reads the same
+// gate, and the quote tests above would stay green if validate() stopped
+// reading it, so the order path is pinned on its own.
+TEST(RejectAtomicity, ABareNewOrderIsRefusedOnTheInstrumentState)
+{
+  {
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    eng.setHalted(true);
+    eng.submit(InboundCommand{limit(1, Side::SELL, 100, 1, 1)}, 1);
+    EXPECT_TRUE(cap.rejected(1, RejectReason::Halted));
+    EXPECT_FALSE(eng.book().contains(1));
+    EXPECT_TRUE(eng.snapshotAccount(1).openOrders.empty());
+  }
+  {
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    eng.closeSession();
+    eng.submit(InboundCommand{limit(1, Side::SELL, 100, 1, 1)}, 1);
+    EXPECT_TRUE(cap.rejected(1, RejectReason::MarketClosed));
+    EXPECT_FALSE(eng.book().contains(1));
+    EXPECT_TRUE(eng.snapshotAccount(1).openOrders.empty());
+  }
+  {
+    Cap cap;
+    MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+    eng.delist();
+    eng.submit(InboundCommand{limit(1, Side::SELL, 100, 1, 1)}, 1);
+    EXPECT_TRUE(cap.rejected(1, RejectReason::InstrumentDelisted));
+    EXPECT_FALSE(eng.book().contains(1));
+    EXPECT_TRUE(eng.snapshotAccount(1).openOrders.empty());
+  }
+}
+
 // Control: an ACCEPTED modify still resolves the order's holds first -- the
 // order is reshaped and a hold left behind would settle against a
 // reservation that no longer covers it.
@@ -509,6 +660,33 @@ TEST(RejectAtomicity, AQuoteIntoAHaltedInstrumentLeavesBothLegsResting)
   EXPECT_EQ(bid.price, px(99));  // the OLD quote, untouched
   EXPECT_EQ(ask.price, px(101));
   EXPECT_EQ(m.eng.snapshotAccount(1).openOrders.size(), 2u);
+  EXPECT_TRUE(m.cap.rejected(10, RejectReason::Halted));
+
+  // The refusal is a refusal, not a non-event: the quote was received, so it
+  // SPENT its clientOrderId. The dedup index is registered before the state
+  // is read, which is the order a plain order gets too -- a resend of a name
+  // the venue has already seen is refused whatever happened to the first
+  // submission. Replaying the same name once the instrument trades again is
+  // therefore a duplicate, and the quote on the book is left alone.
+  m.eng.setHalted(false);
+  m.cap.clear();
+  m.eng.submit(InboundCommand{m.replacement(501)}, 3);
+
+  EXPECT_TRUE(m.cap.rejected(10, RejectReason::DuplicateClientOrderId));
+  EXPECT_FALSE(m.cap.anyCancel(10));
+  EXPECT_FALSE(m.cap.anyCancel(11));
+  const Resting bidAfter = restingOf(m.eng.book(), 10);
+  const Resting askAfter = restingOf(m.eng.book(), 11);
+  ASSERT_TRUE(bidAfter.present);
+  ASSERT_TRUE(askAfter.present);
+  EXPECT_EQ(bidAfter.price, px(99));  // still the ORIGINAL quote
+  EXPECT_EQ(askAfter.price, px(101));
+
+  // A name the venue has NOT seen still works, so the account is not stuck.
+  m.cap.clear();
+  m.eng.submit(InboundCommand{m.replacement(599)}, 4);
+  EXPECT_EQ(restingOf(m.eng.book(), 10).price, px(98));
+  EXPECT_EQ(restingOf(m.eng.book(), 11).price, px(102));
 }
 
 TEST(RejectAtomicity, AQuoteIntoAClosedInstrumentLeavesBothLegsResting)
@@ -565,6 +743,10 @@ TEST(RejectAtomicity, SetRiskLimitsForAForeignSymbolIsIgnored)
 
   eng.submit(InboundCommand{fatFingerLimits(OTHER_SYM, 1)}, 1);
 
+  // Ignored the way every other foreign-symbol record is: no reply, no
+  // report, nothing on the stream at all. A guard that refused with an event
+  // would be a different contract from SetBands and the rest.
+  EXPECT_TRUE(cap.ev.empty());
   EXPECT_EQ(eng.config().maxOrderQty, qty(10));
   EXPECT_EQ(eng.riskLimits().maxOrderQty, qty(10));
 
@@ -586,6 +768,7 @@ TEST(RejectAtomicity, SetAdmissionProfileForAForeignSymbolIsIgnored)
   p.profile.deny = AdmissionDeny::DenyNewOrder;
   eng.submit(InboundCommand{p}, 1);
 
+  EXPECT_TRUE(cap.ev.empty());  // silently ignored, not refused with an event
   EXPECT_EQ(eng.admissionProfiles().count(1), 0u);
 
   eng.submit(InboundCommand{limit(1, Side::SELL, 100, 1, 1)}, 2);
@@ -606,6 +789,7 @@ TEST(RejectAtomicity, SetAccountRiskLimitsForAForeignSymbolIsIgnored)
   a.maxOrderNotional = vol(0);
   eng.submit(InboundCommand{a}, 1);
 
+  EXPECT_TRUE(cap.ev.empty());  // silently ignored, not refused with an event
   EXPECT_EQ(eng.accountRiskLimits(1), nullptr);
 
   eng.submit(InboundCommand{limit(1, Side::SELL, 100, 5, 1)}, 2);
