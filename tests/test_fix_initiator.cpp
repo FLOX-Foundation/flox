@@ -641,8 +641,8 @@ void test_routable_executor()
 
   OrderRouter<4> router;
   router.registerExecutor(0, &exec);
-  CHECK(router.route(1, Side::BUY, Price::fromDouble(100.25).raw(),
-                     Quantity::fromDouble(5).raw(), 77) == RoutingError::Success);
+  CHECK(router.route(1, Side::BUY, Price::fromDouble(100.25),
+                     Quantity::fromDouble(5), 77) == RoutingError::Success);
 
   fix::Fields f;
   CHECK(h.last("D", f));
@@ -674,7 +674,7 @@ void test_routable_executor()
 
   // A market order carries no 44 -- a limit price of zero would be a different
   // order, not a missing field.
-  CHECK(router.route(1, Side::SELL, 0, Quantity::fromDouble(2).raw(), 78) ==
+  CHECK(router.route(1, Side::SELL, Price{}, Quantity::fromDouble(2), 78) ==
         RoutingError::Success);
   CHECK(h.last("D", f));
   CHECK(f[40] == "1");

@@ -8,32 +8,25 @@ Smart order routing across multiple exchanges.
 #include "flox/execution/order_router.h"
 ```
 
-!!! danger "Two distinct `flox::IOrderExecutor` types"
-    `execution/order_router.h` declares its own `flox::IOrderExecutor`:
+!!! note "`IRoutableExecutor` is not `IOrderExecutor`"
+    `execution/order_router.h` declares its own narrow order sink,
+    `flox::IRoutableExecutor`:
 
     ```cpp
-    virtual void submit(SymbolId, Side, int64_t priceRaw, int64_t quantityRaw, OrderId) = 0;
+    virtual void submit(SymbolId, Side, Price, Quantity, OrderId) = 0;
     virtual void cancel(OrderId) = 0;
     ```
 
-    `execution/abstract_executor.h` declares a **different** class under the **same
-    fully-qualified name**:
+    `execution/abstract_executor.h` declares the full executor interface,
+    `flox::IOrderExecutor` (`submitOrder`, `cancelOrder`, `cancelAllOrders`,
+    `replaceOrder`, `submitOCO`, `capabilities`), which is what
+    `SimulatedExecutor` implements.
 
-    ```cpp
-    virtual void submitOrder(const Order&);
-    virtual void cancelOrder(OrderId);
-    // ... cancelAllOrders, replaceOrder, submitOCO, capabilities
-    ```
-
-    Consequences:
-
-    - `registerExecutor()` takes the router's interface. Passing a class that derives from
-      `abstract_executor.h`'s `IOrderExecutor` (for example `SimulatedExecutor`) is a type error.
-    - Including both headers in one translation unit is an ODR conflict.
-
-    Implement the router's two-method interface for anything you register here, and keep the two
-    headers out of the same translation unit. This is a known defect in the headers, not in this
-    page.
+    They are different interfaces with different names, so the two headers
+    coexist in one translation unit. `registerExecutor()` takes
+    `IRoutableExecutor*`: passing an `IOrderExecutor` (for example
+    `SimulatedExecutor`) is a type error, and a venue executor reaches the
+    router through a small adapter.
 
 ## Synopsis
 
@@ -42,34 +35,36 @@ enum class RoutingStrategy : uint8_t {
   BestPrice,      // Route to exchange with best price
   LowestLatency,  // Route to exchange with lowest latency
   LargestSize,    // Route to exchange with most liquidity
-  RoundRobin,     // Cycle through available exchanges
-  Explicit        // Use targetExchange field in order
+  RoundRobin      // Cycle through available exchanges
+  // No Explicit strategy: route() carries no per-order exchange. To target a
+  // specific venue use routeTo(), which is the explicit API.
 };
 
 enum class FailoverPolicy : uint8_t {
-  Reject,           // Reject if target unavailable
-  FailoverToBest,   // Failover to best available
-  Notify            // Notify via callback
+  Reject,         // Reject if target unavailable
+  FailoverToBest  // Failover to best available
+  // No Notify policy: there is no callback member to notify through.
 };
 
 enum class RoutingError : uint8_t {
   Success = 0,
   NoExecutor,
-  ExchangeDisabled,
-  InvalidSymbol,
-  RejectedByPolicy
+  ExchangeDisabled
 };
 
-// NOTE: order_router.h declares its OWN flox::IOrderExecutor. It is a DIFFERENT
-// type from the one in execution/abstract_executor.h despite the identical
-// fully-qualified name. See the warning below.
-class IOrderExecutor
+// The router's own narrow order sink. Deliberately NOT the
+// flox::IOrderExecutor of execution/abstract_executor.h: that is the full
+// executor interface, and two classes with the same fully-qualified name in
+// one program is an ODR violation, so this one carries a distinct name.
+class IRoutableExecutor
 {
 public:
-  virtual ~IOrderExecutor() = default;
+  virtual ~IRoutableExecutor() = default;
 
-  virtual void submit(SymbolId symbol, Side side, int64_t priceRaw,
-                      int64_t quantityRaw, OrderId orderId) = 0;
+  // Price and Quantity, not two int64_t raws: a swapped pair on the order
+  // path is unrecoverable, so it is a compile error instead.
+  virtual void submit(SymbolId symbol, Side side, Price price,
+                      Quantity quantity, OrderId orderId) = 0;
   virtual void cancel(OrderId orderId) = 0;
 };
 
@@ -77,32 +72,33 @@ template <size_t MaxExchanges = 4>
 class OrderRouter : public ISubsystem
 {
 public:
-  // Executor registration — takes the IOrderExecutor declared above,
-  // NOT execution/abstract_executor.h's.
-  void registerExecutor(ExchangeId exchange, IOrderExecutor* executor) noexcept;
-  void setEnabled(ExchangeId exchange, bool enabled) noexcept;
+  // Executor registration
+  void registerExecutor(ExchangeId exchange, IRoutableExecutor* executor);
+  void setEnabled(ExchangeId exchange, bool enabled);
+  bool isEnabled(ExchangeId exchange) const;
 
   // Configuration
-  void setCompositeBook(CompositeBookMatrix<MaxExchanges>* book) noexcept;
-  void setClockSync(ExchangeClockSync<MaxExchanges>* clockSync) noexcept;
-  void setRoutingStrategy(RoutingStrategy strategy) noexcept;
-  void setFailoverPolicy(FailoverPolicy policy) noexcept;
+  void setCompositeBook(CompositeBookMatrix<MaxExchanges>* book);
+  void setClockSync(ExchangeClockSync<MaxExchanges>* clockSync);
+  void setRoutingStrategy(RoutingStrategy strategy);
+  void setFailoverPolicy(FailoverPolicy policy);
 
   // Routing
-  RoutingError route(SymbolId symbol, Side side, int64_t priceRaw,
-                     int64_t quantityRaw, OrderId orderId,
-                     ExchangeId* outExchange = nullptr) noexcept;
+  RoutingError route(SymbolId symbol, Side side, Price price,
+                     Quantity quantity, OrderId orderId,
+                     ExchangeId* outExchange = nullptr);
 
   // Explicit routing
   RoutingError routeTo(ExchangeId exchange, SymbolId symbol, Side side,
-                       int64_t priceRaw, int64_t quantityRaw,
-                       OrderId orderId) noexcept;
+                       Price price, Quantity quantity, OrderId orderId);
 
   // Cancel
-  RoutingError cancelOn(ExchangeId exchange, OrderId orderId) noexcept;
+  RoutingError cancelOn(ExchangeId exchange, OrderId orderId);
 
   // Exchange selection (analysis only)
-  ExchangeId selectExchange(SymbolId symbol, Side side) const noexcept;
+  ExchangeId selectExchange(SymbolId symbol, Side side) const;
+
+  size_t enabledCount() const;
 };
 ```
 
@@ -119,7 +115,7 @@ Requires `setCompositeBook()` to be called.
 ```cpp
 router.setCompositeBook(&matrix);
 router.setRoutingStrategy(RoutingStrategy::BestPrice);
-router.route(symbol, Side::BUY, priceRaw, qtyRaw, orderId);
+router.route(symbol, Side::BUY, price, quantity, orderId);
 ```
 
 ### LowestLatency
@@ -131,7 +127,7 @@ Requires `setClockSync()` to be called.
 ```cpp
 router.setClockSync(&clockSync);
 router.setRoutingStrategy(RoutingStrategy::LowestLatency);
-router.route(symbol, Side::BUY, priceRaw, qtyRaw, orderId);
+router.route(symbol, Side::BUY, price, quantity, orderId);
 ```
 
 ### RoundRobin
@@ -148,7 +144,7 @@ router.setRoutingStrategy(RoutingStrategy::RoundRobin);
 Uses the `routeTo()` method to explicitly specify the target exchange.
 
 ```cpp
-router.routeTo(exchangeId, symbol, side, priceRaw, qtyRaw, orderId);
+router.routeTo(exchangeId, symbol, side, price, quantity, orderId);
 ```
 
 ## Failover Policies
@@ -166,7 +162,7 @@ router.setFailoverPolicy(FailoverPolicy::FailoverToBest);
 router.setEnabled(0, false);  // Disable exchange 0
 
 ExchangeId routedTo;
-auto err = router.route(symbol, side, priceRaw, qtyRaw, orderId, &routedTo);
+auto err = router.route(symbol, side, price, quantity, orderId, &routedTo);
 // err == Success, routedTo is next best exchange
 ```
 
@@ -193,7 +189,7 @@ router.setClockSync(&clockSync);
 
 ```cpp
 ExchangeId routedTo;
-auto err = router.route(symbol, Side::BUY, priceRaw, qtyRaw, orderId, &routedTo);
+auto err = router.route(symbol, Side::BUY, price, quantity, orderId, &routedTo);
 
 if (err == RoutingError::Success) {
   std::cout << "Routed to exchange " << routedTo << "\n";
@@ -223,8 +219,6 @@ All routing methods return `RoutingError`:
 | `Success` | Order successfully routed |
 | `NoExecutor` | No executor registered for selected exchange |
 | `ExchangeDisabled` | Exchange is disabled via `setEnabled(false)` |
-| `InvalidSymbol` | Symbol not recognized |
-| `RejectedByPolicy` | Rejected by failover policy |
 
 ## Performance
 
@@ -237,6 +231,21 @@ All routing methods return `RoutingError`:
 | selectExchange() | O(MaxExchanges) |
 
 No allocations in any routing path.
+
+## Thread Safety
+
+`route()` is on the order path and takes no lock. Every word it reads is an
+atomic: the executor table and the enabled flags are published with release
+stores by `registerExecutor()` / `setEnabled()` from a control thread and read
+with acquire loads by the routing thread, the configuration words
+(`_strategy`, `_failoverPolicy`, the book and clock-sync pointers) are relaxed,
+and the round-robin cursor is a `fetch_add`, so two routing threads get their
+own slot instead of read-modify-writing a shared counter.
+
+Note what this does and does not buy: a `setEnabled(false)` concurrent with a
+`route()` may still let that in-flight order through, because the decision was
+already taken. The guarantee is that every route *after* the disable is
+observable is refused, and that there is no data race.
 
 ## See Also
 

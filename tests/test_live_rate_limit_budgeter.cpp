@@ -118,7 +118,7 @@ namespace
 class RecordingExecutor : public flox::IRoutableExecutor
 {
  public:
-  void submit(flox::SymbolId, flox::Side, int64_t, int64_t, flox::OrderId id) override
+  void submit(flox::SymbolId, flox::Side, flox::Price, flox::Quantity, flox::OrderId id) override
   {
     submitted.push_back(id);
   }
@@ -150,9 +150,9 @@ TEST(RateLimitedExecutor, DecoratorDropsLocallyAndReports)
   flox::RateLimitedExecutor exec(&inner, &budgeter, /*strategyId=*/1, &fakeClock,
                                  &onReject, &log);
 
-  exec.submit(1, flox::Side::BUY, 100, 1, /*orderId=*/11);
-  exec.submit(1, flox::Side::BUY, 100, 1, /*orderId=*/12);
-  exec.submit(1, flox::Side::BUY, 100, 1, /*orderId=*/13);  // over budget
+  exec.submit(1, flox::Side::BUY, flox::Price::fromRaw(100), flox::Quantity::fromRaw(1), /*orderId=*/11);
+  exec.submit(1, flox::Side::BUY, flox::Price::fromRaw(100), flox::Quantity::fromRaw(1), /*orderId=*/12);
+  exec.submit(1, flox::Side::BUY, flox::Price::fromRaw(100), flox::Quantity::fromRaw(1), /*orderId=*/13);  // over budget
 
   ASSERT_EQ(inner.submitted.size(), 2u);
   ASSERT_EQ(log.entries.size(), 1u);
