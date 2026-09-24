@@ -732,13 +732,26 @@ class EventBus : public ISubsystem
   // Publish a contiguous batch: one sequence reservation, one wrap/reclaim
   // wait for the whole range, then a single release fence covering all slot
   // stamps instead of one release store per event. Blocking, like publish().
-  // Returns the last sequence, or -1 if the bus is stopped.
+  // Returns the last sequence, or -1 if the bus is stopped or the batch is
+  // outside the bound below.
   int64_t publishBatch(const Event* evs, size_t count)
   {
     FLOX_PROFILE_SCOPE("Disruptor::publishBatch");
 
     static_assert(CapacityPow2 >= 2);
-    assert(count > 0 && count <= CapacityPow2 / 2 && "batch must fit the ring with room to spare");
+
+    // The bound is a refusal, not an assertion. An assert is nothing at all
+    // under NDEBUG -- which every build type in this tree carries, Release and
+    // RelWithDebInfo alike -- and past the bound the call does not merely
+    // publish more than it promised: a range wider than the ring reserves
+    // slots it wraps back onto, so the wrap gate waits on sequences that are
+    // inside this very batch and that only this publisher can stamp. That is a
+    // publisher which never returns. Half the ring is the documented bound
+    // because the other half is what the consumers are still reading.
+    if (count == 0 || count > CapacityPow2 / 2)
+    {
+      return -1;
+    }
 
     if (!_running.load(std::memory_order_acquire))
     {
