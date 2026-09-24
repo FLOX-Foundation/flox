@@ -105,6 +105,17 @@ class Account
   void openPosition(SymbolId symbol, double quantity, double entryPrice,
                     double isolatedEquity = 0.0, double contractMultiplier = 1.0,
                     bool isLongOption = false);
+  // Close every leg on `symbol`, realising each one's PnL at the current mark
+  // into account equity first: `quantity * (mark - entryPrice) *
+  // contractMultiplier`, the same expression totalUnrealisedPnl() reports, so
+  // what the account showed as unrealised is exactly what the close books. A
+  // leg on a symbol with no mark is valued at entry and realises nothing,
+  // which is how it was already valued everywhere else.
+  //
+  // This used to erase the legs and leave equity untouched, so a backtest or a
+  // venue ledger that opened and closed positions all day reported the equity
+  // it started with, and every gain or loss went missing unless the caller
+  // remembered to post it by hand through addEquity.
   void closePosition(SymbolId symbol);
   const std::vector<LeveragedPosition>& positions() const noexcept { return _positions; }
   std::vector<LeveragedPosition>& positionsMut() noexcept { return _positions; }

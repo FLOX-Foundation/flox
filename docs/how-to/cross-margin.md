@@ -38,6 +38,46 @@ per-position.
 The default margin mode is `cross`. Switch to `isolated` per-account
 with `set_margin_mode("isolated")` / `setMarginMode("isolated")`.
 
+## Closing a position
+
+`close_position(symbol)` realises every leg on that symbol at the
+symbol's current mark before dropping it, and credits the result to
+account equity:
+
+```
+realised = quantity * (mark - entry_price) * contract_multiplier
+```
+
+That is the same expression `total_unrealised_pnl()` reports, so what
+the account showed as unrealised is exactly what the close books —
+there is no separate `add_equity` to remember. A leg on a symbol that
+was never marked is valued at entry and realises nothing, which is how
+it was already valued in every aggregate.
+
+=== "Python"
+
+    ```python
+    acct = flox.Account(account_id=42, equity=1_000_000.0)
+    acct.open_position(symbol=1, quantity=2.5, entry_price=30_000.0)
+    acct.set_mark(1, 31_234.5678)
+    acct.close_position(1)
+    acct.equity()  # 1_003_086.4195
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    const acct = new flox.Account(42, 1_000_000);
+    acct.openPosition(1, 2.5, 30_000);
+    acct.setMark(1, 31_234.5678);
+    acct.closePosition(1);
+    acct.equity();  // 1_003_086.4195
+    ```
+
+Before this, closing erased the legs and left equity untouched, so a
+run that opened and closed positions all day reported the equity it
+started with.
+
 ## Cross-margin liquidation
 
 Attach the account to a `LiquidationEngine`. The engine walks

@@ -54,6 +54,55 @@ TEST(Account, PositionBookOpenAndClose)
   EXPECT_EQ(a.positions().front().symbol, ETH);
 }
 
+// Closing books the marked PnL. The three tests below pin what that means for
+// the cases the aggregates already had an answer for: an unmarked leg, several
+// legs on one symbol, and a multiplier.
+TEST(Account, ClosePositionBooksExactlyWhatUnrealisedShowed)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 2.0, 50'000.0);
+  a.openPosition(BTC, -0.5, 52'000.0);
+  a.openPosition(ETH, 10.0, 3'000.0);
+  a.setMark(BTC, 51'000.0);
+  a.setMark(ETH, 3'100.0);
+
+  const double totalBefore = a.totalUnrealisedPnl().toDouble();
+  const double ethUpnl = 10.0 * (3'100.0 - 3'000.0);
+  const double btcUpnl = totalBefore - ethUpnl;
+
+  a.closePosition(BTC);
+
+  EXPECT_EQ(a.positionCount(), 1u);
+  EXPECT_DOUBLE_EQ(a.equity().toDouble(), 10'000.0 + btcUpnl);
+  // The ETH leg is untouched: its uPnL is still unrealised.
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), ethUpnl);
+}
+
+TEST(Account, ClosePositionWithoutAMarkRealisesNothing)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 2.0, 50'000.0);
+  // No mark: every aggregate values this leg at entry, so there is nothing to
+  // realise and equity must not move.
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), 0.0);
+
+  a.closePosition(BTC);
+
+  EXPECT_EQ(a.positionCount(), 0u);
+  EXPECT_DOUBLE_EQ(a.equity().toDouble(), 10'000.0);
+}
+
+TEST(Account, ClosePositionScalesTheRealisationByTheContractMultiplier)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 2.0, 100.0, /*isolatedEquity=*/0.0, /*contractMultiplier=*/50.0);
+  a.setMark(BTC, 110.0);
+
+  a.closePosition(BTC);
+
+  EXPECT_DOUBLE_EQ(a.equity().toDouble(), 10'000.0 + 2.0 * 10.0 * 50.0);
+}
+
 TEST(Account, MarksDefaultToEntryWhenUnset)
 {
   Account a(1, 1000.0);

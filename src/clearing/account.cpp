@@ -69,6 +69,22 @@ void Account::openPosition(SymbolId symbol, Quantity quantity, Price entryPrice,
 
 void Account::closePosition(SymbolId symbol)
 {
+  // Realise first, erase second: the legs are what the PnL is computed from.
+  const Price mark = markFor(symbol);
+  if (mark.raw() > 0)
+  {
+    int64_t realised = 0;
+    for (const auto& p : _positions)
+    {
+      if (p.symbol != symbol)
+      {
+        continue;
+      }
+      realised = checkedAddI64(realised, legUnrealisedPnlRaw(p, mark));
+    }
+    _equity = Volume::fromRaw(checkedAddI64(_equity.raw(), realised));
+  }
+
   _positions.erase(
       std::remove_if(_positions.begin(), _positions.end(),
                      [&](const LeveragedPosition& p)
