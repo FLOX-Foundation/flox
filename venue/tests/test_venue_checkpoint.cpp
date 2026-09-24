@@ -445,6 +445,68 @@ TEST(VenueCheckpoint, ARestoredGtdStopStillExpires)
   std::remove(path.c_str());
 }
 
+// A hold's reference price is written and restored, and it decides both the
+// tolerance reject and the conduct split -- so a snapshot that carries a
+// different one describes a venue that will resolve the hold differently.
+// The hash has to see it, or a torn or drifted value rides through
+// SnapshotEnd unnoticed.
+TEST(VenueCheckpoint, AHoldsReferencePriceIsPartOfTheState)
+{
+  const std::string path = pidPath("checkpoint_hold_ref") + ".snap";
+  std::remove(path.c_str());
+
+  venue::SymbolConfig c = cfg();
+  c.lastLookWindowNs = DurationNs{10'000'000};
+
+  Ledger led;
+  MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
+  eng.setLedger(&led, VENUE_ACCT);
+  eng.submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}}, 1000);
+  eng.submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(100000), SYM}}, 2000);
+  NewOrder maker = limit(1, Side::SELL, 100.00, 5.0, 1);
+  maker.lastLook = true;
+  eng.submit(InboundCommand{maker}, 3000);
+  // Both sides quoted, so the hold has a mid to stamp itself against: with no
+  // bid and no print the reference is 0 and there is nothing to tamper with.
+  eng.submit(InboundCommand{limit(2, Side::BUY, 99.00, 1.0, 2)}, 3500);
+  NewOrder taker = limit(3, Side::BUY, 100.00, 3.0, 2);
+  taker.tif = TimeInForce::IOC;
+  eng.submit(InboundCommand{taker}, 4000);
+  ASSERT_EQ(eng.openHolds(), 1U);
+
+  {
+    Journal out(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    eng.writeSnapshot(out);
+    out.flush();
+  }
+
+  auto records = Journal::loadTimed(path);
+  bool tampered = false;
+  for (auto& [ts, cmd] : records)
+  {
+    (void)ts;
+    if (auto* r = std::get_if<RestoreHeld>(&cmd))
+    {
+      ASSERT_NE(r->refAtHoldRaw, 0) << "the hold carries no reference to tamper with";
+      r->refAtHoldRaw += px(1.0).raw();
+      tampered = true;
+    }
+  }
+  ASSERT_TRUE(tampered);
+
+  Ledger led2;
+  MatchingEngine<MatchingBook> rec(c, [](const OutboundEvent&) {});
+  rec.setLedger(&led2, VENUE_ACCT);
+  bool allApplied = true;
+  for (const auto& [ts, cmd] : records)
+  {
+    allApplied = rec.applySnapshotRecord(cmd, ts) && allApplied;
+  }
+  EXPECT_FALSE(allApplied) << "a hold whose reference price moved still verified";
+  EXPECT_NE(rec.stateHash(), eng.stateHash());
+  std::remove(path.c_str());
+}
+
 // The core differential guarantee: a long random session with a checkpoint at
 // an arbitrary point recovers (snapshot + tail segments) into EXACTLY the
 // state a full-history replay produces -- state hash equal AND the event hash

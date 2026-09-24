@@ -504,6 +504,17 @@ class LastLook
       h = mix(h, static_cast<uint64_t>(x.takerExpiryNs.raw()));
       h = mix(h, x.makerReduceOnly ? 1U : 0U);
       h = mix(h, x.takerReduceOnly ? 1U : 0U);
+      // The reference the hold was stamped against. It is written and
+      // restored, and it decides both the tolerance reject and the conduct
+      // split, so a value that drifted or came back wrong changes how the
+      // hold resolves -- the digest has to see it. Only when set, the same
+      // "zero == absent" rule the ids below follow: a hold opened with
+      // neither side quoted and nothing printed carries 0 and hashes as it
+      // did before.
+      if (x.refAtHoldRaw != 0)
+      {
+        h = mix(h, static_cast<uint64_t>(x.refAtHoldRaw));
+      }
       if (x.makerClientOrderId != 0)
       {
         h = mix(h, x.makerClientOrderId);  // only when set: a hold without one hashes as before
