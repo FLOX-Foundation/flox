@@ -310,14 +310,17 @@ class Matcher
           if (lim.makerBlocked)
           {
             // The maker can no longer trade at all: pull it, holds first (same
-            // discipline as the STP removal above).
+            // discipline as the STP removal above). The report carries the
+            // maker's own clientOrderId for the same reason the STP cancels do:
+            // it is the owner's only word about an order it never cancelled.
             const OrderId blockedId = m->id;
             const uint64_t blockedAcct = m->accountId;
+            const uint64_t blockedClOrd = m->clientOrderId;
             if (onRestingHolds_ && onRestingHolds_(blockedId))
             {
               continue;  // hook may have reshaped the book -- re-peek
             }
-            sink(OrderCanceled{blockedId, order.symbol, lim.reason, blockedAcct, 0,
+            sink(OrderCanceled{blockedId, order.symbol, lim.reason, blockedAcct, blockedClOrd,
                                m->leaves + m->hidden, m->cumQty});
             book.cancel(blockedId);
             continue;
@@ -626,6 +629,11 @@ class Matcher
   // once per maker, so this cannot spin. The aggressor can never be a leg of
   // those holds: STP is tested before the last-look branch on every iteration,
   // so a same-scope maker is removed before it can hold a slice of this order.
+  //
+  // Every cancel below carries the resting order's own clientOrderId, like
+  // every engine-side cancel does. An STP pull is usually the only report the
+  // maker ever gets for that order, and the owner reconciles against the name
+  // it chose, not the id the venue assigned.
   StpOutcome applySelfTradePrevention(const NewOrder& order, const RestingOrder& m, Book& book,
                                       Quantity& leaves, const EventSink& sink) const
   {
@@ -641,15 +649,15 @@ class Matcher
     switch (order.stp)
     {
       case STPMode::CancelOldest:
-        sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId, 0,
-                           m.leaves + m.hidden, m.cumQty});
+        sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId,
+                           m.clientOrderId, m.leaves + m.hidden, m.cumQty});
         book.cancel(m.id);
         return StpOutcome::RePeek;
       case STPMode::CancelNewest:
         return StpOutcome::CancelTaker;
       case STPMode::CancelBoth:
-        sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId, 0,
-                           m.leaves + m.hidden, m.cumQty});
+        sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId,
+                           m.clientOrderId, m.leaves + m.hidden, m.cumQty});
         book.cancel(m.id);
         return StpOutcome::CancelTaker;
       case STPMode::Decrement:
@@ -664,8 +672,8 @@ class Matcher
         const Quantity dec = qmin(leaves, restTotal);
         if (!(dec < restTotal))  // resting <= incoming: resting fully removed
         {
-          sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId, 0,
-                             m.leaves + m.hidden, m.cumQty});
+          sink(OrderCanceled{m.id, order.symbol, CancelReason::SelfTradePrevention, m.accountId,
+                             m.clientOrderId, m.leaves + m.hidden, m.cumQty});
           book.cancel(m.id);
         }
         else  // incoming smaller: reduce resting, incoming fully decremented

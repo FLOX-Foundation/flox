@@ -851,7 +851,11 @@ account** at the engine: a `NewOrder` whose `clientOrderId` was already seen by
 that account rejects with `DuplicateClientOrderId` and leaves the book
 untouched -- whether the original is still resting, filled, or canceled. That
 is what makes a client resend after an ambiguous disconnect safe.
-`clientOrderId == 0` means "not set" and is never deduplicated. The dedup
+`clientOrderId == 0` means "not set" and is never deduplicated. Every report
+about an order carries it back, including the cancels the venue decides on its
+own -- self-trade prevention in any of its modes, and a resting order pulled
+at fill time by a perp risk limit -- because those are usually the only word
+the owner gets about an order it never cancelled. The dedup
 window is the engine session (uptime): the index is rebuilt by the same
 submits during journal replay, so post-restart behaviour is identical to live;
 rotating/compacting the index is a future checkpoint concern.
