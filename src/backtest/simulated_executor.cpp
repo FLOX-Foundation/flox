@@ -2888,12 +2888,14 @@ void SimulatedExecutor::processConditionalOrders(SymbolId symbol, const MarketSt
           if (id == order.id)
           {
             triggered = checkTrailingStopTrigger(order, trailing, state);
-            if (triggered)
+            if (triggered && trailing.currentTrigger.raw() != 0)
             {
               // The trailing trigger lives in the trailing state, not on the
               // order. Copy it across so the TRIGGERED event reports the price
               // that armed the order and the fill is bounded by it like any
-              // other stop's.
+              // other stop's. A trailing stop configured with neither an offset
+              // nor a callback rate has no trigger to copy, and whatever the
+              // caller put on the order is left alone.
               order.triggerPrice = trailing.currentTrigger;
             }
             break;
