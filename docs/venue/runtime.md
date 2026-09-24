@@ -230,6 +230,25 @@ and it is not treated as a torn tail: a torn tail is the expected shape of a
 crash and the prefix ahead of it is sound, whereas a foreign version means
 every byte after the header was laid out by rules this build does not have.
 
+**The CRC decides which of the two a record is, and it is checked first.** The
+stamp and the tag sit in the header, and the CRC covers the header, so reading
+them before the CRC asks a possibly damaged byte what format the record is in
+and then refuses the whole file on its answer -- one flipped bit in the last
+record's stamp used to cost every record ahead of it. A record whose CRC does
+not cover its own bytes was damaged after it was written, whatever its stamp
+now reads, and damage stops the read with the intact prefix. A record whose CRC
+passes is the writer's own statement about its format, and a foreign version or
+a tag this build has no command for is refused by name there, as before.
+
+`Journal::loadReported(path)` is that same read with the stop described instead
+of implied: the records recovered, a `Tail` (`Intact`, `Torn`, `Corrupt`) and
+the byte offset of the first record that was not recovered. `Torn` means the
+last record's bytes are not all in the file -- the ordinary shape of a crash.
+`Corrupt` means whole bytes follow the record that failed, so the file was not
+cut short but rotted, and there is history behind the hole this build will not
+replay. `loadTimed` is `loadReported(path).records` and keeps throwing by name
+for a foreign version or an unknown tag.
+
 What that means per file:
 
 - a journal segment in a foreign version stops the shard from starting. There
