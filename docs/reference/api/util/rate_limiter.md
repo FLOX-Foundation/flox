@@ -33,8 +33,18 @@ RateLimiter(Config config);
 
 struct Config {
   uint32_t capacity;    // Maximum tokens in bucket
-  uint32_t refillRate;  // Tokens added per second
+  uint32_t refillRate;  // Tokens added per second; 0 means "never refills"
 };
+```
+
+A `refillRate` of 0 is a valid configuration, not an error: the bucket becomes
+a fixed burst budget of exactly `capacity` tokens, and only `reset()` brings
+them back. `timeUntilAvailable()` then answers `Duration::max()` — "never" —
+rather than a finite time nobody will ever reach.
+
+```cpp
+// 5 calls, ever, until the caller decides to reset
+RateLimiter budget({.capacity = 5, .refillRate = 0});
 ```
 
 ### Methods
@@ -42,7 +52,7 @@ struct Config {
 | Method | Description |
 |--------|-------------|
 | `tryAcquire(n)` | Try to consume n tokens. Returns true if successful. |
-| `timeUntilAvailable(n)` | Duration until n tokens will be available. |
+| `timeUntilAvailable(n)` | Duration until n tokens will be available. `Duration::max()` means never: the bucket does not refill, or `n` exceeds `capacity`. |
 | `available()` | Current token count. |
 | `reset()` | Reset to full capacity. |
 | `capacity()` | Maximum tokens. |
