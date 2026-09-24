@@ -72,6 +72,7 @@
 #include <iterator>
 #include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -231,6 +232,12 @@ struct RunT
   std::vector<OutboundEvent> since;  // events of the last submit
   MatchingEngine<Book> eng;
   int64_t ts{1};
+  // W26-T065: the most events one command (or one tick) may produce. A
+  // broken book that keeps the matcher spinning used to hang the corpus
+  // until the test was killed, ten minutes later and with no scenario
+  // named. Past the budget push() throws, and CorpusMatchesTheTable turns
+  // that into a failure that names the scenario and the last event.
+  size_t eventBudgetPerCommand{100'000};
 
   RunT(const SymbolConfig& c, Digest& d)
       : dig(d), eng(c, [this](const OutboundEvent& e)
@@ -250,12 +257,27 @@ struct RunT
   {
     since.clear();
     eng.submit(cmd, ts++);
+    checkBudget("command", cmd.index());
   }
   void tickTo(int64_t at)
   {
     since.clear();
     ts = at + 1;
     eng.tick(at);
+    checkBudget("tick", 0);
+  }
+  void checkBudget(const char* what, size_t cmdIndex) const
+  {
+    if (since.size() <= eventBudgetPerCommand)
+    {
+      return;
+    }
+    throw std::runtime_error(
+        "event budget exceeded: one " + std::string(what) + " (InboundCommand alternative " +
+        std::to_string(cmdIndex) + ") produced " + std::to_string(since.size()) +
+        " events, budget " + std::to_string(eventBudgetPerCommand) +
+        "; last event is OutboundEvent alternative " + std::to_string(since.back().index()) +
+        " -- a matcher spinning on a book that made no progress, not a scenario");
   }
   Hashes hashes() const
   {
@@ -1555,7 +1577,14 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
   produced.reserve(scenarios.size());
   for (const Scenario& s : scenarios)
   {
-    produced.emplace_back(s.name, s.run());
+    try
+    {
+      produced.emplace_back(s.name, s.run());
+    }
+    catch (const std::exception& e)
+    {
+      ADD_FAILURE() << "scenario '" << s.name << "': " << e.what();
+    }
   }
 
   // A scenario that emits nothing pins nothing: it would keep passing through
@@ -1707,6 +1736,41 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
 // The golden table would catch a regression here again, but only on whichever
 // library the table was not recorded on. This does not care: it asserts the
 // property directly.
+// W26-T065: a command that produces more events than the budget is a failure
+// that names what was going on, not a hang the CI kills ten minutes later.
+TEST(VenueGoldenReplay, ACommandPastTheEventBudgetFailsInsteadOfHanging)
+{
+  Digest d;
+  RunT<MatchingBook> r(spotCfg(), d);
+  const auto order = [](OrderId id, Side side, double q)
+  {
+    NewOrder o;
+    o.id = id;
+    o.symbol = SYM;
+    o.side = side;
+    o.type = OrderType::LIMIT;
+    o.price = px(100.0);
+    o.quantity = qty(q);
+    o.accountId = id;
+    return o;
+  };
+  r.push(InboundCommand{order(1, Side::SELL, 5.0)});  // rests: inside any budget
+  r.eventBudgetPerCommand = 1;
+  // The crossing buy prints a trade and two executions: past a budget of one.
+  try
+  {
+    r.push(InboundCommand{order(2, Side::BUY, 5.0)});
+    FAIL() << "a command three events over its budget went through";
+  }
+  catch (const std::runtime_error& e)
+  {
+    const std::string what = e.what();
+    EXPECT_NE(what.find("event budget exceeded"), std::string::npos) << what;
+    EXPECT_NE(what.find("budget 1"), std::string::npos) << what;
+  }
+  std::remove(tmpPath("golden_budget", ".bin").c_str());
+}
+
 TEST(VenueGoldenReplay, EmergencyCancelReportsPendingStopsInIdOrder)
 {
   Digest d;

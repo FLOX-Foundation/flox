@@ -280,6 +280,16 @@ class Matcher
       // Only the displayed peak is executable per bite; the book refills the
       // hidden reserve (and re-queues at the tail) inside fillBest.
       const Quantity want = qmin(leaves, m->leaves);
+      if (want.isZero())
+      {
+        // A maker with nothing left, still at the top of the book, is a book
+        // that failed to take a filled order down. Filling zero from it,
+        // forever, is the hang W26-T065 found under a broken LadderBook:
+        // every pass printed a zero-size trade and the taker's remainder
+        // never moved. Stop the sweep; the remainder rests or is refused by
+        // its own type, and the golden driver's event budget names the run.
+        break;
+      }
       Quantity allowed = want;
       if (planActive_ || onFillLimit_)
       {
