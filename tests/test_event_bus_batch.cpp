@@ -281,4 +281,100 @@ TEST(EventBusBatch, DrainOnStopDeliversTail)
   EXPECT_EQ(sum, 30 * 29 / 2);
 }
 
+// ---------------------------------------------------------------------------
+// The "batch must fit the ring with room to spare" bound is an assert, and an
+// assert is nothing at all under NDEBUG -- which every build type in this tree
+// carries, Release and RelWithDebInfo alike. Past the bound the call does not
+// refuse: at up to the ring size it quietly publishes a batch the contract
+// says it will not, and past the ring size it reserves a range that overlaps
+// itself, so the wrap gate waits on sequences that are inside the batch and
+// have not been stamped yet -- a publisher that never returns.
+
+TEST(EventBusBatch, ABatchLargerThanTheDocumentedBoundIsRefused)
+{
+  Bus bus;  // capacity 64, so the bound is 32
+  RecordingListener a;
+  ASSERT_TRUE(bus.subscribe(&a, true));
+  bus.start();
+
+  const auto tooMany = makeEvents(0, 33);
+  EXPECT_LT(bus.publishBatch(tooMany.data(), tooMany.size()), 0)
+      << "a batch past the bound was accepted";
+  EXPECT_EQ(bus.stats().published, 0u) << "a refused batch published events anyway";
+
+  bus.flush();
+  bus.stop();
+  EXPECT_TRUE(a.values.empty()) << "a refused batch was delivered";
+}
+
+TEST(EventBusBatch, AnEmptyBatchIsRefused)
+{
+  Bus bus;
+  RecordingListener a;
+  ASSERT_TRUE(bus.subscribe(&a, true));
+  bus.start();
+
+  const auto evs = makeEvents(0, 1);
+  EXPECT_LT(bus.publishBatch(evs.data(), 0), 0);
+  EXPECT_EQ(bus.stats().published, 0u);
+  bus.stop();
+}
+
+// The refusal has to be a return, not a block. A batch wider than the ring
+// gates on sequences it has itself reserved and not yet stamped, so today the
+// call only comes back because stop() releases it -- and stop() is what this
+// test has to do to keep the suite from hanging.
+TEST(EventBusBatch, ABatchWiderThanTheRingReturnsInsteadOfBlocking)
+{
+  Bus bus;  // capacity 64
+  RecordingListener a;
+  ASSERT_TRUE(bus.subscribe(&a, true));
+  bus.start();
+
+  const auto tooMany = makeEvents(0, 96);
+  std::atomic<bool> returned{false};
+  std::atomic<int64_t> result{0};
+
+  std::thread publisher(
+      [&bus, &tooMany, &returned, &result]
+      {
+        result.store(bus.publishBatch(tooMany.data(), tooMany.size()),
+                     std::memory_order_relaxed);
+        returned.store(true, std::memory_order_release);
+      });
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+  while (!returned.load(std::memory_order_acquire) &&
+         std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::yield();
+  }
+  const bool returnedOnItsOwn = returned.load(std::memory_order_acquire);
+
+  bus.stop();  // releases a publisher stuck on the gate, if there is one
+  publisher.join();
+
+  EXPECT_TRUE(returnedOnItsOwn)
+      << "publishBatch blocked on the wrap gate instead of refusing an oversized batch";
+  EXPECT_LT(result.load(std::memory_order_relaxed), 0);
+}
+
+// Control: the bound itself is still a batch the bus takes and delivers.
+TEST(EventBusBatch, ABatchAtTheDocumentedBoundIsPublished)
+{
+  Bus bus;  // capacity 64, bound 32
+  RecordingListener a;
+  ASSERT_TRUE(bus.subscribe(&a, true));
+  bus.start();
+
+  const auto evs = makeEvents(100, 32);
+  EXPECT_GE(bus.publishBatch(evs.data(), evs.size()), 0);
+  bus.flush();
+  bus.stop();
+
+  ASSERT_EQ(a.values.size(), 32u);
+  EXPECT_EQ(a.values.front(), 100);
+  EXPECT_EQ(a.values.back(), 131);
+}
+
 }  // namespace
