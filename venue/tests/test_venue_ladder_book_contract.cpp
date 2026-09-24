@@ -122,6 +122,50 @@ struct Tape
     }
     return n;
   }
+  const OrderCanceled* canceled(OrderId id) const
+  {
+    for (const auto& e : events)
+    {
+      if (const auto* c = std::get_if<OrderCanceled>(&e); c != nullptr && c->id == id)
+      {
+        return c;
+      }
+    }
+    return nullptr;
+  }
+  const CancelRejected* cancelRejected(OrderId id) const
+  {
+    for (const auto& e : events)
+    {
+      if (const auto* c = std::get_if<CancelRejected>(&e); c != nullptr && c->id == id)
+      {
+        return c;
+      }
+    }
+    return nullptr;
+  }
+  const OrderModified* modified(OrderId id) const
+  {
+    for (const auto& e : events)
+    {
+      if (const auto* m = std::get_if<OrderModified>(&e); m != nullptr && m->id == id)
+      {
+        return m;
+      }
+    }
+    return nullptr;
+  }
+  const FillHeld* held() const
+  {
+    for (const auto& e : events)
+    {
+      if (const auto* h = std::get_if<FillHeld>(&e))
+      {
+        return h;
+      }
+    }
+    return nullptr;
+  }
   const Trade* firstTrade() const
   {
     for (const auto& e : events)
@@ -190,7 +234,8 @@ void restProbes(LadderBook& book)
 {
   for (uint64_t i = 0; i < kProbes; ++i)
   {
-    book.addResting(Side::BUY, resting(kProbeBase + i, Side::BUY, 1.0 + 0.01 * double(i), 1.0));
+    ASSERT_EQ(book.addResting(Side::BUY, resting(kProbeBase + i, Side::BUY, 1.0 + 0.01 * double(i), 1.0)),
+              BookAddResult::Accepted);
   }
 }
 
@@ -216,7 +261,9 @@ TEST(LadderBookIdIndex, ALookupCostsTheSameAfterAMillionOrderLifecycles)
   for (uint64_t i = 0; i < kCycles; ++i)
   {
     const OrderId id = kChurnBase + i;
-    aged.addResting(Side::BUY, resting(id, Side::BUY, 1.0, 1.0));
+    ASSERT_EQ(aged.addResting(Side::BUY, resting(id, Side::BUY, 1.0, 1.0)),
+              BookAddResult::Accepted)
+        << "the book refused churn order " << id;
     ASSERT_TRUE(aged.cancel(id).has_value()) << "churn order " << id << " never reached the index";
   }
   ASSERT_TRUE(aged.empty()) << "the churn left orders behind; the measurement is not comparable";
@@ -273,7 +320,8 @@ TEST(LadderBookAcceptance, AnOrderTheBookCannotTakeIsRejectedNotAccepted)
     EXPECT_NE(r, nullptr) << "the order is on no book and its owner was told nothing";
     if (r != nullptr)
     {
-      EXPECT_NE(r->reason, RejectReason::None) << "a reject must carry a reason the owner can read";
+      EXPECT_EQ(r->reason, RejectReason::InvalidPrice)
+          << "a price the ladder has no level for is the client's price, like the collar's";
       outOfBand = r->reason;
     }
     EXPECT_FALSE(eng.book().contains(1));
@@ -297,7 +345,8 @@ TEST(LadderBookAcceptance, AnOrderTheBookCannotTakeIsRejectedNotAccepted)
     EXPECT_NE(r, nullptr) << "the order is on no book and its owner was told nothing";
     if (r != nullptr)
     {
-      EXPECT_NE(r->reason, RejectReason::None) << "a reject must carry a reason the owner can read";
+      EXPECT_EQ(r->reason, RejectReason::BookCapacityExceeded)
+          << "an exhausted pool is a venue limit, not something the client can price its way out of";
       poolFull = r->reason;
     }
     EXPECT_FALSE(eng.book().contains(5));
@@ -307,8 +356,6 @@ TEST(LadderBookAcceptance, AnOrderTheBookCannotTakeIsRejectedNotAccepted)
   // The two are different failures with different answers: one is the client's
   // price, the other is the venue running out of room, and a client that
   // cannot tell them apart retries the one it should not.
-  // W33-T003 needs: a RejectReason value for the exhausted pool (the price
-  // case is already served by InvalidPrice).
   EXPECT_NE(outOfBand, poolFull) << "out-of-band price and exhausted pool answer the same reason: "
                                  << toString(outOfBand);
 }
@@ -390,7 +437,8 @@ TEST(LadderBookCapacity, FullGatesTheEngineAtTheLastNode)
     EXPECT_FALSE(book.full());
     for (OrderId id = 1; id <= 3; ++id)
     {
-      book.addResting(Side::BUY, resting(id, Side::BUY, 1.0 + 0.01 * double(id), 1.0));
+      ASSERT_EQ(book.addResting(Side::BUY, resting(id, Side::BUY, 1.0 + 0.01 * double(id), 1.0)),
+                BookAddResult::Accepted);
     }
     EXPECT_TRUE(book.full()) << "three nodes of three are in use";
     ASSERT_TRUE(book.cancel(2).has_value());
@@ -428,4 +476,223 @@ TEST(LadderBookCapacity, FullGatesTheEngineAtTheLastNode)
   EXPECT_EQ(tape.accepts(11), 1u) << "the freed node was not reused";
   EXPECT_TRUE(eng.book().contains(11));
   EXPECT_EQ(eng.restingOrderCount(), 8u);
+}
+
+// ---- the paths that lift an order off the book and put it back -------------
+
+// A peg target is computed from the touch and is bounded by nothing the ladder
+// knows about, so a reference that has run past the band gives a price with no
+// level. The order is already off the book when that is discovered -- repeg
+// cancels it before reading the market, so the target cannot reference the
+// order's own quantity -- and the one thing that must not happen is that it
+// disappears without a word.
+TEST(LadderBookLiftedOrders, APegRepricedOutsideTheLadderIsCanceledNotLost)
+{
+  SymbolConfig cfg;
+  cfg.id = SYM;
+  cfg.tickSize = px(0.01);
+  // The collar is deliberately wider than the ladder -- the configuration the
+  // book's band exists to survive. It is also what the peg falls back to when
+  // its reference is gone: with no touch and no trade the reference is the
+  // collar's midpoint, 2500.50, which is a legal price on this instrument and
+  // has no level on this ladder.
+  cfg.minPrice = px(1.0);
+  cfg.maxPrice = px(5000.0);
+
+  Tape tape;
+  MatchingEngine<LadderBook> eng(
+      cfg, tape.sink(),
+      LadderBook{LadderBook::Config{.basePriceRaw = px(1000.0).raw(),
+                                    .tickRaw = px(0.01).raw(),
+                                    .numLevels = 1000,  // [1000.00, 1010.00)
+                                    .maxOrders = 64}});
+
+  // The ask the peg tracks, and the peg two dollars behind it: 1007, in band.
+  eng.submit(InboundCommand{limit(1, Side::SELL, 1005.0, 1.0)}, 1);
+  NewOrder peg = limit(2, Side::SELL, 1007.0, 1.0);
+  peg.accountId = 8;
+  peg.peg = PegRef::Ask;
+  peg.pegOffsetRaw = px(2.0).raw();
+  eng.submit(InboundCommand{peg}, 2);
+  ASSERT_EQ(tape.accepts(2), 1u) << "the peg's entry target was in band";
+
+  // The reference goes away. Every submit is a reprice boundary, and this one
+  // sends the peg to a price the ladder cannot hold.
+  CancelOrder co;
+  co.id = 1;
+  co.symbol = SYM;
+  co.accountId = 7;
+  eng.submit(InboundCommand{co}, 3);
+
+  const OrderCanceled* c = tape.canceled(2);
+  ASSERT_NE(c, nullptr) << "the peg was lifted off the book and its owner was told nothing";
+  EXPECT_EQ(c->reason, CancelReason::BookRefused);
+  EXPECT_EQ(c->account, 8u);
+  EXPECT_FALSE(eng.book().contains(2)) << "canceled and still on the book";
+  EXPECT_EQ(eng.restingOrderCount(), 0u) << "the engine still counts the peg it lost";
+  EXPECT_EQ(tape.modified(2), nullptr) << "an OrderModified for an order on no book";
+}
+
+// An amend to a price the ladder has no level for. The amend lifts the order
+// off the book to re-enter it, so the failure mode is losing the order in
+// between: whatever the engine answers, the order is never both gone from the
+// book and unreported.
+TEST(LadderBookLiftedOrders, AnAmendToAPriceOutsideTheLadderNeverLosesTheOrder)
+{
+  SymbolConfig cfg;
+  cfg.id = SYM;
+  cfg.tickSize = px(0.01);
+
+  Tape tape;
+  MatchingEngine<LadderBook> eng(
+      cfg, tape.sink(),
+      LadderBook{LadderBook::Config{.basePriceRaw = px(1000.0).raw(),
+                                    .tickRaw = px(0.01).raw(),
+                                    .numLevels = 1000,  // [1000.00, 1010.00)
+                                    .maxOrders = 64}});
+
+  eng.submit(InboundCommand{limit(1, Side::BUY, 1002.0, 2.0)}, 1);
+  ASSERT_EQ(tape.accepts(1), 1u);
+
+  ModifyOrder m;
+  m.id = 1;
+  m.symbol = SYM;
+  m.newPrice = px(1500.0);  // no level on this ladder
+  m.newQty = qty(2.0);
+  m.accountId = 7;
+  eng.submit(InboundCommand{m}, 2);
+
+  const CancelRejected* cr = tape.cancelRejected(1);
+  const OrderCanceled* c = tape.canceled(1);
+  if (cr != nullptr)
+  {
+    // Refused before the order was lifted: it is still resting, at its own
+    // price, and nothing about it changed.
+    EXPECT_EQ(cr->reason, RejectReason::InvalidPrice);
+    EXPECT_TRUE(cr->wasReplace);
+    ASSERT_TRUE(eng.book().contains(1)) << "the amend was refused and the order is gone anyway";
+    EXPECT_EQ(eng.book().find(1)->price.raw(), px(1002.0).raw());
+    EXPECT_EQ(eng.restingOrderCount(), 1u);
+    EXPECT_EQ(tape.modified(1), nullptr) << "refused, and an OrderModified went out anyway";
+    EXPECT_EQ(c, nullptr) << "refused and canceled at the same time";
+  }
+  else
+  {
+    // Lifted and refused on the way back: the order is gone, and its owner is
+    // told that it is gone rather than that it was modified.
+    ASSERT_NE(c, nullptr) << "the amend lifted the order off the book and reported nothing";
+    EXPECT_EQ(c->reason, CancelReason::BookRefused);
+    EXPECT_FALSE(eng.book().contains(1));
+    EXPECT_EQ(eng.restingOrderCount(), 0u) << "the engine still counts the order it lost";
+    EXPECT_EQ(tape.modified(1), nullptr) << "an OrderModified for an order on no book";
+  }
+}
+
+// A last-look reject restores liquidity the hold had taken off the book, and
+// the pool can have filled up while the hold was open: the maker's own node
+// went back to the free list when the hold took its whole displayed size, and
+// other orders are free to claim it. The restore then has nowhere to go.
+TEST(LadderBookLiftedOrders, ALastLookRestoreTheBookRefusesCancelsTheMaker)
+{
+  SymbolConfig cfg;
+  cfg.id = SYM;
+  cfg.tickSize = px(0.01);
+  cfg.lastLookWindowNs = DurationNs{1'000'000};
+
+  Tape tape;
+  MatchingEngine<LadderBook> eng(
+      cfg, tape.sink(),
+      LadderBook{LadderBook::Config{
+          .basePriceRaw = 0, .tickRaw = px(0.01).raw(), .numLevels = 100'000, .maxOrders = 2}});
+
+  NewOrder mk = limit(1, Side::SELL, 100.0, 3.0);
+  mk.accountId = 1;
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 1);
+  NewOrder tk = limit(2, Side::BUY, 100.0, 3.0);
+  tk.accountId = 2;
+  eng.submit(InboundCommand{tk}, 2);
+
+  const FillHeld* h = tape.held();
+  ASSERT_NE(h, nullptr) << "no hold was opened";
+  ASSERT_EQ(h->makerDisplayAfter, qty(0.0)) << "the hold must take the maker's whole displayed size";
+  // By value: the tape grows under the submits below, and the event it points
+  // at moves with it.
+  const uint64_t heldId = h->heldId;
+  ASSERT_FALSE(eng.book().contains(1)) << "a fully held maker is off the book";
+
+  // The two free nodes -- the maker's own among them -- go to somebody else.
+  eng.submit(InboundCommand{limit(3, Side::BUY, 90.0, 1.0)}, 3);
+  eng.submit(InboundCommand{limit(4, Side::BUY, 91.0, 1.0)}, 4);
+  ASSERT_TRUE(eng.book().full()) << "the pool is what the restore has to fit into";
+
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, /*accept=*/false, {}, 1}}, 5);
+
+  const OrderCanceled* c = tape.canceled(1);
+  ASSERT_NE(c, nullptr) << "the maker's liquidity was not restored and nobody was told";
+  EXPECT_EQ(c->reason, CancelReason::BookRefused);
+  EXPECT_EQ(c->account, 1u);
+  EXPECT_FALSE(eng.book().contains(1));
+  EXPECT_EQ(eng.restingOrderCount(), 2u) << "only the two orders that hold the pool are resting";
+  EXPECT_EQ(tape.modified(1), nullptr) << "an OrderModified for a maker on no book";
+}
+
+// ---- recovery --------------------------------------------------------------
+
+// A snapshot is restored order by order into a book that may be narrower than
+// the one that wrote it -- a ladder reconfigured between runs, a smaller pool.
+// An order the book will not take cannot be dropped in silence: the loader
+// would then hand back a book one order short of the state whose hash it is
+// about to claim, and the SnapshotEnd hash check would have to be the thing
+// that noticed.
+TEST(LadderBookCheckpoint, ARestoreOrderTheBookCannotTakeIsRefused)
+{
+  SymbolConfig cfg;
+  cfg.id = SYM;
+  cfg.tickSize = px(0.01);
+
+  const auto restore = [](OrderId id, Side side, double price, double q)
+  {
+    RestoreOrder r;
+    r.id = id;
+    r.accountId = 7;
+    r.price = px(price);
+    r.leaves = qty(q);
+    r.side = side;
+    return InboundCommand{r};
+  };
+
+  {
+    // The ladder spans [1000.00, 1010.00); the snapshot holds an order at 1500.
+    Tape tape;
+    MatchingEngine<LadderBook> eng(
+        cfg, tape.sink(),
+        LadderBook{LadderBook::Config{.basePriceRaw = px(1000.0).raw(),
+                                      .tickRaw = px(0.01).raw(),
+                                      .numLevels = 1000,
+                                      .maxOrders = 64}});
+
+    EXPECT_TRUE(eng.applySnapshotRecord(restore(1, Side::BUY, 1002.0, 1.0), 1))
+        << "an in-band order must restore";
+    EXPECT_FALSE(eng.applySnapshotRecord(restore(2, Side::BUY, 1500.0, 1.0), 2))
+        << "an order with no level on this ladder was restored into nothing";
+    EXPECT_FALSE(eng.book().contains(2));
+    EXPECT_EQ(eng.restingOrderCount(), 1u) << "the engine tracks an order the book never took";
+  }
+
+  {
+    // Same, for the pool: three orders into room for two.
+    Tape tape;
+    MatchingEngine<LadderBook> eng(
+        cfg, tape.sink(),
+        LadderBook{LadderBook::Config{
+            .basePriceRaw = 0, .tickRaw = px(0.01).raw(), .numLevels = 100'000, .maxOrders = 2}});
+
+    EXPECT_TRUE(eng.applySnapshotRecord(restore(1, Side::BUY, 10.0, 1.0), 1));
+    EXPECT_TRUE(eng.applySnapshotRecord(restore(2, Side::BUY, 11.0, 1.0), 2));
+    EXPECT_FALSE(eng.applySnapshotRecord(restore(3, Side::BUY, 12.0, 1.0), 3))
+        << "the pool was exhausted and the record was applied anyway";
+    EXPECT_FALSE(eng.book().contains(3));
+    EXPECT_EQ(eng.restingOrderCount(), 2u) << "the engine tracks an order the book never took";
+  }
 }
