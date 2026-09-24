@@ -248,15 +248,29 @@ void MatchingEngine<Book>::submit(const InboundCommand& cmd, SeqNanos tsNs)
   }
   else if (const auto* rl = std::get_if<SetRiskLimits>(&cmd))
   {
-    applyRiskLimits(*rl);  // sequenced -> journaled -> replayed
+    // Guarded on the symbol like every other configuration record here: these
+    // three carry one and a shard is one instrument, so a broadcast or a
+    // misroute must not retune the risk of the instrument it landed on.
+    // Silently, because that is what the guarded branches do -- a record
+    // addressed to another engine is not this engine's to answer for.
+    if (rl->symbol == cfg_.id)
+    {
+      applyRiskLimits(*rl);  // sequenced -> journaled -> replayed
+    }
   }
   else if (const auto* ap = std::get_if<SetAdmissionProfile>(&cmd))
   {
-    setAdmissionProfile(ap->account, ap->profile);  // sequenced -> journaled -> replayed
+    if (ap->symbol == cfg_.id)
+    {
+      setAdmissionProfile(ap->account, ap->profile);  // sequenced -> journaled -> replayed
+    }
   }
   else if (const auto* al = std::get_if<SetAccountRiskLimits>(&cmd))
   {
-    credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed (W26-T064)
+    if (al->symbol == cfg_.id)
+    {
+      credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed (W26-T064)
+    }
   }
   else if (const auto* sg = std::get_if<SetStpGroup>(&cmd))
   {

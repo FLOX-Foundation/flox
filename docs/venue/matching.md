@@ -184,9 +184,17 @@ it is applied and written into the snapshot's config section, so a replay and
 a recovered engine refuse exactly the orders the live one refused -- a limit
 that lived outside the journal was a limit the replay never saw.
 
-The direct setters on the engine remain for pre-start wiring. On a running
-engine they apply immediately and ride nothing: a restart reverts them and a
-replica replaying the journal never sees the change. Use the command.
+Every configuration record carries a `symbol`, and a shard is one instrument:
+a record addressed to another symbol is ignored, silently, and reports
+nothing. That holds for `SetRiskLimits`, `SetAdmissionProfile` and
+`SetAccountRiskLimits` exactly as it does for `SetBands`, `SetTriggerRef`,
+`SetStpGroup` and `SetFundingSchedule` -- a broadcast or a misroute must not
+retune the risk of whatever instrument it happens to land on.
+
+The direct setters on the engine remain for pre-start wiring, and they are not
+symbol-checked: the caller holds the engine, so the address is the call. On a
+running engine they apply immediately and ride nothing: a restart reverts them
+and a replica replaying the journal never sees the change. Use the command.
 
 ### Client order ids and how long they are reserved
 
@@ -366,7 +374,8 @@ other side.
 
 The profile arrives as the sequenced `SetAdmissionProfile` command
 (control-plane verb of the same name), so it journals, survives checkpoints,
-enters the state hash and replays. `MatchingEngine::admissionRejects()` counts
+enters the state hash and replays. Like every other configuration record it
+is addressed by `symbol` and ignored by an engine that is not the one named. `MatchingEngine::admissionRejects()` counts
 the rejections; a non-zero value means a counterparty is sending something its
 profile does not allow.
 
