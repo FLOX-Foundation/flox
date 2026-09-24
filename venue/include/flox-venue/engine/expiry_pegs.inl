@@ -115,7 +115,17 @@ void MatchingEngine<Book>::repeg()
     const int64_t target = pegTargetRaw(pg.side, pg.ref, pg.offsetRaw);
     if (ro->price.raw() == target)
     {
-      book_.addResting(ro->side, *ro);  // unchanged -> put it back
+      // Unchanged -> put it back. The node it just gave up is still free and
+      // the price has not moved, so the book cannot refuse; if it ever does,
+      // the order is gone and its owner hears about it instead of losing it.
+      if (restOnBook(ro->side, *ro) != RejectReason::None)
+      {
+        releaseReservation(id);
+        forgetOrder(id);
+        pegs_.erase(id);
+        sink_(OrderCanceled{id, cfg_.id, CancelReason::BookRefused, ro->accountId,
+                            ro->clientOrderId, ro->leaves + ro->hidden, ro->cumQty});
+      }
       continue;
     }
     // The reprice is re-funded whether or not a ledger is bound: with no
@@ -143,7 +153,19 @@ void MatchingEngine<Book>::repeg()
     }
     RestingOrder nr = *ro;
     nr.price = Price::fromRaw(target);
-    book_.addResting(nr.side, nr);
+    // The peg target is computed from the touch and is not bounded by the
+    // ladder, so a reference that ran past the band gives a price with no
+    // level. The order is already off the book at this point: cancel it
+    // rather than leave the owner an OrderModified for nothing.
+    if (restOnBook(nr.side, nr) != RejectReason::None)
+    {
+      releaseReservation(id);
+      forgetOrder(id);
+      pegs_.erase(id);
+      sink_(OrderCanceled{id, cfg_.id, CancelReason::BookRefused, nr.accountId, nr.clientOrderId,
+                          nr.leaves + nr.hidden, nr.cumQty});
+      continue;
+    }
     // T059: nr is a copy of the canceled resting order (*ro), so nr.cumQty is
     // already its real running total -- a reprice never trades.
     sink_(OrderModified{id, cfg_.id, Price::fromRaw(target), nr.leaves, false, nr.accountId,

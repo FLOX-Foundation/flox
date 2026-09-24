@@ -246,7 +246,15 @@ bool MatchingEngine<Book>::applyRestoreOrder(const RestoreOrder& r)
   // Straight to the tail of its level, NO matching pass: the canonical write
   // order (levels best-first, FIFO within) makes tail-appends reproduce the
   // exact live book layout.
-  book_.addResting(r.side, ro);
+  // A snapshot taken on a wider ladder (or a bigger pool) than the engine
+  // replaying it cannot be restored order-for-order. Refusing the record is
+  // the honest answer: the integrity check counts it and the generation is
+  // discarded, rather than a book coming back one order short of the state
+  // whose hash it is about to claim.
+  if (book_.addResting(r.side, ro) != BookAddResult::Accepted)
+  {
+    return false;
+  }
   trackResting(r.id, r.accountId, STPMode::None);  // set by the RestoreOrderStp that follows
   if (static_cast<bool>(r.expiryNs))
   {

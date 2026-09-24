@@ -701,8 +701,8 @@ TEST(VenueMatchingIntegrity, FillOrKillPrintsNothingWhenThePositionMovesMidSweep
   MatchingBook book;
   // Two reduce-only sells of 10, one account, against a long of 20. Every
   // contract of that depth is genuinely tradeable when the order arrives.
-  book.addResting(Side::SELL, resting(1, 5, 100.0, 10));
-  book.addResting(Side::SELL, resting(2, 5, 100.0, 10));
+  (void)book.addResting(Side::SELL, resting(1, 5, 100.0, 10));
+  (void)book.addResting(Side::SELL, resting(2, 5, 100.0, 10));
 
   ShiftingPosition state;
   state.makerPos = qty(20).raw();
@@ -774,8 +774,8 @@ TEST(VenueMatchingIntegrity, FillOrKillPrintsNothingWhenThePositionMovesMidSweep
 TEST(VenueMatchingIntegrity, FillOrKillStillRefusesWhenTheDepthWasNeverThere)
 {
   MatchingBook book;
-  book.addResting(Side::SELL, resting(1, 5, 100.0, 10));
-  book.addResting(Side::SELL, resting(2, 5, 100.0, 10));
+  (void)book.addResting(Side::SELL, resting(1, 5, 100.0, 10));
+  (void)book.addResting(Side::SELL, resting(2, 5, 100.0, 10));
 
   ShiftingPosition state;
   state.makerPos = qty(10).raw();  // only 10 of the 20 is reducible

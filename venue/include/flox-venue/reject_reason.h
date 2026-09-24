@@ -93,6 +93,14 @@ enum class RejectReason : uint8_t
   // "unknown" means your encoder and this venue disagree about the schema,
   // and no entitlement change will help.
   UnknownOrderType,
+  // the resting book had no room for the order. A bounded book
+  // (LadderBook's node pool) is a venue-side limit and nothing the client did
+  // wrong, so it is not InsufficientFunds, not OrderTooLarge and not
+  // TooManyOpenOrders -- a client told any of those changes the order and
+  // resends it, when the one useful action is to wait or to cancel something.
+  // The out-of-band price case keeps InvalidPrice: that one IS the client's
+  // price. Appended -- the wire enum is append-only.
+  BookCapacityExceeded,
 };
 
 enum class CancelReason : uint8_t
@@ -110,6 +118,13 @@ enum class CancelReason : uint8_t
   // move while it rests). Appended values -- the wire enum is append-only.
   ReduceOnlyNotReducing,  // the order would no longer reduce: it would open or flip the position
   PositionLimitExceeded,  // the fill would carry the account past maxPositionQty
+  // the book would not take the order back. Reached by an order
+  // whose residual has already traded (a reject after a print would be a lie)
+  // and by the paths that lift an order off the book and put it back -- a peg
+  // reprice, an amend, a last-look restore -- when the price it returns at has
+  // no level or the pool filled in between. Appended -- the wire enum is
+  // append-only.
+  BookRefused,
 };
 
 const char* toString(RejectReason r) noexcept;

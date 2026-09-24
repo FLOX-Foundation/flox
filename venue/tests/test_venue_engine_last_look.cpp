@@ -93,11 +93,13 @@ class FakeBook
     return std::nullopt;
   }
 
-  void reinsertTail(Side side, const RestingOrder& o)
+  // A vector has no band and no pool, so this fake always takes the order.
+  bool reinsertTail(Side side, const RestingOrder& o)
   {
     RestingOrder copy = o;
     copy.side = side;
     resting.push_back(copy);
+    return true;
   }
 
   void publish(const OutboundEvent& e) { events.push_back(e); }

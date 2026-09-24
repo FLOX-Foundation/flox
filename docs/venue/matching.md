@@ -13,6 +13,16 @@ reference `MatchingBook` lives in the module (`flox-venue/matching_book.h`).
 | `MatchingBook` | `std::map` + `std::list`, allocates | Reference oracle. Easy to reason about. |
 | `LadderBook` | tick-indexed dense ladders, intrusive FIFO over a node pool, occupancy bitmap | Performance path. O(1) best, O(1) next level, no steady-state allocation. |
 
+`LadderBook`'s O(1) claims are per-operation with no amortised term, which is
+what a matching pass needs: best and next-level are a bitmap word scan, and
+order id -> node is an open-addressed table with linear probing and
+**backward-shift deletion**. There are no tombstones and therefore no rehash
+-- a cancel closes the hole by moving back the tail of its own probe chain, so
+the table after any amount of churn is the table the resting orders would have
+built from empty, and a lookup costs what it cost on the first order of the
+day. Nothing allocates after construction: the ladders, the node pool and the
+id table are all sized by `Config`.
+
 They are interchangeable (`MatchingEngine<MatchingBook>` /
 `MatchingEngine<LadderBook>`), and a differential fuzz keeps them
 observationally identical over a random stream; the golden replay corpus
@@ -20,6 +30,34 @@ observationally identical over a random stream; the golden replay corpus
 scenarios on both and checks `LadderBook` against the exact numbers recorded
 for `MatchingBook` -- one table, because the two are contractually required
 to agree. See [Verification](verification.md).
+
+They agree **within the ladder's bounds**, which is the one thing the map book
+does not have. `LadderBook` is finite in both price (`numLevels` ticks from
+`basePriceRaw`) and order count (`maxOrders`), and an order it cannot take it
+**refuses** -- `addResting` answers `BookAddResult` and the engine turns the
+answer into a report rather than acking an order the book never took:
+
+| refusal | engine answer |
+|---|---|
+| price with no level (below `basePriceRaw`, or past the top of the ladder) | `OrderRejected` / `CancelRejected` with `InvalidPrice` |
+| node pool exhausted (`full()`) | `OrderRejected` with `BookCapacityExceeded` |
+| either one, for an order that has already printed | `OrderCanceled` with `BookRefused` -- a reject cannot follow its own executions |
+
+`validate()` (and the amend path) ask `canRest()` before the order is committed
+to matching, so an unrepresentable price is refused before it can trade;
+`full()` is asked at the last node, after matching, because a marketable order
+frees nodes as it consumes makers and must not be refused for a pool its own
+fills empty. A deployment sizes `numLevels`/`basePriceRaw` to cover the
+instrument's collar (`minPrice`/`maxPrice`) and `maxOrders` to cover its book:
+within those bounds the two books are interchangeable, outside them
+`MatchingBook` (a `std::map`, bounded only by the allocator) accepts what
+`LadderBook` refuses.
+
+The level of a price is `floor((price - base) / tick)`, floored and not
+truncated: truncation mapped the whole window `(base - tick, base)` onto level
+0 -- the base level -- so an ask at 995 with a base of 1000 was filed under
+1000 while the order kept its own price, and the ladder quoted liquidity at a
+price nothing rested at.
 
 ```cpp
 LadderBook book(LadderBook::Config{
@@ -146,9 +184,17 @@ it is applied and written into the snapshot's config section, so a replay and
 a recovered engine refuse exactly the orders the live one refused -- a limit
 that lived outside the journal was a limit the replay never saw.
 
-The direct setters on the engine remain for pre-start wiring. On a running
-engine they apply immediately and ride nothing: a restart reverts them and a
-replica replaying the journal never sees the change. Use the command.
+Every configuration record carries a `symbol`, and a shard is one instrument:
+a record addressed to another symbol is ignored, silently, and reports
+nothing. That holds for `SetRiskLimits`, `SetAdmissionProfile` and
+`SetAccountRiskLimits` exactly as it does for `SetBands`, `SetTriggerRef`,
+`SetStpGroup` and `SetFundingSchedule` -- a broadcast or a misroute must not
+retune the risk of whatever instrument it happens to land on.
+
+The direct setters on the engine remain for pre-start wiring, and they are not
+symbol-checked: the caller holds the engine, so the address is the call. On a
+running engine they apply immediately and ride nothing: a restart reverts them
+and a replica replaying the journal never sees the change. Use the command.
 
 ### Client order ids and how long they are reserved
 
@@ -328,7 +374,8 @@ other side.
 
 The profile arrives as the sequenced `SetAdmissionProfile` command
 (control-plane verb of the same name), so it journals, survives checkpoints,
-enters the state hash and replays. `MatchingEngine::admissionRejects()` counts
+enters the state hash and replays. Like every other configuration record it
+is addressed by `symbol` and ignored by an engine that is not the one named. `MatchingEngine::admissionRejects()` counts
 the rejections; a non-zero value means a counterparty is sending something its
 profile does not allow.
 
@@ -343,7 +390,11 @@ profile does not allow.
   reserve is real liquidity for matching and stays out of the public feed.
 - **Peg.** `PegRef::{Bid,Ask,Mid}` plus a signed offset; repriced at each
   submit boundary, tick-aligned, clamped so it never crosses.
-- **OCO.** `ocoGroup`; a fill on one leg cancels its siblings.
+- **OCO.** `ocoGroup`; a fill on one leg cancels its siblings. A leg that
+  leaves the venue by any other door -- refused at admission, refused by the
+  matcher, canceled as an unfilled residual, expired, pulled -- leaves the
+  group with it, so a later reuse of its order id is never cancelled in its
+  name.
 - **Reduce-only.** Perp orders that may only reduce a position, re-capped on
   submit, trigger, modify -- and re-measured at fill time against the position
   as it is then (see [Risk](risk.md)). The cap counts what the account already
@@ -364,6 +415,14 @@ re-enters without its peak publishes the whole reserve it was hiding.
 remaining, displayed peak plus hidden reserve -- the same number an execution
 report gives as that order's `leavesQty`. The peak itself is preserved; there
 is no way to change it without a fresh order.
+
+An amend is decided before anything is touched. Ownership, the new quantity,
+the lot, the tick and the band are all checked while the order is still exactly
+as it was, and only an amend that will be applied resolves the order's open
+last-look holds. A refused amend leaves the order resting, its holds open and
+its reservation intact -- the holds are the part that used to go: they were
+rejected before the price was ever looked at, so an off-tick amend killed them
+and then refused itself.
 
 A re-entering order goes back through matching, so the amend can end any way a
 new order can: rest, fill, be refused (`OrderRejected` -- post-only crossing is
@@ -654,7 +713,12 @@ Before the first trade there is no reference price, so no band exists yet.
   `MmpTriggered` fires.
 - **Mass quote.** `Quote` replaces both sides of a two-sided quote atomically,
   by id: the engine cancels `bidId` and `askId` and re-posts them at the new
-  prices, so a maker keeps one pair of ids and reuses it. Both legs inherit the
+  prices, so a maker keeps one pair of ids and reuses it. Atomically also
+  against the instrument's state: the quote asks whether the instrument admits
+  order entry at all BEFORE it pulls anything, so a quote sent into a halted or
+  closed instrument is refused whole and leaves the maker's existing quote
+  resting. Reading that gate only per leg, on the way in, pulled the old quote
+  and then refused both replacements. Both legs inherit the
   quote's `stp`, `lastLook`, `postOnly`, `reduceOnly`, `tif`,
   `visibleQuantity` and `expiryNs`, so a quote has every control a single
   order has. `postOnly` is the one a quote needs most: a maker repricing into a
@@ -809,7 +873,11 @@ account** at the engine: a `NewOrder` whose `clientOrderId` was already seen by
 that account rejects with `DuplicateClientOrderId` and leaves the book
 untouched -- whether the original is still resting, filled, or canceled. That
 is what makes a client resend after an ambiguous disconnect safe.
-`clientOrderId == 0` means "not set" and is never deduplicated. The dedup
+`clientOrderId == 0` means "not set" and is never deduplicated. Every report
+about an order carries it back, including the cancels the venue decides on its
+own -- self-trade prevention in any of its modes, and a resting order pulled
+at fill time by a perp risk limit -- because those are usually the only word
+the owner gets about an order it never cancelled. The dedup
 window is the engine session (uptime): the index is rebuilt by the same
 submits during journal replay, so post-restart behaviour is identical to live;
 rotating/compacting the index is a future checkpoint concern.
@@ -901,10 +969,12 @@ flowchart TD
     TRIG -->|yes| POP[pop triggered stops]
     POP --> PERP2[perpRiskGate] --> FUND2[reserveFunds] --> MATCH
 
-    MOD[ModifyOrder] --> HOLDS[resolve open holds] --> VM[tick / band / lot]
-    VM --> PERP3[perpRiskGate] --> FUND3[reserveFunds] --> MATCH
+    MOD[ModifyOrder] --> VM[tick / band / lot] --> HOLDS[resolve open holds]
+    HOLDS --> PERP3[perpRiskGate] --> FUND3[reserveFunds] --> MATCH
 
-    QUOTE[Quote] --> HOLDS2[resolve open holds] --> LEGS[each leg through NewOrder]
+    QUOTE[Quote] --> QST{instrument<br/>trading?}
+    QST -->|halted, closed,<br/>delisted| REJ
+    QST -->|yes| HOLDS2[resolve open holds] --> LEGS[each leg through NewOrder]
     LEGS --> DEDUP
 
     PEG[reference moves] --> HOLDS3[resolve open holds] --> FUND4[reserveFunds<br/>at the new price] --> BOOK[re-enter book]
@@ -927,7 +997,7 @@ leg goes through that path.
 | conditional (parked) | yes | - | yes | yes | yes | yes | - | - | - |
 | stop trigger | yes | - | yes | yes | yes | yes | yes | - | - |
 | modify | yes | - | yes | yes | yes | yes | yes | - | yes |
-| quote (per leg) | yes | yes | yes | yes | yes | yes | yes | - | yes |
+| quote (per leg) | yes, and once for the whole quote before the replace | yes | yes | yes | yes | yes | yes | - | yes |
 | peg reprice | - | - | yes | yes | yes | yes | yes | - | yes |
 | auction uncross | - | - | - | yes | - | - | yes | yes | - |
 | hold accept | - | - | - | - | - | - | - | yes | yes |

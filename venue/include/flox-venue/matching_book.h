@@ -40,13 +40,24 @@ class MatchingBook
 
   bool empty() const noexcept { return bids_.empty() && asks_.empty(); }
 
-  void addResting(Side side, const RestingOrder& o)
+  // A map holds as many orders as the allocator will give it, so the oracle's
+  // last node never arrives. Present because the engine asks every book.
+  bool full() const noexcept { return false; }
+
+  // A map has no band and no pool, so the oracle never refuses. The result
+  // exists because LadderBook does refuse and the two books answer the same
+  // interface -- see BookAddResult in flox/book/resting_order.h.
+  [[nodiscard]] BookAddResult addResting(Side side, const RestingOrder& o)
   {
     auto& lst = (side == Side::BUY) ? bids_[o.price] : asks_[o.price];
     lst.push_back(o);
     lst.back().side = side;
     index_[o.id] = Loc{side, o.price, std::prev(lst.end())};
+    return BookAddResult::Accepted;
   }
+
+  // Every price has a place on a map.
+  bool canRest(Price) const noexcept { return true; }
 
   const RestingOrder* find(OrderId id) const
   {

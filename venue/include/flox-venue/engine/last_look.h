@@ -106,7 +106,9 @@ concept LastLookHost =
       { h.takeResting(id) } -> std::same_as<std::optional<RestingOrder>>;
       // Put one back, at the TAIL of its level -- as if freshly entered. The
       // refused quantity loses its queue position; see docs/venue/matching.md.
-      h.reinsertTail(side, order);
+      // False: the book would not take it (no room, or a price with no level),
+      // and the caller owes its owner a cancel rather than a silent loss.
+      { h.reinsertTail(side, order) } -> std::same_as<bool>;
       // Reports about holds and about the legs a reject restores.
       h.publish(ev);
       // The sink the engine wraps to track its own last price -- a printed
@@ -742,7 +744,13 @@ class LastLook
       // overwrite: correct regardless of any OTHER real fill this order took
       // on its still-resting remainder while the hold was open.
       ro->cumQty -= h.qty;
-      host.reinsertTail(ro->side, *ro);
+      if (!host.reinsertTail(ro->side, *ro))
+      {
+        host.releaseHeldLeg(h.maker, h.qty);
+        host.publish(OrderCanceled{h.maker, symbol, CancelReason::BookRefused, h.makerAccount,
+                                   ro->clientOrderId, ro->leaves, ro->cumQty});
+        return;
+      }
       host.publish(OrderModified{h.maker, symbol, ro->price, ro->leaves, false, h.makerAccount,
                                  ro->clientOrderId, ro->cumQty});
     }
@@ -757,7 +765,17 @@ class LastLook
       // history is exactly what it had filled before the hold opened --
       // nothing else could have touched it in between (it was off the book).
       rebuilt.cumQty = h.makerCumQtyAtHold;
-      host.reinsertTail(makerSide, rebuilt);
+      if (!host.reinsertTail(makerSide, rebuilt))
+      {
+        // This hold took the maker's whole displayed size, so the order left
+        // the book and its node with it: the pool can have filled up while the
+        // hold was open. Nothing to modify, so the owner is told the order is
+        // gone.
+        host.releaseHeldLeg(h.maker, h.qty);
+        host.publish(OrderCanceled{h.maker, symbol, CancelReason::BookRefused, h.makerAccount,
+                                   h.makerClientOrderId, h.qty, rebuilt.cumQty});
+        return;
+      }
       // Still tracked in orderAccount_/byAccount_: a fully-held maker is never
       // forgotten while its hold is open (see create()).
       host.publish(OrderModified{h.maker, symbol, h.price, h.qty, false, h.makerAccount,
@@ -780,7 +798,13 @@ class LastLook
         // T059: this residual's own cumQty is untouched by this hold (a
         // reject settles no trade); h.qty never rode through it, so nothing
         // to undo here, unlike the maker side above.
-        host.reinsertTail(ro->side, *ro);
+        if (!host.reinsertTail(ro->side, *ro))
+        {
+          host.releaseHeldLeg(h.taker, h.qty);
+          host.publish(OrderCanceled{h.taker, symbol, CancelReason::BookRefused, h.takerAccount,
+                                     ro->clientOrderId, ro->leaves, ro->cumQty});
+          return;
+        }
         host.publish(OrderModified{h.taker, symbol, ro->price, ro->leaves, false, h.takerAccount,
                                    ro->clientOrderId, ro->cumQty});
       }
@@ -800,7 +824,16 @@ class LastLook
         // confirmed before the hold opened -- the held qty itself never
         // traded (this is a reject).
         rebuilt.cumQty = h.takerCumQtyAtHold;
-        host.reinsertTail(h.takerSide, rebuilt);
+        if (!host.reinsertTail(h.takerSide, rebuilt))
+        {
+          // Nothing of this taker rests, so there is no accept to send: it
+          // ends the way its TIF would have ended it, with its held buying
+          // power released.
+          host.releaseHeldLeg(h.taker, h.qty);
+          host.publish(OrderCanceled{h.taker, symbol, CancelReason::BookRefused, h.takerAccount,
+                                     h.takerClientOrderId, h.qty, rebuilt.cumQty});
+          return;
+        }
         host.adoptRestingTaker(h);
         host.publish(OrderAccepted{h.taker, symbol, h.takerSide, h.takerPrice, h.qty, true,
                                    h.qty, h.takerAccount, h.takerClientOrderId, rebuilt.cumQty});

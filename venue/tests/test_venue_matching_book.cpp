@@ -64,8 +64,8 @@ TEST(MatchingBook, LadderAndMapAgreeAcrossOps)
                   ord(3, Side::SELL, 101, 2), ord(4, Side::BUY, 99, 4),
                   ord(5, Side::BUY, 98, 6), ord(6, Side::BUY, 99, 1)})
   {
-    m.addResting(o.side, o);
-    l.addResting(o.side, o);
+    (void)m.addResting(o.side, o);
+    (void)l.addResting(o.side, o);
   }
   EXPECT_TRUE(m.bestBid().has_value() && m.bestBid().value() == px(99));
   EXPECT_TRUE(m.bestAsk().has_value() && m.bestAsk().value() == px(101));
@@ -103,8 +103,8 @@ TEST(MatchingBook, IcebergHiddenReserveIsRealDepth)
   LadderBook l(ladderCfg());
   // Iceberg sell: display 2, hide 8 (total 10) at 100.
   RestingOrder ice{.id = 1, .accountId = 1, .price = px(100), .leaves = qty(2), .side = Side::SELL, .hidden = qty(8), .peak = qty(2)};
-  m.addResting(Side::SELL, ice);
-  l.addResting(Side::SELL, ice);
+  (void)m.addResting(Side::SELL, ice);
+  (void)l.addResting(Side::SELL, ice);
   // availableWithin counts hidden reserve as real crossing liquidity (10, not 2).
   EXPECT_EQ(m.availableWithin(Side::BUY, px(100), false).raw(), qty(10).raw());
   EXPECT_EQ(l.availableWithin(Side::BUY, px(100), false).raw(), qty(10).raw());

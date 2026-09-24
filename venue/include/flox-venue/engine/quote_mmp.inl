@@ -107,6 +107,23 @@ void MatchingEngine<Book>::applyQuote(const Quote& q, bool clOrdIdChecked)
                         q.clientOrderId});
     return;
   }
+  // The instrument's own state, asked BEFORE anything is pulled. A quote is a
+  // replace: it cancels what the two ids name and submits two new legs, and
+  // onNew refuses those legs on exactly this gate. Reading it only there left
+  // the maker with an empty book on a halted or closed instrument -- its
+  // quotes pulled, both replacements refused, and no way to put them back
+  // until the instrument trades again. Refused whole, like every other
+  // whole-quote refusal above.
+  //
+  // Delisting is not one of these in practice: that transition cancels the
+  // whole book by design (SessionEffect::CancelBookAfter), so there is nothing
+  // left for the quote to protect. It is refused here anyway, for the same
+  // reason the other two are -- the legs would be refused below.
+  if (const RejectReason r = instrumentStateRefusal(); r != RejectReason::None)
+  {
+    sink_(OrderRejected{q.bidId, q.symbol, r, q.accountId, q.clientOrderId});
+    return;
+  }
   rejectHoldsFor(q.bidId);  // a replaced quote may carry open holds
   rejectHoldsFor(q.askId);
   if (auto ro = book_.cancel(q.bidId))

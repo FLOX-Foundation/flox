@@ -50,16 +50,18 @@ RejectReason MatchingEngine<Book>::validateConditional(const NewOrder& o) const
   return credit_.validateConditional(o, cfg_);
 }
 
+// Whether the instrument is in a state that accepts order entry at all, and
+// the refusal if it is not. Outermost first: a client whose order is refused
+// deserves the reason that tells it what to do next. Delisted means do not
+// come back; closed means next session; halted means something is wrong with
+// the instrument now.
+//
+// Order-shaped commands that do not route through validate() ask this
+// directly: a quote replaces two resting orders, so it has to know the
+// replacements are admissible BEFORE it pulls what is there.
 template <class Book>
-RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
+RejectReason MatchingEngine<Book>::instrumentStateRefusal() const
 {
-  if (o.symbol != cfg_.id)
-  {
-    return RejectReason::UnknownSymbol;
-  }
-  // Outermost first: a client whose order is refused deserves the reason that
-  // tells it what to do next. Delisted means do not come back; closed means
-  // next session; halted means something is wrong with the instrument now.
   if (session_.delisted())
   {
     return RejectReason::InstrumentDelisted;
@@ -71,6 +73,20 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
   if (cfg_.halted)
   {
     return RejectReason::Halted;
+  }
+  return RejectReason::None;
+}
+
+template <class Book>
+RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
+{
+  if (o.symbol != cfg_.id)
+  {
+    return RejectReason::UnknownSymbol;
+  }
+  if (const RejectReason r = instrumentStateRefusal(); r != RejectReason::None)
+  {
+    return r;
   }
   // Before any gate keyed on the type. Everything below that asks about a
   // price -- the tick, the band, the fat-finger notional -- is written as
@@ -150,6 +166,15 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
     {
       return RejectReason::InvalidPrice;
     }
+    // The book's own band, which the collar above knows nothing about: the
+    // collar is optional config, the ladder's geometry is not. Asked here,
+    // before the order is committed to matching, so a price the book cannot
+    // represent is refused while refusing still costs nothing -- by the time
+    // addResting sees it the order may already have printed.
+    if (!book_.canRest(o.price))
+    {
+      return RejectReason::InvalidPrice;
+    }
   }
   if (book_.contains(o.id) || stops_.contains(o.id))
   {
@@ -163,6 +188,37 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
     return RejectReason::DuplicateOrderId;
   }
   return RejectReason::None;
+}
+
+// The book's last node and its band, asked in the one place every resting
+// path goes through. full() is the book's own answer about the node pool and
+// is consulted first: it decides without touching anything, and it is what
+// the book's own comment always said the engine should ask.
+template <class Book>
+RejectReason MatchingEngine<Book>::restOnBook(Side side, const RestingOrder& ro)
+{
+  // Price first, so a book that is both full and out of band answers for the
+  // thing the owner can act on.
+  if (!book_.canRest(ro.price))
+  {
+    return RejectReason::InvalidPrice;
+  }
+  if (book_.full())
+  {
+    return RejectReason::BookCapacityExceeded;
+  }
+  switch (book_.addResting(side, ro))
+  {
+    case BookAddResult::Accepted:
+      return RejectReason::None;
+    case BookAddResult::PriceOutOfBand:
+      // The client's price, and nothing the venue can do about it -- the same
+      // answer the collar gives for a price it will not take.
+      return RejectReason::InvalidPrice;
+    case BookAddResult::PoolExhausted:
+      break;
+  }
+  return RejectReason::BookCapacityExceeded;
 }
 
 // Per-order perp risk gates shared by onNew and the trigger path (a triggered
@@ -384,6 +440,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
   // gate and reaches matching/resting) must unlink it from its OCO group --
   // otherwise a rejected leg lingers in the group and later cancels a reused
   // id. `committed` is set once the order is live; the guard cleans up the rest.
+  //
+  // The guard covers every gate ABOVE the commit point. Three refusals live
+  // below it -- the LULD band, the matcher's own out.reject and the zero-fill
+  // residual cancel -- and each unlinks for itself, at the point where it
+  // decides the order is not going to live after all.
   bool committed = false;
   struct OcoCleanup
   {
@@ -495,7 +556,17 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
       ro.leaves = o.visibleQuantity;
       ro.hidden = o.quantity - o.visibleQuantity;
     }
-    book_.addResting(o.side, ro);
+    // An auction accumulates without matching, so nothing has printed and a
+    // book that will not take the order can still refuse it outright: the
+    // reservation goes back, the order is never tracked, and clearing
+    // `committed` lets the OCO guard unlink it the way the earlier gates do.
+    if (const RejectReason why = restOnBook(o.side, ro); why != RejectReason::None)
+    {
+      committed = false;
+      releaseReservation(o.id);
+      sink_(OrderRejected{o.id, o.symbol, why, o.accountId, o.clientOrderId});
+      return;
+    }
     trackResting(o.id, o.accountId, o.stp);
     if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
     {
@@ -526,6 +597,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
         (o.side == Side::SELL && o.price.raw() < luldLo))
     {
       releaseReservation(o.id);
+      oco_.unlink(o.id);  // refused, so it never joined the group it was linked into
       sink_(OrderRejected{o.id, o.symbol, RejectReason::LuldBreach, o.accountId, o.clientOrderId});
       tripLuldHalt();
       return;
@@ -540,6 +612,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
   if (out.reject != RejectReason::None)
   {
     releaseReservation(o.id);  // post-only-would-cross / FOK-unfulfillable: free the reserve
+    oco_.unlink(o.id);         // and it never joined the group it was linked into
     sink_(OrderRejected{o.id, o.symbol, out.reject, o.accountId, o.clientOrderId});
     return;
   }
@@ -561,20 +634,43 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
       ro.leaves = o.visibleQuantity;  // displayed
       ro.hidden = out.leaves - o.visibleQuantity;
     }
-    book_.addResting(o.side, ro);
-    trackResting(o.id, o.accountId, o.stp);
-    if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
+    if (const RejectReason why = restOnBook(o.side, ro); why != RejectReason::None)
     {
-      expiry_.set(o.id, o.expiryNs);
+      // The book would not take the residual. What the owner is told depends
+      // on whether this order printed on the way in: with nothing filled it is
+      // an ordinary reject, but after a trade a reject would contradict the
+      // executions already on the wire, so the residual is canceled the way an
+      // IOC residual is. Either way the order is on no book and is not tracked.
+      if (out.filled.isZero())
+      {
+        committed = false;
+        releaseReservation(o.id);
+        sink_(OrderRejected{o.id, o.symbol, why, o.accountId, o.clientOrderId});
+      }
+      else
+      {
+        releaseReservationExceptHeld(o.id);
+        sink_(OrderCanceled{o.id, o.symbol, CancelReason::BookRefused, o.accountId,
+                            o.clientOrderId, out.leaves, out.filled});
+      }
     }
-    if (o.peg != PegRef::None)
+    else
     {
-      pegs_.set(o.id, PegBook::Peg{o.side, o.peg, o.pegOffsetRaw});
+      trackResting(o.id, o.accountId, o.stp);
+      if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
+      {
+        expiry_.set(o.id, o.expiryNs);
+      }
+      if (o.peg != PegRef::None)
+      {
+        pegs_.set(o.id, PegBook::Peg{o.side, o.peg, o.pegOffsetRaw});
+      }
+      // Public feed shows only the displayed peak (ro.leaves); the hidden
+      // iceberg reserve (out.leaves - ro.leaves) is not leaked. Non-iceberg:
+      // they match.
+      sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves,
+                          o.accountId, o.clientOrderId, out.filled});
     }
-    // Public feed shows only the displayed peak (ro.leaves); the hidden iceberg
-    // reserve (out.leaves - ro.leaves) is not leaked. Non-iceberg: they match.
-    sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves, o.accountId,
-                        o.clientOrderId, out.filled});
   }
   else if (out.residualCanceled)
   {
@@ -583,6 +679,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     // not run the emit_ wrapper's release-on-cancel. Held slices stay
     // reserved: their accept still has to settle (reject releases later).
     releaseReservationExceptHeld(o.id);
+    // The order is gone and was never tracked, so no forgetOrder will ever run
+    // for it: this is its only chance to leave the group. Whether it filled
+    // first is decided already -- the print is in oco_'s pending list and
+    // processOco still cancels the siblings, this id simply is not one of them.
+    oco_.unlink(o.id);
     sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId, o.clientOrderId,
                         out.leaves, out.filled});
   }

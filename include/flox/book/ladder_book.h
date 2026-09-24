@@ -17,15 +17,22 @@
  *
  * Design:
  * - Two dense price ladders (bids, asks), one Level per tick over a bounded
- *   price band. Level index = (price - base) / tick, so price<->level is O(1).
+ *   price band. Level index = floor((price - base) / tick), so price<->level
+ *   is O(1); a price outside [base, base + numLevels*tick) has no level.
  * - Intrusive FIFO order list per level (time priority) over a preallocated
  *   node pool with a free list -- zero allocations in steady state.
  * - An occupancy bitmap per side + a cached best cursor: best is O(1), and the
  *   next non-empty level on a cursor move is a single word scan.
- * - Order id -> node via an open-addressing table (no per-order allocation).
+ * - Order id -> node via an open-addressing table, linear probing with
+ *   backward-shift deletion (no per-order allocation, no tombstones, and so no
+ *   rehash pause on the matching path).
  *
- * The band is enforced upstream by the engine's price collar (SymbolConfig
- * min/maxPrice); in-band is a precondition of addResting.
+ * The band is a property of THIS book, not of the instrument: the engine's
+ * price collar (SymbolConfig min/maxPrice) is optional config and does not
+ * know the ladder's geometry. addResting therefore refuses an out-of-band
+ * price and an exhausted pool rather than assuming a precondition, and the
+ * engine turns the refusal into a reject the owner can read (canRest() lets it
+ * refuse before the order has traded).
  */
 #pragma once
 
@@ -71,6 +78,10 @@ class LadderBook
     }
     freeHead_ = c.maxOrders > 0 ? 0 : -1;
 
+    // Strictly more than twice the node pool, so the id index can never pass
+    // half full however long the book runs -- the load bound that makes a
+    // linear probe O(1) expected and guarantees every probe and every deletion
+    // scan meets an empty slot.
     idxCap_ = 1;
     while (idxCap_ < static_cast<size_t>(c.maxOrders) * 2 + 1)
     {
@@ -83,17 +94,31 @@ class LadderBook
   bool empty() const noexcept { return count_ == 0; }
   bool full() const noexcept { return freeHead_ == -1; }
 
-  void addResting(Side side, const RestingOrder& o) noexcept
+  // Refuses rather than drops. Both bounds this book has -- the price band and
+  // the node pool -- used to end in a bare `return`, which left the caller
+  // believing the order was resting: the engine acked it, tracked it, held its
+  // reservation and armed its expiry against a book that had never taken it.
+  // The answer is the caller's to act on, so it cannot be ignored.
+  [[nodiscard]] BookAddResult addResting(Side side, const RestingOrder& o) noexcept
   {
     const int32_t lvl = levelOf(o.price);
     if (lvl < 0 || lvl >= numLevels_)
     {
-      return;  // out of band -- engine's collar must prevent this
+      return BookAddResult::PriceOutOfBand;
     }
     const int32_t n = allocNode();
     if (n < 0)
     {
-      return;  // capacity -- engine should gate via full() before matching
+      return BookAddResult::PoolExhausted;
+    }
+    // The id index goes in FIRST: an order on a level but not in the index is
+    // invisible to contains(), find() and cancel() -- it can never be taken
+    // off the book again, and it would still trade. Refusing the order is the
+    // lesser failure, so the node goes back to the pool and the caller is told.
+    if (!insertSlot(o.id, n))
+    {
+      freeNode(n);
+      return BookAddResult::PoolExhausted;
     }
     Node& node = nodes_[static_cast<size_t>(n)];
     node.order = o;
@@ -116,7 +141,17 @@ class LadderBook
       level.tail = n;
     }
     level.totalQty += o.leaves + o.hidden;  // hidden reserve is real liquidity
-    insertSlot(o.id, n);                    // count_ is maintained by allocNode/freeNode
+    return BookAddResult::Accepted;         // count_ is maintained by allocNode/freeNode
+  }
+
+  // Whether this book has a level for `p` at all. The engine asks before it
+  // commits an order to matching, so a price the ladder cannot represent is
+  // refused while refusing is still free -- addResting stays the authority,
+  // but by then the order may already have traded.
+  bool canRest(Price p) const noexcept
+  {
+    const int32_t lvl = levelOf(p);
+    return lvl >= 0 && lvl < numLevels_;
   }
 
   const RestingOrder* find(OrderId id) const noexcept
@@ -414,7 +449,7 @@ class LadderBook
   {
     OrderId id{};
     int32_t node{-1};
-    uint8_t state{0};  // 0 empty, 1 occupied, 2 tombstone
+    uint8_t occupied{0};  // 0 empty, 1 holds an order; no tombstone state
   };
 
   static size_t wordsFor(int32_t levels) noexcept
@@ -422,13 +457,39 @@ class LadderBook
     return static_cast<size_t>((levels + 63) / 64);
   }
 
+  // Integer division truncates toward zero, so the whole window
+  // (base - tick, base) divided out to 0 -- the BASE level. A price under the
+  // ladder was therefore filed one level above itself: the order kept its own
+  // price while bestAsk() quoted the level's, and the two books stopped
+  // agreeing about the same order. Flooring gives that window -1, which is
+  // what "below the ladder" means, and addResting refuses it.
+  static int64_t floorDiv(int64_t n, int64_t d) noexcept
+  {
+    const int64_t q = n / d;
+    return (n % d != 0 && ((n < 0) != (d < 0))) ? q - 1 : q;
+  }
+  // -1 below the ladder, numLevels_ above it. Saturating rather than
+  // narrowing: a price far outside the band overflows int32 on the way back.
   int32_t levelOf(Price p) const noexcept
   {
-    return static_cast<int32_t>((p.raw() - base_) / tick_);
+    const int64_t l = floorDiv(p.raw() - base_, tick_);
+    if (l < 0)
+    {
+      return -1;
+    }
+    if (l >= numLevels_)
+    {
+      return numLevels_;
+    }
+    return static_cast<int32_t>(l);
   }
+  // The same division for a taker's limit, clamped into the ladder. -1 for a
+  // limit under the base is deliberate: a buyer limited below every level on
+  // the ladder reaches none of them, and the truncating version used to hand
+  // it level 0 and let it sweep asks priced above its limit.
   int32_t clampLevel(Price p) const noexcept
   {
-    const int64_t l = (p.raw() - base_) / tick_;
+    const int64_t l = floorDiv(p.raw() - base_, tick_);
     if (l < 0)
     {
       return -1;
@@ -644,7 +705,30 @@ class LadderBook
     --count_;
   }
 
-  // ---- open-addressing id index ----
+  // ---- open-addressing id index: linear probing, backward-shift deletion ----
+  //
+  // A slot is occupied or empty; there is no tombstone. Deletion closes the
+  // hole by walking the rest of the probe chain and moving back every entry
+  // that the hole would otherwise cut off, so the table after a cancel is
+  // exactly the table the remaining orders would have built from empty.
+  //
+  // Why not tombstones with an amortised rehash: tombstones were the previous
+  // design and nothing ever reclaimed one, so a probe chain grew with the
+  // orders the venue had EVER seen rather than with the orders resting --
+  // contains(), which validate() calls on every new order id, measured 0.9 ns
+  // fresh and 2.5 us after a million add/cancel pairs. A rehash bounds that,
+  // but it pays for the bound with an O(capacity) pause taken in the middle of
+  // a matching pass, on an arbitrary order, which is the one thing this book
+  // exists to avoid. Backward shift has no amortised term at all: every
+  // operation touches only its own chain, and the steady state after any
+  // amount of churn is the steady state of a fresh table.
+  //
+  // The table is a power of two larger than twice the node pool (see the
+  // constructor), and the index holds one entry per resting order, so it can
+  // never pass half full: a probe always ends on an empty slot, and the shift
+  // loop always terminates. insertSlot still answers false if it somehow does
+  // not find one -- an order on a level but outside the index can never be
+  // cancelled -- and addResting turns that into a refusal.
   size_t hash(OrderId id) const noexcept
   {
     uint64_t x = id;
@@ -653,41 +737,31 @@ class LadderBook
     x ^= x >> 33;
     return static_cast<size_t>(x) & (idxCap_ - 1);
   }
-  void insertSlot(OrderId id, int32_t node) noexcept
+  bool insertSlot(OrderId id, int32_t node) noexcept
   {
-    size_t h = hash(id);
-    size_t firstTomb = idxCap_;
-    for (size_t i = 0; i < idxCap_; ++i)
+    const size_t mask = idxCap_ - 1;
+    size_t k = hash(id);
+    for (size_t i = 0; i < idxCap_; ++i, k = (k + 1) & mask)
     {
-      const size_t k = (h + i) & (idxCap_ - 1);
-      if (idx_[k].state == 1)
+      if (idx_[k].occupied == 0)
       {
-        continue;
+        idx_[k] = Slot{id, node, 1};
+        return true;
       }
-      if (idx_[k].state == 2)
-      {
-        if (firstTomb == idxCap_)
-        {
-          firstTomb = k;
-        }
-        continue;
-      }
-      const size_t dst = (firstTomb != idxCap_) ? firstTomb : k;
-      idx_[dst] = Slot{id, node, 1};
-      return;
     }
+    return false;
   }
   int32_t findSlot(OrderId id) const noexcept
   {
-    const size_t h = hash(id);
-    for (size_t i = 0; i < idxCap_; ++i)
+    const size_t mask = idxCap_ - 1;
+    size_t k = hash(id);
+    for (size_t i = 0; i < idxCap_; ++i, k = (k + 1) & mask)
     {
-      const size_t k = (h + i) & (idxCap_ - 1);
-      if (idx_[k].state == 0)
+      if (idx_[k].occupied == 0)
       {
         return -1;
       }
-      if (idx_[k].state == 1 && idx_[k].id == id)
+      if (idx_[k].id == id)
       {
         return idx_[k].node;
       }
@@ -696,20 +770,45 @@ class LadderBook
   }
   void eraseSlot(OrderId id) noexcept
   {
-    const size_t h = hash(id);
-    for (size_t i = 0; i < idxCap_; ++i)
+    const size_t mask = idxCap_ - 1;
+    size_t hole = hash(id);
+    size_t i = 0;
+    for (; i < idxCap_; ++i, hole = (hole + 1) & mask)
     {
-      const size_t k = (h + i) & (idxCap_ - 1);
-      if (idx_[k].state == 0)
+      if (idx_[hole].occupied == 0)
       {
-        return;
+        return;  // the chain ended before the id: it is not here
       }
-      if (idx_[k].state == 1 && idx_[k].id == id)
+      if (idx_[hole].id == id)
       {
-        idx_[k].state = 2;
-        return;
+        break;
       }
     }
+    if (i == idxCap_)
+    {
+      return;
+    }
+    // Knuth 6.4 algorithm R. Scan forward to the end of the chain; an entry
+    // whose home slot lies in (hole, j] is still reachable past the hole and
+    // stays where it is, anything else moves back into the hole, which then
+    // follows it. The scan stops at the first empty slot, which is what keeps
+    // the work proportional to this chain rather than to the table.
+    // Bounded by the table: the load factor guarantees an empty slot to stop
+    // on, and the bound is here so that a table that somehow had none would
+    // give a wrong answer rather than hang the matching thread.
+    size_t j = (hole + 1) & mask;
+    for (size_t steps = 0; steps + 1 < idxCap_ && idx_[j].occupied != 0; ++steps, j = (j + 1) & mask)
+    {
+      const size_t home = hash(idx_[j].id);
+      const bool reachablePastHole =
+          (hole <= j) ? (hole < home && home <= j) : (hole < home || home <= j);
+      if (!reachablePastHole)
+      {
+        idx_[hole] = idx_[j];
+        hole = j;
+      }
+    }
+    idx_[hole] = Slot{};
   }
 
   int64_t base_;
