@@ -205,6 +205,14 @@ BybitExchangeConnector::BybitExchangeConnector(const BybitConfig& config,
       _registry(registry),
       _logger(std::move(logger))
 {
+  // Registering here rather than waiting for someone else to do it: the
+  // registry is idempotent, and an id resolved lazily on the first frame would
+  // be InvalidExchangeId for whatever ran before it.
+  if (_registry)
+  {
+    _exchangeId = _registry->registerExchange("bybit");
+  }
+
   _wsClient = std::make_unique<IxWebSocketClient>(config.publicEndpoint, BYBIT_ORIGIN,
                                                   config.reconnectDelayMs, _logger.get(), 20);
 }
@@ -459,6 +467,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       }
       auto& ev = *evOpt;
       ev->recvNs = MonoNanos::fromRaw(recvNs);
+      ev->sourceExchange = _exchangeId;
 
       BookUpdateType updateType = BookUpdateType::SNAPSHOT;
       auto utv = root.find_field_unordered("type").get_string().value();

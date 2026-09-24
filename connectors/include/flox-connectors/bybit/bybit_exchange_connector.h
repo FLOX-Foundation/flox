@@ -117,6 +117,13 @@ class BybitExchangeConnector : public IExchangeConnector
 
   SymbolRegistry* _registry = nullptr;
 
+  // This connector's own id in the registry, resolved once in the
+  // constructor. Every published book event carries it as sourceExchange:
+  // CompositeBookMatrix::onBookUpdate drops any update whose sourceExchange is
+  // out of range, so leaving it at InvalidExchangeId kept the cross-venue book
+  // permanently empty in live.
+  ExchangeId _exchangeId{InvalidExchangeId};
+
   // Per-symbol book continuity: Bybit v5 orderbook deltas carry an update id
   // ("u") that increments by 1 per message; a jump means a dropped frame and a
   // silently wrong book, so the connector drops the delta and re-subscribes for
