@@ -49,6 +49,7 @@
 #include <flox/execution/order.h>
 #include <flox/execution/order_tracker.h>
 #include <flox/log/atomic_logger.h>
+#include <flox/util/base/time.h>
 
 #include <gtest/gtest.h>
 
@@ -136,7 +137,7 @@ class FakeTransport final : public ITransport
   void post(std::string_view url, std::string_view body,
             const std::vector<std::pair<std::string_view, std::string_view>>&,
             MoveOnlyFunction<void(std::string_view)> onSuccess,
-            MoveOnlyFunction<void(std::string_view)>) override
+            MoveOnlyFunction<void(std::string_view)> onError) override
   {
     if (url.ends_with("/info"))
     {
@@ -147,6 +148,17 @@ class FakeTransport final : public ITransport
       return;
     }
     calls.push_back({std::string(url), std::string(body)});
+    // A round-trip that never completes -- DNS failure, a reset connection, a
+    // timeout -- comes back through onError, not onSuccess. It is the half of
+    // the transport contract a fake that only ever succeeds can never exercise.
+    if (failNext)
+    {
+      if (onError)
+      {
+        onError(errorText);
+      }
+      return;
+    }
     if (onSuccess)
     {
       onSuccess(nextResponse);
@@ -155,6 +167,8 @@ class FakeTransport final : public ITransport
 
   std::vector<Call> calls;
   std::string nextResponse;
+  bool failNext{false};
+  std::string errorText;
 };
 
 struct SeenEvent
@@ -163,6 +177,7 @@ struct SeenEvent
   OrderId orderId;
   double fillQty;
   double fillPrice;
+  double orderFilledQuantity;
   std::string reason;
 };
 
@@ -174,17 +189,18 @@ class OrderListener final : public IOrderExecutionListener
   void onOrderPartiallyFilled(const Order& order, Quantity fillQty, Price fillPrice) override
   {
     push({OrderEventStatus::PARTIALLY_FILLED, order.id, fillQty.toDouble(), fillPrice.toDouble(),
-          ""});
+          order.filledQuantity.toDouble(), ""});
   }
 
   void onOrderFilled(const Order& order, Quantity fillQty, Price fillPrice) override
   {
-    push({OrderEventStatus::FILLED, order.id, fillQty.toDouble(), fillPrice.toDouble(), ""});
+    push({OrderEventStatus::FILLED, order.id, fillQty.toDouble(), fillPrice.toDouble(),
+          order.filledQuantity.toDouble(), ""});
   }
 
   void onOrderRejected(const Order& order, const std::string& reason) override
   {
-    push({OrderEventStatus::REJECTED, order.id, 0.0, 0.0, reason});
+    push({OrderEventStatus::REJECTED, order.id, 0.0, 0.0, order.filledQuantity.toDouble(), reason});
   }
 
   std::vector<SeenEvent> events()
@@ -207,6 +223,7 @@ class OrderListener final : public IOrderExecutionListener
 struct SeenBook
 {
   uint64_t recvNs;
+  uint64_t publishTsNs;
   ExchangeId sourceExchange;
   size_t bidCount;
   size_t askCount;
@@ -220,8 +237,8 @@ class BookCapture final : public IMarketDataSubscriber
   void onBookUpdate(const BookUpdateEvent& ev) override
   {
     std::lock_guard<std::mutex> lk(_m);
-    _books.push_back(
-        {ev.recvNs.raw(), ev.sourceExchange, ev.update.bids.size(), ev.update.asks.size()});
+    _books.push_back({ev.recvNs.raw(), ev.publishTsNs.raw(), ev.sourceExchange,
+                      ev.update.bids.size(), ev.update.asks.size()});
   }
 
   std::vector<SeenBook> books()
@@ -353,6 +370,45 @@ void inlineFillReachesTheBus()
     EXPECT_DOUBLE_EQ(events[0].fillQty, 2.0) << "totalSz=2.0";
     EXPECT_DOUBLE_EQ(events[0].fillPrice, 60005.0)
         << "avgPx=60005.0; a fill at price 0 builds the position's cost basis at zero";
+    EXPECT_DOUBLE_EQ(events[0].orderFilledQuantity, 2.0)
+        << "the order the event carries must say how much of it has filled; anything reading "
+           "order.filledQuantity instead of the fill delta otherwise sees an untouched order";
+  }
+}
+
+// REVIEW connectors/6, the other half of the order path: a round-trip that
+// never completes. The venue never saw the order, so the strategy has to be
+// told -- and told why, or the failure is indistinguishable from silence.
+template <typename Executor>
+void transportFailurePublishesRejection()
+{
+  if constexpr (!HasOrderBusSetter<Executor>::value)
+  {
+    FAIL() << kOrderBusSeam;
+  }
+  else
+  {
+    constexpr const char* kError = "Recv failure: Connection reset by peer";
+
+    ExecutorFixture<Executor> f("hl_transport_error.log", "");
+    f.transport->failNext = true;
+    f.transport->errorText = kError;
+
+    f.executor->submitOrder(f.buyOrder());
+    f.orderBus.flush();
+
+    ASSERT_EQ(f.transport->calls.size(), 1u);
+
+    const auto events = f.listener.events();
+    ASSERT_EQ(events.size(), 1u)
+        << "a submit that failed in transport must produce exactly one event, not silence";
+    EXPECT_EQ(events[0].status, OrderEventStatus::REJECTED);
+    EXPECT_EQ(events[0].orderId, kEngineOrderId);
+    EXPECT_NE(events[0].reason.find(kError), std::string::npos)
+        << "the transport's own error text must survive into the reason: " << events[0].reason;
+
+    EXPECT_FALSE(f.tracker.isActive(kEngineOrderId))
+        << "an order that never reached the venue must not be left alive in the tracker";
   }
 }
 
@@ -406,7 +462,9 @@ void bookEventCarriesRecvNsAndSourceExchange()
     const ExchangeId expected = f.registry.getExchangeId(f.connector->exchangeId());
     ASSERT_NE(expected, InvalidExchangeId);
 
+    const int64_t before = nowNsMonotonic();
     f.connector->handleMessage(kL2BookFrame);
+    const int64_t after = nowNsMonotonic();
     f.bookBus.flush();
 
     const auto books = f.bookCapture.books();
@@ -419,6 +477,14 @@ void bookEventCarriesRecvNsAndSourceExchange()
     EXPECT_EQ(books[0].sourceExchange, expected)
         << "sourceExchange must be the connector's exchange id (" << expected
         << "); InvalidExchangeId makes CompositeBookMatrix drop the update";
+    EXPECT_NE(books[0].publishTsNs, 0u)
+        << "publishTsNs is the bus-publish stamp every other event path sets; without it the "
+           "connector-to-consumer leg cannot be measured at all";
+    EXPECT_LT(books[0].recvNs, books[0].publishTsNs)
+        << "recvNs is taken when the frame arrives, before it is parsed; publishTsNs when it "
+           "goes on the bus";
+    EXPECT_GE(static_cast<int64_t>(books[0].recvNs), before);
+    EXPECT_LE(static_cast<int64_t>(books[0].publishTsNs), after);
   }
 }
 
@@ -474,6 +540,11 @@ TEST(HyperliquidFillContract, InlineFillReachesTheBus)
 TEST(HyperliquidFillContract, VenueRejectionReachesTheBusWithItsReason)
 {
   venueRejectionReachesTheBusWithItsReason<HyperliquidOrderExecutorT<NoPolicies>>();
+}
+
+TEST(HyperliquidFillContract, TransportFailurePublishesRejection)
+{
+  transportFailurePublishesRejection<HyperliquidOrderExecutorT<NoPolicies>>();
 }
 
 TEST(HyperliquidFeedContract, BookEventCarriesRecvNsAndSourceExchange)

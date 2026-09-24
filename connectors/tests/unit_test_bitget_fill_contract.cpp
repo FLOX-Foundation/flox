@@ -45,6 +45,7 @@
 #include <flox/execution/bus/order_execution_bus.h>
 #include <flox/execution/events/order_event.h>
 #include <flox/log/atomic_logger.h>
+#include <flox/util/base/time.h>
 
 #include <gtest/gtest.h>
 
@@ -107,7 +108,6 @@ struct SeenFill
   double fillPrice;
   double orderQuantity;
   double orderFilledQuantity;
-  uint64_t recvNs;
 };
 
 class FillListener final : public IOrderExecutionListener
@@ -131,9 +131,13 @@ class FillListener final : public IOrderExecutionListener
     record(OrderEventStatus::FILLED, order, fillQty, fillPrice);
   }
 
-  // The raw fan-out is the only place recvNs is visible; it is not called by
-  // the bus dispatcher, so the connector tests read it through a dedicated
-  // subscriber below instead. Kept here for the fill payload only.
+  // OrderEvent::recvNs cannot be seen from here. EventDispatcher<OrderEvent>
+  // calls OrderEvent::dispatchTo, which hands a listener the Order and the
+  // fill payload and never the event itself; IOrderExecutionListener declares
+  // onOrderEvent(const OrderEvent&) for exactly this, but nothing on the bus
+  // path calls it (only BacktestRunner does, by hand). So the order path is
+  // asserted on what it delivers, and the arrival stamp is asserted on the
+  // book path below, where BookUpdateEvent reaches the subscriber whole.
   std::vector<SeenFill> fills()
   {
     std::lock_guard<std::mutex> lk(_m);
@@ -151,7 +155,7 @@ class FillListener final : public IOrderExecutionListener
   {
     std::lock_guard<std::mutex> lk(_m);
     _fills.push_back({status, order.id, fillQty.toDouble(), fillPrice.toDouble(),
-                      order.quantity.toDouble(), order.filledQuantity.toDouble(), 0});
+                      order.quantity.toDouble(), order.filledQuantity.toDouble()});
   }
 
   std::mutex _m;
@@ -162,6 +166,7 @@ class FillListener final : public IOrderExecutionListener
 struct SeenBook
 {
   uint64_t recvNs;
+  uint64_t publishTsNs;
   ExchangeId sourceExchange;
   size_t bidCount;
   size_t askCount;
@@ -175,8 +180,8 @@ class BookCapture final : public IMarketDataSubscriber
   void onBookUpdate(const BookUpdateEvent& ev) override
   {
     std::lock_guard<std::mutex> lk(_m);
-    _books.push_back(
-        {ev.recvNs.raw(), ev.sourceExchange, ev.update.bids.size(), ev.update.asks.size()});
+    _books.push_back({ev.recvNs.raw(), ev.publishTsNs.raw(), ev.sourceExchange,
+                      ev.update.bids.size(), ev.update.asks.size()});
   }
 
   std::vector<SeenBook> books()
@@ -196,25 +201,52 @@ constexpr const char* kBookSnapshot =
     R"("instId":"BTCUSDT"},"data":[{"asks":[["60010","2"]],"bids":[["60000","3"]],)"
     R"("checksum":0,"ts":"1700000000000"}],"ts":1700000000000})";
 
-// A private "orders" push. baseVolume is the latest fill's size, fillPrice the
-// price it traded at, accBaseVolume the order's cumulative filled quantity.
-std::string ordersFrame(const char* status, const char* fillPrice, const char* baseVolume,
-                        const char* accBaseVolume)
+constexpr OrderId kClientOid = 4242;
+
+// A private "orders" push for order `clientOid`. baseVolume is the latest
+// fill's size, fillPrice the price it traded at, accBaseVolume the order's
+// cumulative filled quantity. A nullptr omits the field: the venue leaves all
+// three out of a push that reports no new execution, and Bitget's "snapshot"
+// pushes for an order it has already reported do not always repeat every one
+// of them, so each has to stand on its own.
+std::string ordersFrameFor(OrderId clientOid, const char* status, const char* fillPrice,
+                           const char* baseVolume, const char* accBaseVolume)
 {
   std::string s;
   s += R"({"action":"snapshot","arg":{"instType":"USDT-FUTURES","channel":"orders",)"
        R"("instId":"default"},"data":[{"instId":"BTCUSDT","orderId":"9001",)"
-       R"("clientOid":"4242","price":"60000","size":"3","orderType":"limit","side":"buy",)"
-       R"("fillPrice":")";
-  s += fillPrice;
-  s += R"(","tradeId":"7001","baseVolume":")";
-  s += baseVolume;
-  s += R"(","fillTime":"1700000000000","accBaseVolume":")";
-  s += accBaseVolume;
-  s += R"(","priceAvg":"60000","status":")";
+       R"("clientOid":")";
+  s += std::to_string(clientOid);
+  s += R"(","price":"60000","size":"3","orderType":"limit","side":"buy")";
+  if (fillPrice)
+  {
+    s += R"(,"fillPrice":")";
+    s += fillPrice;
+    s += R"(","tradeId":"7001")";
+  }
+  if (baseVolume)
+  {
+    s += R"(,"baseVolume":")";
+    s += baseVolume;
+    s += R"(")";
+  }
+  s += R"(,"fillTime":"1700000000000")";
+  if (accBaseVolume)
+  {
+    s += R"(,"accBaseVolume":")";
+    s += accBaseVolume;
+    s += R"(")";
+  }
+  s += R"(,"priceAvg":"60000","status":")";
   s += status;
   s += R"(","cTime":"1700000000000","uTime":"1700000000000"}],"ts":1700000000000})";
   return s;
+}
+
+std::string ordersFrame(const char* status, const char* fillPrice, const char* baseVolume,
+                        const char* accBaseVolume)
+{
+  return ordersFrameFor(kClientOid, status, fillPrice, baseVolume, accBaseVolume);
 }
 
 // Templated on the connector so every call through it stays type-dependent and
@@ -322,6 +354,120 @@ void terminalFillCarriesQtyAndPrice()
   }
 }
 
+// fillQty has two independent sources and a push carries either one or both:
+// baseVolume is the size of the execution the venue is reporting right now,
+// and the increment the cumulative accBaseVolume adds to the watermark is the
+// same number derived the other way. A push that omits the cumulative must
+// still report the size that traded.
+template <typename Connector>
+void fillWithoutCumulativeUsesBaseVolume()
+{
+  if constexpr (!HasPublicHandlePrivateMessage<Connector>::value)
+  {
+    FAIL() << kPrivateSeam;
+  }
+  else
+  {
+    Fixture<Connector> f("bitget_fill_no_acc.log");
+
+    f.connector->handlePrivateMessage(
+        ordersFrame("partially_filled", "60000", "1", /*accBaseVolume=*/nullptr));
+    f.orderBus.flush();
+
+    const auto fills = f.fillListener.fills();
+    ASSERT_EQ(fills.size(), 1u) << "the push reports an execution and must dispatch a fill";
+    EXPECT_DOUBLE_EQ(fills[0].fillQty, 1.0)
+        << "with no accBaseVolume there is no watermark increment to fall back on; baseVolume "
+           "is the only size the venue gave and it must be the one published";
+    EXPECT_DOUBLE_EQ(fills[0].fillPrice, 60000.0);
+  }
+}
+
+// The mirror case: a push that reports the cumulative but not the size of the
+// single execution. What the engine acts on is the delta, so it has to come
+// from the watermark.
+template <typename Connector>
+void fillWithoutBaseVolumeUsesTheWatermarkIncrement()
+{
+  if constexpr (!HasPublicHandlePrivateMessage<Connector>::value)
+  {
+    FAIL() << kPrivateSeam;
+  }
+  else
+  {
+    Fixture<Connector> f("bitget_fill_no_basevolume.log");
+
+    f.connector->handlePrivateMessage(
+        ordersFrame("partially_filled", "60000", /*baseVolume=*/nullptr, "1"));
+    f.connector->handlePrivateMessage(ordersFrame("filled", "60010", /*baseVolume=*/nullptr, "3"));
+    f.orderBus.flush();
+
+    const auto fills = f.fillListener.fills();
+    ASSERT_EQ(fills.size(), 2u);
+    EXPECT_DOUBLE_EQ(fills[0].fillQty, 1.0)
+        << "accBaseVolume went 0 -> 1, so 1 traded; publishing 0 moves no position";
+    EXPECT_DOUBLE_EQ(fills[1].fillQty, 2.0) << "accBaseVolume went 1 -> 3, so 2 more traded";
+    EXPECT_DOUBLE_EQ(fills[0].fillQty + fills[1].fillQty, 3.0);
+  }
+}
+
+// FillWatermark's default history, which is the bound this test observes.
+// An entry outlives its order's terminal status on purpose -- the duplicate of
+// the last fill arrives after it -- and is dropped once that many orders have
+// completed after it. A cancelled order that never completes never enters the
+// queue, so it is never evicted and the map grows for the life of the process;
+// the only thing a connector test can see of that is the eviction itself.
+constexpr size_t kWatermarkHistory = 4096;
+
+template <typename Connector>
+void aCancelledOrderCompletesItsWatermarkEntry()
+{
+  if constexpr (!HasPublicHandlePrivateMessage<Connector>::value)
+  {
+    FAIL() << kPrivateSeam;
+  }
+  else
+  {
+    Fixture<Connector> f("bitget_cancel_completes.log");
+
+    // One fill, then the rest of the order is cancelled.
+    f.connector->handlePrivateMessage(ordersFrame("partially_filled", "60000", "1", "1"));
+    f.connector->handlePrivateMessage(ordersFrame("canceled", /*fillPrice=*/nullptr,
+                                                  /*baseVolume=*/nullptr,
+                                                  /*accBaseVolume=*/nullptr));
+
+    // A re-pushed snapshot of that same state is still suppressed: the entry
+    // is deliberately kept past the terminal status for exactly this.
+    f.connector->handlePrivateMessage(ordersFrame("partially_filled", "60000", "1", "1"));
+    f.orderBus.flush();
+    ASSERT_EQ(f.fillListener.fills().size(), 1u)
+        << "the duplicate must not book a second fill while the entry is still held";
+
+    // Enough other orders complete to push the cancelled one out of the
+    // history window.
+    for (size_t i = 0; i < kWatermarkHistory; ++i)
+    {
+      f.connector->handlePrivateMessage(
+          ordersFrameFor(static_cast<OrderId>(900000 + i), "canceled", nullptr, nullptr, nullptr));
+    }
+    f.orderBus.flush();
+
+    // Now the entry is gone, so the same push is new again. That it is means
+    // the cancelled order took its place in the completion queue; if it never
+    // completed, nothing would ever evict it and this stays suppressed.
+    f.connector->handlePrivateMessage(ordersFrame("partially_filled", "60000", "1", "1"));
+    f.orderBus.flush();
+
+    const auto fills = f.fillListener.fills();
+    ASSERT_EQ(fills.size(), 2u)
+        << "after " << kWatermarkHistory
+        << " completions the cancelled order's entry must have been evicted, which only happens "
+           "if CANCELED completed it";
+    EXPECT_EQ(fills[1].orderId, kClientOid);
+    EXPECT_DOUBLE_EQ(fills[1].fillQty, 1.0);
+  }
+}
+
 // REVIEW connectors/10 and connectors/11.
 template <typename Connector>
 void bookEventCarriesRecvNsAndSourceExchange()
@@ -349,6 +495,43 @@ void bookEventCarriesRecvNsAndSourceExchange()
     EXPECT_EQ(books[0].sourceExchange, expected)
         << "sourceExchange must be the connector's exchange id (" << expected
         << "); InvalidExchangeId makes CompositeBookMatrix drop the update";
+    EXPECT_NE(books[0].publishTsNs, 0u)
+        << "publishTsNs is the bus-publish stamp every other event path sets; without it the "
+           "connector-to-consumer leg cannot be measured at all";
+    EXPECT_LT(books[0].recvNs, books[0].publishTsNs)
+        << "recvNs must be taken when the frame arrives, before it is parsed -- not at publish "
+           "time, which would make a slow parse invisible and the feed always look fresh";
+  }
+}
+
+// recvNs is an arrival stamp, so it has to fall inside the window in which the
+// frame was actually handed to the connector. Both nowNsMonotonic() and
+// nowMonoNanos() read the same steady clock, so the test can bracket it.
+template <typename Connector>
+void bookRecvNsFallsInsideTheDeliveryWindow()
+{
+  if constexpr (!HasPublicHandleMessage<Connector>::value)
+  {
+    FAIL() << kPublicSeam;
+  }
+  else
+  {
+    Fixture<Connector> f("bitget_book_window.log");
+
+    const int64_t before = nowNsMonotonic();
+    f.connector->handleMessage(kBookSnapshot);
+    const int64_t after = nowNsMonotonic();
+    f.bookBus.flush();
+
+    const auto books = f.bookCapture.books();
+    ASSERT_EQ(books.size(), 1u);
+    const int64_t recv = static_cast<int64_t>(books[0].recvNs);
+    const int64_t publish = static_cast<int64_t>(books[0].publishTsNs);
+
+    EXPECT_GE(recv, before) << "recvNs predates the frame being handed over";
+    EXPECT_LE(recv, after) << "recvNs postdates the call returning";
+    EXPECT_LT(recv, publish) << "the frame was received before it was published";
+    EXPECT_LE(publish, after);
   }
 }
 
@@ -403,6 +586,26 @@ TEST(BitgetFillContract, PartialFillCarriesQtyPriceAndStatus)
 TEST(BitgetFillContract, TerminalFillCarriesQtyAndPrice)
 {
   terminalFillCarriesQtyAndPrice<BitgetExchangeConnector>();
+}
+
+TEST(BitgetFillContract, FillWithoutCumulativeUsesBaseVolume)
+{
+  fillWithoutCumulativeUsesBaseVolume<BitgetExchangeConnector>();
+}
+
+TEST(BitgetFillContract, FillWithoutBaseVolumeUsesTheWatermarkIncrement)
+{
+  fillWithoutBaseVolumeUsesTheWatermarkIncrement<BitgetExchangeConnector>();
+}
+
+TEST(BitgetFillContract, ACancelledOrderCompletesItsWatermarkEntry)
+{
+  aCancelledOrderCompletesItsWatermarkEntry<BitgetExchangeConnector>();
+}
+
+TEST(BitgetFeedContract, BookRecvNsFallsInsideTheDeliveryWindow)
+{
+  bookRecvNsFallsInsideTheDeliveryWindow<BitgetExchangeConnector>();
 }
 
 TEST(BitgetFeedContract, BookEventCarriesRecvNsAndSourceExchange)
