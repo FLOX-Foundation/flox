@@ -134,12 +134,37 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=14.0"
           CIBW_BUILD_VERBOSITY: 1
+          # cibuildwheel installs the just-built wheel into a clean venv
+          # and runs this from a temp directory (not the checkout), so a
+          # pass here proves the wheel that would be published actually
+          # loads its compiled extension and can run a real call through
+          # it -- not just that the build step exited zero. `numpy` is
+          # already a runtime dependency in pyproject.toml and gets
+          # pulled in by installing the wheel; nothing extra to declare
+          # via CIBW_TEST_REQUIRES.
+          CIBW_TEST_COMMAND: >
+            python -c "import flox_py as flox; reg = flox.SymbolRegistry(); sid = reg.add_symbol('bybit', 'BTCUSDT', 0.01); assert flox.SLIPPAGE_NONE == 0; assert sid is not None; print('flox_py wheel smoke OK, symbol id:', sid)"
 
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
           path: wheelhouse/*.whl
 
+  # NOT part of the publish path (see publish-testpypi / publish-pypi
+  # below) -- the sdist this produces cannot be installed. pyproject.toml
+  # sets `cmake.source-dir = ".."` relative to python/, i.e. the repo
+  # root one level above the sdist's own root; `python -m build --sdist`
+  # packages only what is under python/, so the tarball never carries
+  # include/ or src/ and a build backend invoked against it cannot find
+  # the C++ sources it is told to configure. Publishing it would matter
+  # only as a silent trap: pip falls back to the sdist on any platform
+  # or interpreter a wheel wasn't built for (a linux aarch64 install, a
+  # Python 3.14 the CIBW_BUILD matrix doesn't cover yet, ...) and then
+  # fails deep inside a cmake configure step with no indication the
+  # published sdist was the problem. Restructuring the package so the
+  # sdist is self-contained is a separate task; until then this job
+  # keeps building the artifact (for manual inspection) but it is never
+  # uploaded to a registry.
   build-sdist:
     needs: [check-actor]
     if: needs.check-actor.result == 'success'
@@ -185,7 +210,7 @@ jobs:
           path: mcp/dist/*
 
   publish-testpypi:
-    needs: [build-wheels, build-sdist, build-mcp, run-core-tests, check-tag-on-main]
+    needs: [build-wheels, build-mcp, run-core-tests, check-tag-on-main]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Registry publishing runs only inside the gated environment: the
@@ -199,7 +224,6 @@ jobs:
     if: |
       always() &&
       needs.build-wheels.result == 'success' &&
-      needs.build-sdist.result == 'success' &&
       needs.build-mcp.result == 'success' &&
       needs.run-core-tests.result == 'success' &&
       (needs.check-tag-on-main.result == 'success' || needs.check-tag-on-main.result == 'skipped') &&
@@ -207,8 +231,18 @@ jobs:
     permissions:
       id-token: write
     steps:
+      # Two explicit downloads, not an unfiltered one: this job does not
+      # depend on build-sdist, but that job still runs (see its comment)
+      # and would otherwise get swept into dist/ by an unfiltered
+      # download-artifact and published anyway.
       - uses: actions/download-artifact@v4
         with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: flox-mcp-dist
           path: dist
           merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1
@@ -217,7 +251,7 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
 
   publish-pypi:
-    needs: [build-wheels, build-sdist, build-mcp, run-core-tests, check-tag-on-main]
+    needs: [build-wheels, build-mcp, run-core-tests, check-tag-on-main]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Registry publishing runs only inside the gated environment: the
@@ -227,7 +261,6 @@ jobs:
     if: |
       always() &&
       needs.build-wheels.result == 'success' &&
-      needs.build-sdist.result == 'success' &&
       needs.build-mcp.result == 'success' &&
       needs.run-core-tests.result == 'success' &&
       (needs.check-tag-on-main.result == 'success' || needs.check-tag-on-main.result == 'skipped') &&
@@ -235,8 +268,16 @@ jobs:
     permissions:
       id-token: write
     steps:
+      # See publish-testpypi above: two filtered downloads so build-sdist's
+      # unpublishable artifact is never picked up.
       - uses: actions/download-artifact@v4
         with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: flox-mcp-dist
           path: dist
           merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1
