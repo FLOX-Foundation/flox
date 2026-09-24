@@ -107,6 +107,41 @@ MUTATIONS: list[Mutation] = [
         test="SymbolStateMapTest.ClearResetsNonMovableState",
     ),
     Mutation(
+        name="clear-skips-overflow-storage-clear",
+        why="drops `_overflowStorage.clear()` from clear(); the flat table "
+            "and initialized flags reset, but a movable State's overflow "
+            "entries survive, so size()/forEach() and a subsequent lookup "
+            "still see the pre-clear() overflow data",
+        file=SYMBOL_STATE_MAP,
+        old="""    _table->initialized = {};
+    _overflowStorage.clear();
+    if constexpr (!std::is_move_constructible_v<State>)""",
+        new="""    _table->initialized = {};
+    if constexpr (!std::is_move_constructible_v<State>)""",
+        test="SymbolStateMapTest.ClearEmptiesOverflowStorage",
+    ),
+    Mutation(
+        name="clear-skips-overflow-scratch-reset",
+        why="drops the destroy+construct of _overflowScratch from clear(); "
+            "for a non-movable State the shared out-of-range scratch slot "
+            "keeps its old value, so a later out-of-range read (on any "
+            "symbol, not just the one that wrote it) reads stale data "
+            "through the shared slot",
+        file=SYMBOL_STATE_MAP,
+        old="""    if constexpr (!std::is_move_constructible_v<State>)
+    {
+      std::destroy_at(&_overflowScratch);
+      std::construct_at(&_overflowScratch);
+    }
+  }""",
+        new="""    if constexpr (!std::is_move_constructible_v<State>)
+    {
+      (void)0;
+    }
+  }""",
+        test="SymbolStateMapTest.ClearResetsOverflowScratchForNonMovableState",
+    ),
+    Mutation(
         name="position-tracker-states-mutable",
         why="restores `mutable` on _states; a mutable member is never const "
             "regardless of the enclosing method, so PositionTracker's const "

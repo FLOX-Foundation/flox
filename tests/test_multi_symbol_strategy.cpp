@@ -203,6 +203,84 @@ TEST_F(SymbolStateMapTest, ClearResetsNonMovableState)
          "initialized flag";
 }
 
+// W33-T013 acceptance follow-up: clear() unconditionally resetting `flat`
+// and the scratch slot is not enough on its own -- the overflow container
+// itself has to be emptied too, or a symbol that lived past kMaxSymbols
+// keeps answering with its pre-clear() state even though `initialized` (the
+// dense-range flag) was reset. Pins the `_overflowStorage.clear()` call.
+TEST_F(SymbolStateMapTest, ClearEmptiesOverflowStorage)
+{
+  struct TestState
+  {
+    int value{0};
+  };
+  SymbolStateMap<TestState, 10> map;
+
+  map[300].value = 111;
+  map[301].value = 222;
+  map[302].value = 333;
+  ASSERT_EQ(map.size(), 3u);
+
+  map.clear();
+
+  EXPECT_EQ(map.size(), 0u)
+      << "clear() must empty the overflow container, not just the flat table";
+
+  int visited = 0;
+  map.forEach([&visited](SymbolId, const TestState&)
+              { ++visited; });
+  EXPECT_EQ(visited, 0) << "forEach must not visit a stale overflow entry";
+
+  EXPECT_EQ(map.tryGet(300), nullptr)
+      << "tryGet on a former overflow symbol must report missing, not stale";
+
+  // A read after clear() creates a fresh entry -- it must not resurrect the
+  // value the old (uncleared) overflow entry held.
+  EXPECT_EQ(map[300].value, 0);
+}
+
+// W33-T013 acceptance follow-up, the scratch-slot half: for a non-movable
+// State, an out-of-range write lands in the single shared `_overflowScratch`
+// slot (see operator[] above), not in the overflow container. clear() has to
+// reset that slot too, independently of `_overflowStorage.clear()`, or a
+// later out-of-range read on a *different* overflow symbol reads the
+// previous symbol's leftover data through the shared slot.
+//
+// Writing an out-of-range symbol for a non-movable State takes one of two
+// paths depending on NDEBUG, the same split used in test_cex_coordination.cpp
+// for the identical guard: with NDEBUG unset (a debug/sanitizer build) the
+// `assert(false)` in operator[] fires before the scratch slot is ever
+// touched, so this test would abort rather than pin clear(); it is only
+// meaningful in a release-style build (NDEBUG set), which is what the
+// project's default and RelWithDebInfo builds use.
+#ifdef NDEBUG
+
+TEST_F(SymbolStateMapTest, ClearResetsOverflowScratchForNonMovableState)
+{
+  struct AtomicState
+  {
+    std::atomic<int> value{0};
+  };
+  static_assert(!std::is_move_constructible_v<AtomicState>,
+                "this test is only meaningful for a non-movable State");
+
+  SymbolStateMap<AtomicState, 10> map;
+
+  // Out of range for a non-movable State: routed to the shared scratch slot,
+  // not to a per-symbol overflow entry.
+  map[300].value.store(55, std::memory_order_relaxed);
+  ASSERT_EQ(map[300].value.load(std::memory_order_relaxed), 55);
+
+  map.clear();
+
+  EXPECT_EQ(map[301].value.load(std::memory_order_relaxed), 0)
+      << "clear() must reset the shared overflow scratch slot, not just the "
+         "flat table, or a different out-of-range symbol reads a previous "
+         "symbol's leftover value through it";
+}
+
+#endif  // NDEBUG
+
 // Const access must not create entries or mark a symbol initialized -- this
 // already held before W33-T013 (the non-const overload is the one that had
 // the bug; see the PositionTracker tests below for where that actually bit).
