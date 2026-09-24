@@ -808,6 +808,14 @@ struct RestoreClOrdIds  // fixed-size batch of an account's clientOrderId dedup 
   // what the bytes MEAN changed, which is what the snapshot version is for.
   uint32_t generation{0};
   uint64_t ids[kClOrdIdBatch]{};
+  // When this account's window last rotated, in sequencer time. State, not
+  // bookkeeping: it decides WHEN the next half is dropped, and the state hash
+  // folds it -- so a snapshot without it restores every id and then rotates
+  // on a schedule of its own, which SnapshotEnd refuses. Repeated on every
+  // batch of the same account (they all carry the one value); an account
+  // whose halves are both empty cannot occur, so no account is left without a
+  // record to carry it (see ClOrdIdWindow::duplicate).
+  int64_t rotatedAtNs{0};
 };
 
 // One buying-power reservation entry (engine::Credit::Reservation), serialized

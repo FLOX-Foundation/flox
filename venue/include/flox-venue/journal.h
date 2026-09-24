@@ -269,10 +269,17 @@ static_assert(sizeof(QuoteLadder) ==
 // 21/22 (W26-T064): a new journaled body, SetAccountRiskLimits (tag 36),
 // carried in the snapshot's config section. Every earlier body is unchanged;
 // the pair moves by two for the same reason 19/20 did.
+// 21/22 -> 23/24 (W33-T002): RestoreClOrdIds (tag unchanged) grows one field,
+// rotatedAtNs -- the account's window rotation moment, which the state hash
+// has always folded and the snapshot never carried, so any engine configured
+// with clOrdIdWindowNs > 0 wrote checkpoints that failed their own hash check
+// at SnapshotEnd. Every other journaled body is unchanged and still
+// fixed-length; only RestoreClOrdIds' sizeof moved. Pair moves by two, same
+// reasoning as 19/20 -> 21/22.
 #if FLOX_SCALE_CHECKS
-inline constexpr uint8_t kRecordVersion = 22;
+inline constexpr uint8_t kRecordVersion = 24;
 #else
-inline constexpr uint8_t kRecordVersion = 21;
+inline constexpr uint8_t kRecordVersion = 23;
 #endif
 
 // Bit 7 of the stamp byte marks a versioned record; bits 0-6 carry the version.
@@ -336,12 +343,12 @@ consteval uint64_t bodyLayoutFingerprint()
 // that did not add up during recovery. Now it stops the build here, next to
 // the version it invalidates.
 #if FLOX_SCALE_CHECKS
-static_assert(bodyLayoutFingerprint() == 0x52241945988b0cc3ULL,
+static_assert(bodyLayoutFingerprint() == 0x0159e90e53c0851bULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");
 #else
-static_assert(bodyLayoutFingerprint() == 0xed05163903ac1c33ULL,
+static_assert(bodyLayoutFingerprint() == 0xe6bd1bd208922c4bULL,
               "a journaled command struct changed size, so the on-disk layout is no longer the "
               "one kRecordVersion promises. Bump kRecordVersion, update this fingerprint, and "
               "record the change in docs/venue/runtime.md");

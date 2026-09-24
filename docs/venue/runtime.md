@@ -338,8 +338,19 @@ replayed `CumQty` silently resets to 0 across a recovery -- the same class of
 gap 15/16 closed for a plain resting order's cancel, this time for a hold --
 so it is refused rather than read that way.
 
+Versions 21 and 22 were the pair before `RestoreClOrdIds` carried
+`rotatedAtNs` (W33-T002), the moment an account's clientOrderId window last
+rotated. `stateHash` has always folded it -- the split between the two halves
+decides which id is forgotten next, so two windows holding the same ids at
+different moments are different states -- but the snapshot never wrote it, so
+a recovered engine rebuilt every id with a rotation moment of 0 and
+`SnapshotEnd` refused its own file. The effect was that `clOrdIdWindowNs > 0`
+silently disabled checkpoint recovery altogether. A file written by a build
+without the field carries no rotation moment to restore, so it is refused
+rather than read as though every window had just been created.
+
 Bumping the version is a deliberate edit, and the build stops you from
-forgetting it. The sizes of all 36 journaled command structs are folded into a
+forgetting it. The sizes of all 37 journaled command structs are folded into a
 compile-time fingerprint next to the version constant; adding a field to any of
 them fails that assertion with the reason, instead of surfacing months later as
 a length that does not add up during someone's recovery.
@@ -401,7 +412,8 @@ deterministic):
   because `SnapshotEnd` is a strictly-sized journal body -- widening it would
   change the on-disk layout and cost a format-version bump (the compile-time
   fingerprint next to `kRecordVersion` stops the build until it gets one;
-  version 21/22 added `SetAccountRiskLimits`, tag 36, in the config section).
+  version 21/22 added `SetAccountRiskLimits`, tag 36, in the config section,
+  and 23/24 widened `RestoreClOrdIds`).
   An engine with no funding state at all writes no such record, and a file
   without one restores rate 0 and no schedule, exactly as before the record
   existed (read compatibility, pinned by a test);
@@ -426,7 +438,8 @@ deterministic):
   MMP sliding-window fills
   (`RestoreMmpFills`, exact -- a maker one fill from its limit is still one
   fill from it after recovery), and the clientOrderId dedup sets in
-  fixed-size batches;
+  fixed-size batches, each batch carrying the account's window rotation
+  moment so the recovered window rotates on the writer's schedule;
 - `SnapshotEnd{stateHash, tradeSeq, heldSeq, ...}` -- sequence counters,
   last/mark price, pending timed halt.
 

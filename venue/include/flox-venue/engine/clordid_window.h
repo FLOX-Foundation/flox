@@ -64,7 +64,8 @@ class ClOrdIdWindow
 
   // Recovery: one snapshot batch of ids into the named generation (0 = the
   // current half, 1 = the previous one).
-  void restore(uint64_t account, uint32_t generation, const uint64_t* ids, uint32_t count)
+  void restore(uint64_t account, uint32_t generation, const uint64_t* ids, uint32_t count,
+               int64_t rotatedAtNs)
   {
     Generations& seen = accounts_[account];
     std::unordered_set<uint64_t>& gen = generation == 0 ? seen.cur : seen.prev;
@@ -72,6 +73,10 @@ class ClOrdIdWindow
     {
       gen.insert(ids[i]);
     }
+    // Every batch of one account carries the same moment, so the last write
+    // wins and wins with the same value. A pre-rotation snapshot carries 0,
+    // which is also what an untouched window holds.
+    seen.rotatedAtNs = rotatedAtNs;
   }
 
   // Fold into the determinism digest. Both halves, in order and each sorted.
@@ -100,7 +105,9 @@ class ClOrdIdWindow
 
   // Serialize as RestoreClOrdIds batches, accounts in key order and ids sorted
   // within each generation -- the same traversal the hash folds, so the file
-  // is byte-for-byte deterministic.
+  // is byte-for-byte deterministic. Each batch also carries the account's
+  // rotation moment, which the hash folds and a restore therefore has to
+  // reproduce.
   void writeSnapshot(Journal& out, int64_t ts) const
   {
     for (uint64_t acct : sortedKeysOf(accounts_))
@@ -111,6 +118,7 @@ class ClOrdIdWindow
         RestoreClOrdIds batch{};
         batch.account = acct;
         batch.generation = g;
+        batch.rotatedAtNs = seen.rotatedAtNs;
         for (uint64_t id : sortedIds(seen, g))
         {
           batch.ids[batch.count++] = id;
@@ -120,6 +128,7 @@ class ClOrdIdWindow
             batch = RestoreClOrdIds{};
             batch.account = acct;
             batch.generation = g;
+            batch.rotatedAtNs = seen.rotatedAtNs;
           }
         }
         if (batch.count > 0)

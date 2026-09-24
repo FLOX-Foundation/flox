@@ -153,7 +153,7 @@ std::optional<bool> MatchingEngine<Book>::applyComponentRestore(const InboundCom
     {
       return false;
     }
-    clOrdIds_.restore(r->account, r->generation, r->ids, r->count);
+    clOrdIds_.restore(r->account, r->generation, r->ids, r->count, r->rotatedAtNs);
     return true;
   }
   if (const auto* r = std::get_if<RestoreFunding>(&cmd))
