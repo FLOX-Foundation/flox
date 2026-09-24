@@ -750,4 +750,71 @@ TEST(FixMassQuoteSession, QuotesOnlyProfileRefusesCancel)
   gw->stop();
 }
 
+// The refusal the maker actually reads. FixCodec::decode names the tag it
+// refused; QuoteStatusReport's Text (58) is the only place that name reaches
+// the sender, and a session that answers "malformed" leaves a maker to guess
+// which of its tags is wrong from a message it cannot see the venue parse.
+// Each case below is refused by the codec for a different field, so the text
+// has to change with it -- a constant string passes none of them.
+TEST(FixMassQuoteSession, QuoteStatusReportTextCarriesTheCodecsReason)
+{
+  FixVenue v;
+  auto gw = v.gateway(ACCT);
+  const int port = gw->start(0, v.handler());
+  ASSERT_GT(port, 0);
+
+  FixClient c;
+  ASSERT_TRUE(c.connectTo(port));
+  c.admin("A", {{108, "30"}, {141, "Y"}});
+  Fields f;
+  ASSERT_TRUE(c.readType("A", f));
+
+  struct Case
+  {
+    const char* what;
+    std::string body;
+    const char* names;
+  };
+
+  // QuoteCancel with an Account FIX types as String and this venue carries
+  // as an integer; the same with an Account above the range a quoting id
+  // block is derived for (docs/venue/fix-quoting.md, "The range"); a
+  // MassQuote whose entry names a Symbol that is not one; and a MassQuote
+  // whose ladder does not step away from the mid.
+  std::string badAccount = field(35, "Z") + field(1, "ACME") + field(55, std::to_string(SYM));
+  std::string outOfRange =
+      field(35, "Z") + field(1, "16777216") + field(55, std::to_string(SYM));
+  std::string badSymbol = field(35, "i") + field(1, std::to_string(ACCT)) + field(117, "9001") +
+                          field(299, "1000") + field(55, "BTC-USD") + field(132, "99.99") +
+                          field(133, "100.01") + field(134, "1") + field(135, "2");
+  std::string badBidPx = field(35, "i") + field(1, std::to_string(ACCT)) + field(117, "9002") +
+                         field(299, "1000") + field(55, std::to_string(SYM)) +
+                         field(132, "not-a-price") + field(133, "100.01") + field(134, "1") +
+                         field(135, "2");
+
+  const Case cases[] = {
+      {"35=Z Account(1) is not an integer", badAccount, "Account(1)"},
+      {"35=Z Account(1) above the quoting range", outOfRange, "Account(1)"},
+      {"35=i Symbol(55) is not an integer", badSymbol, "Symbol(55)"},
+      {"35=i BidPx(132) is not a price", badBidPx, "BidPx(132)"},
+  };
+
+  for (const Case& t : cases)
+  {
+    c.appMessage(t.body);
+    ASSERT_TRUE(c.readType("AI", f)) << t.what;
+    EXPECT_EQ(f[297], "5") << t.what;
+    ASSERT_EQ(f.count(58), 1U) << t.what;
+    EXPECT_NE(f[58].find(t.names), std::string::npos)
+        << t.what << ": Text (58) was \"" << f[58] << "\", which does not name " << t.names;
+    EXPECT_EQ(f[58].find("malformed"), std::string::npos)
+        << t.what << ": Text (58) fell back to the generic refusal: \"" << f[58] << "\"";
+  }
+
+  EXPECT_EQ(v.openOrders(ACCT), 0U);
+
+  c.close();
+  gw->stop();
+}
+
 }  // namespace

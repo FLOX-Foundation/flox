@@ -240,6 +240,65 @@ TEST(FixCodecTimeInForce, GtdWithAMalformedExpireTimeRefusedWithAReason)
   }
 }
 
+// ---- Side (54) ----
+
+// 35=D with every field a valid order needs EXCEPT Side. Built here rather
+// than through `newOrder`, which always writes one: the overrides that helper
+// takes can replace a field, not remove it.
+std::string newOrderWithoutSide(const std::string& clOrdId)
+{
+  std::string b = field(35, "D");
+  b += field(11, clOrdId);
+  b += field(1, std::to_string(ACCT));
+  b += field(55, std::to_string(SYM));
+  b += field(40, "2");
+  b += field(38, "10");
+  b += field(44, "100.25");
+  return b;
+}
+
+// Side is the oldest of the codec's strict fields -- fix_codec.h:13-17 has
+// named it since before TimeInForce joined it -- and the reason it refuses
+// has to travel the same way the new ones do. A refusal that returns
+// std::nullopt without setting *reason leaves the session with nothing but
+// "malformed" to put in Text (58), which is the state this whole file exists
+// to end.
+TEST(FixCodecSide, MissingSideRefusedWithAReason)
+{
+  std::string reason;
+  const auto cmd = decodeWithReason(newOrderWithoutSide("60"), reason);
+  EXPECT_FALSE(cmd.has_value()) << "35=D with no 54 decoded to side "
+                                << static_cast<int>(asNewOrder(cmd)->side);
+  EXPECT_TRUE(reasonNames(reason, "Side", "54"));
+}
+
+TEST(FixCodecSide, InvalidSideRefusedWithAReason)
+{
+  // 54=3 is Buy minus (a real FIX 4.4 value this venue does not run), 54=B
+  // and 54=1X name nothing, 54= is present and empty. None may become BUY.
+  for (const char* v : {"3", "B", "1X", "", "0", "-1"})
+  {
+    std::string reason;
+    const auto cmd = decodeWithReason(newOrder("61", {{54, v}}), reason);
+    EXPECT_FALSE(cmd.has_value()) << "54=\"" << v << "\" decoded to side "
+                                  << static_cast<int>(asNewOrder(cmd)->side);
+    EXPECT_TRUE(reasonNames(reason, "Side", "54")) << "54=\"" << v << "\"";
+  }
+}
+
+// Control: the two values it does run still decode, and to different sides.
+TEST(FixCodecSide, BuyAndSellStillDecode)
+{
+  std::string reason;
+  const auto buy = decodeWithReason(newOrder("62", {{54, "1"}}), reason);
+  ASSERT_NE(asNewOrder(buy), nullptr) << reason;
+  EXPECT_EQ(asNewOrder(buy)->side, Side::BUY);
+
+  const auto sell = decodeWithReason(newOrder("63", {{54, "2"}}), reason);
+  ASSERT_NE(asNewOrder(sell), nullptr) << reason;
+  EXPECT_EQ(asNewOrder(sell)->side, Side::SELL);
+}
+
 // ---- ClOrdID (11), OrigClOrdID (41), Account (1), Symbol (55) ----
 
 // Control: a numeric value round-trips exactly, including the 20-digit
@@ -359,17 +418,27 @@ TEST(FixCodecStringFields, SymbolAboveUint32RefusedWithAReason)
   EXPECT_TRUE(reasonNames(reason, "Symbol", "55"));
 }
 
+// OrderCancelRequest (35=F) and OrderCancelReplaceRequest (35=G) bodies.
+// `extra` is appended after the fields above and parseFields keeps the LAST
+// occurrence of a tag, so an entry there replaces the default rather than
+// adding a second copy -- the same way `newOrder` above takes its overrides.
 std::string cancelRequest(const std::string& origClOrdId,
-                          const std::string& account = std::to_string(ACCT))
+                          const std::string& account = std::to_string(ACCT),
+                          const std::vector<std::pair<int, std::string>>& extra = {})
 {
   std::string b = field(35, "F");
   b += field(41, origClOrdId);
   b += field(1, account);
   b += field(55, std::to_string(SYM));
+  for (const auto& [tag, val] : extra)
+  {
+    b += field(tag, val);
+  }
   return b;
 }
 
-std::string cancelReplace(const std::string& origClOrdId)
+std::string cancelReplace(const std::string& origClOrdId,
+                          const std::vector<std::pair<int, std::string>>& extra = {})
 {
   std::string b = field(35, "G");
   b += field(41, origClOrdId);
@@ -377,6 +446,10 @@ std::string cancelReplace(const std::string& origClOrdId)
   b += field(55, std::to_string(SYM));
   b += field(38, "5");
   b += field(44, "100.25");
+  for (const auto& [tag, val] : extra)
+  {
+    b += field(tag, val);
+  }
   return b;
 }
 
@@ -427,6 +500,86 @@ TEST(FixCodecStringFields, NonNumericAccountOnCancelRefusedWithAReason)
   EXPECT_TRUE(reasonNames(reason, "Account", "1"));
 }
 
+// A cancel/replace carries the account that is billed and the symbol whose
+// book is touched, and they are two different fields of ModifyOrder. Distinct
+// values on purpose: with 1 and 55 folded into one number, or written into
+// each other's field, this reads the same either way.
+TEST(FixCodecStringFields, CancelReplaceCarriesAccountAndSymbolIntoTheirOwnFields)
+{
+  std::string reason;
+  const auto g = decodeWithReason(cancelReplace("90", {{1, "4242"}, {55, "77"}}), reason);
+  ASSERT_TRUE(g.has_value()) << reason;
+  const auto* m = std::get_if<ModifyOrder>(&*g);
+  ASSERT_NE(m, nullptr);
+  EXPECT_EQ(m->id, 90ULL);
+  EXPECT_EQ(m->accountId, 4242ULL);
+  EXPECT_EQ(m->symbol, 77U);
+
+  // Same claim at the widths of both fields, where a swap would not even fit.
+  const auto wide =
+      decodeWithReason(cancelReplace("91", {{1, "18446744073709551615"}, {55, "4294967295"}}),
+                       reason);
+  ASSERT_TRUE(wide.has_value()) << reason;
+  const auto* w = std::get_if<ModifyOrder>(&*wide);
+  ASSERT_NE(w, nullptr);
+  EXPECT_EQ(w->accountId, 18446744073709551615ULL);
+  EXPECT_EQ(w->symbol, 4294967295U);
+}
+
+// Price (44) on a replace is optional -- an amend may resize without
+// repricing -- but a value that IS present and does not parse must refuse,
+// not fall through to "keep the current price". A maker who sent a price
+// meant to move the order; leaving it where it was is the one outcome nobody
+// asked for.
+TEST(FixCodecStringFields, CancelReplaceWithAMalformedPriceRefusedWithAReason)
+{
+  for (const char* v : {"abc", "1e2", "100.25.1", "", "1,25", "-"})
+  {
+    std::string reason;
+    const auto g = decodeWithReason(cancelReplace("92", {{44, v}}), reason);
+    EXPECT_FALSE(g.has_value()) << "35=G 44=\"" << v << "\" decoded to newPrice "
+                                << std::get_if<ModifyOrder>(&*g)->newPrice.raw();
+    EXPECT_TRUE(reasonNames(reason, "Price", "44")) << "35=G 44=\"" << v << "\"";
+  }
+}
+
+// Control: a well-formed one round-trips to the raw it names, and an absent
+// one leaves newPrice at 0 (the "keep the current price" the engine reads).
+TEST(FixCodecStringFields, CancelReplacePriceRoundTrips)
+{
+  std::string reason;
+  const auto g = decodeWithReason(cancelReplace("93", {{44, "100.25"}}), reason);
+  ASSERT_TRUE(g.has_value()) << reason;
+  const auto* m = std::get_if<ModifyOrder>(&*g);
+  ASSERT_NE(m, nullptr);
+  EXPECT_EQ(m->newPrice.raw(), Price::fromDouble(100.25).raw());
+  EXPECT_EQ(m->newQty.raw(), Quantity::fromDouble(5.0).raw());
+
+  std::string b = field(35, "G");
+  b += field(41, "94");
+  b += field(1, std::to_string(ACCT));
+  b += field(55, std::to_string(SYM));
+  b += field(38, "5");
+  const auto noPrice = decodeWithReason(b, reason);
+  ASSERT_TRUE(noPrice.has_value()) << reason;
+  EXPECT_EQ(std::get_if<ModifyOrder>(&*noPrice)->newPrice.raw(), 0);
+}
+
+// Symbol (55) on a cancel names the book the order rests in. Truncated to 0
+// it cancels in someone else's, which is worse than a refusal the sender can
+// read -- the same reason 35=D refuses it.
+TEST(FixCodecStringFields, CancelRequestWithAMalformedSymbolRefusedWithAReason)
+{
+  for (const char* v : {"BTC-USD", "4294967296", "-1", "1 ", "01", ""})
+  {
+    std::string reason;
+    const auto f = decodeWithReason(cancelRequest("95", std::to_string(ACCT), {{55, v}}), reason);
+    EXPECT_FALSE(f.has_value()) << "35=F 55=\"" << v << "\" decoded to symbol "
+                                << std::get_if<CancelOrder>(&*f)->symbol;
+    EXPECT_TRUE(reasonNames(reason, "Symbol", "55")) << "35=F 55=\"" << v << "\"";
+  }
+}
+
 // ---- the quoting order-id block ----
 //
 // docs/venue/fix-quoting.md, "The order-id block": "The venue therefore
@@ -449,6 +602,79 @@ constexpr uint64_t kBlock = 2ULL * kQuoteLadderLevels;
 // Control: the same pair is stable, and a MassQuote and a QuoteCancel from
 // one account on one symbol address the same block. This is the half of the
 // contract that works today and has to keep working.
+// QuoteCancel (35=Z) and a one-level MassQuote (35=i), the two messages the
+// id block is derived inside.
+std::string quoteCancelMsg(const std::string& account, const std::string& symbol)
+{
+  std::string b = field(35, "Z");
+  b += field(1, account);
+  b += field(55, symbol);
+  b += field(298, "4");  // QuoteCancelType: all
+  return b;
+}
+
+std::string massQuoteMsg(const std::string& account, const std::string& symbol)
+{
+  std::string b = field(35, "i");
+  b += field(1, account);
+  b += field(117, "555");
+  b += field(299, "1000");
+  b += field(55, symbol);
+  b += field(132, "99.99");
+  b += field(133, "100.01");
+  b += field(134, "1");
+  b += field(135, "2");
+  return b;
+}
+
+// docs/venue/fix-quoting.md, "The range": "| `Account` (1) | 24 bits |
+// `0 .. 16777215` (`FixCodec::kQuoteAccountLimit - 1`) |", and below it: "An
+// `Account` above the range is **refused** naming `Account(1)`, on MassQuote
+// and QuoteCancel alike".
+//
+// The number is written out here rather than read back off the constant. A
+// test that says kQuoteAccountLimit == kQuoteAccountLimit passes for every
+// value the constant could be given, including one the documentation does
+// not name -- and the range is not an implementation detail a maker can
+// discover: it is the number an operator hands out account ids against.
+TEST(FixCodecQuoteLadderIdBlock, TheAccountRangeIsTheNumberTheDocumentationPrints)
+{
+  EXPECT_EQ(FixCodec::kQuoteAccountLimit, 16777216ULL);
+  EXPECT_EQ(FixCodec::kQuoteAccountLimit, 1ULL << 24);
+  EXPECT_TRUE(FixCodec::quoteIdBlockInRange(16777215ULL));
+  EXPECT_FALSE(FixCodec::quoteIdBlockInRange(16777216ULL));
+
+  // The boundary through decode(), on both messages that derive a block: the
+  // last account in range quotes, the first one out of it is refused naming
+  // the field.
+  for (const auto& [what, msg] :
+       std::vector<std::pair<const char*, std::string>>{
+           {"35=Z", quoteCancelMsg("16777215", std::to_string(SYM))},
+           {"35=i", massQuoteMsg("16777215", std::to_string(SYM))}})
+  {
+    std::string reason;
+    const auto cmd = decodeWithReason(msg, reason);
+    ASSERT_TRUE(cmd.has_value()) << what << " account 16777215 refused: " << reason;
+    const auto* l = std::get_if<QuoteLadder>(&*cmd);
+    ASSERT_NE(l, nullptr) << what;
+    EXPECT_EQ(l->accountId, 16777215ULL) << what;
+    EXPECT_EQ(l->bidIdBase, FixCodec::quoteLadderIdBase(16777215ULL, SYM)) << what;
+  }
+
+  for (const auto& [what, msg] :
+       std::vector<std::pair<const char*, std::string>>{
+           {"35=Z", quoteCancelMsg("16777216", std::to_string(SYM))},
+           {"35=i", massQuoteMsg("16777216", std::to_string(SYM))}})
+  {
+    std::string reason;
+    const auto cmd = decodeWithReason(msg, reason);
+    EXPECT_FALSE(cmd.has_value())
+        << what << " account 16777216 decoded to block base "
+        << std::get_if<QuoteLadder>(&*cmd)->bidIdBase;
+    EXPECT_TRUE(reasonNames(reason, "Account", "1")) << what;
+  }
+}
+
 TEST(FixCodecQuoteLadderIdBlock, OnePairAlwaysReachesItsOwnBlock)
 {
   EXPECT_EQ(FixCodec::quoteLadderIdBase(ACCT, SYM), FixCodec::quoteLadderIdBase(ACCT, SYM));
@@ -561,6 +787,128 @@ TEST(FixCodecQuoteLadderIdBlock, AcceptedQuoteCancelsNeverAddressAnotherPairsBlo
     }
   }
   EXPECT_GT(accepted, 0U) << "every pair was refused: the codec quotes for nobody";
+}
+
+// ---- the two overloads are one decoder ----
+//
+// decode(msg) is the hook the gateways install (tcp_gateway.h, and the
+// FixVenue in test_venue_fix_mass_quote.cpp), decode(msg, &reason) is what
+// the FIX session layer calls so it can answer with the field. They are the
+// same decoder or they are a hole: a strictness that only applies when
+// somebody passes a place to write the reason is a strictness every gateway
+// on this venue is missing.
+
+// Every malformed message this file refuses, in one place.
+std::vector<std::pair<const char*, std::string>> malformedCorpus()
+{
+  return {
+      {"59=9", newOrder("1", {{59, "9"}})},
+      {"59=X", newOrder("1", {{59, "X"}})},
+      {"59=2", newOrder("1", {{59, "2"}})},
+      {"59=7", newOrder("1", {{59, "7"}})},
+      {"59=6 no 126", newOrder("1", {{59, "6"}})},
+      {"59=6 bad 126", newOrder("1", {{59, "6"}, {126, "not-a-time"}})},
+      {"59=6 impossible 126", newOrder("1", {{59, "6"}, {126, "20260229-12:00:00.000"}})},
+      {"no 54", newOrderWithoutSide("1")},
+      {"54=3", newOrder("1", {{54, "3"}})},
+      {"54 empty", newOrder("1", {{54, ""}})},
+      {"40=9", newOrder("1", {{40, "9"}})},
+      {"11=ORD-A1", newOrder("ORD-A1")},
+      {"11=123ABC", newOrder("123ABC")},
+      {"11= 42", newOrder(" 42")},
+      {"11=+42", newOrder("+42")},
+      {"11=-1", newOrder("-1")},
+      {"11 overflow", newOrder("99999999999999999999")},
+      {"11 empty", newOrder("")},
+      {"1=ACME", newOrder("1", {}, "ACME")},
+      {"55=BTC-USD", newOrder("1", {}, std::to_string(ACCT), "BTC-USD")},
+      {"55=4294967296", newOrder("1", {}, std::to_string(ACCT), "4294967296")},
+      {"38 missing", []
+       {
+         std::string b = field(35, "D");
+         b += field(11, "1");
+         b += field(54, "1");
+         return b;
+       }()},
+      {"35=F 41=CANCEL-ME", cancelRequest("CANCEL-ME")},
+      {"35=F 41 overflow", cancelRequest("99999999999999999999")},
+      {"35=F 1=ACME", cancelRequest("77", "ACME")},
+      {"35=F 55=BTC-USD", cancelRequest("77", std::to_string(ACCT), {{55, "BTC-USD"}})},
+      {"35=G 41=-1", cancelReplace("-1")},
+      {"35=G 44=abc", cancelReplace("90", {{44, "abc"}})},
+      {"35=G 55=4294967296", cancelReplace("90", {{55, "4294967296"}})},
+      {"35=Z 1=ACME", quoteCancelMsg("ACME", std::to_string(SYM))},
+      {"35=Z account out of range", quoteCancelMsg("16777216", std::to_string(SYM))},
+      {"35=Z 55=BTC-USD", quoteCancelMsg(std::to_string(ACCT), "BTC-USD")},
+      {"35=i account out of range", massQuoteMsg("16777216", std::to_string(SYM))},
+      {"35=W", field(35, "W")},
+  };
+}
+
+std::vector<std::pair<const char*, std::string>> acceptedCorpus()
+{
+  return {
+      {"plain order", newOrder("1")},
+      {"59 absent", newOrder("2")},
+      {"59=1", newOrder("3", {{59, "1"}})},
+      {"59=3", newOrder("4", {{59, "3"}})},
+      {"59=4", newOrder("5", {{59, "4"}})},
+      {"59=6 with 126", newOrder("6", {{59, "6"}, {126, "20260925-12:00:00.000"}})},
+      {"54=2", newOrder("7", {{54, "2"}})},
+      {"11 at UINT64_MAX", newOrder("18446744073709551615")},
+      {"35=F", cancelRequest("77")},
+      {"35=G", cancelReplace("78")},
+      {"35=Z", quoteCancelMsg(std::to_string(ACCT), std::to_string(SYM))},
+      {"35=i", massQuoteMsg(std::to_string(ACCT), std::to_string(SYM))},
+      {"35=Z at the top of the account range",
+       quoteCancelMsg("16777215", std::to_string(SYM))},
+  };
+}
+
+TEST(FixCodecOverloads, TheOneArgumentDecodeRefusesEverythingTheTwoArgumentOneDoes)
+{
+  for (const auto& [what, msg] : malformedCorpus())
+  {
+    std::string reason;
+    const auto withReason = FixCodec::decode(msg, &reason);
+    const auto bare = FixCodec::decode(msg);
+    EXPECT_FALSE(withReason.has_value()) << what;
+    EXPECT_FALSE(reason.empty()) << what << ": refused with no reason";
+    EXPECT_FALSE(bare.has_value())
+        << what << ": decode(msg) accepted a message decode(msg, &reason) refused as \"" << reason
+        << "\" -- the gateways install the one-argument overload";
+  }
+}
+
+TEST(FixCodecOverloads, TheTwoOverloadsAgreeOnEveryMessageTheyAccept)
+{
+  for (const auto& [what, msg] : acceptedCorpus())
+  {
+    std::string reason;
+    const auto withReason = FixCodec::decode(msg, &reason);
+    const auto bare = FixCodec::decode(msg);
+    ASSERT_TRUE(withReason.has_value()) << what << ": " << reason;
+    ASSERT_TRUE(bare.has_value()) << what;
+    EXPECT_TRUE(reason.empty()) << what << ": accepted with a reason \"" << reason << "\"";
+    ASSERT_EQ(withReason->index(), bare->index()) << what;
+
+    if (const auto* a = std::get_if<NewOrder>(&*withReason))
+    {
+      const auto* b = std::get_if<NewOrder>(&*bare);
+      ASSERT_NE(b, nullptr) << what;
+      EXPECT_EQ(a->id, b->id) << what;
+      EXPECT_EQ(a->side, b->side) << what;
+      EXPECT_EQ(a->tif, b->tif) << what;
+      EXPECT_EQ(a->expiryNs.raw(), b->expiryNs.raw()) << what;
+    }
+    if (const auto* a = std::get_if<QuoteLadder>(&*withReason))
+    {
+      const auto* b = std::get_if<QuoteLadder>(&*bare);
+      ASSERT_NE(b, nullptr) << what;
+      EXPECT_EQ(a->bidIdBase, b->bidIdBase) << what;
+      EXPECT_EQ(a->askIdBase, b->askIdBase) << what;
+    }
+  }
 }
 
 }  // namespace
