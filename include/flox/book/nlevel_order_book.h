@@ -304,11 +304,11 @@ class NLevelOrderBook : public IOrderBook
       int64_t minIdx = std::numeric_limits<int64_t>::max();
       int64_t maxIdx = std::numeric_limits<int64_t>::min();
 
-      auto acc = [&](const auto& vec)
+      auto acc = [&](const auto& vec, Side side)
       {
         for (const auto& [p, _] : vec)
         {
-          const int64_t t = ticks(p);
+          const int64_t t = ticks(p, side);
           if (t < minIdx)
           {
             minIdx = t;
@@ -320,8 +320,8 @@ class NLevelOrderBook : public IOrderBook
         }
       };
 
-      acc(up.bids);
-      acc(up.asks);
+      acc(up.bids, Side::BUY);
+      acc(up.asks, Side::SELL);
 
       if (minIdx == std::numeric_limits<int64_t>::max())
       {
@@ -346,7 +346,7 @@ class NLevelOrderBook : public IOrderBook
 
     for (const auto& [p, q] : up.bids)
     {
-      const size_t i = localIndex(p);
+      const size_t i = localIndex(p, Side::BUY);
       if (i >= MAX_LEVELS)
       {
         continue;
@@ -398,7 +398,7 @@ class NLevelOrderBook : public IOrderBook
 
     for (const auto& [p, q] : up.asks)
     {
-      const size_t i = localIndex(p);
+      const size_t i = localIndex(p, Side::SELL);
       if (i >= MAX_LEVELS)
       {
         continue;
@@ -471,13 +471,13 @@ class NLevelOrderBook : public IOrderBook
 
   inline Quantity bidAtPrice(Price p) const override
   {
-    const size_t i = localIndex(p);
+    const size_t i = localIndex(p, Side::BUY);
     return i < MAX_LEVELS ? _bids[i] : Quantity{};
   }
 
   inline Quantity askAtPrice(Price p) const override
   {
-    const size_t i = localIndex(p);
+    const size_t i = localIndex(p, Side::SELL);
     return i < MAX_LEVELS ? _asks[i] : Quantity{};
   }
 
@@ -740,10 +740,18 @@ class NLevelOrderBook : public IOrderBook
     return idx < MAX_LEVELS ? idx : 0;
   }
 
-  int64_t ticks(Price p) const
+  // Which way an off-tick quote is snapped. Rounding to the nearest tick
+  // stored an ask up to half a tick BELOW what the venue quoted (and a bid the
+  // same distance above it), so bestAsk() handed the strategy a price nobody
+  // was offering and it sized against liquidity that is not there. A quote is
+  // snapped away from the mid instead: the stored tick is never better than
+  // the quote, only equal to it or one tick worse. A price already on a tick
+  // is unchanged either way.
+  int64_t ticks(Price p, Side side) const
   {
     const int64_t pr = p.raw();
-    return math::sdiv_round_nearest(pr, _tickSizeDiv);
+    return (side == Side::SELL) ? math::sdiv_ceil(pr, _tickSizeDiv)
+                                : math::sdiv_floor(pr, _tickSizeDiv);
   }
 
   Price indexToPrice(size_t i) const
@@ -753,9 +761,12 @@ class NLevelOrderBook : public IOrderBook
     return Price::fromRaw(ts * tick);
   }
 
-  size_t localIndex(Price p) const
+  // Side matters here for the same reason it matters in ticks(): a price is
+  // looked up at the tick it would have been stored at, so the query has to
+  // snap the way the write did.
+  size_t localIndex(Price p, Side side) const
   {
-    const int64_t t = ticks(p) - _baseIndex;
+    const int64_t t = ticks(p, side) - _baseIndex;
     return (static_cast<uint64_t>(t) < static_cast<uint64_t>(MAX_LEVELS))
                ? static_cast<size_t>(t)
                : MAX_LEVELS;
@@ -800,7 +811,7 @@ class NLevelOrderBook : public IOrderBook
     int64_t lo = std::numeric_limits<int64_t>::max();
     int64_t hi = std::numeric_limits<int64_t>::min();
 
-    auto scan = [&](const auto& vec)
+    auto scan = [&](const auto& vec, Side side)
     {
       for (const auto& [p, q] : vec)
       {
@@ -809,7 +820,7 @@ class NLevelOrderBook : public IOrderBook
           // A removal names a price the book cannot be holding out here.
           continue;
         }
-        const int64_t t = ticks(p);
+        const int64_t t = ticks(p, side);
         const int64_t local = t - _baseIndex;
         if (local >= 0 && local < static_cast<int64_t>(MAX_LEVELS))
         {
@@ -820,8 +831,8 @@ class NLevelOrderBook : public IOrderBook
       }
     };
 
-    scan(up.bids);
-    scan(up.asks);
+    scan(up.bids, Side::BUY);
+    scan(up.asks, Side::SELL);
 
     if (lo > hi)
     {

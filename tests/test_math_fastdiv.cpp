@@ -16,6 +16,8 @@
 #include <vector>
 
 using flox::math::make_fastdiv64;
+using flox::math::sdiv_ceil;
+using flox::math::sdiv_floor;
 using flox::math::sdiv_round_nearest;
 using flox::math::udiv_fast;
 
@@ -180,6 +182,65 @@ TEST(FastDiv64, RoundNearestHandlesNegativeNumerators)
     {
       EXPECT_EQ(sdiv_round_nearest(n, fd), -sdiv_round_nearest(-n, fd))
           << "d=" << d << " n=" << n;
+    }
+  }
+}
+
+// The conservative tick snapping an order book stores quotes with. Checked
+// against the language's own truncating division, corrected to floor and to
+// ceiling, over every probe divisor: a power of two takes the shift path and
+// everything else the reciprocal path, and both have to agree.
+TEST(FastDiv64, FloorAndCeilMatchReferenceDivision)
+{
+  for (uint64_t d : kProbes)
+  {
+    if (d == 0)
+    {
+      continue;
+    }
+    const auto fd = make_fastdiv64(d);
+    const int64_t sd = static_cast<int64_t>(d);
+    if (sd <= 0)
+    {
+      continue;  // a divisor past int64 has no signed reference to compare to
+    }
+    for (int64_t n : {int64_t{0}, int64_t{1}, int64_t{2}, int64_t{7}, int64_t{999},
+                      int64_t{1000000}, int64_t{999999999999}, int64_t{-1}, int64_t{-2},
+                      int64_t{-7}, int64_t{-999}, int64_t{-1000000},
+                      int64_t{-999999999999}})
+    {
+      const int64_t trunc = n / sd;
+      const int64_t rem = n % sd;
+      const int64_t expectedFloor = (rem != 0 && ((n < 0) != (sd < 0))) ? trunc - 1 : trunc;
+      const int64_t expectedCeil = (rem != 0 && ((n < 0) == (sd < 0))) ? trunc + 1 : trunc;
+      EXPECT_EQ(sdiv_floor(n, fd), expectedFloor) << "d=" << d << " n=" << n;
+      EXPECT_EQ(sdiv_ceil(n, fd), expectedCeil) << "d=" << d << " n=" << n;
+    }
+  }
+}
+
+// The property the order book depends on, stated directly: the floor never
+// prices above the quote and the ceiling never below it, and a value already
+// on a multiple of the divisor is left alone by both.
+TEST(FastDiv64, FloorAndCeilBracketTheQuote)
+{
+  for (uint64_t d : {uint64_t{1}, uint64_t{2}, uint64_t{1000000}, uint64_t{100000000}})
+  {
+    const auto fd = make_fastdiv64(d);
+    const int64_t sd = static_cast<int64_t>(d);
+    for (int64_t base : {int64_t{0}, int64_t{5}, int64_t{-5}})
+    {
+      for (int64_t offset = 0; offset < sd && offset < 16; ++offset)
+      {
+        const int64_t n = base * sd + offset;
+        EXPECT_LE(sdiv_floor(n, fd) * sd, n) << "d=" << d << " n=" << n;
+        EXPECT_GE(sdiv_ceil(n, fd) * sd, n) << "d=" << d << " n=" << n;
+        if (offset == 0)
+        {
+          EXPECT_EQ(sdiv_floor(n, fd), base);
+          EXPECT_EQ(sdiv_ceil(n, fd), base);
+        }
+      }
     }
   }
 }
