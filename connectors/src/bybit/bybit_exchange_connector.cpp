@@ -57,6 +57,26 @@ void ensureTimebaseMapped()
                    init_timebase_mapping();
                  });
 }
+
+// orderLinkId is Bybit's client order id: the engine's own OrderId, sent on
+// submit and echoed back on every private frame for that order. Absent (or
+// non-numeric) on orders this engine did not place, which is the only case
+// the venue's orderId has to stand in for it.
+template <typename Value>
+std::optional<uint64_t> parseOrderLinkId(Value& d)
+{
+  auto field = d["orderLinkId"];
+  if (field.error())
+  {
+    return std::nullopt;
+  }
+  auto sv = field.get_string();
+  if (sv.error())
+  {
+    return std::nullopt;
+  }
+  return util::parseUint64(sv.value_unsafe());
+}
 }  // namespace
 
 std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
@@ -633,6 +653,43 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
   }
 }
 
+Quantity BybitExchangeConnector::reportedFill(OrderId id) const
+{
+  auto it = _reportedFill.find(id);
+  return (it != _reportedFill.end()) ? it->second.cumulative : Quantity{};
+}
+
+bool BybitExchangeConnector::applyFillWatermark(OrderEvent& ev, Quantity cumulative)
+{
+  const bool isFill =
+      (ev.status == OrderEventStatus::PARTIALLY_FILLED || ev.status == OrderEventStatus::FILLED);
+
+  auto& entry = _reportedFill[ev.order.id];
+  const int64_t increment = cumulative.raw() - entry.cumulative.raw();
+  if (increment > 0)
+  {
+    entry.cumulative = cumulative;
+  }
+
+  ev.fillQty = (increment > 0) ? Quantity::fromRaw(increment) : Quantity{};
+
+  const bool terminal =
+      (ev.status == OrderEventStatus::FILLED || ev.status == OrderEventStatus::CANCELED ||
+       ev.status == OrderEventStatus::REJECTED || ev.status == OrderEventStatus::EXPIRED);
+  if (terminal && !entry.completed)
+  {
+    entry.completed = true;
+    _completedOrders.push_back(ev.order.id);
+    while (_completedOrders.size() > kCompletedOrderHistory)
+    {
+      _reportedFill.erase(_completedOrders.front());
+      _completedOrders.pop_front();
+    }
+  }
+
+  return !isFill || increment > 0;
+}
+
 void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
 {
   static thread_local simdjson::ondemand::parser parser;
@@ -685,16 +742,39 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.order.symbol = resolveSymbolId(symbol);
 
         auto orderIdOpt = util::parseUint64(d["orderId"].get_string().value());
-        if (!orderIdOpt)
+        // Bybit echoes back the client id the executor sent as orderLinkId,
+        // and that is the OrderId the engine issued -- the only id an
+        // OrderTracker or a position book has ever heard of. The venue's own
+        // orderId is an unrelated number, so an event published under it
+        // refers to an order that does not exist on this side. orderLinkId
+        // therefore wins; the venue id is the fallback for orders this engine
+        // did not place (placed from the venue UI, or by another process).
+        auto linkIdOpt = parseOrderLinkId(d);
+        if (!linkIdOpt && !orderIdOpt)
         {
           _logger->warn("[Bybit] Invalid orderId in order event");
           continue;
         }
-        ev.order.id = static_cast<OrderId>(*orderIdOpt);
+        ev.order.id = static_cast<OrderId>(linkIdOpt ? *linkIdOpt : *orderIdOpt);
         ev.order.side = (d["side"].get_string().value() == "Buy") ? Side::BUY : Side::SELL;
 
         auto priceOpt = util::parsePrice(d["price"].get_string().value());
         auto qtyOpt = util::parseQty(d["qty"].get_string().value());
+        // avgPrice is the order's volume-weighted execution price so far and
+        // the only price the order topic reports for a fill. Without it every
+        // live fill reached PositionTracker at price 0 and built the cost
+        // basis there. It reads "0" before anything has traded, which is not a
+        // price -- leave fillPrice unset in that case.
+        if (auto avg = d["avgPrice"]; !avg.error())
+        {
+          if (auto avgOpt = util::parsePrice(avg.get_string().value()))
+          {
+            if (avgOpt->raw() > 0)
+            {
+              ev.fillPrice = *avgOpt;
+            }
+          }
+        }
         auto filledOpt = util::safeParseDouble(d["cumExecQty"].get_string().value());
         if (!priceOpt || !qtyOpt || !filledOpt)
         {
@@ -738,23 +818,12 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
           ev.status = OrderEventStatus::SUBMITTED;
         }
 
-        // Cumulative-to-delta conversion for fillQty; see _filledSoFar's
-        // declaration for why this is needed.
+        // cumExecQty is cumulative, so the increment (and whether this frame
+        // reports an execution the execution topic has already published) comes
+        // from the watermark; see _reportedFill.
+        if (!applyFillWatermark(ev, ev.order.filledQuantity))
         {
-          auto prevIt = _filledSoFar.find(ev.order.id);
-          Quantity previous = (prevIt != _filledSoFar.end()) ? prevIt->second : Quantity{};
-          ev.fillQty = (ev.order.filledQuantity.raw() > previous.raw())
-                           ? Quantity::fromRaw(ev.order.filledQuantity.raw() - previous.raw())
-                           : Quantity{};
-          if (ev.status == OrderEventStatus::CANCELED || ev.status == OrderEventStatus::REJECTED ||
-              ev.status == OrderEventStatus::EXPIRED || ev.status == OrderEventStatus::FILLED)
-          {
-            _filledSoFar.erase(ev.order.id);
-          }
-          else
-          {
-            _filledSoFar[ev.order.id] = ev.order.filledQuantity;
-          }
+          continue;
         }
 
         ev.publishNs = nowMonoNanos();
@@ -769,12 +838,16 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.recvNs = MonoNanos::fromRaw(recvNs);
 
         auto orderIdOpt = util::parseUint64(d["orderId"].get_string().value());
-        if (!orderIdOpt)
+        // Same reasoning as the order topic: orderLinkId is the id the engine
+        // issued, the venue's orderId only stands in for orders placed
+        // elsewhere.
+        auto linkIdOpt = parseOrderLinkId(d);
+        if (!linkIdOpt && !orderIdOpt)
         {
           _logger->warn("[Bybit] Invalid orderId in execution event");
           continue;
         }
-        ev.order.id = static_cast<OrderId>(*orderIdOpt);
+        ev.order.id = static_cast<OrderId>(linkIdOpt ? *linkIdOpt : *orderIdOpt);
         ev.order.symbol = resolveSymbolId(d["symbol"].get_string().value());
         ev.order.side = d["side"].get_string().value() == "Buy" ? Side::BUY : Side::SELL;
 
@@ -785,20 +858,31 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
           _logger->warn("[Bybit] Invalid price/qty in execution event");
           continue;
         }
+        // execPrice is the price this execution traded at, which is exactly
+        // what a position tracker needs for cost basis and realized PnL; it
+        // used to be dropped, leaving every live fill at price 0. The order's
+        // own limit price is a different number and the venue reports it
+        // separately as orderPrice; fall back to execPrice only when the frame
+        // omits it, which is what this handler did unconditionally before.
+        ev.fillPrice = *priceOpt;
         ev.order.price = *priceOpt;
-        // execQty is this single fill's size, not the order's size -- it
-        // used to be written into ev.order.quantity/filledQuantity, which
-        // (a) fabricated an order size equal to whatever fraction happened
-        // to fill and (b) left ev.fillQty (the field dispatchTo() actually
-        // hands to onOrderPartiallyFilled) at its default of zero on every
-        // partial fill. orderQty/leavesQty are the documented
-        // Bybit V5 execution-topic fields for the order's real size and
-        // remaining size; when present they replace the guess, and when
-        // absent order.quantity/filledQuantity are left unset (0) rather
-        // than silently wrong, same as any other unparseable-but-optional
-        // field in this handler.
-        ev.fillQty = *qtyOpt;
+        if (auto op = d["orderPrice"]; !op.error())
+        {
+          if (auto orderPriceOpt = util::parsePrice(op.get_string().value()))
+          {
+            ev.order.price = *orderPriceOpt;
+          }
+        }
 
+        // orderQty/leavesQty are the documented Bybit V5 execution-topic
+        // fields for the order's real size and remaining size. execQty is this
+        // single fill's size, not the order's, and writing it into
+        // order.quantity/filledQuantity used to fabricate an order size equal
+        // to whatever fraction happened to fill. When the two are absent,
+        // order.quantity/filledQuantity are left unset (0) rather than
+        // silently wrong, same as any other unparseable-but-optional field
+        // here.
+        bool haveCumulative = false;
         if (auto oq = d["orderQty"]; !oq.error())
         {
           if (auto orderQtyOpt = util::parseQty(oq.get_string().value()))
@@ -812,6 +896,7 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
                     (orderQtyOpt->raw() > leavesOpt->raw())
                         ? Quantity::fromRaw(orderQtyOpt->raw() - leavesOpt->raw())
                         : Quantity{};
+                haveCumulative = true;
               }
             }
           }
@@ -832,6 +917,19 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.status = !isTrade      ? OrderEventStatus::SUBMITTED
                     : fullyFilled ? OrderEventStatus::FILLED
                                   : OrderEventStatus::PARTIALLY_FILLED;
+
+        // The watermark is cumulative, so an execution frame has to be
+        // expressed as a cumulative total too. orderQty - leavesQty is that
+        // total straight from the venue; without those fields the only
+        // cumulative available is what this connector has already published
+        // plus execQty.
+        const Quantity cumulative =
+            haveCumulative ? ev.order.filledQuantity
+                           : Quantity::fromRaw(reportedFill(ev.order.id).raw() + qtyOpt->raw());
+        if (!applyFillWatermark(ev, cumulative))
+        {
+          continue;
+        }
 
         ev.publishNs = nowMonoNanos();
         _orderBus->publish(std::move(ev));
