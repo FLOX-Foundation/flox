@@ -11602,8 +11602,11 @@ extern "C" void flox_liquidation_engine_open_position(FloxLiquidationEngineHandl
                                                       double equity)
 {
   FLOX_CAPI_ENTER_VOID(h);
-  toLiqEngine(h)->openPosition(LeveragedPosition{
-      .accountId = account_id, .symbol = symbol, .quantity = quantity, .entryPrice = entry_price, .equity = equity});
+  toLiqEngine(h)->openPosition(LeveragedPosition{.accountId = account_id,
+                                                 .symbol = symbol,
+                                                 .quantity = Quantity::fromDouble(quantity),
+                                                 .entryPrice = Price::fromDouble(entry_price),
+                                                 .equity = Volume::fromDouble(equity)});
   FLOX_CAPI_LEAVE_VOID;
 }
 
@@ -11854,7 +11857,8 @@ extern "C" uint64_t flox_account_id(FloxAccountHandle h)
 extern "C" double flox_account_equity(FloxAccountHandle h)
 {
   FLOX_CAPI_ENTER(h);
-  return toAccount(h)->equity();
+  // The C ABI is double-facing; Account keeps the value in fixed point.
+  return toAccount(h)->equity().toDouble();
   FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_set_equity(FloxAccountHandle h, double equity)
@@ -11940,13 +11944,13 @@ extern "C" uint8_t flox_account_has_stale_marks(FloxAccountHandle h,
 extern "C" double flox_account_total_notional(FloxAccountHandle h)
 {
   FLOX_CAPI_ENTER(h);
-  return toAccount(h)->totalNotional();
+  return toAccount(h)->totalNotional().toDouble();
   FLOX_CAPI_LEAVE;
 }
 extern "C" double flox_account_total_unrealised_pnl(FloxAccountHandle h)
 {
   FLOX_CAPI_ENTER(h);
-  return toAccount(h)->totalUnrealisedPnl();
+  return toAccount(h)->totalUnrealisedPnl().toDouble();
   FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns,
@@ -11980,7 +11984,7 @@ extern "C" uint32_t flox_account_rolling_notional_by_symbol_copy(
   for (uint32_t i = 0; i < n; ++i)
   {
     symbols_out[i] = pairs[i].first;
-    notionals_out[i] = pairs[i].second;
+    notionals_out[i] = pairs[i].second.toDouble();
   }
   return n;
   FLOX_CAPI_LEAVE;
@@ -11988,7 +11992,7 @@ extern "C" uint32_t flox_account_rolling_notional_by_symbol_copy(
 extern "C" double flox_account_rolling_notional_30d(FloxAccountHandle h)
 {
   FLOX_CAPI_ENTER(h);
-  return toAccount(h)->rollingNotional30d();
+  return toAccount(h)->rollingNotional30d().toDouble();
   FLOX_CAPI_LEAVE;
 }
 extern "C" void flox_account_reset_rolling(FloxAccountHandle h)

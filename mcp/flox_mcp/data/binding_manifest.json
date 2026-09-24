@@ -13490,6 +13490,16 @@
         },
         {
           "kind": "method",
+          "name": "legNotionalRaw",
+          "parent": "Account"
+        },
+        {
+          "kind": "method",
+          "name": "legUnrealisedPnlRaw",
+          "parent": "Account"
+        },
+        {
+          "kind": "method",
           "name": "marginMode",
           "parent": "Account"
         },

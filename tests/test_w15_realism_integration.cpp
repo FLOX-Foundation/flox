@@ -120,7 +120,7 @@ TEST(W15Realism, MultiDayMultiSymbolBacktestSanityInvariants)
 
     // Account 30d rolling notional should be monotone non-decreasing
     // over the 2-day window (no eviction).
-    const double curRoll = stack.account().rollingNotional30d();
+    const double curRoll = stack.account().rollingNotional30d().toDouble();
     if (curRoll + 1e-9 < prevRollingNotional)
     {
       rollingMonotone = false;
@@ -159,14 +159,14 @@ TEST(W15Realism, MultiDayMultiSymbolBacktestSanityInvariants)
   double sumUpnl = 0.0;
   for (const auto& p : stack.account().positions())
   {
-    const double mark = stack.account().markFor(p.symbol);
+    const double mark = stack.account().markFor(p.symbol).toDouble();
     if (mark <= 0.0)
     {
       continue;
     }
-    sumUpnl += p.quantity * (mark - p.entryPrice);
+    sumUpnl += p.quantity.toDouble() * (mark - p.entryPrice.toDouble());
   }
-  EXPECT_NEAR(stack.account().totalUnrealisedPnl(), sumUpnl, 1e-6);
+  EXPECT_NEAR(stack.account().totalUnrealisedPnl().toDouble(), sumUpnl, 1e-6);
 
   // Position counts non-negative + did not lose positions.
   EXPECT_EQ(stack.account().positionCount(), 3u);
@@ -260,6 +260,6 @@ TEST(W15Realism, MultiVenueStacksDoNotShareState)
 
   // Fees record into separate accounts.
   sa.fees().recordFill(0, 100'000.0);
-  EXPECT_DOUBLE_EQ(sa.account().rollingNotional30d(), 100'000.0);
-  EXPECT_DOUBLE_EQ(sb.account().rollingNotional30d(), 0.0);
+  EXPECT_DOUBLE_EQ(sa.account().rollingNotional30d().toDouble(), 100'000.0);
+  EXPECT_DOUBLE_EQ(sb.account().rollingNotional30d().toDouble(), 0.0);
 }

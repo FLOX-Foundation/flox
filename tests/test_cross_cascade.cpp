@@ -78,12 +78,12 @@ TEST(CrossCascade, CascadeMarksAreSymbolLocal)
   // Set ETH mark explicitly to a known value; cascade must NOT
   // touch it.
   a.setMark(ETH, 2'900.0);
-  const double ethMarkBefore = a.markFor(ETH);
+  const double ethMarkBefore = a.markFor(ETH).toDouble();
 
   (void)e.onMark(BTC, 45'000.0);
 
   // ETH mark unchanged by the BTC cascade — symbol-local design.
-  EXPECT_DOUBLE_EQ(a.markFor(ETH), ethMarkBefore);
+  EXPECT_DOUBLE_EQ(a.markFor(ETH).toDouble(), ethMarkBefore);
 }
 
 TEST(CrossCascade, CascadeRunsAfterCrossMarginLiquidationFires)

@@ -26,15 +26,22 @@ namespace flox
 // an Account, and a venue has no business compiling a backtest's liquidation
 // engine to learn the shape of a position. The liquidation engine includes
 // this header and is unchanged otherwise.
+// Every field that carries a number is fixed point. Margin and liquidation are
+// the last place in the engine that should be computing in double: a double
+// quantity cannot even represent the fills that produced it, so every notional,
+// maintenance-margin requirement and liquidation price derived from one starts
+// from a value that is already approximate, and by a compiler-dependent amount.
 struct LeveragedPosition
 {
   uint64_t accountId{0};
   SymbolId symbol{};
-  double quantity{0.0};  // signed: + long, - short
-  double entryPrice{0.0};
-  double equity{0.0};              // margin posted backing this position
-  double contractMultiplier{1.0};  // notional / PnL scale (options 100, ES 50; perp 1.0)
-  bool isLongOption{false};        // premium-paid long option: not margined, max loss = premium
+  Quantity quantity{};  // signed: + long, - short
+  Price entryPrice{};
+  Volume equity{};  // margin posted backing this position
+  // Notional / PnL scale (options 100, ES 50; perp 1.0). A multiplier is a
+  // count of units per contract, which is what Quantity spells.
+  Quantity contractMultiplier{Quantity::fromRaw(Quantity::Scale)};
+  bool isLongOption{false};  // premium-paid long option: not margined, max loss = premium
 };
 
 }  // namespace flox

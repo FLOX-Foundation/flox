@@ -24,6 +24,19 @@ namespace flox
 
 namespace
 {
+// A LeveragedPosition carries fixed point now; the ranking, slippage and
+// partial-fill arithmetic in this file still works in double. These are the
+// one place the two meet, so the conversion is spelled once and every reader
+// can see where it happens.
+inline double qtyOf(const LeveragedPosition& p) { return p.quantity.toDouble(); }
+inline double absQtyOf(const LeveragedPosition& p) { return std::abs(p.quantity.toDouble()); }
+inline double entryOf(const LeveragedPosition& p) { return p.entryPrice.toDouble(); }
+inline double equityOf(const LeveragedPosition& p) { return p.equity.toDouble(); }
+inline double multOf(const LeveragedPosition& p) { return p.contractMultiplier.toDouble(); }
+}  // namespace
+
+namespace
+{
 // Allocate synthetic order IDs for liquidation orders out of the
 // top half of the OrderId space so they don't collide with
 // strategy-issued IDs.
@@ -326,16 +339,16 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
   for (size_t i = 0; i < _positions.size(); ++i)
   {
     const auto& p = _positions[i];
-    if (p.symbol != symbol || p.quantity == 0.0)
+    if (p.symbol != symbol || p.quantity.isZero())
     {
       continue;
     }
-    const double notional = std::abs(p.quantity) * markPrice * p.contractMultiplier;
+    const double notional = absQtyOf(p) * markPrice * multOf(p);
     const double mm = mmFractionFor(notional);
     const double mmReq = notional * mm;
     // Unrealised PnL at mark.
-    const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
-    if (p.equity + upnl < mmReq)
+    const double upnl = qtyOf(p) * (markPrice - entryOf(p)) * multOf(p);
+    if (equityOf(p) + upnl < mmReq)
     {
       underwater.push_back(i);
     }
@@ -382,20 +395,20 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
     }
     else
     {
-      const double signQ = (p.quantity > 0.0) ? 1.0 : -1.0;
+      const double signQ = (p.quantity.raw() > 0) ? 1.0 : -1.0;
       const double slip = _slippageBps / 10000.0;
       closePrice = markPrice * (1.0 - signQ * slip);
-      filledQty = std::abs(p.quantity);
+      filledQty = absQtyOf(p);
     }
-    const double signedFilled = (p.quantity > 0.0) ? filledQty : -filledQty;
+    const double signedFilled = (p.quantity.raw() > 0) ? filledQty : -filledQty;
     // The maintenance-margin check above (and the notional/uPnL used to
     // route the position here) scales by contractMultiplier; the realized loss
     // booked on close must scale the same way, or a multiplier > 1 (options
     // 100x, ES 50x) silently shrinks the deficit by that same factor and the
     // insurance fund / ADL never see it.
-    const double realized = signedFilled * (closePrice - p.entryPrice) * p.contractMultiplier;
+    const double realized = signedFilled * (closePrice - entryOf(p)) * multOf(p);
     // Equity attributed to the filled portion (proportional).
-    const double filledEquity = p.equity * (filledQty / std::abs(p.quantity));
+    const double filledEquity = equityOf(p) * (filledQty / absQtyOf(p));
     const double residualEquity = filledEquity + realized;
     out.liquidated.push_back(p.accountId);
     ++_statLiquidations;
@@ -407,15 +420,15 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
     // If the executor partial-filled, leave the unfilled remainder
     // in place for the next tick. Otherwise mark the whole position
     // for removal.
-    if (filledQty >= std::abs(p.quantity) - 1e-12)
+    if (filledQty >= absQtyOf(p) - 1e-12)
     {
       liquidated.push_back(idx);
     }
     else
     {
-      const double remaining = std::abs(p.quantity) - filledQty;
-      p.quantity = (p.quantity > 0.0) ? remaining : -remaining;
-      p.equity -= filledEquity;
+      const double remaining = absQtyOf(p) - filledQty;
+      p.quantity = Quantity::fromDouble((p.quantity.raw() > 0) ? remaining : -remaining);
+      p.equity = Volume::fromDouble(equityOf(p) - filledEquity);
     }
   }
   // Remove fully-liquidated positions from the book. Iterate descending
@@ -482,8 +495,8 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
 
   // Leverage-based rankings (PnlRatio, Binance, Bybit) need the equity
   // actually backing the position. For an orphan or an isolated-mode leg that
-  // is `p.equity` (the posted margin slice); for a cross-margin leg
-  // `p.equity` is unconditionally 0.0 by construction (Account::openPosition:
+  // is `equityOf(p)` (the posted margin slice); for a cross-margin leg
+  // `equityOf(p)` is unconditionally 0.0 by construction (Account::openPosition:
   // "Cross mode ignores per-position equity"), so leverage/ratio would
   // divide by zero and every cross candidate would tie at score 0, falling
   // through to the accountId tie-break -- inverting the venue's real ADL
@@ -498,13 +511,13 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
       case AdlRanking::Binance:
       case AdlRanking::Bybit:
       {
-        const double notional = std::abs(p.quantity) * markPrice * p.contractMultiplier;
+        const double notional = absQtyOf(p) * markPrice * multOf(p);
         const double leverage =
             (equity > 0.0) ? (notional / equity) : 0.0;
         return upnl * leverage;
       }
       case AdlRanking::PositionSize:
-        return std::abs(p.quantity);
+        return absQtyOf(p);
     }
     return upnl;
   };
@@ -513,14 +526,14 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
   for (size_t i = 0; i < _positions.size(); ++i)
   {
     const auto& p = _positions[i];
-    if (p.symbol != symbol || p.quantity == 0.0)
+    if (p.symbol != symbol || p.quantity.isZero())
     {
       continue;
     }
-    const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
+    const double upnl = qtyOf(p) * (markPrice - entryOf(p)) * multOf(p);
     if (upnl > 0.0)
     {
-      candidates.push_back({nullptr, i, scorePosition(p, upnl, p.equity), upnl, p.accountId});
+      candidates.push_back({nullptr, i, scorePosition(p, upnl, equityOf(p)), upnl, p.accountId});
     }
   }
   // Account candidates.
@@ -534,15 +547,15 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
     for (size_t i = 0; i < book.size(); ++i)
     {
       const auto& p = book[i];
-      if (p.symbol != symbol || p.quantity == 0.0)
+      if (p.symbol != symbol || p.quantity.isZero())
       {
         continue;
       }
-      const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
+      const double upnl = qtyOf(p) * (markPrice - entryOf(p)) * multOf(p);
       if (upnl > 0.0)
       {
         const double equity =
-            (acct->marginMode() == MarginMode::Cross) ? acct->equity() : p.equity;
+            (acct->marginMode() == MarginMode::Cross) ? acct->equity().toDouble() : equityOf(p);
         candidates.push_back({acct, i, scorePosition(p, upnl, equity), upnl, p.accountId});
       }
     }
@@ -597,7 +610,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
       // Credit the account's equity with the RETAINED PnL after the ADL
       // haircut. An isolated leg is about to be erased from the
       // account's position book a few lines below (acctClose), so writing
-      // the retained gain onto `p.equity` -- as the old code did -- throws
+      // the retained gain onto `equityOf(p)` -- as the old code did -- throws
       // it away along with the leg's own posted margin the moment it's
       // erased: there is no position left afterward to hold that value.
       // Route both the leg's margin and the retained gain back to the
@@ -609,7 +622,7 @@ void LiquidationEngine::runInsuranceAndAdlPhase(SymbolId symbol,
       }
       else
       {
-        c.owner->addEquity(p.equity + realized);
+        c.owner->addEquity(equityOf(p) + realized);
       }
       out.adlClosedOut.push_back(p.accountId);
       acctClose[c.owner].push_back(c.idx);
@@ -656,9 +669,9 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
   // when the account is solvent or no positions remain.
   while (account.positionCount() > 0)
   {
-    const double notional = account.marginNotional();
+    const double notional = account.marginNotional().toDouble();
     const double mm = mmFractionFor(notional);
-    const double headroom = account.crossHeadroom(mm);
+    const double headroom = account.crossHeadroom(mm).toDouble();
     if (headroom >= 0.0)
     {
       break;
@@ -678,10 +691,10 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
       {
         continue;
       }
-      const double mark = account.markFor(p.symbol);
-      const double px = mark > 0.0 ? mark : p.entryPrice;
-      const double upnl = p.quantity * (px - p.entryPrice) * p.contractMultiplier;
-      const double n = std::abs(p.quantity) * px * p.contractMultiplier;
+      const double mark = account.markFor(p.symbol).toDouble();
+      const double px = mark > 0.0 ? mark : entryOf(p);
+      const double upnl = qtyOf(p) * (px - entryOf(p)) * multOf(p);
+      const double n = absQtyOf(p) * px * multOf(p);
       const bool better = (worstIdx < 0) ||
                           (upnl < worstUpnl) ||
                           (upnl == worstUpnl && n > worstNotional);
@@ -698,8 +711,8 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
     }
 
     LeveragedPosition victim = book[static_cast<size_t>(worstIdx)];
-    const double victimMark = account.markFor(victim.symbol) > 0.0
-                                  ? account.markFor(victim.symbol)
+    const double victimMark = account.markFor(victim.symbol).toDouble() > 0.0
+                                  ? account.markFor(victim.symbol).toDouble()
                                   : markPrice;
     double closePrice = 0.0;
     double filledQty = 0.0;
@@ -717,15 +730,15 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
     }
     else
     {
-      const double signQ = (victim.quantity > 0.0) ? 1.0 : -1.0;
+      const double signQ = (victim.quantity.raw() > 0) ? 1.0 : -1.0;
       const double slip = _slippageBps / 10000.0;
       closePrice = victimMark * (1.0 - signQ * slip);
-      filledQty = std::abs(victim.quantity);
+      filledQty = absQtyOf(victim);
     }
 
-    const double signedFilled = (victim.quantity > 0.0) ? filledQty : -filledQty;
+    const double signedFilled = (victim.quantity.raw() > 0) ? filledQty : -filledQty;
     const double realized =
-        signedFilled * (closePrice - victim.entryPrice) * victim.contractMultiplier;
+        signedFilled * (closePrice - entryOf(victim)) * multOf(victim);
     account.addEquity(realized);
     result.outcome.liquidated.push_back(account.accountId());
     ++_statLiquidations;
@@ -733,22 +746,22 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkCrossAccount(
 
     auto& mut = account.positionsMut();
     const size_t idx = static_cast<size_t>(worstIdx);
-    if (filledQty >= std::abs(victim.quantity) - 1e-12)
+    if (filledQty >= absQtyOf(victim) - 1e-12)
     {
       mut.erase(mut.begin() + static_cast<long>(idx));
     }
     else
     {
-      const double remaining = std::abs(victim.quantity) - filledQty;
-      mut[idx].quantity = (victim.quantity > 0.0) ? remaining : -remaining;
+      const double remaining = absQtyOf(victim) - filledQty;
+      mut[idx].quantity = Quantity::fromDouble((victim.quantity.raw() > 0) ? remaining : -remaining);
     }
   }
 
   // Any negative equity remaining is the account's contribution to
   // the deficit pool that the caller routes through insurance + ADL.
-  if (account.equity() < 0.0)
+  if (account.equity().toDouble() < 0.0)
   {
-    result.deficit = -account.equity();
+    result.deficit = -account.equity().toDouble();
     account.setEquity(0.0);
   }
   return result;
@@ -772,15 +785,15 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkIsolatedAccount(
   for (size_t i = 0; i < book.size(); ++i)
   {
     auto& p = book[i];
-    if (p.symbol != symbol || p.quantity == 0.0)
+    if (p.symbol != symbol || p.quantity.isZero())
     {
       continue;
     }
-    const double notional = std::abs(p.quantity) * markPrice * p.contractMultiplier;
+    const double notional = absQtyOf(p) * markPrice * multOf(p);
     const double mm = mmFractionFor(notional);
     const double mmReq = notional * mm;
-    const double upnl = p.quantity * (markPrice - p.entryPrice) * p.contractMultiplier;
-    if (p.equity + upnl >= mmReq)
+    const double upnl = qtyOf(p) * (markPrice - entryOf(p)) * multOf(p);
+    if (equityOf(p) + upnl >= mmReq)
     {
       continue;  // healthy
     }
@@ -803,17 +816,17 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkIsolatedAccount(
     }
     else
     {
-      const double signQ = (p.quantity > 0.0) ? 1.0 : -1.0;
+      const double signQ = (p.quantity.raw() > 0) ? 1.0 : -1.0;
       const double slip = _slippageBps / 10000.0;
       closePrice = markPrice * (1.0 - signQ * slip);
-      filledQty = std::abs(p.quantity);
+      filledQty = absQtyOf(p);
     }
-    const double signedFilled = (p.quantity > 0.0) ? filledQty : -filledQty;
+    const double signedFilled = (p.quantity.raw() > 0) ? filledQty : -filledQty;
     // Same fix as the orphan path above -- the margin check that routed
     // this position here (upnl, a few lines up) already scales by
     // contractMultiplier, so the realized loss booked on close must too.
-    const double realized = signedFilled * (closePrice - p.entryPrice) * p.contractMultiplier;
-    const double filledEquity = p.equity * (filledQty / std::abs(p.quantity));
+    const double realized = signedFilled * (closePrice - entryOf(p)) * multOf(p);
+    const double filledEquity = equityOf(p) * (filledQty / absQtyOf(p));
     const double residualEquity = filledEquity + realized;
     result.outcome.liquidated.push_back(account.accountId());
     ++_statLiquidations;
@@ -822,15 +835,15 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkIsolatedAccount(
     {
       result.deficit += -residualEquity;
     }
-    if (filledQty >= std::abs(p.quantity) - 1e-12)
+    if (filledQty >= absQtyOf(p) - 1e-12)
     {
       liquidated.push_back(i);
     }
     else
     {
-      const double remaining = std::abs(p.quantity) - filledQty;
-      p.quantity = (p.quantity > 0.0) ? remaining : -remaining;
-      p.equity -= filledEquity;
+      const double remaining = absQtyOf(p) - filledQty;
+      p.quantity = Quantity::fromDouble((p.quantity.raw() > 0) ? remaining : -remaining);
+      p.equity = Volume::fromDouble(equityOf(p) - filledEquity);
     }
   }
   // Remove fully-liquidated positions descending so erase indexes
@@ -847,7 +860,7 @@ LiquidationEngine::ExecutorClose LiquidationEngine::closeThroughExecutor(
     const LeveragedPosition& p, double markPrice)
 {
   ExecutorClose out;
-  if (_executor == nullptr || p.quantity == 0.0)
+  if (_executor == nullptr || p.quantity.isZero())
   {
     return out;
   }
@@ -858,9 +871,9 @@ LiquidationEngine::ExecutorClose LiquidationEngine::closeThroughExecutor(
   order.id = nextLiquidationOrderId();
   order.symbol = p.symbol;
   // Side that closes the position.
-  order.side = (p.quantity > 0.0) ? Side::SELL : Side::BUY;
+  order.side = (p.quantity.raw() > 0) ? Side::SELL : Side::BUY;
   order.type = OrderType::MARKET;
-  order.quantity = Quantity::fromDouble(std::abs(p.quantity));
+  order.quantity = Quantity::fromDouble(absQtyOf(p));
   order.price = Price::fromDouble(markPrice);
   _executor->submitOrder(order);
   const auto& fills = _executor->fills();
