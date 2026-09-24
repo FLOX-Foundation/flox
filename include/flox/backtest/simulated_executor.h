@@ -227,6 +227,30 @@ class SimulatedExecutor : public IOrderExecutor
     }
   }
   bool barCallbackWindowOpen() const noexcept { return _barCallbackDepth > 0; }
+
+  // RAII pairing for the window. Hold one for the span of the callback rather
+  // than calling begin/end by hand: an early return or a callback that throws
+  // would otherwise leave the counter up, and a window that never closes holds
+  // every order submitted after it for the rest of the run -- silently, since
+  // a held order reports nothing. The raw calls stay public for drivers that
+  // cannot wrap the callback in a scope.
+  class BarCallbackScope
+  {
+   public:
+    explicit BarCallbackScope(SimulatedExecutor& exec) noexcept : _exec(exec)
+    {
+      _exec.beginBarCallbackWindow();
+    }
+    ~BarCallbackScope() { _exec.endBarCallbackWindow(); }
+
+    BarCallbackScope(const BarCallbackScope&) = delete;
+    BarCallbackScope& operator=(const BarCallbackScope&) = delete;
+    BarCallbackScope(BarCallbackScope&&) = delete;
+    BarCallbackScope& operator=(BarCallbackScope&&) = delete;
+
+   private:
+    SimulatedExecutor& _exec;
+  };
   // Orders still held, over every symbol. Orders whose symbol never gets
   // another bar stay held to the end of the run: they never reached the venue,
   // so they neither fill nor cancel.

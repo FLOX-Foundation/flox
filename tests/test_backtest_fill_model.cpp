@@ -17,6 +17,7 @@
 #include "flox/backtest/backtest_runner.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
+#include "flox/engine/abstract_market_data_subscriber.h"
 #include "flox/engine/symbol_registry.h"
 #include "flox/strategy/strategy.h"
 
@@ -24,6 +25,7 @@
 
 #include <chrono>
 #include <memory_resource>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -143,6 +145,52 @@ class ScriptedStrategy : public Strategy
       }
     }
     ++bars;
+  }
+};
+
+// A market-data subscriber that submits one order straight to the executor
+// from its bar callback. Subscribers see the bar after the strategy does, and
+// they are inside the same window.
+class OrderingSubscriber : public IMarketDataSubscriber
+{
+ public:
+  OrderingSubscriber(SubscriberId id, SimulatedExecutor& exec, SymbolId sym)
+      : _id(id), _exec(exec), _sym(sym)
+  {
+  }
+
+  SubscriberId id() const override { return _id; }
+
+  void onBar(const BarEvent& /*ev*/) override
+  {
+    if (_sent)
+    {
+      return;
+    }
+    _sent = true;
+    _exec.submitOrder(marketOrder(7, _sym, Side::BUY, 1.0));
+  }
+
+ private:
+  SubscriberId _id;
+  SimulatedExecutor& _exec;
+  SymbolId _sym;
+  bool _sent{false};
+};
+
+// Emits one market buy from the first bar callback and then throws out of it.
+class ThrowingStrategy : public Strategy
+{
+ public:
+  using Strategy::Strategy;
+
+  SymbolId target{0};
+
+ protected:
+  void onSymbolBar(SymbolContext& /*ctx*/, const BarEvent& /*ev*/) override
+  {
+    emitMarketBuy(target, Quantity::fromDouble(1.0));
+    throw std::runtime_error("strategy blew up inside onBar");
   }
 };
 
@@ -303,6 +351,74 @@ TEST(BacktestFillModel, HeldOrderWaitsForItsOwnSymbolsOpen)
 
   EXPECT_EQ(runner.executor().fills().size(), 0u);
   EXPECT_EQ(runner.executor().heldOrderCount(), 1u);
+}
+
+// A subscriber is inside the window too. It is shown the same walked bar the
+// strategy is, so an order it submits is held for the next open like any
+// other: 106, not the 105 close it was handed.
+TEST(BacktestFillModel, ASubscribersOrderIsHeldForTheNextOpenAsWell)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  BacktestRunner runner;
+  OrderingSubscriber sub(0xABCD, runner.executor(), sym);
+  runner.addMarketDataSubscriber(&sub);
+
+  runner.runBars({makeBar(sym, 100.0, 110.0, 90.0, 105.0, 0),
+                  makeBar(sym, 106.0, 108.0, 104.0, 107.0, kMinuteNs)});
+
+  const auto& fills = runner.executor().fills();
+  ASSERT_EQ(fills.size(), 1u);
+  EXPECT_NE(fills[0].price.toDouble(), 105.0)
+      << "the subscriber's order filled at the close of the bar it was shown";
+  EXPECT_DOUBLE_EQ(fills[0].price.toDouble(), 106.0);
+}
+
+// A callback that throws must not leave the bar-callback window open. A window
+// that never closes holds every order submitted after it for the rest of the
+// run, and nothing reports that: the orders simply never fill.
+TEST(BacktestFillModel, AThrowingBarCallbackClosesTheWindow)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  ThrowingStrategy strat(1, std::vector<SymbolId>{sym}, reg);
+  strat.target = sym;
+
+  BacktestRunner runner;
+  runner.setStrategy(&strat);
+
+  EXPECT_THROW(runner.runBars({makeBar(sym, 100.0, 110.0, 90.0, 105.0, 0),
+                               makeBar(sym, 106.0, 108.0, 104.0, 107.0, kMinuteNs)}),
+               std::runtime_error);
+
+  SimulatedExecutor& exec = runner.executor();
+  EXPECT_FALSE(exec.barCallbackWindowOpen());
+
+  // The consequence, not just the flag: an order submitted after the throw
+  // reaches the book instead of being held for a bar open that never comes.
+  exec.submitOrder(marketOrder(99, sym, Side::BUY, 1.0));
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 99), 1.0);
+}
+
+// The window is opened for every bar, strategy or not: a run with only
+// subscribers attached must close it too.
+TEST(BacktestFillModel, ARunWithoutAStrategyLeavesNoWindowOpen)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  BacktestRunner runner;
+  runner.runBars({makeBar(sym, 100.0, 110.0, 90.0, 105.0, 0),
+                  makeBar(sym, 106.0, 108.0, 104.0, 107.0, kMinuteNs)});
+
+  SimulatedExecutor& exec = runner.executor();
+  EXPECT_FALSE(exec.barCallbackWindowOpen());
+
+  exec.submitOrder(marketOrder(1, sym, Side::BUY, 1.0));
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 1), 1.0);
+  EXPECT_EQ(exec.heldOrderCount(), 0u);
 }
 
 // reset() puts a configured executor back to where a fresh one would be,

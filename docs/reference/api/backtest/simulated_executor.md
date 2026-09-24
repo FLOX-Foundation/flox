@@ -45,6 +45,8 @@ public:
 
   // Bar-callback window: orders arriving while it is open are held for the
   // next bar's open instead of being matched against a bar already walked.
+  // BarCallbackScope is the RAII pairing; prefer it to the raw calls.
+  class BarCallbackScope { explicit BarCallbackScope(SimulatedExecutor&); };
   void beginBarCallbackWindow() noexcept;
   void endBarCallbackWindow() noexcept;
   bool barCallbackWindowOpen() const noexcept;
@@ -309,6 +311,12 @@ an arriving order is held rather than submitted; the next `onBar(symbol, open, h
 for that symbol releases it at the open, through the full submit path, so rate limits, reduce-only
 and self-trade prevention are evaluated where the order actually reaches the venue. The deferral
 does not resize or split it.
+
+Hold a `SimulatedExecutor::BarCallbackScope` for the span of the callback rather than calling the
+two by hand. The window is a counter, and an early return or a callback that throws leaves it up;
+a window that never closes holds every order submitted after it for the rest of the run, and says
+nothing while it does. The raw calls remain public for drivers that cannot put the callback inside
+a scope.
 
 - An order held when the run ends never reached the venue: it neither fills nor cancels.
   `heldOrderCount()` reports how many are waiting.

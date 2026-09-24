@@ -240,19 +240,23 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
     // orders held back from the previous bar's callback are matched.
     sim().onBar(ev.symbol, ev.bar.open, ev.bar.high, ev.bar.low, ev.bar.close);
 
-    // The strategy is shown a bar the simulator has already walked, so every
-    // price it can react to is in the market state. Anything it submits from
-    // here is held until the next bar for that symbol opens.
-    sim().beginBarCallbackWindow();
-    if (_strategy)
     {
-      _strategy->onBar(ev);
+      // The strategy is shown a bar the simulator has already walked, so every
+      // price it can react to is in the market state. Anything it submits from
+      // here is held until the next bar for that symbol opens. The scope closes
+      // the window on every way out of this block -- including a callback that
+      // throws, which would otherwise leave it open and hold every later order
+      // for the rest of the run.
+      SimulatedExecutor::BarCallbackScope window(sim());
+      if (_strategy)
+      {
+        _strategy->onBar(ev);
+      }
+      for (auto* sub : _marketDataSubscribers)
+      {
+        sub->onBar(ev);
+      }
     }
-    for (auto* sub : _marketDataSubscribers)
-    {
-      sub->onBar(ev);
-    }
-    sim().endBarCallbackWindow();
   }
 
   if (_strategy)

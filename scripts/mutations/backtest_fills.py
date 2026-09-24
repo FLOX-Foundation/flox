@@ -253,12 +253,22 @@ MUTATIONS: list[Mutation] = [
             "see the bar, so an order a subscriber emits is matched inside the bar it "
             "was shown -- the look-ahead the window exists to remove, one listener down",
         file=RUNNER_CPP,
-        old="""    for (auto* sub : _marketDataSubscribers)
-    {
-      sub->onBar(ev);
+        old="""      SimulatedExecutor::BarCallbackScope window(sim());
+      if (_strategy)
+      {
+        _strategy->onBar(ev);
+      }
+      for (auto* sub : _marketDataSubscribers)
+      {
+        sub->onBar(ev);
+      }
+    }""",
+        new="""      SimulatedExecutor::BarCallbackScope window(sim());
+      if (_strategy)
+      {
+        _strategy->onBar(ev);
+      }
     }
-    sim().endBarCallbackWindow();""",
-        new="""    sim().endBarCallbackWindow();
     for (auto* sub : _marketDataSubscribers)
     {
       sub->onBar(ev);
@@ -267,24 +277,34 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="window-left-open-when-there-is-no-strategy",
-        why="the window is opened on every bar and closed only when a strategy is "
-            "attached, so a strategy-less run leaks one level of depth per bar and every "
-            "order submitted from anywhere afterwards is held forever -- the counter is "
-            "not paired, and nothing asks whether it is",
+        why="the scope guard is replaced by the raw begin/end pair it was introduced to "
+            "remove, with the close reached only when a strategy is attached: a "
+            "strategy-less run, and any callback that throws, leaks one level of depth "
+            "per bar and every order submitted afterwards is held forever -- the counter "
+            "is not paired, and nothing asks whether it is",
         file=RUNNER_CPP,
-        old="""    for (auto* sub : _marketDataSubscribers)
-    {
-      sub->onBar(ev);
-    }
-    sim().endBarCallbackWindow();""",
-        new="""    for (auto* sub : _marketDataSubscribers)
-    {
-      sub->onBar(ev);
-    }
-    if (_strategy)
-    {
-      sim().endBarCallbackWindow();
-    }""",
+        old="""      SimulatedExecutor::BarCallbackScope window(sim());
+      if (_strategy)
+      {
+        _strategy->onBar(ev);
+      }
+      for (auto* sub : _marketDataSubscribers)
+      {
+        sub->onBar(ev);
+      }""",
+        new="""      sim().beginBarCallbackWindow();
+      if (_strategy)
+      {
+        _strategy->onBar(ev);
+      }
+      for (auto* sub : _marketDataSubscribers)
+      {
+        sub->onBar(ev);
+      }
+      if (_strategy)
+      {
+        sim().endBarCallbackWindow();
+      }""",
         gtest_filter="BacktestFillRealism.CallbackOrder*:BacktestFillModel.*",
     ),
     # ---- 2. the depth walk ------------------------------------------------
