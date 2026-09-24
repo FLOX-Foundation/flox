@@ -119,6 +119,14 @@ class Mutation:
     occurrence: int = 1
     expected_occurrences: int = 1
     extra_targets: list[str] = field(default_factory=list)
+    # A mutant proven to compute the same thing as the original on every
+    # input. Surviving is then the correct outcome and not a hole: no test can
+    # kill it, and one that appeared to would be asserting something other
+    # than behaviour. It stays in the list so that the day the code changes
+    # shape and the two stop being equivalent, the survival stops being
+    # expected -- whoever sees EQUIVALENT here is pointed at the argument in
+    # `why` and at the test named there.
+    equivalent: bool = False
 
 
 MUTATIONS: list[Mutation] = [
@@ -132,6 +140,42 @@ MUTATIONS: list[Mutation] = [
         new="""        ev.order.price = *priceOpt;""",
         target=BY,
         test="BybitFillContract.ExecutionFillCarriesExecPrice",
+    ),
+    Mutation(
+        name="bybit-order-topic-zero-avgprice-written-through",
+        why=("the guard that keeps avgPrice \"0\" -- the venue saying it has no execution price "
+             "yet -- out of fillPrice is removed, so a parsed zero is written where the unset "
+             "default used to stay. EQUIVALENT: Price has no unset state, so the default and a "
+             "parsed \"0\" are the same 64 bits and the assignment changes nothing on any "
+             "input. Asserted in BybitFillContract."
+             "AnUnsetFillPriceIsIndistinguishableFromAParsedZero, which fails the day that stops "
+             "being true and the guard becomes observable"),
+        file=BYBIT_CONN,
+        old="""            if (avgOpt->raw() > 0)
+            {
+              ev.fillPrice = *avgOpt;
+            }""",
+        new="""            ev.fillPrice = *avgOpt;""",
+        target=BY,
+        test=None,
+        extra_targets=[BYOLD],
+        equivalent=True,
+    ),
+    Mutation(
+        name="watermark-repeated-completion-queues-again",
+        why=("complete() stops being idempotent, so a venue re-pushing a terminal frame walks "
+             "the order's own history window forward and evicts the entry that window exists to "
+             "protect"),
+        file=WATERMARK,
+        old="""    if (entry.completed)
+    {
+      return;
+    }
+""",
+        new="",
+        target=WM,
+        test=None,
+        extra_targets=[BG],
     ),
     Mutation(
         name="bybit-order-topic-fillprice-dropped",
@@ -799,6 +843,11 @@ def run_mutation(m: Mutation) -> tuple[str, str]:
                 verdict = "RED"
                 detail = f"killed by {', '.join(sweep_killed)} (sweep)"
                 print(f"  sweep: RED in {', '.join(sweep_killed)}")
+            elif m.equivalent:
+                verdict = "EQUIVALENT"
+                detail = "no observable difference; see `why`"
+                print(f"  sweep: all {len(SWEEP)} connector test binaries GREEN "
+                      f"-- EXPECTED, this mutant is equivalent")
             else:
                 verdict = "GREEN"
                 detail = f"{len(SWEEP)} connector test binaries all green"
@@ -854,10 +903,19 @@ def main() -> int:
         print(f"  {verdict:<10} {m.name:<48} {m.target:<40} {detail}")
 
     survived = [m.name for m, verdict, _ in results if verdict == "GREEN"]
+    equivalent = [m.name for m, verdict, _ in results if verdict == "EQUIVALENT"]
+    unexpectedly_killed = [m.name for m, verdict, _ in results
+                           if m.equivalent and verdict == "RED"]
     broken = [m.name for m, verdict, _ in results if verdict == "NOCOMPILE"]
     if survived:
         print(f"\n{len(survived)} mutation(s) survived every connector test: "
               f"{', '.join(survived)}")
+    if equivalent:
+        print(f"\n{len(equivalent)} mutation(s) survived because they are equivalent, which is "
+              f"the expected outcome: {', '.join(equivalent)}")
+    if unexpectedly_killed:
+        print(f"\n{len(unexpectedly_killed)} mutation(s) marked equivalent were killed -- the "
+              f"code no longer matches the argument in `why`: {', '.join(unexpectedly_killed)}")
     if broken:
         print(f"\n{len(broken)} mutation(s) did not compile and prove nothing: "
               f"{', '.join(broken)}")

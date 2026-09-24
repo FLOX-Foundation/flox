@@ -229,3 +229,37 @@ TEST(BitgetFillContractExtra, RepushedOrderStateDoesNotBookASecondFill)
   EXPECT_DOUBLE_EQ(fills[1].fillQty, 2.0);
   EXPECT_DOUBLE_EQ(fills[1].fillPrice, 60010.0);
 }
+
+// complete() is called from a per-frame path, so the same order reaches it
+// once per terminal frame the venue sends -- and venues re-push terminal state
+// after a resubscribe. Only the first call may take a slot in the completion
+// queue. If every call queued the order again, its own repeats would walk the
+// history window forward and evict the entry the window exists to protect: the
+// order would be forgotten while its duplicates are still arriving, which is
+// exactly the double-booking the watermark is there to stop.
+TEST(FillWatermark, RepeatedCompletionOfOneOrderTakesOneHistorySlot)
+{
+  constexpr size_t kHistory = 4;
+  FillWatermark watermark(kHistory);
+
+  EXPECT_EQ(watermark.advance(7, qty(3.0)).toDouble(), 3.0);
+
+  // The venue re-pushes the terminal frame enough times to fill the window on
+  // its own.
+  for (size_t i = 0; i < kHistory + 1; ++i)
+  {
+    watermark.complete(7);
+  }
+
+  // One unrelated order completes. With one slot per order that is the second
+  // entry in a four-deep queue and evicts nothing.
+  EXPECT_EQ(watermark.advance(8, qty(1.0)).toDouble(), 1.0);
+  watermark.complete(8);
+
+  EXPECT_EQ(watermark.reported(7).toDouble(), 3.0)
+      << "order 7 occupies one history slot however many times it completed; it must still be "
+         "held after a single unrelated completion";
+  EXPECT_TRUE(watermark.advance(7, qty(3.0)).isZero())
+      << "and its late duplicate must still add nothing";
+  EXPECT_EQ(watermark.reported(8).toDouble(), 1.0);
+}

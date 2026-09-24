@@ -35,6 +35,7 @@
 #include "flox-connectors/bybit/authenticated_rest_client.h"
 #include "flox-connectors/bybit/bybit_exchange_connector.h"
 #include "flox-connectors/bybit/bybit_order_executor.h"
+#include "flox-connectors/util/safe_parse.h"
 
 #include <flox/book/bus/book_update_bus.h>
 #include <flox/book/bus/trade_bus.h>
@@ -51,6 +52,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -81,11 +83,20 @@ struct SeenFill
   double fillQty;
   double fillPrice;
   double orderQuantity;
+  int64_t fillPriceRaw;
 };
 
 // Records only the two fill callbacks -- the ones a position tracker uses to
 // move a position. Both overloads that carry a price are overridden, so a fill
 // dispatched through either arrives here with whatever price the connector set.
+struct SeenEvent
+{
+  OrderEventStatus status;
+  OrderId orderId;
+  int64_t fillQtyRaw;
+  int64_t fillPriceRaw;
+};
+
 class FillListener final : public IOrderExecutionListener
 {
  public:
@@ -95,14 +106,23 @@ class FillListener final : public IOrderExecutionListener
   {
     std::lock_guard<std::mutex> lk(_m);
     _fills.push_back({OrderEventStatus::PARTIALLY_FILLED, order.id, fillQty.toDouble(),
-                      fillPrice.toDouble(), order.quantity.toDouble()});
+                      fillPrice.toDouble(), order.quantity.toDouble(), fillPrice.raw()});
   }
 
   void onOrderFilled(const Order& order, Quantity fillQty, Price fillPrice) override
   {
     std::lock_guard<std::mutex> lk(_m);
     _fills.push_back({OrderEventStatus::FILLED, order.id, fillQty.toDouble(), fillPrice.toDouble(),
-                      order.quantity.toDouble()});
+                      order.quantity.toDouble(), fillPrice.raw()});
+  }
+
+  // dispatchTo delivers the raw event after the typed dispatch, so what the
+  // connector actually put on the wire -- as opposed to what the typed
+  // callbacks project out of it -- is readable here.
+  void onOrderEvent(const OrderEvent& ev) override
+  {
+    std::lock_guard<std::mutex> lk(_m);
+    _events.push_back({ev.status, ev.order.id, ev.fillQty.raw(), ev.fillPrice.raw()});
   }
 
   std::vector<SeenFill> fills()
@@ -111,9 +131,16 @@ class FillListener final : public IOrderExecutionListener
     return _fills;
   }
 
+  std::vector<SeenEvent> events()
+  {
+    std::lock_guard<std::mutex> lk(_m);
+    return _events;
+  }
+
  private:
   std::mutex _m;
   std::vector<SeenFill> _fills;
+  std::vector<SeenEvent> _events;
 };
 
 struct SeenBook
@@ -568,4 +595,88 @@ TEST(BybitFeedContract, CompositeMatrixIsPopulatedAndGoesStale)
   EXPECT_FALSE(f.matrix.bestBid(*sym).valid)
       << "the venue went quiet for 2s against a 1s window and must be marked stale";
   EXPECT_FALSE(f.matrix.bidForExchange(*sym, exId).valid);
+}
+
+// Bybit's order topic reports avgPrice "0" until something has traded, and "0"
+// is not a price -- it is the venue saying it has none yet. A fill must never
+// be published *at* that number: cost basis built at zero is not a small
+// error, it is a position whose entry price is wrong by its whole value.
+//
+// What the connector is allowed to do with such a frame is leave fillPrice
+// unset, or not treat the frame as a fill at all. This pins whichever it does,
+// and pins that the next frame carrying a real avgPrice does reach the
+// listener with it -- the two halves have to stay separable.
+TEST(BybitFillContract, OrderTopicFillBeforeAnyAveragePriceIsNeverPricedAtZero)
+{
+  Fixture f("bybit_order_zero_avgprice.log");
+
+  f.connector->handlePrivateMessage(orderFrame("New", "0", "0", 1000));
+  f.connector->handlePrivateMessage(orderFrame("PartiallyFilled", "1", "0", 1001));
+  f.connector->handlePrivateMessage(orderFrame("PartiallyFilled", "2", "60000", 1002));
+  f.orderBus.flush();
+
+  const auto fills = f.listener.fills();
+  const auto events = f.listener.events();
+
+  // Find the event for the avgPrice="0" frame among the raw events: it is the
+  // one carrying the first unit of fill quantity.
+  ASSERT_GE(events.size(), 2u);
+  const auto zeroPriced = std::find_if(events.begin(), events.end(),
+                                       [](const SeenEvent& ev)
+                                       {
+                                         return ev.fillQtyRaw > 0 && ev.fillPriceRaw == 0;
+                                       });
+  if (zeroPriced != events.end())
+  {
+    // The connector chose "leave fillPrice unset". Then unset must be exactly
+    // the default -- indistinguishable from "no price reported" and never a
+    // value the venue supplied.
+    EXPECT_EQ(zeroPriced->fillPriceRaw, Price{}.raw())
+        << "a fill whose price the venue has not reported yet must carry the unset default, "
+           "not a parsed zero";
+  }
+
+  // Whatever happened above, the frame that does carry a real avgPrice must
+  // deliver it.
+  ASSERT_FALSE(fills.empty());
+  const auto priced = std::find_if(fills.begin(), fills.end(),
+                                   [](const SeenFill& fill)
+                                   {
+                                     return fill.fillPriceRaw != 0;
+                                   });
+  ASSERT_NE(priced, fills.end()) << "the frame with avgPrice=60000 must reach the listener priced";
+  EXPECT_DOUBLE_EQ(priced->fillPrice, 60000.0);
+  EXPECT_DOUBLE_EQ(priced->fillQty, 1.0) << "cumExecQty went 1 -> 2, so one unit traded";
+
+  // And no fill may be delivered at a price of exactly zero while a real price
+  // exists for the same order: a listener summing cost basis over these events
+  // must not be handed a zero-priced leg.
+  double pricedQty = 0.0;
+  double zeroQty = 0.0;
+  for (const auto& fill : fills)
+  {
+    (fill.fillPriceRaw == 0 ? zeroQty : pricedQty) += fill.fillQty;
+  }
+  EXPECT_DOUBLE_EQ(pricedQty + zeroQty, 2.0) << "the order filled 2 in total";
+}
+
+// Why the frame above cannot distinguish "the guard kept the parsed zero out"
+// from "the parsed zero was written": Price has no unset state. Its default
+// and a parsed "0" are the same 64 bits, so writing one over the other changes
+// nothing any subscriber can read, on this or any other input.
+//
+// That makes the guard in the order-topic handler documentation rather than
+// behaviour today -- and it makes a fill whose price the venue has not
+// reported indistinguishable from a fill that genuinely traded at zero, which
+// is the gap this test exists to mark. It will start failing the day Price
+// gains a real unset state (or the connector stops publishing a fill it has no
+// price for), which is exactly when the guard becomes load-bearing and the
+// distinction becomes worth asserting.
+TEST(BybitFillContract, AnUnsetFillPriceIsIndistinguishableFromAParsedZero)
+{
+  const auto parsedZero = util::parsePrice("0");
+  ASSERT_TRUE(parsedZero.has_value());
+  EXPECT_EQ(parsedZero->raw(), Price{}.raw())
+      << "if these ever differ, a fill with no reported price can be told apart from one at "
+         "price zero, and the order-topic avgPrice guard becomes observable";
 }
