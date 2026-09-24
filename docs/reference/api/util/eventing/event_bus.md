@@ -5,7 +5,8 @@
 ```cpp
 template <typename Event,
           size_t CapacityPow2 = config::DEFAULT_EVENTBUS_CAPACITY,
-          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS>
+          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS,
+          typename PublishSeam = NoPublishSeam>
 class EventBus : public ISubsystem;
 ```
 
@@ -124,6 +125,27 @@ threshold, floored at 1 ms. The floor matters because the arithmetic is integer
 milliseconds -- without it a threshold under 2 ms halves to zero and the monitor
 holds a core. An idle bus costs no measurable CPU at any threshold.
 
+### The publish seam
+
+One window in the publish path cannot be reached from outside the bus: the
+instant after `publish()` has read "is the bus running" and before it claims a
+sequence. It is the window the stop contract above is built around -- a
+publisher preempted there comes back with an arbitrarily old answer -- so a
+test needs a way into it.
+
+```cpp
+struct NoPublishSeam
+{
+  static void beforeClaim() noexcept {}
+};
+```
+
+Pass a type of the same shape as the fourth template argument and its
+`beforeClaim()` runs at that instant, on `publish()`, `tryPublish()` and
+`publishBatch()` alike. The default does nothing and compiles to nothing, so a
+production bus carries no branch, no member and no call for it; a bus with a
+seam is a distinct type from the bus the engine builds.
+
 ## CPU Affinity (when `FLOX_CPU_AFFINITY_ENABLED`)
 
 ```cpp
@@ -200,6 +222,7 @@ read independently — so treat them as monotonic indicators, not as an invarian
 | `Event`       | -                                 | Event type to broadcast.       |
 | `CapacityPow2`| `config::DEFAULT_EVENTBUS_CAPACITY` (4096) | Ring buffer size (power of 2). |
 | `MaxConsumers`| `config::DEFAULT_EVENTBUS_MAX_CONSUMERS` (128) | Maximum consumer count.     |
+| `PublishSeam` | `NoPublishSeam`                   | Test seam on the publish path. The default's hook is an empty static function: it inlines away and the publish path is unchanged. Leave it alone outside tests. |
 
 ## Example Usage
 

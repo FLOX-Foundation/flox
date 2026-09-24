@@ -73,9 +73,32 @@ enum class ConsumerWaitMode : uint8_t
   PARKED
 };
 
+// The publish path's one seam, and the only window in the bus a test cannot
+// reach from outside: the instant after publish() has read _running and before
+// it claims a sequence. That window is the whole reason stop() closes the
+// sequence line instead of trusting the flag -- a publisher preempted in it
+// comes back with an answer that is arbitrarily old -- and a fix for a window
+// no test can open is a fix nobody can check.
+//
+// A policy rather than an #ifdef because the seam must cost nothing and must
+// not change what a production bus IS. The default's hook is an empty static
+// function: it inlines to nothing, leaves no branch behind and adds no member,
+// so the publish path is instruction-for-instruction what it was. And a bus
+// carrying a test seam is a different type from the bus the engine builds,
+// rather than the same type compiled two ways in two translation units, which
+// is how a probe added under a macro ends up with one definition in the test
+// and another in the library.
+struct NoPublishSeam
+{
+  // Called between publish()'s read of _running and its claim. Also on the
+  // batch path, between the same read and the batch's reservation.
+  static void beforeClaim() noexcept {}
+};
+
 template <typename Event,
           size_t CapacityPow2 = config::DEFAULT_EVENTBUS_CAPACITY,
-          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS>
+          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS,
+          typename PublishSeam = NoPublishSeam>
 class EventBus : public ISubsystem
 {
   static_assert(CapacityPow2 > 0, "Capacity must be > 0");
@@ -709,6 +732,10 @@ class EventBus : public ISubsystem
   // range: claimBlocking and publishBatch put back what they took, and what is
   // left is a transient +1 per publisher in flight.
   static constexpr int64_t kSequenceLineClosed = std::numeric_limits<int64_t>::min() / 2;
+  // Anything below this can only be a closed line: an open one starts at -1
+  // and counts up, and a closed one sits at kSequenceLineClosed with at most a
+  // handful of transient claims on top of it, each of which puts itself back.
+  static constexpr int64_t kSequenceLineClosedFloor = std::numeric_limits<int64_t>::min() / 4;
 
   // A claim that will never be stamped. Every sequence handed out under a
   // run's sequence line is resolved exactly once -- published, or given up on
@@ -933,6 +960,8 @@ class EventBus : public ISubsystem
       return -1;
     }
 
+    PublishSeam::beforeClaim();
+
     const int64_t lastSeq = _next.fetch_add(static_cast<int64_t>(count),
                                             std::memory_order_acq_rel) +
                             static_cast<int64_t>(count);
@@ -1065,6 +1094,18 @@ class EventBus : public ISubsystem
   {
     return do_publish(std::move(ev), timeout);
   }
+
+#ifdef FLOX_UNIT_TEST
+  // Test-only, and a member for the same reason the seam above exists: from
+  // outside, a publish refused by the closed sequence line and one refused by
+  // the _running flag look exactly alike, so a test that means to hold the
+  // line accountable has to be able to see the line. True once stop() has
+  // closed it and until start() reopens it.
+  bool sequenceLineClosed() const noexcept
+  {
+    return _next.load(std::memory_order_acquire) < kSequenceLineClosedFloor;
+  }
+#endif
 
   Stats stats() const
   {
@@ -1715,6 +1756,10 @@ class EventBus : public ISubsystem
     {
       return {PublishResult::STOPPED, -1};
     }
+
+    // The answer above is now as old as this call is slow, and everything that
+    // keeps a late publisher out of a torn-down ring happens below it.
+    PublishSeam::beforeClaim();
 
     int64_t seq = -1;
     if (timeout.has_value())

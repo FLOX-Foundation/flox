@@ -12434,6 +12434,11 @@
           "name": "NewOrderRequest"
         },
         {
+          "header": "include/flox/util/eventing/event_bus.h",
+          "kind": "type",
+          "name": "NoPublishSeam"
+        },
+        {
           "header": "include/flox/util/performance/system_interface.h",
           "kind": "type",
           "name": "NullSystemInterface"
@@ -16511,6 +16516,11 @@
         {
           "kind": "method",
           "name": "sealSequenceLine",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "sequenceLineClosed",
           "parent": "EventBus"
         },
         {
@@ -20632,6 +20642,11 @@
           "kind": "method",
           "name": "ticks",
           "parent": "NLevelOrderBook"
+        },
+        {
+          "kind": "method",
+          "name": "beforeClaim",
+          "parent": "NoPublishSeam"
         },
         {
           "kind": "method",
