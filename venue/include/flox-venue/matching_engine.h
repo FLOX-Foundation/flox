@@ -277,6 +277,13 @@ class MatchingEngine
   RejectReason admissionGate(const NewOrder& o) const;
   bool admissionDenies(uint64_t account, uint8_t bit) const;
   RejectReason perpRiskGate(NewOrder& o);
+  // The one door onto the book. Every path that leaves an order resting goes
+  // through here, so no path can forget to ask whether the book took it:
+  // RejectReason::None means it is resting, anything else means it is on no
+  // book at all and the caller owes its owner a report. A bounded book
+  // (LadderBook) refuses an out-of-band price and an exhausted pool; the
+  // reference book never refuses.
+  RejectReason restOnBook(Side side, const RestingOrder& ro);
   int64_t restingReduceOnlyRaw(uint64_t account, Side side, OrderId exclude) const;
 
   int64_t legFillLimit(uint64_t account, Side side, bool reduceOnly, int64_t want,
@@ -433,7 +440,7 @@ class MatchingEngine
 
     const RestingOrder* findResting(OrderId id) const;
     std::optional<RestingOrder> takeResting(OrderId id);
-    void reinsertTail(Side side, const RestingOrder& o);
+    bool reinsertTail(Side side, const RestingOrder& o);
     void publish(const OutboundEvent& ev);
     void publishTracked(const OutboundEvent& ev);
     engine::LastLookConfig lastLookConfig() const;

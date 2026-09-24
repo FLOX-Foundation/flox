@@ -367,8 +367,11 @@ typename MatchingEngine<Book>::SnapshotClone MatchingEngine<Book>::cloneForSnaps
   c.engine = std::make_unique<MatchingEngine>(cfg_, EventSink{[](const OutboundEvent&) {}},
                                               std::move(emptyBook), matcher_.policy());
   MatchingEngine& e = *c.engine;
+  // The clone's book carries this book's geometry and receives exactly the
+  // orders resting in it, so every add fits the band and the pool by
+  // construction -- the only add in the engine that cannot be refused.
   book_.forEachOrder([&](const RestingOrder& o)
-                     { e.book_.addResting(o.side, o); });
+                     { (void)e.book_.addResting(o.side, o); });
   e.stops_ = stops_;
   e.lastPrice_ = lastPrice_;
   e.hasLast_ = hasLast_;

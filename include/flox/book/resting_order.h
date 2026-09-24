@@ -16,6 +16,19 @@
 namespace flox
 {
 
+// What a resting book did with an order handed to addResting. A book is
+// allowed to refuse: LadderBook is bounded in both price (a dense ladder over
+// a fixed band) and order count (a preallocated node pool), and an order it
+// refused is on no book at all. The caller owns the refusal -- silently
+// dropping it leaves the owner with a working order the venue does not have.
+// MatchingBook has neither bound and always answers Accepted.
+enum class BookAddResult : uint8_t
+{
+  Accepted = 0,
+  PriceOutOfBand,  // the book has no level for this price
+  PoolExhausted,   // no room left: the node pool (or the id index) is full
+};
+
 // A single order resting on an order-level matching book (price-time FIFO or
 // pro-rata). Distinct from the aggregate NLevelOrderBook, which only tracks
 // per-level totals for market data. Shared by every matching-book implementation

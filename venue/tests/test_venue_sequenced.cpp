@@ -145,13 +145,13 @@ class BookThatThrows : public MatchingBook
   BookThatThrows() = default;
   explicit BookThatThrows(int throwOnNth) : throwOnNth_(throwOnNth) {}
 
-  void addResting(Side side, const RestingOrder& o)
+  [[nodiscard]] BookAddResult addResting(Side side, const RestingOrder& o)
   {
     if (++adds_ == throwOnNth_)
     {
       throw std::runtime_error("the book refused the order");
     }
-    MatchingBook::addResting(side, o);
+    return MatchingBook::addResting(side, o);
   }
 
  private:

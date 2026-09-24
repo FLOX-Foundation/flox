@@ -171,9 +171,9 @@ void run(const std::function<Book()>& mk, const char* label)
     Book book = mk();
     RestingOrder ll{1, 1, px(100), qty(5), Side::SELL};
     ll.lastLook = true;  // only possible here by bypassing admission
-    book.addResting(Side::SELL, ll);
-    book.addResting(Side::SELL, RestingOrder{2, 1, px(100), qty(2), Side::SELL});
-    book.addResting(Side::SELL, RestingOrder{3, 1, px(100), qty(3), Side::SELL});
+    (void)book.addResting(Side::SELL, ll);
+    (void)book.addResting(Side::SELL, RestingOrder{2, 1, px(100), qty(2), Side::SELL});
+    (void)book.addResting(Side::SELL, RestingOrder{3, 1, px(100), qty(3), Side::SELL});
     uint64_t seq = 0;
     const NewOrder agg = limit(9, Side::BUY, 100, 4, 2);
     const MatchOutcome out = m.cross(agg, book, [&]
@@ -194,7 +194,7 @@ void run(const std::function<Book()>& mk, const char* label)
     Book book = mk();
     RestingOrder ll{1, 1, px(100), qty(5), Side::SELL};
     ll.lastLook = true;
-    book.addResting(Side::SELL, ll);
+    (void)book.addResting(Side::SELL, ll);
     uint64_t seq = 0;
     const NewOrder agg = limit(9, Side::BUY, 100, 4, 2);
     const MatchOutcome out = m.cross(agg, book, [&]

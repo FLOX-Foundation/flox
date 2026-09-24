@@ -41,10 +41,14 @@ std::optional<RestingOrder> MatchingEngine<Book>::LastLookHost::takeResting(Orde
   return e_.book_.cancel(id);
 }
 
+// Answers whether the order is back on the book. A restore puts a quantity
+// back that a hold had taken off it, and a book that refuses (its pool filled
+// while the hold was open) would otherwise leave the owner an order the venue
+// does not have -- LastLook cancels it instead.
 template <class Book>
-void MatchingEngine<Book>::LastLookHost::reinsertTail(Side side, const RestingOrder& o)
+bool MatchingEngine<Book>::LastLookHost::reinsertTail(Side side, const RestingOrder& o)
 {
-  e_.book_.addResting(side, o);
+  return e_.restOnBook(side, o) == RejectReason::None;
 }
 
 template <class Book>

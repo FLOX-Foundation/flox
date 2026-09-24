@@ -150,6 +150,15 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
     {
       return RejectReason::InvalidPrice;
     }
+    // The book's own band, which the collar above knows nothing about: the
+    // collar is optional config, the ladder's geometry is not. Asked here,
+    // before the order is committed to matching, so a price the book cannot
+    // represent is refused while refusing still costs nothing -- by the time
+    // addResting sees it the order may already have printed.
+    if (!book_.canRest(o.price))
+    {
+      return RejectReason::InvalidPrice;
+    }
   }
   if (book_.contains(o.id) || stops_.contains(o.id))
   {
@@ -163,6 +172,31 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
     return RejectReason::DuplicateOrderId;
   }
   return RejectReason::None;
+}
+
+// The book's last node and its band, asked in the one place every resting
+// path goes through. full() is the book's own answer about the node pool and
+// is consulted first: it decides without touching anything, and it is what
+// the book's own comment always said the engine should ask.
+template <class Book>
+RejectReason MatchingEngine<Book>::restOnBook(Side side, const RestingOrder& ro)
+{
+  if (book_.full())
+  {
+    return RejectReason::BookCapacityExceeded;
+  }
+  switch (book_.addResting(side, ro))
+  {
+    case BookAddResult::Accepted:
+      return RejectReason::None;
+    case BookAddResult::PriceOutOfBand:
+      // The client's price, and nothing the venue can do about it -- the same
+      // answer the collar gives for a price it will not take.
+      return RejectReason::InvalidPrice;
+    case BookAddResult::PoolExhausted:
+      break;
+  }
+  return RejectReason::BookCapacityExceeded;
 }
 
 // Per-order perp risk gates shared by onNew and the trigger path (a triggered
@@ -495,7 +529,17 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
       ro.leaves = o.visibleQuantity;
       ro.hidden = o.quantity - o.visibleQuantity;
     }
-    book_.addResting(o.side, ro);
+    // An auction accumulates without matching, so nothing has printed and a
+    // book that will not take the order can still refuse it outright: the
+    // reservation goes back, the order is never tracked, and clearing
+    // `committed` lets the OCO guard unlink it the way the earlier gates do.
+    if (const RejectReason why = restOnBook(o.side, ro); why != RejectReason::None)
+    {
+      committed = false;
+      releaseReservation(o.id);
+      sink_(OrderRejected{o.id, o.symbol, why, o.accountId, o.clientOrderId});
+      return;
+    }
     trackResting(o.id, o.accountId, o.stp);
     if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
     {
@@ -561,20 +605,43 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
       ro.leaves = o.visibleQuantity;  // displayed
       ro.hidden = out.leaves - o.visibleQuantity;
     }
-    book_.addResting(o.side, ro);
-    trackResting(o.id, o.accountId, o.stp);
-    if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
+    if (const RejectReason why = restOnBook(o.side, ro); why != RejectReason::None)
     {
-      expiry_.set(o.id, o.expiryNs);
+      // The book would not take the residual. What the owner is told depends
+      // on whether this order printed on the way in: with nothing filled it is
+      // an ordinary reject, but after a trade a reject would contradict the
+      // executions already on the wire, so the residual is canceled the way an
+      // IOC residual is. Either way the order is on no book and is not tracked.
+      if (out.filled.isZero())
+      {
+        committed = false;
+        releaseReservation(o.id);
+        sink_(OrderRejected{o.id, o.symbol, why, o.accountId, o.clientOrderId});
+      }
+      else
+      {
+        releaseReservationExceptHeld(o.id);
+        sink_(OrderCanceled{o.id, o.symbol, CancelReason::BookRefused, o.accountId,
+                            o.clientOrderId, out.leaves, out.filled});
+      }
     }
-    if (o.peg != PegRef::None)
+    else
     {
-      pegs_.set(o.id, PegBook::Peg{o.side, o.peg, o.pegOffsetRaw});
+      trackResting(o.id, o.accountId, o.stp);
+      if (o.tif == TimeInForce::GTD && static_cast<bool>(o.expiryNs))
+      {
+        expiry_.set(o.id, o.expiryNs);
+      }
+      if (o.peg != PegRef::None)
+      {
+        pegs_.set(o.id, PegBook::Peg{o.side, o.peg, o.pegOffsetRaw});
+      }
+      // Public feed shows only the displayed peak (ro.leaves); the hidden
+      // iceberg reserve (out.leaves - ro.leaves) is not leaked. Non-iceberg:
+      // they match.
+      sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves,
+                          o.accountId, o.clientOrderId, out.filled});
     }
-    // Public feed shows only the displayed peak (ro.leaves); the hidden iceberg
-    // reserve (out.leaves - ro.leaves) is not leaked. Non-iceberg: they match.
-    sink_(OrderAccepted{o.id, o.symbol, o.side, o.price, out.leaves, true, ro.leaves, o.accountId,
-                        o.clientOrderId, out.filled});
   }
   else if (out.residualCanceled)
   {

@@ -188,10 +188,29 @@ void MatchingEngine<Book>::processTriggers()
       // branch: a later report on this order must not start its cumQty over
       // at 0.
       rro.cumQty = out.filled;
-      book_.addResting(agg->side, rro);
-      trackResting(agg->id, agg->accountId, agg->stp);
-      sink_(OrderAccepted{agg->id, cfg_.id, agg->side, agg->price, out.leaves, true, Quantity{},
-                          agg->accountId, agg->clientOrderId, out.filled});
+      if (const RejectReason why = restOnBook(agg->side, rro); why != RejectReason::None)
+      {
+        // Same rule as the submit path: a residual the book refused is a
+        // reject when the triggered order printed nothing, and a cancel once
+        // it has, because a reject cannot follow its own executions.
+        if (out.filled.isZero())
+        {
+          releaseReservation(agg->id);
+          sink_(OrderRejected{agg->id, cfg_.id, why, agg->accountId, agg->clientOrderId});
+        }
+        else
+        {
+          releaseReservationExceptHeld(agg->id);
+          sink_(OrderCanceled{agg->id, cfg_.id, CancelReason::BookRefused, agg->accountId,
+                              agg->clientOrderId, out.leaves, out.filled});
+        }
+      }
+      else
+      {
+        trackResting(agg->id, agg->accountId, agg->stp);
+        sink_(OrderAccepted{agg->id, cfg_.id, agg->side, agg->price, out.leaves, true, Quantity{},
+                            agg->accountId, agg->clientOrderId, out.filled});
+      }
     }
     else if (out.residualCanceled)
     {
@@ -292,6 +311,14 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   if (!cfg_.lotSize.isZero() && (m.newQty.raw() % cfg_.lotSize.raw()) != 0)
   {
     sink_(CancelRejected{m.id, m.symbol, RejectReason::LotSizeViolation, acct, true});
+    return;
+  }
+  // The book's own band, for the same reason submit asks: an amend to a price
+  // the book has no level for would take the order off the book and then fail
+  // to put it back. Refused here, the original order is still resting.
+  if (!book_.canRest(newPrice))
+  {
+    sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct, true});
     return;
   }
 
@@ -405,7 +432,18 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
       mro.leaves = re.visibleQuantity;
       mro.hidden = out.leaves - re.visibleQuantity;
     }
-    book_.addResting(side, mro);
+    if (restOnBook(side, mro) != RejectReason::None)
+    {
+      // The amend already lifted the order off the book, so there is no
+      // original left to keep: the order is gone and its owner is told so,
+      // rather than being sent an OrderModified about an order on no book.
+      releaseReservationExceptHeld(m.id);
+      forgetOrder(m.id);
+      sink_(OrderCanceled{m.id, m.symbol, CancelReason::BookRefused, acct, curClientOrderId,
+                          out.leaves, curCumQty + out.filled});
+      processTriggers();
+      return;
+    }
     trackResting(m.id, acct, re.stp);
   }
   sink_(OrderModified{m.id, m.symbol, newPrice, out.leaves, false, acct, curClientOrderId,

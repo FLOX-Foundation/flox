@@ -92,6 +92,8 @@ const char* toString(RejectReason r) noexcept
       return "NewOrderNotPermitted";
     case RejectReason::UnknownOrderType:
       return "UnknownOrderType";
+    case RejectReason::BookCapacityExceeded:
+      return "BookCapacityExceeded";
   }
   return "?";
 }
@@ -122,6 +124,8 @@ const char* toString(CancelReason r) noexcept
       return "ReduceOnlyNotReducing";
     case CancelReason::PositionLimitExceeded:
       return "PositionLimitExceeded";
+    case CancelReason::BookRefused:
+      return "BookRefused";
   }
   return "?";
 }
