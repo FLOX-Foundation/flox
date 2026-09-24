@@ -31,15 +31,20 @@
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
 #include "flox/backtest/venue_stack.h"
+#include "flox/engine/abstract_market_data_subscriber.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/execution/rate_limit_policy.h"
+#include "flox/replay/abstract_event_reader.h"
 #include "flox/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <memory_resource>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -696,4 +701,740 @@ TEST(BacktestFillRealism, SingleRunReportsItsOwnFills)
   ASSERT_EQ(res.fills().size(), 1u);
   EXPECT_GT(res.fills().front().timestampNs.raw(), 0);
   EXPECT_LE(res.fills().back().timestampNs.raw(), 3 * kMinuteNs);
+}
+
+// ===========================================================================
+// 6. Hardening. The tests above pin what the fill model must do; the ones
+//    below pin the places where a working model can still be got wrong --
+//    the gates a held order has to pass at the open, the pairing of the
+//    callback window, the arithmetic of the walk, and what a second run is
+//    allowed to inherit.
+// ===========================================================================
+
+namespace
+{
+
+// Records every order event, so a test can ask what the executor decided
+// rather than only what it filled.
+class EventLog
+{
+ public:
+  void attach(SimulatedExecutor& exec)
+  {
+    exec.setOrderEventCallback([this](const OrderEvent& ev)
+                               { events.push_back(ev); });
+  }
+
+  size_t count(OrderEventStatus status) const
+  {
+    size_t n = 0;
+    for (const auto& ev : events)
+    {
+      if (ev.status == status)
+      {
+        ++n;
+      }
+    }
+    return n;
+  }
+
+  bool has(OrderId id, OrderEventStatus status) const
+  {
+    for (const auto& ev : events)
+    {
+      if (ev.order.id == id && ev.status == status)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::string reasonFor(OrderId id) const
+  {
+    for (const auto& ev : events)
+    {
+      if (ev.order.id == id && ev.status == OrderEventStatus::REJECTED)
+      {
+        return ev.rejectReason;
+      }
+    }
+    return {};
+  }
+
+  std::vector<OrderEvent> events;
+};
+
+// A policy that lets exactly one order through per minute.
+RateLimitPolicy oneSubmitPerMinute()
+{
+  RateLimitPolicy policy;
+  policy.addBucket("orders", 60'000'000'000LL, /*capacity=*/1);
+  return policy;
+}
+
+// Emits `count` market buys from the bar callback of bar `fireOn`, then
+// optionally cancels every order of that symbol -- from the same callback,
+// while all of them are still held.
+class BurstStrategy : public Strategy
+{
+ public:
+  using Strategy::Strategy;
+
+  SymbolId target{0};
+  size_t fireOn{0};
+  size_t count{1};
+  bool cancelAllSameBar{false};
+  size_t bars{0};
+
+ protected:
+  void onSymbolBar(SymbolContext& /*ctx*/, const BarEvent& /*ev*/) override
+  {
+    if (bars == fireOn)
+    {
+      for (size_t i = 0; i < count; ++i)
+      {
+        emitMarketBuy(target, Quantity::fromDouble(1.0));
+      }
+      if (cancelAllSameBar)
+      {
+        emitCancelAll(target);
+      }
+    }
+    ++bars;
+  }
+};
+
+// Throws out of the bar callback once, the way a strategy with a bug does.
+class ThrowingStrategy : public Strategy
+{
+ public:
+  using Strategy::Strategy;
+
+ protected:
+  void onSymbolBar(SymbolContext& /*ctx*/, const BarEvent& /*ev*/) override
+  {
+    throw std::runtime_error("strategy failed inside the bar callback");
+  }
+};
+
+// A plain market-data subscriber -- not the strategy -- that sends an order
+// from onBar. It reaches the executor through the same window.
+class SubmittingSubscriber : public IMarketDataSubscriber
+{
+ public:
+  SubmittingSubscriber(SimulatedExecutor& exec, OrderId id) : _exec(exec), _id(id) {}
+
+  SubscriberId id() const override { return 0xB0B0u; }
+
+  void onBar(const BarEvent& ev) override
+  {
+    if (_sent)
+    {
+      return;
+    }
+    _sent = true;
+    _exec.submitOrder(marketOrder(_id, ev.symbol, Side::BUY, 1.0));
+  }
+
+ private:
+  SimulatedExecutor& _exec;
+  OrderId _id;
+  bool _sent{false};
+};
+
+// In-memory reader, so run() and start() can be driven without a tape.
+class VectorReader : public replay::IMultiSegmentReader
+{
+ public:
+  explicit VectorReader(std::vector<replay::ReplayEvent> events) : _events(std::move(events)) {}
+
+  uint64_t forEach(EventCallback callback) override
+  {
+    uint64_t n = 0;
+    for (const auto& ev : _events)
+    {
+      if (!callback(ev))
+      {
+        break;
+      }
+      ++n;
+    }
+    return n;
+  }
+
+  uint64_t forEachFrom(int64_t startNs, EventCallback callback) override
+  {
+    uint64_t n = 0;
+    for (const auto& ev : _events)
+    {
+      if (ev.timestamp_ns < startNs)
+      {
+        continue;
+      }
+      if (!callback(ev))
+      {
+        break;
+      }
+      ++n;
+    }
+    return n;
+  }
+
+  const std::vector<replay::SegmentInfo>& segments() const override { return _segments; }
+  uint64_t totalEvents() const override { return _events.size(); }
+
+ private:
+  std::vector<replay::ReplayEvent> _events;
+  std::vector<replay::SegmentInfo> _segments;
+};
+
+std::vector<replay::ReplayEvent> tradeStream(SymbolId sym, size_t count)
+{
+  std::vector<replay::ReplayEvent> events;
+  for (size_t i = 0; i < count; ++i)
+  {
+    replay::ReplayEvent ev{};
+    ev.type = replay::EventType::Trade;
+    ev.timestamp_ns = static_cast<int64_t>((i + 1) * 1'000'000);
+    ev.trade.symbol_id = sym;
+    ev.trade.price_raw = Price::fromDouble(100.0).raw();
+    ev.trade.qty_raw = Quantity::fromDouble(1.0).raw();
+    ev.trade.side = 1;
+    ev.trade.exchange_ts_ns = ev.timestamp_ns;
+    events.push_back(ev);
+  }
+  return events;
+}
+
+// Buys once on the first trade it sees, so one reader pass produces one fill.
+class FirstTradeBuyStrategy : public Strategy
+{
+ public:
+  using Strategy::Strategy;
+
+  SymbolId target{0};
+  std::atomic<size_t> trades{0};
+
+  void rearm() { trades.store(0); }
+
+ protected:
+  void onSymbolTrade(SymbolContext& /*ctx*/, const TradeEvent& /*ev*/) override
+  {
+    if (trades.fetch_add(1) == 0)
+    {
+      emitMarketBuy(target, Quantity::fromDouble(1.0));
+    }
+  }
+};
+
+}  // namespace
+
+// --- the gates a held order still has to pass at the open ------------------
+
+// Two orders are held from one callback and released into a venue that accepts
+// one submit per minute. The hold is a delay, not a way around the venue: the
+// first order fills at the 106 open and the second comes back rate-limited.
+TEST(BacktestFillRealism, HeldOrdersAreReleasedThroughTheRateLimit)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  EventLog log;
+  log.attach(exec);
+  exec.setRateLimitPolicy(oneSubmitPerMinute());
+
+  exec.beginBarCallbackWindow();
+  exec.submitOrder(marketOrder(1, kSym, Side::BUY, 1.0));
+  exec.submitOrder(marketOrder(2, kSym, Side::BUY, 1.0));
+  exec.endBarCallbackWindow();
+  ASSERT_EQ(exec.heldOrderCount(), 2u);
+
+  exec.onBar(kSym, Price::fromDouble(106.0), Price::fromDouble(108.0),
+             Price::fromDouble(104.0), Price::fromDouble(107.0));
+
+  EXPECT_EQ(exec.fills().size(), 1u) << "the release skipped the rate limit";
+  EXPECT_EQ(log.count(OrderEventStatus::REJECTED_RATE_LIMIT), 1u);
+  ASSERT_FALSE(exec.fills().empty());
+  EXPECT_DOUBLE_EQ(exec.fills().front().price.toDouble(), 106.0);
+}
+
+// Same two orders, and now it matters which is which: the venue takes them in
+// the order the strategy sent them, so order 1 is the one that fills and order
+// 2 is the one that is refused.
+TEST(BacktestFillRealism, HeldOrdersReachTheVenueInArrivalOrder)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  EventLog log;
+  log.attach(exec);
+  exec.setRateLimitPolicy(oneSubmitPerMinute());
+
+  exec.beginBarCallbackWindow();
+  exec.submitOrder(marketOrder(1, kSym, Side::BUY, 1.0));
+  exec.submitOrder(marketOrder(2, kSym, Side::BUY, 1.0));
+  exec.endBarCallbackWindow();
+
+  exec.onBar(kSym, Price::fromDouble(106.0), Price::fromDouble(108.0),
+             Price::fromDouble(104.0), Price::fromDouble(107.0));
+
+  ASSERT_EQ(exec.fills().size(), 1u);
+  EXPECT_EQ(exec.fills().front().orderId, 1u)
+      << "the hold list was drained back to front";
+  EXPECT_TRUE(log.has(2, OrderEventStatus::REJECTED_RATE_LIMIT));
+}
+
+// Reduce-only is evaluated at the open against the position as it stands
+// there. A long of 1.0 and a held reduce-only sell of 5.0 trades 1.0, not 5.0.
+TEST(BacktestFillRealism, HeldReduceOnlyOrderIsTruncatedAtTheOpen)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+
+  exec.onBar(kSym, Price::fromDouble(100.0), Price::fromDouble(100.0),
+             Price::fromDouble(100.0), Price::fromDouble(100.0));
+  exec.submitOrder(marketOrder(1, kSym, Side::BUY, 1.0));
+  ASSERT_DOUBLE_EQ(filledQty(exec.fills(), 1), 1.0);
+
+  Order reducer = marketOrder(2, kSym, Side::SELL, 5.0);
+  reducer.flags.reduceOnly = true;
+  exec.beginBarCallbackWindow();
+  exec.submitOrder(reducer);
+  exec.endBarCallbackWindow();
+
+  exec.onBar(kSym, Price::fromDouble(106.0), Price::fromDouble(108.0),
+             Price::fromDouble(104.0), Price::fromDouble(107.0));
+
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 2), 1.0)
+      << "the release skipped the reduce-only truncation";
+}
+
+// Self-trade prevention likewise fires at the open, against what is resting
+// there: a held buy at 101 that would cross our own resting sell at 100 is
+// refused, not filled.
+TEST(BacktestFillRealism, HeldOrderStillFacesSelfTradePrevention)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  EventLog log;
+  log.attach(exec);
+  exec.setSTPMode(STPMode::CancelNewest);
+
+  exec.submitOrder(limitOrder(1, kSym, Side::SELL, 100.0, 1.0));
+
+  exec.beginBarCallbackWindow();
+  exec.submitOrder(limitOrder(2, kSym, Side::BUY, 101.0, 1.0));
+  exec.endBarCallbackWindow();
+
+  exec.onBar(kSym, Price::fromDouble(100.0), Price::fromDouble(100.0),
+             Price::fromDouble(100.0), Price::fromDouble(100.0));
+
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 2), 0.0)
+      << "the release skipped self-trade prevention";
+  EXPECT_EQ(log.reasonFor(2), "stp_cancel_newest");
+}
+
+// --- the window itself -----------------------------------------------------
+
+// An order the strategy cancelled along with everything else never reaches the
+// venue, even though it was still held when the cancel came: none of the three
+// buys fills at the 106 open.
+TEST(BacktestFillRealism, CancelAllInsideTheCallbackAlsoDropsTheHeldOrders)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  BurstStrategy strat(1, std::vector<SymbolId>{sym}, reg);
+  strat.target = sym;
+  strat.fireOn = 0;
+  strat.count = 3;
+  strat.cancelAllSameBar = true;
+
+  BacktestRunner runner;
+  runner.setStrategy(&strat);
+  runner.runBars(referenceBars(sym));
+
+  EXPECT_EQ(runner.executor().fills().size(), 0u)
+      << "cancelAll did not reach the orders that were still held";
+  EXPECT_EQ(runner.executor().heldOrderCount(), 0u);
+}
+
+// The window covers every consumer of the bar, not only the strategy: an order
+// a market-data subscriber sends from onBar is held to the next open too.
+TEST(BacktestFillRealism, SubscriberOrderIsHeldToTheNextOpen)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  BacktestRunner runner;
+  SubmittingSubscriber sub(runner.executor(), /*id=*/777);
+  runner.addMarketDataSubscriber(&sub);
+  runner.runBars(referenceBars(sym));
+
+  ASSERT_EQ(runner.executor().fills().size(), 1u);
+  const double px = runner.executor().fills().front().price.toDouble();
+  EXPECT_NE(px, 105.0) << "the subscriber's order filled at the close it was shown";
+  EXPECT_DOUBLE_EQ(px, 106.0);
+}
+
+// The window has to be closed as many times as it was opened. A run with no
+// strategy attached opens one per bar and must leave none behind, or every
+// order submitted afterwards is held for an open that never comes.
+TEST(BacktestFillRealism, WindowIsPairedOnARunWithNoStrategy)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  BacktestRunner runner;
+  runner.runBars(referenceBars(sym));
+
+  EXPECT_FALSE(runner.executor().barCallbackWindowOpen())
+      << "the run left the bar-callback window open";
+
+  runner.executor().submitOrder(marketOrder(42, sym, Side::BUY, 1.0));
+  EXPECT_EQ(runner.executor().heldOrderCount(), 0u);
+  EXPECT_EQ(runner.executor().fills().size(), 1u)
+      << "an order submitted after the run was held instead of sent";
+}
+
+// The other half of the pairing, and the one the code does not do yet: a
+// callback that throws unwinds past the close, so the window has to be closed
+// by a scope guard rather than by the statement after the call. Enable this
+// once the runner owns the window through RAII.
+TEST(BacktestFillRealism, DISABLED_WindowIsPairedWhenABarCallbackThrows)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  ThrowingStrategy strat(1, std::vector<SymbolId>{sym}, reg);
+
+  BacktestRunner runner;
+  runner.setStrategy(&strat);
+  EXPECT_THROW(runner.runBars(referenceBars(sym)), std::runtime_error);
+
+  EXPECT_FALSE(runner.executor().barCallbackWindowOpen())
+      << "a throwing bar callback left the window open";
+
+  runner.executor().onBar(kSym, Price::fromDouble(100.0), Price::fromDouble(100.0),
+                          Price::fromDouble(100.0), Price::fromDouble(100.0));
+  runner.executor().submitOrder(marketOrder(42, kSym, Side::BUY, 1.0));
+  EXPECT_EQ(runner.executor().heldOrderCount(), 0u);
+}
+
+// --- the arithmetic of the walk -------------------------------------------
+
+// The walk's notional is money, so it goes through the widened
+// Quantity * Price -> Volume path and not through a double. At a crypto
+// notional the two disagree: asks 67123.45678901 x 0.2, 67123.45678903 x 0.2
+// and 67123.45678905 x 0.1 fill a buy of 0.5 at raw 6712345678900 exactly --
+// each level's notional truncates down, and the average lands one raw unit
+// below the cheapest level rather than wherever floating point rounds it.
+TEST(BacktestFillRealism, LadderVwapIsExactAtCryptoNotionals)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+
+  pushLadder(exec, kSym, {{67000.0, 10.0}},
+             {{67123.45678901, 0.2}, {67123.45678903, 0.2}, {67123.45678905, 0.1}});
+  exec.submitOrder(marketOrder(1, kSym, Side::BUY, 0.5));
+
+  ASSERT_EQ(exec.fills().size(), 1u);
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 1), 0.5);
+  EXPECT_EQ(exec.fills().front().price.raw(), 6712345678900)
+      << "the walk's notional went through a double";
+}
+
+// The deepest-level rule is not a property of the buy side. Bids 99 x 1 and
+// 98 x 1 against a sell of 10: the whole order prints at 98, the deepest level
+// the feed showed -- not the 98.5 average of the two levels it could see.
+TEST(BacktestFillRealism, SellPastTheLadderPaysTheDeepestLevelForTheWholeOrder)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+
+  pushLadder(exec, kSym, {{99.0, 1.0}, {98.0, 1.0}}, {{101.0, 10.0}});
+  exec.submitOrder(marketOrder(1, kSym, Side::SELL, 10.0));
+
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 1), 10.0);
+  EXPECT_NEAR(vwap(exec.fills(), 1), 98.0, 1e-9)
+      << "the sell averaged over the visible levels instead of paying the deepest";
+}
+
+// A conditional refused because it triggered past its own limit must not pay
+// for the attempt. The stop-limit below is armed at 97.5 with a limit of 98,
+// so it rests; the ladder it did not trade against is untouched, and the next
+// taker still gets the 99 touch.
+TEST(BacktestFillRealism, RefusedStopLimitEatsNoDepth)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+
+  pushLadder(exec, kSym, {{99.0, 1.0}, {98.0, 2.0}, {97.0, 5.0}}, {{101.0, 10.0}});
+
+  Order stopLimit = conditionalOrder(1, kSym, Side::SELL, OrderType::STOP_LIMIT, 97.5, 3.0);
+  stopLimit.price = Price::fromDouble(98.0);
+  exec.submitOrder(stopLimit);
+
+  // A print at 97.5 arms it: the market fell through the trigger, and its 98
+  // limit is above where it can trade.
+  exec.onTrade(kSym, Price::fromDouble(97.5), /*isBuy=*/false);
+  ASSERT_DOUBLE_EQ(filledQty(exec.fills(), 1), 0.0);
+
+  exec.submitOrder(marketOrder(2, kSym, Side::SELL, 1.0));
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 2), 1.0);
+  EXPECT_NEAR(vwap(exec.fills(), 2), 99.0, 1e-9)
+      << "the refused stop-limit took the top of the book with it";
+}
+
+// --- two of our own orders at one price ------------------------------------
+
+// The synthetic print a bar step hands the queue model is sized to the order
+// standing furthest back, not to whichever of ours is seen first. Order 1 is
+// alone at 99 when it arrives (queue ahead 0, size 2); order 2 arrives after
+// the level has grown to 10, so it waits behind all of it with size 5. A bar
+// through 99 prints 15: order 1 fills its 2, and order 2 gets the 3 that are
+// left after its own queue.
+TEST(BacktestFillRealism, QueuePrintReachesTheOrderStandingFurthestBack)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::FULL, 8);
+
+  pushLadder(exec, kSym, {{99.0, 0.0}}, {{101.0, 10.0}});
+  exec.submitOrder(limitOrder(1, kSym, Side::BUY, 99.0, 2.0));
+
+  pushLadder(exec, kSym, {{99.0, 10.0}}, {{101.0, 10.0}});
+  exec.submitOrder(limitOrder(2, kSym, Side::BUY, 99.0, 5.0));
+  ASSERT_EQ(exec.fills().size(), 0u);
+
+  exec.onBar(kSym, Price::fromDouble(100.0), Price::fromDouble(100.0),
+             Price::fromDouble(98.0), Price::fromDouble(99.5));
+
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 1), 2.0);
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 2), 3.0)
+      << "the print stopped at the first order at the level";
+}
+
+// --- repeatability ---------------------------------------------------------
+
+// Two runs over one executor with jittered acks draw the same sequence: the
+// seeded generators go back to their seeds with everything else the run left
+// behind, or a backtest stops being reproducible.
+TEST(BacktestFillRealism, AckJitterRepeatsAcrossRuns)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setSubmitAckLatency(10'000'000LL, 5'000'000LL);
+  exec.setCancelAckLatency(7'000'000LL, 4'000'000LL);
+
+  std::vector<int64_t> observed;
+  exec.setOrderEventCallback(
+      [&observed](const OrderEvent& ev)
+      {
+        if (ev.status == OrderEventStatus::ACCEPTED ||
+            ev.status == OrderEventStatus::CANCELED)
+        {
+          observed.push_back(ev.exchangeTsNs.raw());
+        }
+      });
+
+  // Steps the clock in 250 us ticks and pumps the executor, so each ack lands
+  // in a bucket the drawn latency picks out.
+  auto pump = [&exec, &clock](int64_t& nowNs)
+  {
+    for (int i = 0; i < 80; ++i)
+    {
+      nowNs += 250'000LL;
+      clock.advanceTo(UnixNanos::fromRaw(nowNs));
+      exec.onTrade(kSym, Price::fromDouble(100.0), /*isBuy=*/true);
+    }
+  };
+
+  auto script = [&](std::vector<int64_t>& out)
+  {
+    observed.clear();
+    int64_t nowNs = 0;
+    for (OrderId id = 1; id <= 6; ++id)
+    {
+      exec.submitOrder(limitOrder(id, kSym, Side::BUY, 50.0, 1.0));
+      pump(nowNs);
+      exec.cancelOrder(id);
+      pump(nowNs);
+    }
+    out = observed;
+  };
+
+  std::vector<int64_t> first;
+  script(first);
+  ASSERT_FALSE(first.empty());
+
+  exec.reset();
+  clock.reset();
+  std::vector<int64_t> second;
+  script(second);
+
+  EXPECT_EQ(second, first) << "the second run drew a different latency sequence";
+}
+
+// The same for the iceberg size jitter: the refreshed tranches of run two are
+// the tranches of run one, tranche for tranche.
+TEST(BacktestFillRealism, IcebergJitterRepeatsAcrossRuns)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::FULL, 8);
+  exec.setIcebergRefreshLatency(0);
+  exec.setIcebergSizeRandomisationPct(0.5);
+  exec.setIcebergJitterSeed(1234);
+
+  auto script = [&](std::vector<double>& out)
+  {
+    out.clear();
+    pushLadder(exec, kSym, {{99.0, 0.0}}, {{101.0, 10.0}});
+    Order ice = limitOrder(1, kSym, Side::BUY, 99.0, 1.0);
+    ice.type = OrderType::ICEBERG;
+    ice.quantity = Quantity::fromDouble(6.0);
+    ice.visibleQuantity = Quantity::fromDouble(1.0);
+    exec.submitOrder(ice);
+
+    for (int i = 0; i < 8; ++i)
+    {
+      exec.onTrade(kSym, Price::fromDouble(99.0), Quantity::fromDouble(1.0),
+                   /*isBuy=*/false);
+    }
+    for (const auto& f : exec.fills())
+    {
+      out.push_back(f.quantity.toDouble());
+    }
+  };
+
+  std::vector<double> first;
+  script(first);
+  ASSERT_FALSE(first.empty());
+
+  exec.reset();
+  clock.reset();
+  std::vector<double> second;
+  script(second);
+
+  EXPECT_EQ(second, first) << "the second run drew a different tranche sequence";
+}
+
+// --- what a second run inherits -------------------------------------------
+
+// A run can end with an order still held -- its symbol never got another bar.
+// The next run must not be the open it was waiting for.
+TEST(BacktestFillRealism, AHeldOrderDoesNotSurviveIntoTheNextRun)
+{
+  SymbolRegistry reg;
+  const SymbolId driver = addSymbol(reg, "BTCUSDT");
+  const SymbolId other = addSymbol(reg, "ETHUSDT");
+
+  OneShotBuyStrategy strat(1, std::vector<SymbolId>{driver, other}, reg);
+  strat.target = other;
+  strat.fireOn = 0;
+
+  BacktestRunner runner;
+  runner.setStrategy(&strat);
+  runner.runBars({makeBar(driver, 100.0, 110.0, 90.0, 105.0, 0),
+                  makeBar(driver, 106.0, 108.0, 104.0, 107.0, kMinuteNs)});
+  ASSERT_EQ(runner.executor().heldOrderCount(), 1u);
+  ASSERT_EQ(runner.executor().fills().size(), 0u);
+
+  // Run two trades the symbol the held order was waiting for, and the strategy
+  // sends nothing of its own.
+  strat.rearm();
+  strat.fireOn = 99;
+  runner.runBars({makeBar(other, 200.0, 210.0, 190.0, 205.0, 2 * kMinuteNs)});
+
+  EXPECT_EQ(runner.executor().fills().size(), 0u)
+      << "the previous run's held order was released into this one";
+  EXPECT_EQ(runner.executor().heldOrderCount(), 0u);
+}
+
+// The reset belongs to every entry point, not only to the bar path: run() over
+// a reader reports its own run.
+TEST(BacktestFillRealism, SecondReaderRunDoesNotAccumulate)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  FirstTradeBuyStrategy strat(1, std::vector<SymbolId>{sym}, reg);
+  strat.target = sym;
+
+  BacktestRunner runner;
+  runner.setStrategy(&strat);
+
+  VectorReader reader(tradeStream(sym, 5));
+  const BacktestResult first = runner.run(reader);
+  ASSERT_EQ(first.fills().size(), 1u);
+
+  strat.rearm();
+  const BacktestResult second = runner.run(reader);
+  EXPECT_EQ(second.fills().size(), first.fills().size())
+      << "the second reader run reported both runs' fills";
+}
+
+// And to the interactive path: a second start() is a second run.
+TEST(BacktestFillRealism, SecondInteractiveRunDoesNotAccumulate)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  FirstTradeBuyStrategy strat(1, std::vector<SymbolId>{sym}, reg);
+  strat.target = sym;
+
+  BacktestRunner runner;
+  runner.setStrategy(&strat);
+  VectorReader reader(tradeStream(sym, 5));
+
+  auto drive = [&runner, &reader]()
+  {
+    std::thread worker([&]()
+                       { runner.start(reader); });
+    for (int i = 0; i < 20'000 && !runner.isPaused(); ++i)
+    {
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    runner.resume();
+    for (int i = 0; i < 20'000 && !runner.isFinished(); ++i)
+    {
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    runner.stop();
+    worker.join();
+  };
+
+  drive();
+  const size_t firstFills = runner.executor().fills().size();
+  ASSERT_EQ(firstFills, 1u);
+
+  strat.rearm();
+  drive();
+  EXPECT_EQ(runner.executor().fills().size(), firstFills)
+      << "the second interactive run reported both runs' fills";
+}
+
+// The queue the previous run left behind goes with it. Run one leaves an order
+// resting at 99; run two's order must queue behind the level as the venue
+// publishes it, not behind a ghost from the run before.
+TEST(BacktestFillRealism, QueueEntriesDoNotSurviveAReset)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setQueueModel(QueueModel::FULL, 8);
+
+  pushLadder(exec, kSym, {{99.0, 10.0}}, {{101.0, 10.0}});
+  exec.submitOrder(limitOrder(1, kSym, Side::BUY, 99.0, 5.0));
+  ASSERT_EQ(exec.fills().size(), 0u);
+
+  exec.reset();
+  clock.reset();
+
+  pushLadder(exec, kSym, {{99.0, 10.0}}, {{101.0, 10.0}});
+  exec.submitOrder(limitOrder(2, kSym, Side::BUY, 99.0, 5.0));
+  exec.onBar(kSym, Price::fromDouble(100.0), Price::fromDouble(100.0),
+             Price::fromDouble(98.0), Price::fromDouble(99.5));
+
+  EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 2), 5.0)
+      << "the previous run's order was still standing in the queue";
 }

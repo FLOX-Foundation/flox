@@ -438,11 +438,22 @@ TEST(BacktestFillModel, ResetClearsFillsAndOrdersButKeepsConfiguration)
   EXPECT_TRUE(exec.fills().empty());
   EXPECT_DOUBLE_EQ(exec.bestBidPrice(kSym).toDouble(), 0.0);
 
-  // The queue model survived: the same order rests again instead of filling,
-  // and the same bar takes it out.
+  // The queue model survived, and the test can tell: a bar that only touches
+  // 99 leaves the queue ahead of the order untouched, which is the one
+  // behaviour that separates the model being on from it being off. With the
+  // model gone the touch alone would fill the order at 99.
   pushLadder(exec, kSym, {{99.0, 10.0}}, {{101.0, 10.0}});
   exec.submitOrder(limitOrder(1, kSym, Side::BUY, 99.0, 5.0));
   EXPECT_EQ(exec.fills().size(), 0u);
+  exec.onBar(kSym, Price::fromDouble(100.0), Price::fromDouble(99.0),
+             Price::fromDouble(99.5));
+  EXPECT_EQ(exec.fills().size(), 0u)
+      << "a bar that only touched the price filled the order: the queue model "
+         "did not survive the reset";
+
+  // And the queue itself came back empty: the bar that does trade through
+  // fills the order in one go, behind the level the venue published now and
+  // not behind anything the previous run left.
   exec.onBar(kSym, Price::fromDouble(100.0), Price::fromDouble(98.0),
              Price::fromDouble(99.5));
   EXPECT_DOUBLE_EQ(filledQty(exec.fills(), 1), 5.0);
