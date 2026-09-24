@@ -11,7 +11,9 @@
 #include "flox-connectors/execution/order_tif.h"
 #include "flox-connectors/hyperliquid/hl_signer.h"
 #include "flox-connectors/net/curl_transport.h"
+#include "flox-connectors/util/safe_parse.h"
 
+#include <flox/execution/events/order_event.h>
 #include <flox/log/log.h>
 
 #include <simdjson.h>
@@ -287,6 +289,59 @@ int HyperliquidOrderExecutorT<Policies>::assetIdFor(std::string_view coin)
 }
 
 template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::publishRejection(const Order& order,
+                                                           const std::string& reason)
+{
+  FLOX_LOG_ERROR("[HL] " << reason << " (orderId=" << order.id << ")");
+  if (!_orderBus)
+  {
+    return;
+  }
+  OrderEvent ev;
+  ev.status = OrderEventStatus::REJECTED;
+  ev.order = order;
+  ev.rejectReason = reason;
+  ev.publishNs = nowMonoNanos();
+  _orderBus->publish(std::move(ev));
+}
+
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::publishSubmitted(const Order& order)
+{
+  if (!_orderBus)
+  {
+    return;
+  }
+  OrderEvent ev;
+  ev.status = OrderEventStatus::SUBMITTED;
+  ev.order = order;
+  ev.publishNs = nowMonoNanos();
+  _orderBus->publish(std::move(ev));
+}
+
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::publishFill(const Order& order, Quantity fillQty,
+                                                      Price fillPrice)
+{
+  if (!_orderBus)
+  {
+    return;
+  }
+  OrderEvent ev;
+  // Hyperliquid has no private order stream in this connector, so the submit
+  // response is the only place a fill is ever reported; the order is complete
+  // when the venue says the whole size traded.
+  ev.status = (fillQty.raw() >= order.quantity.raw()) ? OrderEventStatus::FILLED
+                                                      : OrderEventStatus::PARTIALLY_FILLED;
+  ev.order = order;
+  ev.order.filledQuantity = fillQty;
+  ev.fillQty = fillQty;
+  ev.fillPrice = fillPrice;
+  ev.publishNs = nowMonoNanos();
+  _orderBus->publish(std::move(ev));
+}
+
+template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
   if (!_policies.rateLimit.tryAcquire(order.id))
@@ -384,41 +439,106 @@ void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
       {
         _policies.timeout.clearPending(order.id);
 
-        simdjson::ondemand::parser p;
-        simdjson::padded_string ps(resp);
-        auto doc = p.iterate(ps);
-
-        std::string exId;
-        auto statuses = doc["response"]["data"]["statuses"];
-        if (!statuses.error())
+        // Hyperliquid answers HTTP 200 whatever happens and reports the
+        // outcome in the body: a top-level "err", or one status object per
+        // submitted order that is exactly one of "error", "filled" or
+        // "resting". Only the two oid lookups used to be read, so a rejection
+        // was recorded as a submitted order and an inline fill was never seen
+        // by anything. dom rather than ondemand because these branches read
+        // the same status object several times over.
+        simdjson::dom::parser parser;
+        simdjson::padded_string padded(resp);
+        auto parsed = parser.parse(padded);
+        if (parsed.error())
         {
-          auto s0 = statuses.at(0);
-          if (!s0.error())
+          publishRejection(order, "Unparseable order response from venue");
+          return;
+        }
+        auto doc = parsed.value();
+
+        auto asString = [](auto element) -> std::string_view
+        {
+          if (element.error())
           {
-            auto roid = s0["resting"]["oid"].get_uint64();
-            if (!roid.error())
-            {
-              exId = std::to_string(roid.value_unsafe());
-            }
-            auto foid = s0["filled"]["oid"].get_uint64();
-            if (!foid.error())
-            {
-              exId = std::to_string(foid.value_unsafe());
-            }
+            return {};
           }
+          auto sv = element.get_string();
+          return sv.error() ? std::string_view{} : sv.value_unsafe();
+        };
+
+        if (asString(doc["status"]) == "err")
+        {
+          std::string_view reason = asString(doc["response"]);
+          publishRejection(order, reason.empty() ? std::string("Venue rejected the order")
+                                                 : std::string(reason));
+          return;
         }
 
-        auto endTime = now();
-        auto durationMs =
-            std::chrono::duration_cast<std::chrono::milliseconds>(endTime - order.createdAt)
-                .count();
+        auto s0 = doc["response"]["data"]["statuses"].at(0);
+        if (s0.error())
+        {
+          publishRejection(order, "Order response carried no status");
+          return;
+        }
 
-        _orderTracker->onSubmitted(order, exId, cloid);
+        if (std::string_view reason = asString(s0["error"]); !reason.empty())
+        {
+          // The order never came into existence at the venue, so it is not
+          // handed to the tracker at all -- same convention as the Bybit
+          // executor, whose rejected submits leave no tracker record either.
+          publishRejection(order, std::string(reason));
+          return;
+        }
+
+        auto oidOf = [](auto element) -> std::string
+        {
+          auto oid = element["oid"].get_uint64();
+          return oid.error() ? std::string{} : std::to_string(oid.value_unsafe());
+        };
+
+        if (auto filled = doc["response"]["data"]["statuses"].at(0)["filled"]; !filled.error())
+        {
+          Quantity fillQty{};
+          Price fillPrice{};
+          if (auto totalSz = asString(filled["totalSz"]); !totalSz.empty())
+          {
+            if (auto q = util::parseQty(totalSz))
+            {
+              fillQty = *q;
+            }
+          }
+          if (auto avgPx = asString(filled["avgPx"]); !avgPx.empty())
+          {
+            if (auto px = util::parsePrice(avgPx))
+            {
+              fillPrice = *px;
+            }
+          }
+
+          _orderTracker->onSubmitted(order, oidOf(filled.value()), cloid);
+          _orderTracker->onFilled(order.id, fillQty);
+          publishFill(order, fillQty, fillPrice);
+          return;
+        }
+
+        if (auto resting = doc["response"]["data"]["statuses"].at(0)["resting"]; !resting.error())
+        {
+          _orderTracker->onSubmitted(order, oidOf(resting.value()), cloid);
+          publishSubmitted(order);
+          return;
+        }
+
+        // A status shape this connector does not know. The order may well be
+        // live at the venue, so it is recorded, but with no exchange id there
+        // is nothing to cancel it by later.
+        _logger->warn("[HL] unrecognised order status in submit response");
+        _orderTracker->onSubmitted(order, "", cloid);
+        publishSubmitted(order);
       },
       [this, order](std::string_view err)
       {
         _policies.timeout.clearPending(order.id);
-        FLOX_LOG_ERROR("[HL] submit error: " << err);
+        publishRejection(order, std::string("Transport error: ") + std::string(err));
       });
 }
 

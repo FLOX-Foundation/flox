@@ -39,6 +39,11 @@ HyperliquidExchangeConnector::HyperliquidExchangeConnector(const HyperliquidConf
   assert(_bookBus && "book bus not set");
   assert(_tradeBus && "trade bus not set");
 
+  // Registering here rather than waiting for someone else to do it: the
+  // registry is idempotent, and an id resolved lazily on the first frame would
+  // be InvalidExchangeId for whatever ran before it.
+  _exchangeId = _registry->registerExchange("hyperliquid");
+
   // Disable WS protocol ping (pingIntervalSec = 0) - Hyperliquid requires application-level ping
   _wsClient = std::make_unique<IxWebSocketClient>(config.wsEndpoint, "https://app.hyperliquid.xyz",
                                                   config.reconnectDelayMs, _logger.get(), 0);
@@ -178,6 +183,12 @@ SymbolId HyperliquidExchangeConnector::resolveSymbolId(std::string_view symbol)
 
 void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
 {
+  // Stamped before parsing, so it measures when the frame reached this
+  // process. CompositeBookMatrix::checkStaleness skips any venue whose
+  // lastUpdateNs is still zero, so a book event without it left a frozen
+  // Hyperliquid feed quotable forever.
+  const uint64_t recvNs = nowNsMonotonic();
+
   static thread_local simdjson::dom::parser parser;
 
   try
@@ -225,6 +236,8 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
       SymbolId sid = resolveSymbolId(coinEl.get_string().value());
 
       ev->update.symbol = sid;
+      ev->recvNs = MonoNanos::fromRaw(recvNs);
+      ev->sourceExchange = _exchangeId;
       // Hyperliquid sends full book snapshots on each update
       ev->update.type = BookUpdateType::SNAPSHOT;
 
@@ -280,6 +293,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
+        ev->publishTsNs = nowMonoNanos();
         auto [res, _] = _bookBus->tryPublish(std::move(ev));
         if (res != BookUpdateBus::PublishResult::SUCCESS)
         {
@@ -316,6 +330,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
         SymbolId sid = resolveSymbolId(coinEl.get_string().value());
 
         TradeEvent ev;
+        ev.recvNs = MonoNanos::fromRaw(recvNs);
         ev.trade.symbol = sid;
         ev.trade.price = *priceOpt;
         ev.trade.quantity = *qtyOpt;
@@ -335,6 +350,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
           ev.trade.instrument = info->type;
         }
 
+        ev.publishTsNs = nowMonoNanos();
         auto [res, _] = _tradeBus->tryPublish(ev);
         if (res != TradeBus::PublishResult::SUCCESS)
         {
