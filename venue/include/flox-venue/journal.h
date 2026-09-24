@@ -422,12 +422,7 @@ class Journal
                    OpenMode mode = OpenMode::Truncate)
       : sync_(sync)
   {
-    fd_ = flox::fileio::openForWrite(path, mode == OpenMode::Truncate ? flox::fileio::OpenMode::Truncate
-                                                                      : flox::fileio::OpenMode::Append);
-    if (fd_ < 0)
-    {
-      throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
-    }
+    fd_ = openFile(path, mode);
   }
 
   ~Journal()
@@ -452,12 +447,7 @@ class Journal
       flox::fileio::syncFd(fd_);
       flox::fileio::closeFd(fd_);
     }
-    fd_ = flox::fileio::openForWrite(path, mode == OpenMode::Truncate ? flox::fileio::OpenMode::Truncate
-                                                                      : flox::fileio::OpenMode::Append);
-    if (fd_ < 0)
-    {
-      throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
-    }
+    fd_ = openFile(path, mode);
     count_.store(0, std::memory_order_relaxed);
     bytes_.store(0, std::memory_order_relaxed);
   }
@@ -1080,6 +1070,32 @@ class Journal
         v.emplace_back(ts, fromBody<SetAccountRiskLimits>(body));
         break;
     }
+  }
+
+  // A file that is about to become this journal.
+  //
+  // A fresh file gets its first block here rather than on its first record.
+  // The difference is not academic on the rotation path: reopen() runs inside
+  // the checkpoint pause, with matching stopped, and the first append after it
+  // runs on the matching path with an order waiting -- so the cheaper place to
+  // pay is the one that is already stopped (flox::fileio::reserveFirstBlock).
+  // A byte left behind by a failure there would sit in front of record 0, so a
+  // failure is fatal to the open rather than ignored.
+  static int openFile(const std::string& path, OpenMode mode)
+  {
+    const int fd = flox::fileio::openForWrite(
+        path, mode == OpenMode::Truncate ? flox::fileio::OpenMode::Truncate
+                                         : flox::fileio::OpenMode::Append);
+    if (fd < 0)
+    {
+      throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
+    }
+    if (mode == OpenMode::Truncate && !flox::fileio::reserveFirstBlock(fd))
+    {
+      flox::fileio::closeFd(fd);
+      throw std::runtime_error("Journal: cannot prepare '" + path + "' for writing");
+    }
+    return fd;
   }
 
   void appendBytes(const void* p, size_t n)
