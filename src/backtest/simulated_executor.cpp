@@ -1960,8 +1960,14 @@ void SimulatedExecutor::processPendingOrders(SymbolId symbol, const MarketState&
     {
       continue;
     }
-    // Queue-registered limit orders are handled by the queue tracker on trades.
-    if (order.type == OrderType::LIMIT && _queueTracker.enabled())
+    // Orders the queue tracker holds are its business: it fills them from
+    // prints once their queue is gone. The test is registration, not the
+    // model being on -- a limit the tracker never took (a stop-limit that
+    // rested when it triggered, or an order submitted before the model was
+    // configured) has no queue to wait behind, and skipping it on the model
+    // alone left it resting for the whole run.
+    if (order.type == OrderType::LIMIT && _queueTracker.enabled() &&
+        _queueTracker.snapshot(order.id).has_value())
     {
       continue;
     }
