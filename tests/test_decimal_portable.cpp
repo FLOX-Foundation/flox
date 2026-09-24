@@ -40,6 +40,17 @@ namespace
 {
 constexpr int64_t kMax = (std::numeric_limits<int64_t>::max)();
 constexpr int64_t kMin = (std::numeric_limits<int64_t>::min)();
+
+// A value the optimizer cannot see through. Some of what is asserted below is
+// undefined behaviour without the check that makes it defined, and a compiler
+// is free to fold undefined behaviour into whatever it likes -- including,
+// once, the very answer the guard produces. Then the test passes whether the
+// guard is there or not, which is the one thing a test must never do.
+int64_t opaque(int64_t v)
+{
+  volatile int64_t sink = v;
+  return sink;
+}
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -139,9 +150,9 @@ TEST(DecimalOverflow, ScalarMultiplySaturatesOnBothSides)
 // undefined behaviour rather than a wrap -- on x86 it is a hardware trap.
 TEST(DecimalOverflow, ScalarDivideByMinusOneSaturatesAtTheBoundary)
 {
-  EXPECT_EQ((Quantity::fromRaw(kMin) / int64_t{-1}).raw(), kMax);
-  EXPECT_EQ((Quantity::fromRaw(-5) / int64_t{-1}).raw(), 5);
-  EXPECT_EQ((Quantity::fromRaw(kMax) / int64_t{-1}).raw(), kMin + 1);
+  EXPECT_EQ((Quantity::fromRaw(opaque(kMin)) / opaque(-1)).raw(), kMax);
+  EXPECT_EQ((Quantity::fromRaw(opaque(-5)) / opaque(-1)).raw(), 5);
+  EXPECT_EQ((Quantity::fromRaw(opaque(kMax)) / opaque(-1)).raw(), kMin + 1);
 }
 
 TEST(DecimalOverflow, OrdinaryValuesAreUntouchedByTheChecks)
