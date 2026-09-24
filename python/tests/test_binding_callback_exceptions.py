@@ -559,6 +559,94 @@ _VENUE_STACK_DRIVER = """
     report()
 """
 
+# on_queue_position_change is the one callback no OHLCV run can reach:
+# SimulatedExecutor::maybeEmitQueuePositionChanges() only fires from
+# onBookUpdate and onTrade, and a bar feed carries neither a book nor a
+# trade quantity. The public Python surface does have a path to both:
+# flox.BinaryLogRecorderHook records a `.floxlog` tape of book snapshots
+# and sized trades, BacktestRunner.run_tape replays them into the
+# executor, and VenueStack.binance_um_futures arrives with
+# QueueModel::FULL already set (src/backtest/venue_stack.cpp:100) --
+# VenueExecutor exposes no set_queue_model of its own. That is the same
+# scenario as tests/test_backtest_queue.cpp:131, built out of public
+# calls: rest a limit at the touch behind 30 units, then print trades at
+# that price so the queue ahead of it shrinks.
+#
+# Trades are emitted at both the bid and the ask with both aggressor
+# flags, so the case does not depend on which side the tape round-trip
+# calls the aggressor -- one of the four prints moves each resting
+# order's queue whichever way the convention runs.
+_QUEUE_POSITION_DRIVER = """
+    import os
+    import tempfile
+
+    SEC = 1_000_000_000
+    BASE = 1_700_000_000_000_000_000
+
+    def write_tape(out_dir):
+        reg = flox.SymbolRegistry()
+        sym = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
+        hook = flox.BinaryLogRecorderHook(
+            out_dir, max_segment_mb=4, exchange_id=0, compression="none",
+            exchange_name="binance", instrument_type="perpetual")
+        hook.add_symbol(sym, "BTCUSDT", "", "", 2, 6)
+        rec = flox.Runner(reg, on_signal=lambda _s: None)
+        rec.set_market_data_recorder(hook)
+        rec.start()
+        ts = [BASE]
+        def book():
+            rec.on_book_snapshot(sym, [100.0, 99.0], [30.0, 40.0],
+                                 [101.0, 102.0], [30.0, 40.0], ts[0])
+            ts[0] += SEC
+        for _ in range(3):
+            book()
+        for _ in range(10):
+            for price in (100.0, 101.0):
+                for is_buy in (False, True):
+                    rec.on_trade(sym, price=price, qty=1.0, is_buy=is_buy,
+                                 ts_ns=ts[0])
+                    ts[0] += SEC
+            book()
+        rec.stop()
+        hook.close()
+
+    tape = os.path.join(tempfile.mkdtemp(), "tape")
+    write_tape(tape)
+
+    reg = flox.SymbolRegistry()
+    sym = reg.add_symbol("binance", "BTCUSDT", tick_size=0.01)
+    bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
+
+    class S(flox.Strategy):
+        def __init__(self, syms):
+            super().__init__(syms)
+            self.placed = False
+        def on_book_update(self, ctx):
+            if not self.placed:
+                self.placed = True
+                self.limit_buy(100.0, 1.0)
+                self.limit_sell(101.0, 1.0)
+            if fired[0]:
+                alive[0] += 1
+        def on_trade(self, ctx, trade):
+            if fired[0]:
+                alive[0] += 1
+        def on_queue_position_change(self, ctx, ev):
+            fired[0] += 1
+            if fired[0] == 1:
+                raise ValueError(MARKER)
+
+    bt.set_strategy(S([sym]))
+    bt.set_venue_stack(flox.VenueStack.binance_um_futures(account_id=42,
+                                                          equity=100_000.0))
+    try:
+        bt.run_tape(tape)
+    except BaseException as exc:
+        raised[0] = repr(exc)
+    report()
+"""
+
+
 _CSV = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "flox_py", "templates", "research", "data", "btcusdt_sample.csv")
@@ -577,14 +665,7 @@ STRATEGY_CALLBACKS = [
     ("on_stop", _ON_STOP_DRIVER),
     ("on_fill", _BACKTEST_DRIVER % {"cb": "on_fill"}),
     ("on_order_update", _BACKTEST_DRIVER % {"cb": "on_order_update"}),
-    # needs: a public Python path that drives Strategy.on_queue_position_change
-    # end to end (tests/test_backtest_queue.cpp does it in C++;
-    # python/tests/test_strategy_queue_position.py:6 admits the Python surface
-    # only checks that the method exists). flox.VenueStack's VenueExecutor has
-    # no set_queue_position_min_change_fraction, so the closest public driver
-    # is the venue-stack run below and it never reaches the callback.
-    ("on_queue_position_change",
-     _VENUE_STACK_DRIVER % {"cb": "on_queue_position_change", "csv": _CSV}),
+    ("on_queue_position_change", _QUEUE_POSITION_DRIVER),
     ("on_market_position_change",
      _VENUE_STACK_DRIVER % {"cb": "on_market_position_change", "csv": _CSV}),
 ]
