@@ -136,6 +136,10 @@ TEST(RateLimiterZeroRefillTest, NonZeroRefillRateIsUnaffected)
   EXPECT_TRUE(limiter.tryAcquire(10));
   EXPECT_EQ(limiter.available(), 0u);
   EXPECT_EQ(limiter.timeUntilAvailable(1), std::chrono::milliseconds(1));
+  // Exactly the bucket's capacity is a finite wait; only a request the bucket
+  // can never hold at once is "never".
+  EXPECT_EQ(limiter.timeUntilAvailable(10), std::chrono::milliseconds(10));
+  EXPECT_EQ(limiter.timeUntilAvailable(11), RateLimiter::Duration::max());
 
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
