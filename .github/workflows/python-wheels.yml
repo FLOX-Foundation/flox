@@ -134,6 +134,16 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=14.0"
           CIBW_BUILD_VERBOSITY: 1
+          # cibuildwheel installs the just-built wheel into a clean venv
+          # and runs this from a temp directory (not the checkout), so a
+          # pass here proves the wheel that would be published actually
+          # loads its compiled extension and can run a real call through
+          # it -- not just that the build step exited zero. `numpy` is
+          # already a runtime dependency in pyproject.toml and gets
+          # pulled in by installing the wheel; nothing extra to declare
+          # via CIBW_TEST_REQUIRES.
+          CIBW_TEST_COMMAND: >
+            python -c "import flox_py as flox; reg = flox.SymbolRegistry(); sid = reg.add_symbol('bybit', 'BTCUSDT', 0.01); assert flox.SLIPPAGE_NONE == 0; assert sid is not None; print('flox_py wheel smoke OK, symbol id:', sid)"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -144,7 +154,11 @@ jobs:
     needs: [check-actor]
     if: needs.check-actor.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Building the sdist itself is cheap (it is a file copy, no compile),
+    # but proving it installs means compiling the C++ core from source
+    # through scikit-build-core -- the same order of magnitude as
+    # run-core-tests above, hence the same tooling and a matching budget.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -152,6 +166,26 @@ jobs:
           python-version: "3.12"
       - run: pip install build scikit-build-core pybind11
       - run: python -m build --sdist python/
+
+      - name: Install build dependencies for the sdist install test
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends cmake ninja-build liblz4-dev
+
+      - name: Verify the sdist installs and imports from source
+        run: |
+          set -euo pipefail
+          sdist="$(ls python/dist/*.tar.gz)"
+          python -m venv /tmp/sdist-check-venv
+          /tmp/sdist-check-venv/bin/pip install --no-cache-dir "$sdist"
+          /tmp/sdist-check-venv/bin/python -c "
+          import flox_py as flox
+          reg = flox.SymbolRegistry()
+          sid = reg.add_symbol('bybit', 'BTCUSDT', 0.01)
+          assert flox.SLIPPAGE_NONE == 0
+          assert sid is not None
+          print('sdist install + import OK, symbol id:', sid)
+          "
+          rm -rf /tmp/sdist-check-venv
+
       - uses: actions/upload-artifact@v4
         with:
           name: sdist
