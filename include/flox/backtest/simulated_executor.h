@@ -203,6 +203,39 @@ class SimulatedExecutor : public IOrderExecutor
   // target). Bars must be in non-decreasing time order.
   void onBar(SymbolId symbol, Price high, Price low, Price close);
 
+  // Open-aware form. The open is the first price of the bar, so it is also the
+  // first price an order held back from the previous bar's callback is allowed
+  // to trade at: this overload moves the market to the open, releases the held
+  // orders of `symbol` there, and only then walks low -> high -> close.
+  // Bar-driven runs should prefer it -- the high/low/close form carries no
+  // open, so it leaves held orders waiting for the next call that does.
+  void onBar(SymbolId symbol, Price open, Price high, Price low, Price close);
+
+  // Bar-callback window. A bar reaches the strategy only after the simulator
+  // has walked it, so open, high, low and close are all in the market state by
+  // the time the callback runs. Matching an order submitted from there is
+  // look-ahead: it prints at a price that exists only because the bar has
+  // already happened. While the window is open every arriving order is held
+  // instead of submitted, and the next bar's open releases it. The depth is
+  // counted so a re-entrant callback cannot close a window it did not open.
+  void beginBarCallbackWindow() noexcept { ++_barCallbackDepth; }
+  void endBarCallbackWindow() noexcept
+  {
+    if (_barCallbackDepth > 0)
+    {
+      --_barCallbackDepth;
+    }
+  }
+  bool barCallbackWindowOpen() const noexcept { return _barCallbackDepth > 0; }
+  // Orders still held, over every symbol. Orders whose symbol never gets
+  // another bar stay held to the end of the run: they never reached the venue,
+  // so they neither fill nor cancel.
+  size_t heldOrderCount() const noexcept { return _heldBarOrders.size(); }
+  // Submit everything held for `symbol` into the current market state. Called
+  // from the open step of that symbol's next bar; a no-op while a window is
+  // open.
+  void releaseHeldOrders(SymbolId symbol);
+
   const std::vector<Fill>& fills() const { return _fills; }
   std::vector<Fill> extractFills() { return std::move(_fills); }
   const std::vector<Order>& conditionalOrders() const { return _conditional_orders; }
@@ -319,7 +352,14 @@ class SimulatedExecutor : public IOrderExecutor
   // alongside the ack finalizers from onBookUpdate / onTrade so the
   // expiry fires deterministically at the next event boundary.
   void processExpiredOrders();
+  // Moves bid = ask = last to `price` without running a matching pass. The bar
+  // open needs the state in place before the held orders are released, so that
+  // they are matched at the open and not at the previous bar's close.
+  void setBarMarketState(SymbolId symbol, Price price);
   void stepBarPrice(SymbolId symbol, Price price);
+  // Shared prologue of every onBar overload: runs the outage state machine and
+  // says whether the venue is up enough to take the bar at all.
+  bool barFeedAllowed();
 
   // reduce_only enforcement: simulator-side net position per symbol,
   // updated in executeFill. A reduce-only submit that would open or
@@ -342,6 +382,11 @@ class SimulatedExecutor : public IOrderExecutor
 
   std::array<MarketState, kMaxSymbols> _marketStatesFlat{};
   std::vector<std::pair<SymbolId, MarketState>> _marketStatesOverflow;
+
+  // Orders submitted while a bar-callback window was open, in arrival order,
+  // waiting for their symbol's next bar open.
+  std::vector<Order> _heldBarOrders;
+  size_t _barCallbackDepth{0};
 
   // Slippage config: default + per-symbol overrides
   std::array<SlippageProfile, kMaxSymbols> _slippageFlat{};

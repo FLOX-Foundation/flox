@@ -316,6 +316,16 @@ int64_t SimulatedExecutor::applySlippage(int64_t priceRaw, Side side, SymbolId s
 
 void SimulatedExecutor::submitOrder(const Order& order)
 {
+  if (_barCallbackDepth > 0)
+  {
+    // The strategy is inside a bar callback, so every price of that bar --
+    // open, high, low and close -- is already in the market state. Matching
+    // here would hand the order a price it only exists to react to. Hold it;
+    // the next bar's open releases it through this same path.
+    _heldBarOrders.push_back(order);
+    return;
+  }
+
   Order accepted = order;
   accepted.createdAt = fromUnixNs(_clock.nowNs());
 
@@ -703,6 +713,20 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
 
 void SimulatedExecutor::cancelOrder(OrderId orderId)
 {
+  // An order submitted and pulled inside the same bar callback never reached
+  // the venue. Drop it where it waits, or the next bar's open would release
+  // an order the strategy has already cancelled.
+  for (size_t i = 0; i < _heldBarOrders.size(); ++i)
+  {
+    if (_heldBarOrders[i].id == orderId)
+    {
+      const Order cancelled = _heldBarOrders[i];
+      _heldBarOrders.erase(_heldBarOrders.begin() + static_cast<std::ptrdiff_t>(i));
+      emitEvent(OrderEventStatus::CANCELED, cancelled);
+      return;
+    }
+  }
+
   if (_venue && !_venue->cancelsAllowed(_clock.nowNs().raw()))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::CANCEL,
@@ -815,6 +839,22 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
   // the executor and can add or remove orders while the sweep is still running.
   std::vector<Order> canceled;
   size_t i = 0;
+  // Orders still held for the next bar's open are part of "all orders" as far
+  // as the strategy is concerned -- it submitted them and never got them back.
+  while (i < _heldBarOrders.size())
+  {
+    if (_heldBarOrders[i].symbol == symbol)
+    {
+      canceled.push_back(_heldBarOrders[i]);
+      _heldBarOrders.erase(_heldBarOrders.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+    else
+    {
+      ++i;
+    }
+  }
+
+  i = 0;
   while (i < _pending_orders.size())
   {
     if (_pending_orders[i].symbol == symbol)
@@ -873,6 +913,28 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 
 void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
 {
+  // Replacing an order that is still held for the next bar's open rewrites it
+  // in place: the venue never saw the original, so there is nothing to cancel
+  // and the replacement inherits its place in the hold list.
+  for (Order& held : _heldBarOrders)
+  {
+    if (held.id == oldOrderId)
+    {
+      const Order oldOrder = held;
+      held = newOrder;
+      if (_callback)
+      {
+        OrderEvent ev;
+        ev.status = OrderEventStatus::REPLACED;
+        ev.order = oldOrder;
+        ev.newOrder = newOrder;
+        ev.exchangeTsNs = _clock.nowNs();
+        _callback(ev);
+      }
+      return;
+    }
+  }
+
   // Replace is a cancel + submit pair; if either action is currently
   // gated we have to buffer the whole request until both are open.
   const int64_t nowNs = _clock.nowNs().raw();
@@ -1309,50 +1371,41 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
   updateTrailingStops(symbol, price);
 }
 
+bool SimulatedExecutor::barFeedAllowed()
+{
+  if (!_venue)
+  {
+    return true;
+  }
+  const int64_t now = _clock.nowNs().raw();
+  const bool up = _venue->isUp(now);
+  if (!up && _venueWasUp)
+  {
+    applyOutagePolicy();
+    _venueWasUp = false;
+  }
+  else if (up && !_venueWasUp)
+  {
+    _venueWasUp = true;
+    flushOutageBuffer();
+  }
+  return up;
+}
+
 void SimulatedExecutor::onBar(SymbolId symbol, Price price)
 {
-  if (_venue)
+  if (!barFeedAllowed())
   {
-    const int64_t now = _clock.nowNs().raw();
-    const bool up = _venue->isUp(now);
-    if (!up && _venueWasUp)
-    {
-      applyOutagePolicy();
-      _venueWasUp = false;
-    }
-    else if (up && !_venueWasUp)
-    {
-      _venueWasUp = true;
-      flushOutageBuffer();
-    }
-    if (!up)
-    {
-      return;
-    }
+    return;
   }
   stepBarPrice(symbol, price);
 }
 
 void SimulatedExecutor::onBar(SymbolId symbol, Price high, Price low, Price close)
 {
-  if (_venue)
+  if (!barFeedAllowed())
   {
-    const int64_t now = _clock.nowNs().raw();
-    const bool up = _venue->isUp(now);
-    if (!up && _venueWasUp)
-    {
-      applyOutagePolicy();
-      _venueWasUp = false;
-    }
-    else if (up && !_venueWasUp)
-    {
-      _venueWasUp = true;
-      flushOutageBuffer();
-    }
-    if (!up)
-    {
-      return;
-    }
+    return;
   }
   // low first (a long's protective stop is tested before its target), then the
   // opposite extreme, then settle at close. Each step runs the full matching
@@ -1362,7 +1415,56 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price high, Price low, Price clos
   stepBarPrice(symbol, close);
 }
 
-void SimulatedExecutor::stepBarPrice(SymbolId symbol, Price price)
+void SimulatedExecutor::onBar(SymbolId symbol, Price open, Price high, Price low,
+                              Price close)
+{
+  if (!barFeedAllowed())
+  {
+    return;
+  }
+  // The open is in the market state before the held orders are released, so an
+  // order the previous bar's callback produced trades at this open -- the
+  // first price that exists after the strategy could have decided to send it.
+  setBarMarketState(symbol, open);
+  releaseHeldOrders(symbol);
+  stepBarPrice(symbol, open);
+  stepBarPrice(symbol, low);
+  stepBarPrice(symbol, high);
+  stepBarPrice(symbol, close);
+}
+
+void SimulatedExecutor::releaseHeldOrders(SymbolId symbol)
+{
+  if (_heldBarOrders.empty() || _barCallbackDepth > 0)
+  {
+    return;
+  }
+  // Submitting runs order-event callbacks, which can submit or cancel more
+  // orders. Lift this symbol's orders out of the hold list first so the list
+  // stays consistent whatever the callbacks do with it.
+  std::vector<Order> released;
+  for (size_t i = 0; i < _heldBarOrders.size();)
+  {
+    if (_heldBarOrders[i].symbol == symbol)
+    {
+      released.push_back(std::move(_heldBarOrders[i]));
+      _heldBarOrders.erase(_heldBarOrders.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+    else
+    {
+      ++i;
+    }
+  }
+  for (const Order& order : released)
+  {
+    // Full submit path: the order reaches the venue now, so rate limits,
+    // reduce-only and self-trade prevention are all evaluated against the
+    // state at the open rather than the state the strategy saw.
+    submitOrder(order);
+  }
+}
+
+void SimulatedExecutor::setBarMarketState(SymbolId symbol, Price price)
 {
   MarketState& state = getMarketState(symbol);
   const int64_t priceRaw = price.raw();
@@ -1372,6 +1474,12 @@ void SimulatedExecutor::stepBarPrice(SymbolId symbol, Price price)
   state.hasBid = true;
   state.hasAsk = true;
   state.hasTrade = true;
+}
+
+void SimulatedExecutor::stepBarPrice(SymbolId symbol, Price price)
+{
+  setBarMarketState(symbol, price);
+  MarketState& state = getMarketState(symbol);
   finalizePendingSubmissions();
   finalizePendingCancels();
   finalizePendingReplaces();

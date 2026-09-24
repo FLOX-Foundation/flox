@@ -219,9 +219,14 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
     ++_eventCount;
 
     // Feed the bar's full range so resting stops/take-profits match against the
-    // intrabar high/low, not just the close.
-    sim().onBar(ev.symbol, ev.bar.high, ev.bar.low, ev.bar.close);
+    // intrabar high/low, not just the close. The open leads: it is where the
+    // orders held back from the previous bar's callback are matched.
+    sim().onBar(ev.symbol, ev.bar.open, ev.bar.high, ev.bar.low, ev.bar.close);
 
+    // The strategy is shown a bar the simulator has already walked, so every
+    // price it can react to is in the market state. Anything it submits from
+    // here is held until the next bar for that symbol opens.
+    sim().beginBarCallbackWindow();
     if (_strategy)
     {
       _strategy->onBar(ev);
@@ -230,6 +235,7 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
     {
       sub->onBar(ev);
     }
+    sim().endBarCallbackWindow();
   }
 
   if (_strategy)
