@@ -1,6 +1,6 @@
 # OrderTracker
 
-`OrderTracker` is a thread-safe container for tracking order state throughout the order lifecycle. It provides mutex-protected access to order status, fills, and exchange metadata with unlimited capacity.
+`OrderTracker` is a thread-safe container for tracking order state throughout the order lifecycle. It provides mutex-protected access to order status, fills, and exchange metadata, bounded by a configurable capacity.
 
 ```cpp
 struct OrderState {
@@ -17,7 +17,10 @@ struct OrderState {
 
 class OrderTracker {
 public:
-  OrderTracker() = default;
+  OrderTracker();                          // capacity = config::ORDER_TRACKER_CAPACITY
+  explicit OrderTracker(size_t capacity);
+
+  size_t capacity() const noexcept;
 
   bool onSubmitted(const Order& order, std::string_view exchangeOrderId,
                    std::string_view clientOrderId = "");
@@ -50,19 +53,20 @@ public:
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `onSubmitted(order, exchangeId, clientId)` | `bool` | Record new order. Returns `false` if OrderId already exists. |
+| `onSubmitted(order, exchangeId, clientId)` | `bool` | Record new order. Returns `false` if OrderId already exists, or if the tracker is full of live orders. |
 | `onFilled(id, fill)` | `bool` | Update filled quantity. Returns `false` if order not found or terminal. |
 | `onPendingCancel(id)` | `bool` | Mark as pending cancel. Returns `false` if order not found or terminal. |
 | `onCanceled(id)` | `bool` | Mark as canceled. Returns `false` if already terminal (safe double-cancel). |
 | `onRejected(id, reason)` | `bool` | Mark as rejected. Returns `false` if already terminal. |
-| `onReplaced(oldId, newOrder, ...)` | `bool` | Handle order amendment. Marks old as REPLACED, inserts new. |
+| `onReplaced(oldId, newOrder, ...)` | `bool` | Handle order amendment. Marks old as REPLACED (terminal), inserts new. Returns `false` if the tracker is full of live orders. |
 | `get(id)` | `optional<OrderState>` | Retrieve order state copy (nullopt if not found). |
 | `exists(id)` | `bool` | Check if order exists. |
 | `isActive(id)` | `bool` | Check if order exists and is not terminal. |
 | `getStatus(id)` | `optional<Status>` | Get just the status without copying full state. |
 | `activeOrderCount()` | `size_t` | Count of non-terminal orders. |
 | `totalOrderCount()` | `size_t` | Total orders in tracker. |
-| `pruneTerminal()` | `void` | Remove all terminal orders to free memory. |
+| `pruneTerminal()` | `void` | Remove all terminal orders to free memory. Also called by the tracker itself when an insert hits the capacity bound. |
+| `capacity()` | `size_t` | Maximum number of entries held. |
 
 ## OrderState Fields
 
@@ -84,6 +88,7 @@ An order is considered terminal when status is one of:
 - `CANCELED` — canceled by user or system
 - `REJECTED` — rejected by exchange
 - `EXPIRED` — time-in-force expired
+- `REPLACED` — superseded by an amendment; `onReplaced()` writes it on the old order, which will never report again
 
 Terminal orders cannot be modified. Methods return `false` when attempting to modify terminal orders.
 
@@ -95,9 +100,19 @@ Terminal orders cannot be modified. Methods return `false` when attempting to mo
 
 ## Memory Management
 
-* Uses `std::unordered_map` — no fixed capacity limit.
-* Call `pruneTerminal()` periodically to remove completed orders.
-* Recommended: prune after each trading session or when memory is a concern.
+* Bounded: the tracker holds at most `capacity()` entries, defaulting to
+  `config::ORDER_TRACKER_CAPACITY` (4096, overridable through
+  `FLOX_DEFAULT_ORDER_TRACKER_CAPACITY`). The map is sized once at
+  construction, so the bound is a memory bound too.
+* When an insert finds the map full, terminal entries are dropped to make
+  room. History is what gets sacrificed — a live order is never evicted.
+* If the map is full of *live* orders, the insert is refused:
+  `onSubmitted()` / `onReplaced()` return `false` and log an error. Silently
+  dropping a live order would leave a working order on the venue that the
+  process no longer knows about, which is strictly worse than refusing the
+  submit where the caller can still react.
+* `pruneTerminal()` remains callable directly to reclaim the memory sooner,
+  for example at the end of a trading session.
 
 ## Example Usage
 

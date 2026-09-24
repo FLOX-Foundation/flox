@@ -106,7 +106,8 @@ namespace config
   inline constexpr int RISK_PRIORITY = 75;
   inline constexpr int GENERAL_PRIORITY = 70;
 
-  // Order tracker capacity
+  // Order tracker capacity: the default bound of a default-constructed
+  // OrderTracker. Over it, terminal entries are recycled.
   inline constexpr int ORDER_TRACKER_CAPACITY = 4096;
 }
 ```
