@@ -65,6 +65,12 @@ namespace detail
 // would otherwise report itself forever.
 inline thread_local bool g_reportingCallbackError = false;
 
+// Set when the report in flight could not be delivered because the log
+// sink itself raised. The outer report reads it and falls back to
+// stderr, so a broken sink costs the message its destination, not its
+// existence.
+inline thread_local bool g_logSinkRaised = false;
+
 struct ReportingScope
 {
   ReportingScope() { g_reportingCallbackError = true; }
@@ -73,30 +79,38 @@ struct ReportingScope
 
 inline void reportCallbackError(const char* source, const std::string& what)
 {
+  const std::string text =
+      std::string("flox: ") + (source ? source : "a Python callback") + " raised: " + what;
+
   if (g_reportingCallbackError)
   {
-    // The log sink itself raised. Stderr is the only place left.
-    PySys_WriteStderr("flox: the log callback raised while reporting an error from %s\n",
-                      source ? source : "a Python callback");
+    // The log sink raised while carrying an earlier report. Stderr is
+    // the only place left, for this message and for the one underneath.
+    g_logSinkRaised = true;
+    PySys_WriteStderr("%s\n", text.c_str());
     return;
   }
 
   ReportingScope scope;
-  std::string text = std::string("flox: ") + (source ? source : "a Python callback") +
-                     " raised: " + what;
+  bool delivered = false;
   try
   {
     if (flox::isLoggingEnabled())
     {
+      g_logSinkRaised = false;
       flox::LogStream(flox::LogLevel::Error) << text;
-      return;
+      delivered = !g_logSinkRaised;
     }
   }
   catch (...)
   {
-    // Fall through to stderr: losing the description is not an option.
+    delivered = false;
   }
-  PySys_WriteStderr("%s\n", text.c_str());
+  if (!delivered)
+  {
+    // Losing the description is not an option.
+    PySys_WriteStderr("%s\n", text.c_str());
+  }
 }
 
 }  // namespace detail
