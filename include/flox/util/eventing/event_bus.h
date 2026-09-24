@@ -125,7 +125,9 @@ class EventBus : public ISubsystem
   // it delivered anything. This is what lets something other than a dedicated
   // thread drive a consumer -- see pollConsumer().
   using ConsumerStepFn = bool (*)(EventBus*, uint32_t);
-  using ConsumerDrainFn = void (*)(EventBus*, uint32_t);
+  // The drain takes the last sequence the run ever handed out, because after
+  // a stop the ring may hold a gap: see drainSlot.
+  using ConsumerDrainFn = void (*)(EventBus*, uint32_t, int64_t);
 
   struct ConsumerSlot
   {
@@ -469,7 +471,9 @@ class EventBus : public ISubsystem
     {
       return;
     }
-    _consumers[i].drainer(this, i);
+    // A running bus has no resolved gaps: every sequence below the head is
+    // either stamped or still being written by a publisher that owns it.
+    _consumers[i].drainer(this, i, std::numeric_limits<int64_t>::min());
   }
 
   // Is there anything published for consumer i right now? Exactly the look
@@ -547,6 +551,20 @@ class EventBus : public ISubsystem
     {
       return;
     }
+
+    // The run's claim accounting starts here: stop() counts this run's
+    // resolutions, and the counters themselves are cumulative over the life of
+    // the bus (stats().published is one of them). Nobody is publishing -- the
+    // bus is stopped and the previous stop() waited its publishers out -- so
+    // the baseline and the reopening below have the ring to themselves.
+    // Release, and acquired by every reader of the baseline: a stop() that
+    // read a previous run's baseline would count this run's claims as already
+    // resolved and walk into the teardown early.
+    _claimBase.store(_publishCount.load(std::memory_order_relaxed) +
+                         _abandonedClaims.load(std::memory_order_relaxed),
+                     std::memory_order_release);
+    _sealed.store(false, std::memory_order_relaxed);
+    _next.store(-1, std::memory_order_release);
 
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
 
@@ -686,6 +704,101 @@ class EventBus : public ISubsystem
   void stop() override { doStop(/*joinMonitor=*/true); }
 
  private:
+  // Where the sequence line goes when the bus stops. Deep enough in the
+  // negatives that no run of refused claims can walk it back into the valid
+  // range: claimBlocking and publishBatch put back what they took, and what is
+  // left is a transient +1 per publisher in flight.
+  static constexpr int64_t kSequenceLineClosed = std::numeric_limits<int64_t>::min() / 2;
+
+  // A claim that will never be stamped. Every sequence handed out under a
+  // run's sequence line is resolved exactly once -- published, or given up on
+  // here -- because that is what lets stop() count publishers out of the ring
+  // without the publish path counting itself in. See awaitPublishersQuiescent.
+  void abandonClaims(size_t count) noexcept
+  {
+    _abandonedClaims.fetch_add(static_cast<uint64_t>(count), std::memory_order_release);
+  }
+
+  // The resolution a publisher owes for the sequence it holds, taken by the
+  // destructor if it leaves through an exception from the event's constructor.
+  // One predictable branch on the way out of publish(); the store it makes on
+  // the normal path is the one the publish path already made.
+  struct ClaimGuard
+  {
+    EventBus* bus;
+    size_t count;
+
+    ~ClaimGuard()
+    {
+      if (count != 0)
+      {
+        bus->abandonClaims(count);
+      }
+    }
+
+    void resolvePublished() noexcept
+    {
+      bus->_publishCount.fetch_add(static_cast<uint64_t>(count), std::memory_order_release);
+      count = 0;
+    }
+  };
+
+  // Close the sequence line and record what the run handed out.
+  //
+  // A publisher reads _running once, on the way in, and nothing stops it from
+  // being preempted between that read and its claim -- so a flag cannot keep a
+  // late publisher out of a ring that is being torn down, however carefully it
+  // is ordered. The claim itself can: one exchange puts the sequence line out
+  // of reach, and from then on every fetch_add on it comes back negative and
+  // the publisher walks away without having touched a slot. It is the
+  // modification order of _next that splits publishers into the ones already
+  // inside the ring and the ones that never will be, and the exchange returns
+  // the boundary: every claim this run ever made is at or below it.
+  void sealSequenceLine() noexcept
+  {
+    const int64_t lastClaim = _next.exchange(kSequenceLineClosed, std::memory_order_acq_rel);
+    _runLastClaim.store(lastClaim, std::memory_order_relaxed);
+    _sealed.store(true, std::memory_order_release);
+  }
+
+  uint64_t resolvedClaims() const noexcept
+  {
+    const uint64_t published = _publishCount.load(std::memory_order_acquire);
+    const uint64_t abandoned = _abandonedClaims.load(std::memory_order_acquire);
+    return published + abandoned - _claimBase.load(std::memory_order_acquire);
+  }
+
+  // Wait until nobody is inside the ring any more.
+  //
+  // The sequence line is sealed above, so the run's claims are exactly
+  // lastClaim + 1 of them, and each is resolved once -- by the publish that
+  // stamped it or by the publisher that gave up on it. When that many
+  // resolutions have been counted, every publisher that ever held a sequence
+  // has left the slots alone for good, and the acquire on the counters carries
+  // its writes with it. Nothing new was added to the publish path to make this
+  // work: the successful resolution is the counter publish() already bumped.
+  //
+  // This never waits on a publisher that is waiting on us. _running is already
+  // false when it is called, and both gates re-read it on every turn, so a
+  // publisher parked at the wrap gate or the reclaim fence gives up rather
+  // than waiting for progress that stop() is no longer going to produce.
+  void awaitPublishersQuiescent()
+  {
+    BusyBackoff bo;
+    while (!_sealed.load(std::memory_order_acquire))
+    {
+      bo.pause();
+    }
+    const int64_t lastClaim = _runLastClaim.load(std::memory_order_acquire);
+    const uint64_t claims =
+        lastClaim >= 0 ? static_cast<uint64_t>(lastClaim) + 1 : uint64_t{0};
+    BusyBackoff resolveBo;
+    while (resolvedClaims() < claims)
+    {
+      resolveBo.pause();
+    }
+  }
+
   // joinMonitor=false is the path taken when checkHealth() (running ON the
   // monitor thread) trips DeadConsumerPolicy::STOP_BUS: resetting the monitor
   // jthread from within its own body would join self and terminate. The
@@ -703,6 +816,11 @@ class EventBus : public ISubsystem
       }
       return;
     }
+
+    // Before anything is joined: a consumer draining on its way out waits for
+    // the same seal, and the sooner it is in place the less either of them
+    // spins.
+    sealSequenceLine();
 
     if (joinMonitor)
     {
@@ -726,6 +844,11 @@ class EventBus : public ISubsystem
       _wakeSet->wake();
     }
 
+    // Everything below rewrites the ring, and a publisher that claimed its
+    // sequence before the seal may still be constructing into a slot the
+    // teardown is about to destroy.
+    awaitPublishersQuiescent();
+
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -742,7 +865,7 @@ class EventBus : public ISubsystem
       {
         if (!_consumers[i].failed.load(std::memory_order_relaxed))
         {
-          _consumers[i].drainer(this, i);
+          _consumers[i].drainer(this, i, _runLastClaim.load(std::memory_order_relaxed));
         }
       }
     }
@@ -757,16 +880,17 @@ class EventBus : public ISubsystem
     }
     _cachedMinConsumed.store(-1, std::memory_order_relaxed);
 
-    // The ring is empty again, so the sequence line goes back to where a fresh
-    // bus starts. A consumer thread always resumes from sequence 0; leaving
-    // the producer counter and the gating lines at the previous run's
+    // The gating lines go back to where a fresh bus starts. A consumer thread
+    // always resumes from sequence 0; leaving them at the previous run's
     // positions describes a ring that no longer exists, and start() after
     // stop() -- the other half of the ISubsystem contract, taken on every
-    // reconnect -- then accepts publishes, hands back valid sequence numbers
-    // and delivers nothing at all. Consumer threads are joined above, so this
-    // races nothing but a publish concurrent with the stop, which is already
-    // unordered against it.
-    _next.store(-1, std::memory_order_relaxed);
+    // reconnect -- would then accept publishes, hand back valid sequence
+    // numbers and deliver nothing at all. The sequence line itself is NOT
+    // reopened here: it stays closed until start() reopens it, because a
+    // publisher preempted between reading _running and taking its claim is
+    // still out there and the closed line is the only thing that turns it
+    // away. Consumer threads are joined above and the publishers have been
+    // waited out, so this races nobody.
     _cachedMin.store(-1, std::memory_order_relaxed);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -815,8 +939,15 @@ class EventBus : public ISubsystem
     const int64_t firstSeq = lastSeq - static_cast<int64_t>(count) + 1;
     if (firstSeq < 0)
     {
+      // The sequence line is closed (or, never seen, overflowed): no claim was
+      // made, so put back what the reservation took and leave without touching
+      // a slot.
+      _next.fetch_sub(static_cast<int64_t>(count), std::memory_order_acq_rel);
       return -1;
     }
+
+    // The range is ours from here, and stop() is counting it.
+    ClaimGuard claim{this, count};
 
     // Wrap gating for the whole range (required consumers).
     const int64_t wrap = lastSeq - static_cast<int64_t>(CapacityPow2);
@@ -912,11 +1043,13 @@ class EventBus : public ISubsystem
       }
     }
 
-    _publishCount.fetch_add(count, std::memory_order_relaxed);
     if (_wakeOnPublish)
     {
       wakeWaiters();
     }
+    // Last, so that a stop() waiting the ring out also waits out the wake-up
+    // this publisher is making through the bus's own condition variable.
+    claim.resolvePublished();
     return lastSeq;
   }
 
@@ -1100,9 +1233,9 @@ class EventBus : public ISubsystem
   }
 
   template <typename L>
-  static void drainConsumerSlot(EventBus* self, uint32_t i)
+  static void drainConsumerSlot(EventBus* self, uint32_t i, int64_t resolvedThrough)
   {
-    self->drainSlot<L>(i, static_cast<L*>(self->_consumers[i].listener));
+    self->drainSlot<L>(i, static_cast<L*>(self->_consumers[i].listener), resolvedThrough);
   }
 
   // The whole consume loop, monomorphic in the subscriber type. For
@@ -1305,8 +1438,11 @@ class EventBus : public ISubsystem
   // Taken on the way down when the bus was told to drain on stop: the events
   // are already in the ring and the producer is gone, so the only question is
   // whether the listener gets them.
+  // resolvedThrough: every sequence at or below it has been resolved -- either
+  // stamped into the ring or given up on -- so an unstamped one is a gap the
+  // drain steps over rather than the head of the ring.
   template <typename L>
-  void drainSlot(uint32_t i, L* l)
+  void drainSlot(uint32_t i, L* l, int64_t resolvedThrough)
   {
     ConsumerSlot& slot = _consumers[i];
     const bool required = slot.required;
@@ -1334,7 +1470,20 @@ class EventBus : public ISubsystem
       const size_t idx = size_t(want) & Mask;
       if (_published[idx].load(std::memory_order_acquire) != want)
       {
-        break;
+        if (want > resolvedThrough)
+        {
+          break;  // the ring ends here
+        }
+        // A sequence claimed and then given up on when the bus stopped: it
+        // will never be stamped. Stopping at it would strand every event
+        // another publisher had already put behind it, and those were accepted
+        // publishes. The slot holds an older event this consumer has already
+        // been given -- it could not have reached `want` otherwise -- so there
+        // is nothing here to deliver, only a number to step over.
+        slot.seq.store(want, std::memory_order_release);
+        _gating[i].v.store(required ? want : INT64_MAX, std::memory_order_release);
+        seq = want;
+        continue;
       }
       if (_constructed[idx].load(std::memory_order_acquire) == 1)
       {
@@ -1403,7 +1552,14 @@ class EventBus : public ISubsystem
     }
     if (_drainOnStop)
     {
-      drainSlot<L>(i, l);
+      // Everything published before the bus stopped is owed to this listener,
+      // and a publisher that was inside the ring when stop() was called is
+      // still writing some of it. Waiting for the ring to go quiet before the
+      // drain is what makes "publish() accepted it" mean "the listener got
+      // it": the drain would otherwise stop at the first slot that publisher
+      // had not stamped yet and call the rest of the run absent.
+      awaitPublishersQuiescent();
+      drainSlot<L>(i, l, _runLastClaim.load(std::memory_order_acquire));
     }
   }
 
@@ -1430,6 +1586,11 @@ class EventBus : public ISubsystem
     {
       if (!_running.load(std::memory_order_relaxed))
       {
+        // The gate will not open again: nothing is going to consume past this
+        // point. The sequence is given up on rather than written, because the
+        // slot it names still holds an event a consumer has not read -- that
+        // is why the gate was closed -- and stop() is what destroys it.
+        abandonClaims(1);
         return false;
       }
       cachedMin = minGating();
@@ -1454,6 +1615,7 @@ class EventBus : public ISubsystem
       {
         if (!_running.load(std::memory_order_relaxed))
         {
+          abandonClaims(1);
           return false;
         }
         reclaimBo.pause();
@@ -1574,6 +1736,11 @@ class EventBus : public ISubsystem
 
     const size_t idx = size_t(seq) & Mask;
 
+    // The sequence is ours from here: it is at or below the boundary a stop()
+    // seals, so stop() waits for the resolution this guard owes before it
+    // destroys a single slot.
+    ClaimGuard claim{this, 1};
+
     // Destroy old event if present - only if not already reclaimed
     // The _constructed flag ensures only one thread destroys
     if (_constructed[idx].exchange(0, std::memory_order_acq_rel))
@@ -1596,11 +1763,13 @@ class EventBus : public ISubsystem
 
     _published[idx].store(seq, std::memory_order_release);
 
-    _publishCount.fetch_add(1, std::memory_order_relaxed);
     if (_wakeOnPublish)
     {
       wakeWaiters();
     }
+    // Last, so that a stop() waiting the ring out also waits out the wake-up
+    // this publisher is making through the bus's own condition variable.
+    claim.resolvePublished();
     return {PublishResult::SUCCESS, seq};
   }
 
@@ -1749,6 +1918,16 @@ class EventBus : public ISubsystem
   std::mutex _parkMx;
   std::condition_variable _parkCv;
   BackoffMode _backoffMode{config::defaultBackoffMode};
+
+  // Claim accounting. The run's claims are known exactly from the sequence
+  // line stop() seals; these count them back out, so that stop() can tell an
+  // empty ring from one a publisher is still inside without the publish path
+  // announcing itself on the way in. _publishCount doubles as the successful
+  // half -- it is a counter the publish path already kept.
+  alignas(64) std::atomic<uint64_t> _abandonedClaims{0};
+  alignas(64) std::atomic<uint64_t> _claimBase{0};
+  alignas(64) std::atomic<int64_t> _runLastClaim{-1};
+  alignas(64) std::atomic<bool> _sealed{false};
 
   // Monitoring counters (relaxed ordering -- advisory only)
   alignas(64) std::atomic<uint64_t> _publishCount{0};
