@@ -119,16 +119,36 @@ void BacktestRunner::addExecutionListener(IOrderExecutionListener* listener)
 
 // ========== Non-interactive mode ==========
 
-BacktestResult BacktestRunner::run(replay::IMultiSegmentReader& reader)
+// Everything a finished run leaves behind. Without it a second run reports the
+// sum of both: cumulative fills, a position carried over from the first pass,
+// and a clock that never rewinds, so the equity curve still starts at the
+// first run's timestamps.
+void BacktestRunner::resetRunState()
 {
-  _interactiveMode = false;
-  _running.store(true, std::memory_order_release);
-  _paused.store(false, std::memory_order_release);
-  _finished.store(false, std::memory_order_release);
+  sim().reset();
+  _positionTracker.reset();
+  _clock.reset();
+  if (_venueClock != nullptr)
+  {
+    _venueClock->reset();
+  }
+  _nextOrderId = 1;
   _eventCount = 0;
   _tradeCount = 0;
   _bookUpdateCount = 0;
   _signalCount = 0;
+  _skippedRecordCount = 0;
+  _lastEventType.reset();
+  _signalEmitted = false;
+}
+
+BacktestResult BacktestRunner::run(replay::IMultiSegmentReader& reader)
+{
+  resetRunState();
+  _interactiveMode = false;
+  _running.store(true, std::memory_order_release);
+  _paused.store(false, std::memory_order_release);
+  _finished.store(false, std::memory_order_release);
 
   if (_strategy)
   {
@@ -199,14 +219,11 @@ BacktestResult BacktestRunner::runTapes(
 
 BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
 {
+  resetRunState();
   _interactiveMode = false;
   _running.store(true, std::memory_order_release);
   _paused.store(false, std::memory_order_release);
   _finished.store(false, std::memory_order_release);
-  _eventCount = 0;
-  _tradeCount = 0;
-  _bookUpdateCount = 0;
-  _signalCount = 0;
 
   if (_strategy)
   {
@@ -253,14 +270,11 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
 
 void BacktestRunner::start(replay::IMultiSegmentReader& reader)
 {
+  resetRunState();
   _interactiveMode = true;
   _running.store(true, std::memory_order_release);
   _paused.store(true, std::memory_order_release);
   _finished.store(false, std::memory_order_release);
-  _eventCount = 0;
-  _tradeCount = 0;
-  _bookUpdateCount = 0;
-  _signalCount = 0;
 
   if (_strategy)
   {

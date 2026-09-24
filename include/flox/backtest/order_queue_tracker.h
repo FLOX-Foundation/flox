@@ -141,6 +141,11 @@ class OrderQueueTracker
   // Drop levels that hold no orders. Cheap to call; safe to call repeatedly.
   void compact();
 
+  // Forget every level and every resting order, keeping the configured model
+  // and its tuning. Used when a run ends and the next one must not inherit the
+  // previous run's queue.
+  void clear() { _levels.clear(); }
+
   // A price level changed quantity. Shrinks `aheadRemaining` proportionally
   // when qty decreases (trade-ahead heuristic). Growth adds only behind us.
   void onLevelUpdate(SymbolId symbol, Side side, Price price, Quantity newQty);

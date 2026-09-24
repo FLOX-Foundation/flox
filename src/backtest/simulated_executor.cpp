@@ -49,9 +49,48 @@ void SimulatedExecutor::applyConfig(const BacktestConfig& config)
   setQueueModel(config.queueModel, config.queueDepth);
   _queuePosMinFraction = config.queuePositionMinChangeFraction;
   setCancelAckLatency(config.cancelAckLatencyNs, config.cancelAckJitterNs);
+  _cancelAckSeed = config.cancelAckSeed;
   _cancelAckRng.seed(config.cancelAckSeed);
   setReplaceAckLatency(config.replaceAckLatencyNs, config.replaceAckJitterNs);
   setSubmitAckLatency(config.submitAckLatencyNs, config.submitAckJitterNs);
+}
+
+void SimulatedExecutor::reset()
+{
+  _pending_orders.clear();
+  _conditional_orders.clear();
+  _heldBarOrders.clear();
+  _barCallbackDepth = 0;
+  _fills.clear();
+  _trailing_states.clear();
+  _fillScanIds.clear();
+  _netPositionRaw.clear();
+  _ladders.clear();
+  _marketStatesFlat.fill(MarketState{});
+  _marketStatesOverflow.clear();
+  _pendingCancels.clear();
+  _pendingReplaces.clear();
+  _pendingSubmissions.clear();
+  _outageBuffer.clear();
+  _venueWasUp = true;
+  _orderTimestamps.clear();
+  _lastEmittedQueueAheadRaw.clear();
+  _lastEmittedMarketPosition.clear();
+  _brackets.clear();
+  _legToBracket.clear();
+  _bracketTemplates.clear();
+  _iceberg.clear();
+  _queueFillBuffer.clear();
+  _queueSnapshotBuffer.clear();
+  _queueTracker.clear();
+  _compositeLogic = CompositeOrderLogic{0};
+  _compositeLogic.setExecutor(this);
+  _cancelAckRng.seed(_cancelAckSeed);
+  _icebergJitterRng.seed(_icebergJitterSeed);
+  if (_hasRateLimit)
+  {
+    _rateLimit = _rateLimitAsInstalled;
+  }
 }
 
 void SimulatedExecutor::setDefaultSlippage(const SlippageProfile& profile)
@@ -198,6 +237,7 @@ bool SimulatedExecutor::applyLatencyProfile(const char* name)
 
 void SimulatedExecutor::setRateLimitPolicy(const RateLimitPolicy& policy)
 {
+  _rateLimitAsInstalled = policy;
   _rateLimit = policy;
   _hasRateLimit = _rateLimit.bucketCount() > 0;
 }

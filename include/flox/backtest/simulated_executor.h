@@ -236,6 +236,16 @@ class SimulatedExecutor : public IOrderExecutor
   // open.
   void releaseHeldOrders(SymbolId symbol);
 
+  // Drop every trace of a finished run -- fills, live, held and conditional
+  // orders, queue positions, net positions, brackets, in-flight acks, the
+  // market state and the visible ladder -- while keeping the configuration the
+  // caller installed: slippage, queue model, latency distributions, rate
+  // limits, STP, callbacks and the attached venue-availability model. Seeded
+  // RNGs go back to their configured seeds, so a repeated run repeats. A
+  // runner calls this before each run, which is what makes a second run report
+  // that run instead of the sum of every run so far.
+  void reset();
+
   const std::vector<Fill>& fills() const { return _fills; }
   std::vector<Fill> extractFills() { return std::move(_fills); }
   const std::vector<Order>& conditionalOrders() const { return _conditional_orders; }
@@ -434,6 +444,11 @@ class SimulatedExecutor : public IOrderExecutor
   std::vector<std::pair<SymbolId, SlippageProfile>> _slippageOverflow;
   SlippageProfile _defaultSlippage{};
 
+  // Seeds as configured, kept so reset() can put the generators back where a
+  // fresh executor would have them.
+  uint64_t _cancelAckSeed{42};
+  uint64_t _icebergJitterSeed{0xC0FFEEC0FFEEULL};
+
   OrderQueueTracker _queueTracker;
   QueueModel _queueModel{};
   std::vector<std::pair<OrderId, Quantity>> _queueFillBuffer;  // reused scratch
@@ -483,6 +498,12 @@ class SimulatedExecutor : public IOrderExecutor
   LatencyDistribution _submitAckDist;
 
   RateLimitPolicy _rateLimit;
+  // The policy exactly as setRateLimitPolicy() installed it. reset() restores
+  // it: a policy's consumed-token log is timestamped, and a clock rewound to
+  // the start of the next run never expires entries the previous run wrote.
+  // Tuning applied through the mutable rateLimitPolicy() accessor after
+  // installation is not part of the snapshot and has to be reapplied.
+  RateLimitPolicy _rateLimitAsInstalled;
   bool _hasRateLimit{false};
 
   STPMode _stpMode{STPMode::None};
@@ -584,6 +605,7 @@ class SimulatedExecutor : public IOrderExecutor
   }
   void setIcebergJitterSeed(uint64_t seed) noexcept
   {
+    _icebergJitterSeed = seed;
     _icebergJitterRng.seed(seed);
   }
   // T041: queue priority on refresh.
