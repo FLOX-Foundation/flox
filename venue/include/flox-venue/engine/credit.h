@@ -147,7 +147,15 @@ class Credit
     // two are the same struct by the time they get here. See onNew, which
     // checks DenyNewOrder itself, gated on clOrdIdChecked (false only for a
     // genuine top-level NewOrder).
-    if (p.allowedTypes != 0 && (p.allowedTypes & (1u << static_cast<uint32_t>(o.type))) == 0)
+    // allowedTypes and allowedTif are 32-bit bitmaps indexed by the enum
+    // value, so a field carrying a value the enum does not name has no bit
+    // to test -- and shifting a 32-bit word by 32 or more is undefined, not
+    // merely a wrong answer. The refusal is the same either way: a profile
+    // that lists what it permits cannot have listed a value that does not
+    // exist. Checked here rather than left to validate(), because admission
+    // runs first and this is the shift.
+    if (p.allowedTypes != 0 &&
+        (!inRange(o.type) || (p.allowedTypes & (1u << static_cast<uint32_t>(o.type))) == 0))
     {
       return RejectReason::OrderTypeNotPermitted;
     }
@@ -174,7 +182,8 @@ class Credit
     {
       return RejectReason::RestingNotPermitted;
     }
-    if (p.allowedTif != 0 && (p.allowedTif & (1u << static_cast<uint32_t>(o.tif))) == 0)
+    if (p.allowedTif != 0 &&
+        (!inRange(o.tif) || (p.allowedTif & (1u << static_cast<uint32_t>(o.tif))) == 0))
     {
       return RejectReason::TimeInForceNotPermitted;
     }

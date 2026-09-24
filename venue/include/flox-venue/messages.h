@@ -42,6 +42,100 @@ enum class PegRef : uint8_t
   Mid,
 };
 
+// Which values of an order's enum-typed fields actually exist.
+//
+// Every one of them crosses the wire as a single byte, and a byte carries 256
+// values where these enums name at most eight. A decoder that casts the byte
+// straight into the enum hands the engine a value no branch there was written
+// for, and the engine has no way to tell it apart from one it chose itself: an
+// order type wider than the admission bitmap that indexes it, or a self-trade
+// mode the auction uncross cannot act on. Every decoder asks here before it
+// builds a command, so the answer to "does this value exist" is given once.
+//
+// Written as a switch rather than a range test on the last enumerator: a value
+// appended to one of these enums is refused until it is listed here, and that
+// is the safe direction to fail in -- a client gets a reject it can read
+// instead of reaching a branch nobody wrote for it.
+constexpr bool inRange(Side s) noexcept
+{
+  switch (s)
+  {
+    case Side::BUY:
+    case Side::SELL:
+      return true;
+  }
+  return false;
+}
+
+constexpr bool inRange(OrderType t) noexcept
+{
+  switch (t)
+  {
+    case OrderType::LIMIT:
+    case OrderType::MARKET:
+    case OrderType::STOP_MARKET:
+    case OrderType::STOP_LIMIT:
+    case OrderType::TAKE_PROFIT_MARKET:
+    case OrderType::TAKE_PROFIT_LIMIT:
+    case OrderType::TRAILING_STOP:
+    case OrderType::ICEBERG:
+      return true;
+  }
+  return false;
+}
+
+constexpr bool inRange(TimeInForce f) noexcept
+{
+  switch (f)
+  {
+    case TimeInForce::GTC:
+    case TimeInForce::IOC:
+    case TimeInForce::FOK:
+    case TimeInForce::GTD:
+    case TimeInForce::POST_ONLY:
+      return true;
+  }
+  return false;
+}
+
+constexpr bool inRange(STPMode m) noexcept
+{
+  switch (m)
+  {
+    case STPMode::None:
+    case STPMode::CancelNewest:
+    case STPMode::CancelOldest:
+    case STPMode::CancelBoth:
+    case STPMode::Decrement:
+      return true;
+  }
+  return false;
+}
+
+constexpr bool inRange(PegRef p) noexcept
+{
+  switch (p)
+  {
+    case PegRef::None:
+    case PegRef::Bid:
+    case PegRef::Ask:
+    case PegRef::Mid:
+      return true;
+  }
+  return false;
+}
+
+constexpr bool inRange(TriggerRef r) noexcept
+{
+  switch (r)
+  {
+    case TriggerRef::Last:
+    case TriggerRef::Mark:
+      return true;
+  }
+  return false;
+}
+
 struct NewOrder
 {
   OrderId id{};

@@ -290,20 +290,39 @@ class SbeOrderEntryCodec
     // Other InboundCommand alternatives are not part of the order-entry wire.
   }
 
+  // Schema: a message header followed by the template's root block. See
+  // decode(p, n, err) for what a frame has to satisfy; this overload discards
+  // the reason it was refused.
   static std::optional<InboundCommand> decode(const uint8_t* p, size_t n)
   {
+    const char* err = nullptr;
+    return decode(p, n, err);
+  }
+
+  // `err` names what was wrong with a frame this refused, and is null on
+  // success. A gateway answers a refused frame with a sequenced reject
+  // (RejectReason::MalformedMessage, see docs/venue/perimeter.md) and has
+  // nothing else to log: "the frame did not decode" is the same sentence for
+  // a truncated block and for a self-trade mode that does not exist, and the
+  // operator watching a counterparty send the second one needs to know which.
+  static std::optional<InboundCommand> decode(const uint8_t* p, size_t n, const char*& err)
+  {
+    err = nullptr;
     if (n < sbe::kHeaderSize)
     {
+      err = "frame shorter than the message header";
       return std::nullopt;
     }
     const sbe::Header h = sbe::readHeader(p);
     if (h.schemaId != kSchemaId)
     {
+      err = "foreign schema id";
       return std::nullopt;
     }
     if (n < sbe::kHeaderSize + h.blockLength)
     {
-      return std::nullopt;  // truncated root block
+      err = "truncated root block";
+      return std::nullopt;
     }
     const uint8_t* b = p + sbe::kHeaderSize;
 
@@ -313,6 +332,39 @@ class SbeOrderEntryCodec
       {
         if (h.blockLength < kBlockEnter)
         {
+          err = "EnterOrder block too short";
+          return std::nullopt;
+        }
+        // The enum bytes before anything is built out of them. A byte the
+        // enum does not name is not a command this venue can act on, and
+        // carrying it inward makes the engine answer for a value it never
+        // defined -- an order type past the width of the admission bitmap
+        // that indexes it, a self-trade mode the auction uncross cannot act
+        // on. Refused here, where the wire stops and the reason can still
+        // name the field.
+        if (!inRange(static_cast<Side>(b[12])))
+        {
+          err = "EnterOrder: side is not a value this schema defines";
+          return std::nullopt;
+        }
+        if (!inRange(static_cast<OrderType>(b[13])))
+        {
+          err = "EnterOrder: order type is not a value this schema defines";
+          return std::nullopt;
+        }
+        if (!inRange(static_cast<TimeInForce>(b[14])))
+        {
+          err = "EnterOrder: tif is not a value this schema defines";
+          return std::nullopt;
+        }
+        if (!inRange(static_cast<STPMode>(b[16])))
+        {
+          err = "EnterOrder: stp mode is not a value this schema defines";
+          return std::nullopt;
+        }
+        if (!inRange(static_cast<PegRef>(b[75])))
+        {
+          err = "EnterOrder: peg reference is not a value this schema defines";
           return std::nullopt;
         }
         NewOrder o;
@@ -342,6 +394,7 @@ class SbeOrderEntryCodec
       {
         if (h.blockLength < kBlockCancel)
         {
+          err = "CancelOrder block too short";
           return std::nullopt;
         }
         CancelOrder c;
@@ -354,6 +407,7 @@ class SbeOrderEntryCodec
       {
         if (h.blockLength < kBlockReplace)
         {
+          err = "ReplaceOrder block too short";
           return std::nullopt;
         }
         ModifyOrder m;
@@ -368,6 +422,20 @@ class SbeOrderEntryCodec
       {
         if (h.blockLength < kBlockQuoteLadder)
         {
+          err = "QuoteLadder block too short";
+          return std::nullopt;
+        }
+        // Same two enums an order carries, and one ladder becomes up to
+        // kQuoteLadderLevels orders on each side: an unchecked byte here is
+        // sixteen orders wrong instead of one.
+        if (!inRange(static_cast<STPMode>(b[53])))
+        {
+          err = "QuoteLadder: stp mode is not a value this schema defines";
+          return std::nullopt;
+        }
+        if (!inRange(static_cast<TimeInForce>(b[57])))
+        {
+          err = "QuoteLadder: tif is not a value this schema defines";
           return std::nullopt;
         }
         venue::QuoteLadder l;
@@ -402,6 +470,7 @@ class SbeOrderEntryCodec
         break;  // session verbs (ResendRequest / AccountSnapshotRequest) are
                 // handled by the gateway delivery layer, never decoded here
     }
+    err = "template is not an order-entry command";
     return std::nullopt;  // unknown / outbound template
   }
 

@@ -8,6 +8,8 @@
  */
 #include "flox-venue/fix_codec.h"
 #include "flox-venue/market_data.h"
+#include "flox-venue/matching_book.h"
+#include "flox-venue/matching_engine.h"
 #include "flox-venue/rest_json.h"
 #include "flox-venue/sbe_md_codec.h"
 #include "flox-venue/sbe_order_entry_codec.h"
@@ -19,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <variant>
 #include <vector>
 
 using namespace flox;
@@ -67,41 +70,161 @@ NewOrder sampleOrder()
   return o;
 }
 
+QuoteLadder sampleLadder()
+{
+  QuoteLadder l;
+  l.accountId = 7;
+  l.symbol = 1;
+  l.bidIdBase = 1000;
+  l.askIdBase = 2000;
+  l.levels = 3;
+  for (uint8_t i = 0; i < 3; ++i)
+  {
+    l.level[i].bidPrice = px(100 - i);
+    l.level[i].bidQty = qty(1);
+    l.level[i].askPrice = px(101 + i);
+    l.level[i].askQty = qty(1);
+  }
+  return l;
+}
+
+// What the engine is entitled to assume about anything the decoder hands it.
+// "Did not crash" was the whole of this file's assertion and it held while
+// the decoder was casting wire bytes straight into these enums: a frame
+// carrying a self-trade mode nobody defined parsed happily and hung the
+// auction uncross that later had to act on it. A parser test that does not
+// look at what came out cannot see that.
+void checkDecodedInRange(const InboundCommand& cmd)
+{
+  if (const auto* o = std::get_if<NewOrder>(&cmd))
+  {
+    CHECK(inRange(o->side));
+    CHECK(inRange(o->type));
+    CHECK(inRange(o->tif));
+    CHECK(inRange(o->stp));
+    CHECK(inRange(o->peg));
+  }
+  else if (const auto* l = std::get_if<venue::QuoteLadder>(&cmd))
+  {
+    CHECK(inRange(l->stp));
+    CHECK(inRange(l->tif));
+    CHECK(l->levels <= kQuoteLadderLevels);
+  }
+}
+
+// An engine the fuzzer's output is actually submitted to, under the event
+// budget the golden replay driver uses (venue/tests/test_venue_golden_replay.cpp,
+// RunT::checkBudget): one command that produces more events than any
+// scenario ever needs is a matcher spinning on a book that made no progress,
+// and the budget turns that into a named failure instead of a run that has
+// to be killed. The figure is the golden driver's, for the same reason it
+// picked it -- headroom, not a tuned number.
+struct FuzzEngine
+{
+  static constexpr size_t kEventBudgetPerCommand = 100000;
+  static constexpr SymbolId kSymbol = 1;
+
+  size_t since{0};
+  size_t worst{0};
+  size_t submitted{0};
+  int64_t ts{1};
+  MatchingEngine<MatchingBook> eng;
+
+  static SymbolConfig config()
+  {
+    SymbolConfig c;
+    c.id = kSymbol;
+    c.tickSize = px(0.01);
+    c.minPrice = px(1.0);
+    c.maxPrice = px(1000.0);
+    return c;
+  }
+
+  FuzzEngine()
+      : eng(config(), [this](const OutboundEvent&)
+            { ++since; }, MatchingBook{})
+  {
+  }
+  FuzzEngine(const FuzzEngine&) = delete;
+  FuzzEngine& operator=(const FuzzEngine&) = delete;
+
+  void submit(const InboundCommand& cmd)
+  {
+    since = 0;
+    eng.submit(cmd, ts++);
+    ++submitted;
+    if (since > worst)
+    {
+      worst = since;
+    }
+    check(since <= kEventBudgetPerCommand, "event budget exceeded by one decoded command",
+          __LINE__);
+  }
+};
+
 void test_sbe_oe_fuzz()
 {
   std::printf("test_sbe_oe_parser_fuzz\n");
   std::vector<uint8_t> wire;
   SbeOrderEntryCodec::encode(InboundCommand{sampleOrder()}, wire);
   CHECK(!wire.empty());
+  std::vector<uint8_t> ladderWire;
+  SbeOrderEntryCodec::encode(InboundCommand{sampleLadder()}, ladderWire);
+  CHECK(!ladderWire.empty());
 
-  // Positive control: a valid frame round-trips.
-  auto ok = SbeOrderEntryCodec::decode(wire.data(), wire.size());
+  // Positive control: a valid frame round-trips, and says nothing about why.
+  const char* err = "unset";
+  auto ok = SbeOrderEntryCodec::decode(wire.data(), wire.size(), err);
   CHECK(ok.has_value());
+  CHECK(err == nullptr);
 
   Rng rng{0xF0F0F0F0ULL};
+  FuzzEngine fe;
+  int decoded = 0;
+
+  // Every frame that decodes is checked and then submitted. A decoder that
+  // refuses a frame owes a reason; one that accepts it owes fields the engine
+  // can act on.
+  auto feed = [&](const uint8_t* p, size_t n)
+  {
+    const char* why = "unset";
+    auto d = SbeOrderEntryCodec::decode(p, n, why);
+    if (!d)
+    {
+      CHECK(why != nullptr);  // refused frames name what was wrong with them
+      return;
+    }
+    CHECK(why == nullptr);
+    ++decoded;
+    checkDecodedInRange(*d);
+    fe.submit(*d);
+  };
 
   // Truncation: decode every prefix length (including 0). Must not crash.
   for (size_t len = 0; len <= wire.size(); ++len)
   {
-    auto d = SbeOrderEntryCodec::decode(wire.data(), len);
-    (void)d;
+    feed(wire.data(), len);
+  }
+  for (size_t len = 0; len <= ladderWire.size(); ++len)
+  {
+    feed(ladderWire.data(), len);
   }
 
-  // Bit-flip corruption of the valid frame.
+  // Bit-flip corruption of the two valid frames. The seed decides which one,
+  // so the ladder -- the frame that carries the same two enums for sixteen
+  // orders at once -- gets its share of the corruptions.
   for (int i = 0; i < 200000; ++i)
   {
-    std::vector<uint8_t> c = wire;
+    std::vector<uint8_t> c = (i % 2 == 0) ? wire : ladderWire;
     const size_t flips = 1 + (rng.next() % 4);
     for (size_t f = 0; f < flips; ++f)
     {
       c[rng.next() % c.size()] ^= static_cast<uint8_t>(rng.next() & 0xFF);
     }
-    auto d = SbeOrderEntryCodec::decode(c.data(), c.size());
-    (void)d;
+    feed(c.data(), c.size());
   }
 
   // Pure random buffers of random length.
-  int decoded = 0;
   for (int i = 0; i < 300000; ++i)
   {
     uint8_t buf[64];
@@ -110,14 +233,13 @@ void test_sbe_oe_fuzz()
     {
       buf[k] = static_cast<uint8_t>(rng.next() & 0xFF);
     }
-    auto d = SbeOrderEntryCodec::decode(buf, n);
-    if (d)
-    {
-      ++decoded;
-    }
+    feed(buf, n);
   }
-  CHECK(true);  // reached here without crashing
-  std::printf("  sbe order-entry survived truncation + 200k corruptions + 300k random (%d parsed)\n", decoded);
+
+  std::printf(
+      "  sbe order-entry survived truncation + 200k corruptions + 300k random "
+      "(%d parsed, %zu submitted, worst command %zu events of %zu)\n",
+      decoded, fe.submitted, fe.worst, FuzzEngine::kEventBudgetPerCommand);
 }
 
 void test_fix_fuzz()
