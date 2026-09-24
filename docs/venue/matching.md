@@ -13,6 +13,16 @@ reference `MatchingBook` lives in the module (`flox-venue/matching_book.h`).
 | `MatchingBook` | `std::map` + `std::list`, allocates | Reference oracle. Easy to reason about. |
 | `LadderBook` | tick-indexed dense ladders, intrusive FIFO over a node pool, occupancy bitmap | Performance path. O(1) best, O(1) next level, no steady-state allocation. |
 
+`LadderBook`'s O(1) claims are per-operation with no amortised term, which is
+what a matching pass needs: best and next-level are a bitmap word scan, and
+order id -> node is an open-addressed table with linear probing and
+**backward-shift deletion**. There are no tombstones and therefore no rehash
+-- a cancel closes the hole by moving back the tail of its own probe chain, so
+the table after any amount of churn is the table the resting orders would have
+built from empty, and a lookup costs what it cost on the first order of the
+day. Nothing allocates after construction: the ladders, the node pool and the
+id table are all sized by `Config`.
+
 They are interchangeable (`MatchingEngine<MatchingBook>` /
 `MatchingEngine<LadderBook>`), and a differential fuzz keeps them
 observationally identical over a random stream; the golden replay corpus
@@ -20,6 +30,34 @@ observationally identical over a random stream; the golden replay corpus
 scenarios on both and checks `LadderBook` against the exact numbers recorded
 for `MatchingBook` -- one table, because the two are contractually required
 to agree. See [Verification](verification.md).
+
+They agree **within the ladder's bounds**, which is the one thing the map book
+does not have. `LadderBook` is finite in both price (`numLevels` ticks from
+`basePriceRaw`) and order count (`maxOrders`), and an order it cannot take it
+**refuses** -- `addResting` answers `BookAddResult` and the engine turns the
+answer into a report rather than acking an order the book never took:
+
+| refusal | engine answer |
+|---|---|
+| price with no level (below `basePriceRaw`, or past the top of the ladder) | `OrderRejected` / `CancelRejected` with `InvalidPrice` |
+| node pool exhausted (`full()`) | `OrderRejected` with `BookCapacityExceeded` |
+| either one, for an order that has already printed | `OrderCanceled` with `BookRefused` -- a reject cannot follow its own executions |
+
+`validate()` (and the amend path) ask `canRest()` before the order is committed
+to matching, so an unrepresentable price is refused before it can trade;
+`full()` is asked at the last node, after matching, because a marketable order
+frees nodes as it consumes makers and must not be refused for a pool its own
+fills empty. A deployment sizes `numLevels`/`basePriceRaw` to cover the
+instrument's collar (`minPrice`/`maxPrice`) and `maxOrders` to cover its book:
+within those bounds the two books are interchangeable, outside them
+`MatchingBook` (a `std::map`, bounded only by the allocator) accepts what
+`LadderBook` refuses.
+
+The level of a price is `floor((price - base) / tick)`, floored and not
+truncated: truncation mapped the whole window `(base - tick, base)` onto level
+0 -- the base level -- so an ask at 995 with a base of 1000 was filed under
+1000 while the order kept its own price, and the ladder quoted liquidity at a
+price nothing rested at.
 
 ```cpp
 LadderBook book(LadderBook::Config{

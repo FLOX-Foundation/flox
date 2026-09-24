@@ -793,7 +793,11 @@ class LadderBook
     // stays where it is, anything else moves back into the hole, which then
     // follows it. The scan stops at the first empty slot, which is what keeps
     // the work proportional to this chain rather than to the table.
-    for (size_t j = (hole + 1) & mask; idx_[j].occupied != 0; j = (j + 1) & mask)
+    // Bounded by the table: the load factor guarantees an empty slot to stop
+    // on, and the bound is here so that a table that somehow had none would
+    // give a wrong answer rather than hang the matching thread.
+    size_t j = (hole + 1) & mask;
+    for (size_t steps = 0; steps + 1 < idxCap_ && idx_[j].occupied != 0; ++steps, j = (j + 1) & mask)
     {
       const size_t home = hash(idx_[j].id);
       const bool reachablePastHole =

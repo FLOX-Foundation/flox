@@ -181,6 +181,12 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
 template <class Book>
 RejectReason MatchingEngine<Book>::restOnBook(Side side, const RestingOrder& ro)
 {
+  // Price first, so a book that is both full and out of band answers for the
+  // thing the owner can act on.
+  if (!book_.canRest(ro.price))
+  {
+    return RejectReason::InvalidPrice;
+  }
   if (book_.full())
   {
     return RejectReason::BookCapacityExceeded;

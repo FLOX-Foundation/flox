@@ -68,9 +68,13 @@ TEST(LadderBookIdIndex, ChurnPastTheTableSizeLosesNoRestingOrder)
   {
     LadderBook book(cfgFor(pool));
 
-    // Four times the table (the table is over twice the pool), so every slot
-    // has been occupied and released several times over.
-    const uint64_t cycles = static_cast<uint64_t>(pool) * 8;
+    // 128 pools' worth of lifecycles: that is where the previous index went
+    // from "slower" to "lossy" at both of these sizes (measured -- 0 of 64
+    // resting orders lost at 64x, 64 of 64 at 128x, because saturation is
+    // reached only once the last empty slot in the table has been claimed by
+    // a tombstone). The fixed index does this churn at its fresh cost, so the
+    // loop that used to take seconds is milliseconds here.
+    const uint64_t cycles = static_cast<uint64_t>(pool) * 128;
     for (uint64_t i = 0; i < cycles; ++i)
     {
       const OrderId id = 1'000'000 + i;
