@@ -78,9 +78,16 @@ class BitgetExchangeConnector : public IExchangeConnector
 
   SymbolId resolveSymbolId(std::string_view symbol);
 
- private:
+  // Public so the public-feed protocol handling (book snapshots and deltas,
+  // trades) is testable offline by feeding raw frames without a live socket.
+  // Same seam BybitExchangeConnector exposes.
   void handleMessage(std::string_view payload);
+
+  // Same rationale: public so the private "orders" channel handling is
+  // testable offline, without a live authenticated socket.
   void handlePrivateMessage(std::string_view payload);
+
+ private:
   void subscribePrivateOrders();
   void pingLoop();
 
@@ -90,6 +97,13 @@ class BitgetExchangeConnector : public IExchangeConnector
   TradeBus* _tradeBus;
 
   SymbolRegistry* _registry = nullptr;
+
+  // This connector's own id in the registry, resolved once in the
+  // constructor. Every published event carries it as sourceExchange:
+  // CompositeBookMatrix::onBookUpdate drops any update whose sourceExchange is
+  // out of range, so leaving it at InvalidExchangeId kept the cross-venue book
+  // permanently empty in live.
+  ExchangeId _exchangeId{InvalidExchangeId};
 
   std::shared_ptr<ILogger> _logger;
 
