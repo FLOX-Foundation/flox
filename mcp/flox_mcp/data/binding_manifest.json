@@ -16140,6 +16140,11 @@
         },
         {
           "kind": "method",
+          "name": "hasErrors",
+          "parent": "DatasetValidationResult"
+        },
+        {
+          "kind": "method",
           "name": "validate",
           "parent": "DatasetValidator"
         },

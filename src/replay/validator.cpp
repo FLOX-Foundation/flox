@@ -614,6 +614,91 @@ void SegmentValidator::addIssue(SegmentValidationResult& result, IssueType type,
   }
 }
 
+namespace
+{
+
+// Dataset-level check. Two segments whose [first_event_ns, last_event_ns]
+// ranges intersect mean the same wall-clock window was recorded twice, and no
+// reader can make that whole again: segments are walked in filename order, so
+// the overlap replays as duplicated events, as events out of order, or -- on
+// the streaming path, through the reorder buffer's late drop -- as events that
+// silently disappear. Reporting it is the only honest answer; each segment on
+// its own is perfectly well formed, which is why the per-segment pass sees
+// nothing.
+//
+// The comparison is strict. Rotation cuts a segment between frames, so two
+// events that share a timestamp can land either side of the seam and leave
+// a.last == b.first; that is an ordinary rotation, not a double recording, and
+// it replays in order.
+void checkSegmentRangeOverlap(DatasetValidationResult& result)
+{
+  struct Range
+  {
+    size_t index{0};
+    int64_t first{0};
+    int64_t last{0};
+  };
+
+  std::vector<Range> ranges;
+  ranges.reserve(result.segments.size());
+  for (size_t i = 0; i < result.segments.size(); ++i)
+  {
+    const auto& seg = result.segments[i];
+    if (seg.actual_event_count == 0)
+    {
+      continue;
+    }
+    ranges.push_back(Range{i, seg.actual_first_ts, seg.actual_last_ts});
+  }
+
+  std::sort(ranges.begin(), ranges.end(),
+            [](const Range& a, const Range& b)
+            {
+              if (a.first != b.first)
+              {
+                return a.first < b.first;
+              }
+              return a.last < b.last;
+            });
+
+  if (ranges.size() < 2)
+  {
+    return;
+  }
+
+  // Compare each segment against the one reaching furthest in time so far, not
+  // merely against its predecessor: a segment fully contained in an earlier,
+  // wider one overlaps it even though the segment just before it ended sooner.
+  Range widest = ranges.front();
+  for (size_t k = 1; k < ranges.size(); ++k)
+  {
+    const Range& r = ranges[k];
+    if (r.first < widest.last)
+    {
+      const auto& a = result.segments[widest.index];
+      const auto& b = result.segments[r.index];
+      result.issues.push_back(ValidationIssue{
+          .type = IssueType::SegmentRangeOverlap,
+          .severity = IssueSeverity::Error,
+          .message = "Segments cover overlapping time ranges: " +
+                     a.path.filename().string() + " [" + std::to_string(widest.first) + ", " +
+                     std::to_string(widest.last) + "] overlaps " + b.path.filename().string() +
+                     " [" + std::to_string(r.first) + ", " + std::to_string(r.last) +
+                     "]. The same window was recorded twice; replaying the dataset "
+                     "duplicates, reorders or drops events from it.",
+          .file_offset = 0,
+          .event_index = 0,
+          .timestamp_ns = r.first});
+    }
+    if (r.last > widest.last)
+    {
+      widest = r;
+    }
+  }
+}
+
+}  // namespace
+
 DatasetValidator::DatasetValidator(ValidatorConfig config) : _config(std::move(config)) {}
 
 DatasetValidationResult DatasetValidator::validate(const std::filesystem::path& data_dir)
@@ -711,7 +796,21 @@ DatasetValidationResult DatasetValidator::validate(const std::filesystem::path& 
     }
   }
 
-  result.valid = (result.corrupted_segments == 0);
+  checkSegmentRangeOverlap(result);
+
+  for (const auto& issue : result.issues)
+  {
+    if (issue.severity == IssueSeverity::Error || issue.severity == IssueSeverity::Critical)
+    {
+      ++result.total_errors;
+    }
+    else if (issue.severity == IssueSeverity::Warning)
+    {
+      ++result.total_warnings;
+    }
+  }
+
+  result.valid = (result.corrupted_segments == 0) && !result.hasErrors();
 
   return result;
 }
