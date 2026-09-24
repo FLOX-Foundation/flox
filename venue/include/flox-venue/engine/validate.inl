@@ -424,6 +424,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
   // gate and reaches matching/resting) must unlink it from its OCO group --
   // otherwise a rejected leg lingers in the group and later cancels a reused
   // id. `committed` is set once the order is live; the guard cleans up the rest.
+  //
+  // The guard covers every gate ABOVE the commit point. Three refusals live
+  // below it -- the LULD band, the matcher's own out.reject and the zero-fill
+  // residual cancel -- and each unlinks for itself, at the point where it
+  // decides the order is not going to live after all (W33-T004).
   bool committed = false;
   struct OcoCleanup
   {
@@ -576,6 +581,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
         (o.side == Side::SELL && o.price.raw() < luldLo))
     {
       releaseReservation(o.id);
+      oco_.unlink(o.id);  // refused, so it never joined the group it was linked into
       sink_(OrderRejected{o.id, o.symbol, RejectReason::LuldBreach, o.accountId, o.clientOrderId});
       tripLuldHalt();
       return;
@@ -590,6 +596,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
   if (out.reject != RejectReason::None)
   {
     releaseReservation(o.id);  // post-only-would-cross / FOK-unfulfillable: free the reserve
+    oco_.unlink(o.id);         // and it never joined the group it was linked into
     sink_(OrderRejected{o.id, o.symbol, out.reject, o.accountId, o.clientOrderId});
     return;
   }
@@ -656,6 +663,11 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     // not run the emit_ wrapper's release-on-cancel. Held slices stay
     // reserved: their accept still has to settle (reject releases later).
     releaseReservationExceptHeld(o.id);
+    // The order is gone and was never tracked, so no forgetOrder will ever run
+    // for it: this is its only chance to leave the group. Whether it filled
+    // first is decided already -- the print is in oco_'s pending list and
+    // processOco still cancels the siblings, this id simply is not one of them.
+    oco_.unlink(o.id);
     sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId, o.clientOrderId,
                         out.leaves, out.filled});
   }

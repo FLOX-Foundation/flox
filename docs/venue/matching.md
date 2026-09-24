@@ -381,7 +381,11 @@ profile does not allow.
   reserve is real liquidity for matching and stays out of the public feed.
 - **Peg.** `PegRef::{Bid,Ask,Mid}` plus a signed offset; repriced at each
   submit boundary, tick-aligned, clamped so it never crosses.
-- **OCO.** `ocoGroup`; a fill on one leg cancels its siblings.
+- **OCO.** `ocoGroup`; a fill on one leg cancels its siblings. A leg that
+  leaves the venue by any other door -- refused at admission, refused by the
+  matcher, canceled as an unfilled residual, expired, pulled -- leaves the
+  group with it, so a later reuse of its order id is never cancelled in its
+  name.
 - **Reduce-only.** Perp orders that may only reduce a position, re-capped on
   submit, trigger, modify -- and re-measured at fill time against the position
   as it is then (see [Risk](risk.md)). The cap counts what the account already
