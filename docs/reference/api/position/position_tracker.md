@@ -84,8 +84,8 @@ PositionTracker(SubscriberId id, CostBasisMethod method = CostBasisMethod::FIFO)
 Quantity getPosition(SymbolId symbol) const override;
 Price getAvgEntryPrice(SymbolId symbol) const;
 std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override;
-Price getRealizedPnl(SymbolId symbol) const;
-Price getTotalRealizedPnl() const;
+Volume getRealizedPnl(SymbolId symbol) const;
+Volume getTotalRealizedPnl() const;
 size_t trackedSymbolCount() const;
 CostBasisMethod method() const;
 ```
@@ -144,7 +144,7 @@ auto result = runner.run(*reader);
 // Check results
 std::cout << "Position: " << positions.getPosition(symbol).toDouble() << "\n";
 std::cout << "Avg entry: " << positions.getAvgEntryPrice(symbol).toDouble() << "\n";
-std::cout << "Realized PnL: " << positions.getRealizedPnl(symbol).toDouble() << "\n";
+std::cout << "Realized PnL: " << positions.getRealizedPnl(symbol).toDouble() << "\n";  // Volume
 ```
 
 ### Multiple Symbols
@@ -183,7 +183,7 @@ struct Lot
 struct PositionState
 {
   std::deque<Lot> lots;   // Open lots
-  Price realizedPnl{};    // Accumulated realized PnL (fixed-point)
+  Volume realizedPnl{};   // Accumulated realized PnL (fixed-point money)
 
   Quantity position() const;    // Sum of lot quantities
   Price avgEntryPrice() const;  // VWAP of open lots
@@ -207,10 +207,26 @@ All public methods are protected by `std::mutex`:
 
 ## Fixed-Point Arithmetic
 
-All calculations use `Price` and `Quantity` fixed-point types:
-- No floating-point precision issues
-- Portable across all platforms (no `__int128`)
-- Intermediate calculations use `double` then convert back
+Every step of the cost basis and of realised PnL is computed in the fixed-point
+types, with no `double` anywhere in between:
+
+- A realisation is `mulDivI64(closePrice - lotPrice, closeQty, Volume::Scale)`
+  per lot, accumulated with `checkedAddI64`. The subtraction is checked too.
+- The weighted average entry price carries each `quantity * price` as a
+  quotient and a remainder against the scale, so the sum of the products is
+  exact however many lots there are; the single division at the end is the only
+  rounding step, and it is unavoidable (an average price need not be
+  representable at 1e-8). The AVERAGE method re-derives the running average
+  from the two weighted prices rather than from the previous average's rounded
+  form, so the rounding does not compound over a session.
+- Sums saturate at the int64 boundary rather than wrapping, and trip a scale
+  check in a checked build.
+
+The results are therefore exact to the raw and identical on every toolchain.
+The older implementation computed the price difference, the product and the
+weighted average as `double` and converted back, which drifted once a price
+outgrew the double mantissa -- and drifted by a different amount depending on
+FMA contraction, so two builds of the same code disagreed on the same tape.
 
 ## Compliance Notes
 
@@ -221,16 +237,23 @@ All calculations use `Price` and `Quantity` fixed-point types:
 
 ## Migration Notes
 
-`getRealizedPnl()` and `getTotalRealizedPnl()` now return `Price` instead of `double`:
+`getRealizedPnl()` and `getTotalRealizedPnl()` return `Volume`, the engine's
+money type. They returned `double` first and then `Price`; `Price` was wrong
+because realised PnL is a quantity times a price difference -- a notional, not
+a price -- and the wrong type let it be compared with, assigned to and added to
+an actual price with no diagnostic.
 
 ```cpp
 // Old API
-double pnl = tracker.getRealizedPnl(symbol);
+Price pnl = tracker.getRealizedPnl(symbol);
 
 // New API
-Price pnl = tracker.getRealizedPnl(symbol);
+Volume pnl = tracker.getRealizedPnl(symbol);
 double pnlDouble = pnl.toDouble();  // If double needed
 ```
+
+`.toDouble()` call sites (the C API, the Python and Node bindings) are
+unaffected; code that stored the result in a `Price` has to change the type.
 
 ## See Also
 

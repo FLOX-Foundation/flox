@@ -13409,6 +13409,11 @@
           "name": "WeightedCurve"
         },
         {
+          "header": "include/flox/position/position_tracker.h",
+          "kind": "type",
+          "name": "WeightedPriceSum"
+        },
+        {
           "header": "include/flox/backtest/adaptive_fee_whirlpool_curve.h",
           "kind": "type",
           "name": "WhirlpoolFeeRateManager"
@@ -25807,6 +25812,21 @@
           "kind": "method",
           "name": "weights",
           "parent": "WeightedCurve"
+        },
+        {
+          "kind": "method",
+          "name": "add",
+          "parent": "WeightedPriceSum"
+        },
+        {
+          "kind": "method",
+          "name": "average",
+          "parent": "WeightedPriceSum"
+        },
+        {
+          "kind": "method",
+          "name": "empty",
+          "parent": "WeightedPriceSum"
         },
         {
           "kind": "method",
