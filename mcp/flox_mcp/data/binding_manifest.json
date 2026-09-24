@@ -16345,7 +16345,17 @@
         },
         {
           "kind": "method",
+          "name": "abandonClaims",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "alignas",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "awaitPublishersQuiescent",
           "parent": "EventBus"
         },
         {
@@ -16381,6 +16391,11 @@
         {
           "kind": "method",
           "name": "consumerHealth",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "consumerHealthReport",
           "parent": "EventBus"
         },
         {
@@ -16450,6 +16465,11 @@
         },
         {
           "kind": "method",
+          "name": "monitorPeriod",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "ownConsumerThreads",
           "parent": "EventBus"
         },
@@ -16480,7 +16500,17 @@
         },
         {
           "kind": "method",
+          "name": "resolvedClaims",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "runConsumer",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "sealSequenceLine",
           "parent": "EventBus"
         },
         {

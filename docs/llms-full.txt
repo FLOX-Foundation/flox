@@ -20550,9 +20550,16 @@ that changed, and a busy trade stream packs several trades into one frame.
 publishes:
 
 ```cpp
-// evs is a contiguous array, count <= CapacityPow2 / 2
+// evs is a contiguous array, 1 <= count <= CapacityPow2 / 2
 int64_t lastSeq = tradeBus->publishBatch(evs, count);
 ```
+
+The bound is enforced, not assumed: an empty batch and one larger than half the
+ring are both refused with -1, in every build, and nothing is published. It is
+the ring's bound rather than a style rule -- a range wider than the ring
+reserves slots it wraps back onto, so the wrap gate would wait on sequences
+inside the same batch that only this publisher can stamp, and the publisher
+would never return. The refusal is always a return.
 
 One call reserves the whole sequence range at once, waits once for ring
 space, then stamps every slot under a single release fence. Per-event
@@ -20606,14 +20613,34 @@ Backpressure on `tryPublish()` is a normal condition. Handle the `TIMEOUT`
 through that cycle more than once. A reconnect that rebuilds a feed stops its
 subsystems and starts them again.
 
-`stop()` joins every consumer thread, destroys whatever events the ring still
-holds, and puts the sequence line back where a fresh bus starts. A restarted
-bus numbers its events from zero again, so sequence numbers are unique within a
-run, not across runs. Anything that persists a `tickSequence` past a restart
-needs its own run identifier.
+`stop()` closes publishing, waits out the publishers that are already inside
+the ring, joins every consumer thread, destroys whatever events the ring still
+holds, and puts the gating lines back where a fresh bus starts. A restarted bus
+numbers its events from zero again, so sequence numbers are unique within a run,
+not across runs. Anything that persists a `tickSequence` past a restart needs
+its own run identifier.
 
-Publishes racing `stop()` are not ordered against it, and never were. Publish
-from the producer thread, then stop.
+A publish racing `stop()` has one of two outcomes, and the publisher can tell
+them apart from the return value: it is refused (-1, or `STOPPED`), or the event
+is in the ring and the shutdown will not throw it away before the consumers that
+were going to get it have had their chance. There is no third outcome where the
+bus accepted an event, handed back a sequence number, and dropped it on the way
+down -- which is a loss the publisher had no way to learn about.
+
+Why a flag cannot deliver that: a publisher reads "is the bus running" once, on
+the way in, and can be preempted between that read and its claim for as long as
+the scheduler likes, so by the time it constructs into a slot the answer may be
+hours old. What `stop()` closes instead is the sequence line itself, in one
+atomic step: every claim taken afterwards comes back refused, and every claim
+taken before it is one `stop()` can count and wait for. The publish path pays
+nothing for this -- it announces nothing on the way in, and the counter it bumps
+on the way out is the one it already bumped.
+
+So `stop()` returns only when no publisher is writing into a slot, which is what
+makes it safe to destroy or restart the bus. It waits for a publisher parked
+inside the event's own copy constructor, and it does not wait for one parked at
+the wrap gate or the reclaim fence: those give up instead, so a stalled consumer
+cannot keep a shutdown from finishing.
 
 ### Draining
 
@@ -20714,8 +20741,10 @@ The health layer gives each failure mode a detector and a policy:
 - Stalls. `checkHealth()` sweeps all consumers and fires the callback with
   `STALLED` when one has pending work but no progress for
   `stallThreshold`, then `HEALTHY` again on recovery. Call it from your own
-  health thread or set `enableMonitorThread` to poll automatically. One
-  sweeping thread at a time; the bookkeeping is not synchronized between
+  health thread or set `enableMonitorThread` to poll automatically, on a
+  period of `monitorPeriod(stallThreshold)` -- half the threshold, floored at
+  1 ms so that a sub-millisecond threshold cannot turn the sweep into a spin.
+  One sweeping thread at a time; the bookkeeping is not synchronized between
   checkers.
 - Slow optional consumers. With `dropBehindOptional`, an optional consumer
   more than `dropBehindSlack` events behind jumps to the head instead of
@@ -20735,6 +20764,15 @@ cfg.enableMonitorThread = true;
 cfg.callback = [](uint32_t idx, MyBus::ConsumerHealth st, void*) { /* metrics */ };
 bus.setHealthConfig(cfg);  // before start()
 ```
+
+The callback is edge-triggered. For the level-triggered question -- who is
+unhealthy right now -- `consumerHealth(i)` and `healthSnapshot()` read what the
+last sweep recorded, from any thread, while the sweep is running and after the
+bus has stopped. `consumerHealthReport(i)` adds the two numbers a supervisor
+needs to act: the sequence the consumer had reached and the instant it last
+moved, taken from the same sweep as the state. A report that mixed the sequence
+from one sweep with the instant from another would describe progress that never
+happened, so `lastChange` moves only together with `lastSeen`.
 
 ## Further Reading
 
