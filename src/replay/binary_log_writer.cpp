@@ -304,7 +304,24 @@ bool BinaryLogWriter::writeFrameToBlock(EventType type, const void* payload, siz
   // Flush block when it reaches index_interval events
   if (_block_event_count >= _config.index_interval)
   {
-    return flushBlock();
+    if (!flushBlock())
+    {
+      return false;
+    }
+
+    // A compressed segment can only end on a block boundary: the block is the
+    // unit the reader decompresses, so a file cut mid-block is unreadable. The
+    // bound is measured on _segment_bytes, which counts what actually reaches
+    // the file (compressed), because that is the number max_segment_bytes
+    // exists to cap -- partial reads, rsync-as-you-record and per-segment
+    // recovery all see the file, and none of them can know the uncompressed
+    // size. The overshoot is therefore at most one block plus the index the
+    // closing segment appends.
+    if (_segment_bytes >= _config.max_segment_bytes)
+    {
+      closeInternal();
+      return ensureOpen();
+    }
   }
 
   return true;

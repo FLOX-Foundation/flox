@@ -21,6 +21,8 @@ my-tape.floxlog/
 
 Segment files are named `<created_ns>.floxlog`, where `created_ns` is the wall-clock nanosecond timestamp at which the writer opened the segment. A custom rotation callback can override the naming. There is **no** per-type split: trades, book snapshots, book deltas and the side-channel record types all live interleaved in the same frame stream, ordered by timestamp.
 
+A writer rotates when the segment reaches its size bound, measured on the bytes written to the file. An uncompressed segment rotates between frames; a compressed one rotates between blocks, since a block is the unit the reader decompresses. A segment may therefore overshoot the bound by at most one block plus the index appended when it closes.
+
 Segments are independently parseable; both sidecars are conveniences, not requirements.
 
 `.manifest` is a **binary** file — see [Manifest](#manifest) — not JSON. It can be rebuilt from the segments at any time.
