@@ -189,12 +189,18 @@ MergeResult SegmentOps::merge(const std::vector<std::filesystem::path>& input_pa
       ++result.segments_merged;
     }
 
-    // Sort by timestamp
-    std::sort(all_events.begin(), all_events.end(),
-              [](const ReplayEvent& a, const ReplayEvent& b)
-              {
-                return a.timestamp_ns < b.timestamp_ns;
-              });
+    // Sort by timestamp, stably: the events were collected one input file at a
+    // time in read order, so stability is what makes a tie resolve as
+    // (timestamp, input file, recorded order) -- the merged segment is a file a
+    // later replay reads, and an unstable sort would bake a different order
+    // into it on every run. Unlike MergedTapeReader::readBooks this stream is
+    // mixed-type, and only book records carry seq, so there is no total order
+    // to sort a tie on beyond the one it was recorded in.
+    std::stable_sort(all_events.begin(), all_events.end(),
+                     [](const ReplayEvent& a, const ReplayEvent& b)
+                     {
+                       return a.timestamp_ns < b.timestamp_ns;
+                     });
 
     // Write sorted events
     for (const auto& event : all_events)

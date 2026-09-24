@@ -93,7 +93,11 @@ class OverlappingBookStreamError : public std::runtime_error
 /// K-tape consumption primitive. Reads N `.floxlog` directories,
 /// builds a global symbol registry by `(metadata.exchange, name)`
 /// keying, and exposes the merged trade / book streams sorted by
-/// exchange_ts_ns. Tie-break: (exchange_ts_ns, tape_index, source order).
+/// exchange_ts_ns. Tie-break: (exchange_ts_ns, tape_index, seq) for books,
+/// which carry a source sequence number, and (exchange_ts_ns, tape_index,
+/// source order) for trades, which do not. Every venue that batches an update
+/// prints several events on one nanosecond, so the tie is the normal case and
+/// its resolution is what makes a replay reproducible.
 ///
 /// V1 materialization: `read_trades` / `read_books` collect all events
 /// across tapes, then sort. Memory bound = total events × row size.
