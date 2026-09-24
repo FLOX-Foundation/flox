@@ -7,7 +7,7 @@
  * license information.
  */
 
-// W33-T005: four places where the venue acts before it decides, and one
+// four places where the venue acts before it decides, and one
 // where a report loses the name the submitter chose.
 //
 //  - matcher.h:320 / :644 / :651 / :667 -- every OrderCanceled the MATCHER

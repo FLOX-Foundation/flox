@@ -598,12 +598,12 @@ MUTATIONS: list[Mutation] = [
   {
     return r;
   }
-  if (o.quantity.raw() <= 0)""",
+  // Before any gate keyed on the type.""",
         new="""  if (o.symbol != cfg_.id)
   {
     return RejectReason::UnknownSymbol;
   }
-  if (o.quantity.raw() <= 0)""",
+  // Before any gate keyed on the type.""",
         target=ATOM_TEST,
         test=None,  # run the whole binary
     ),

@@ -7,7 +7,7 @@
  * license information.
  */
 
-// W33-T004: where onNew declares an OCO leg committed, against where it can
+// where onNew declares an OCO leg committed, against where it can
 // still refuse it.
 //
 // engine/oco.h states the rule the OcoCleanup guard in validate.inl exists to

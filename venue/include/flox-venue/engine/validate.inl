@@ -444,7 +444,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
   // The guard covers every gate ABOVE the commit point. Three refusals live
   // below it -- the LULD band, the matcher's own out.reject and the zero-fill
   // residual cancel -- and each unlinks for itself, at the point where it
-  // decides the order is not going to live after all (W33-T004).
+  // decides the order is not going to live after all.
   bool committed = false;
   struct OcoCleanup
   {
