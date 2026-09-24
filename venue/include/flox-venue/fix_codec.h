@@ -275,17 +275,56 @@ class FixCodec
         o.visibleQuantity = Quantity::fromRaw(v);  // MaxFloor -> iceberg peak
       }
 
-      switch (std::atoi(s(59).c_str()))  // TimeInForce (absent/other -> GTC)
+      // TimeInForce (59): absent -> GTC, the FIX default for a venue with no
+      // session schedule. Present must name one of the four this venue can
+      // actually honour: 1 GTC, 3 IOC, 4 FOK, 6 GTD. Day (0), AtTheOpening
+      // (2), GoodTillCrossing (5) and AtTheClose (7) are real FIX 4.4 values
+      // that end at a session boundary or an auction this venue does not
+      // run, and mapping them onto GTC rests an order the sender asked to
+      // live for one session -- forever. There is no TIF for post-only: that
+      // arrives as ExecInst (18) 6 below, the way FIX spells it.
+      if (has(59))
       {
-        case 3:
-          o.tif = TimeInForce::IOC;
-          break;
-        case 4:
-          o.tif = TimeInForce::FOK;
-          break;
-        default:
+        const std::string tif = s(59);
+        if (tif == "1")
+        {
           o.tif = TimeInForce::GTC;
-          break;
+        }
+        else if (tif == "3")
+        {
+          o.tif = TimeInForce::IOC;
+        }
+        else if (tif == "4")
+        {
+          o.tif = TimeInForce::FOK;
+        }
+        else if (tif == "6")
+        {
+          // GTD is the one TimeInForce carrying a second required field:
+          // without ExpireTime (126) there is no date to be good till, and
+          // the order used to rest as a GTC that never expires.
+          o.tif = TimeInForce::GTD;
+          if (!has(126))
+          {
+            return refuse("ExpireTime", 126, "required by TimeInForce 6 (GTD)");
+          }
+          int64_t expiry = 0;
+          if (!fixfield::parseUtcTimestampNs(s(126), expiry))
+          {
+            return refuse("ExpireTime", 126,
+                          "not a UTC FIX UTCTimestamp, YYYYMMDD-HH:MM:SS with optional .sss");
+          }
+          // The one legitimate crossing into sequencer time: SeqNanos is
+          // captured from the wall clock at ingestion, and an expiry the
+          // client wrote as a UTC instant is a wall-clock instant until the
+          // sequencer stamps it.
+          o.expiryNs = SeqNanos::fromRaw(expiry);
+        }
+        else
+        {
+          return refuse("TimeInForce", 59,
+                        "names no time in force this venue runs: 1 GTC, 3 IOC, 4 FOK, 6 GTD");
+        }
       }
       const std::string execInst = s(18);
       if (execInst.find('6') != std::string::npos)  // ParticipateDoNotInitiate

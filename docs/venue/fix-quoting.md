@@ -45,6 +45,38 @@ and nothing else.
 value that *is* present has to parse. On `i` and `Z` both are required, for
 the reason the id block section below gives.
 
+### TimeInForce (59) and GTD
+
+`TimeInForce` used to map 3 and 4 and send everything else to GTC, including
+values that name a deadline this venue cannot keep. It now accepts exactly the
+four the engine runs, and refuses the rest naming `TimeInForce(59)`.
+
+| 59 | FIX 4.4 | Answer |
+|---|---|---|
+| *absent* | -- | GTC, the default |
+| 1 | GoodTillCancel | `TimeInForce::GTC` |
+| 3 | ImmediateOrCancel | `TimeInForce::IOC` |
+| 4 | FillOrKill | `TimeInForce::FOK` |
+| 6 | GoodTillDate | `TimeInForce::GTD`, with `ExpireTime` (126) below |
+| 0, 2, 5, 7, 8 | Day, AtTheOpening, GoodTillCrossing, AtTheClose, AtCrossing | refused -- each ends at a session boundary or an auction this venue does not run, and resting one as GTC turns an order the sender gave a deadline into one that never expires |
+| anything else | -- | refused |
+
+There is no `TimeInForce` for post-only: that arrives as `ExecInst` (18) `6`
+ParticipateDoNotInitiate, which is how FIX spells it, and `TimeInForce::POST_ONLY`
+is reachable only through the non-FIX transports.
+
+`ExpireTime` (126) is **required** by `59=6` and refused unless it is a FIX
+`UTCTimestamp` -- `YYYYMMDD-HH:MM:SS` with optional `.sss` milliseconds,
+`20260925-12:00:00.250`. It is read as UTC by civil-date arithmetic
+(`fix_field_parse.h`), never through `mktime`/`strptime`: those read the host's
+`TZ` and locale, and an expiry that moves with the venue host's
+`/etc/localtime` is not an expiry. The milliseconds are kept
+(`.250` -> `...250000000` in `NewOrder::expiryNs`), and the parse is the exact
+inverse of the `SendingTime` (52) printer both ends of a session already share.
+A month outside 1-12, a day the month does not have, an hour above 23, a year
+before 1970 or any other shape is refused naming `ExpireTime(126)`. On a
+`TimeInForce` other than GTD, tag 126 carries no FIX meaning and is ignored.
+
 ## MassQuote (35=i) in
 
 | Tag | Field | Maps to |
