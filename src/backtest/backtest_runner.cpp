@@ -51,8 +51,9 @@ void BacktestRunner::installOrderEventCallback(SimulatedExecutor& exec)
         }
         for (auto* listener : _executionListeners)
         {
+          // dispatchTo() ends with listener->onOrderEvent(ev) itself now, so
+          // the call that used to sit here would deliver every event twice.
           ev.dispatchTo(*listener);
-          listener->onOrderEvent(ev);
         }
         // Forward to the attached strategy so user-side `on_fill` /
         // `on_order_update` hooks fire. Without this the strategy

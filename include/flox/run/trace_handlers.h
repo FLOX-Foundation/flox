@@ -219,6 +219,19 @@ class TraceExecutionListener : public IOrderExecutionListener
     }
   }
 
+  // The raw fan-out is a real dispatch path, so a wrapper that swallowed it
+  // would displace inner behaviour -- exactly what this class promises not to
+  // do. Nothing is recorded here: every kind the recorder knows is already
+  // written by the typed callbacks above, and writing again would double each
+  // traced event.
+  void onOrderEvent(const OrderEvent& ev) override
+  {
+    if (_inner)
+    {
+      _inner->onOrderEvent(ev);
+    }
+  }
+
  private:
   IOrderExecutionListener* _inner;
   TraceRecorder* _recorder;

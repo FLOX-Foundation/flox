@@ -108,6 +108,7 @@ struct SeenFill
   double fillPrice;
   double orderQuantity;
   double orderFilledQuantity;
+  uint64_t recvNs;
 };
 
 class FillListener final : public IOrderExecutionListener
@@ -131,13 +132,19 @@ class FillListener final : public IOrderExecutionListener
     record(OrderEventStatus::FILLED, order, fillQty, fillPrice);
   }
 
-  // OrderEvent::recvNs cannot be seen from here. EventDispatcher<OrderEvent>
-  // calls OrderEvent::dispatchTo, which hands a listener the Order and the
-  // fill payload and never the event itself; IOrderExecutionListener declares
-  // onOrderEvent(const OrderEvent&) for exactly this, but nothing on the bus
-  // path calls it (only BacktestRunner does, by hand). So the order path is
-  // asserted on what it delivers, and the arrival stamp is asserted on the
-  // book path below, where BookUpdateEvent reaches the subscriber whole.
+  // OrderEvent::recvNs rides on the event, not on the typed fill callbacks,
+  // so it arrives through onOrderEvent -- which OrderEvent::dispatchTo calls
+  // right after the typed dispatch, hence "the fill just recorded".
+  void onOrderEvent(const OrderEvent& ev) override
+  {
+    std::lock_guard<std::mutex> lk(_m);
+    if (!_fills.empty() &&
+        (ev.status == OrderEventStatus::PARTIALLY_FILLED || ev.status == OrderEventStatus::FILLED))
+    {
+      _fills.back().recvNs = ev.recvNs.raw();
+    }
+  }
+
   std::vector<SeenFill> fills()
   {
     std::lock_guard<std::mutex> lk(_m);
@@ -155,7 +162,7 @@ class FillListener final : public IOrderExecutionListener
   {
     std::lock_guard<std::mutex> lk(_m);
     _fills.push_back({status, order.id, fillQty.toDouble(), fillPrice.toDouble(),
-                      order.quantity.toDouble(), order.filledQuantity.toDouble()});
+                      order.quantity.toDouble(), order.filledQuantity.toDouble(), 0});
   }
 
   std::mutex _m;
@@ -324,6 +331,9 @@ void partialFillCarriesQtyPriceAndStatus()
     EXPECT_DOUBLE_EQ(fills[0].fillPrice, 60000.0) << "fillPrice=60000 is where it traded";
     EXPECT_DOUBLE_EQ(fills[0].orderQuantity, 3.0);
     EXPECT_DOUBLE_EQ(fills[0].orderFilledQuantity, 1.0) << "accBaseVolume=1";
+    EXPECT_NE(fills[0].recvNs, 0u)
+        << "the fill's arrival must be stamped on the event; at zero there is nothing to measure "
+           "venue-to-engine latency or order-path staleness against";
   }
 }
 
