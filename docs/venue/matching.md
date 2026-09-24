@@ -407,6 +407,14 @@ remaining, displayed peak plus hidden reserve -- the same number an execution
 report gives as that order's `leavesQty`. The peak itself is preserved; there
 is no way to change it without a fresh order.
 
+An amend is decided before anything is touched. Ownership, the new quantity,
+the lot, the tick and the band are all checked while the order is still exactly
+as it was, and only an amend that will be applied resolves the order's open
+last-look holds. A refused amend leaves the order resting, its holds open and
+its reservation intact -- the holds are the part that used to go: they were
+rejected before the price was ever looked at, so an off-tick amend killed them
+and then refused itself.
+
 A re-entering order goes back through matching, so the amend can end any way a
 new order can: rest, fill, be refused (`OrderRejected` -- post-only crossing is
 the usual one), or be killed outright (`OrderCanceled`, from self-trade
@@ -947,8 +955,8 @@ flowchart TD
     TRIG -->|yes| POP[pop triggered stops]
     POP --> PERP2[perpRiskGate] --> FUND2[reserveFunds] --> MATCH
 
-    MOD[ModifyOrder] --> HOLDS[resolve open holds] --> VM[tick / band / lot]
-    VM --> PERP3[perpRiskGate] --> FUND3[reserveFunds] --> MATCH
+    MOD[ModifyOrder] --> VM[tick / band / lot] --> HOLDS[resolve open holds]
+    HOLDS --> PERP3[perpRiskGate] --> FUND3[reserveFunds] --> MATCH
 
     QUOTE[Quote] --> HOLDS2[resolve open holds] --> LEGS[each leg through NewOrder]
     LEGS --> DEDUP

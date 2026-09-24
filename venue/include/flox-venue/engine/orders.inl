@@ -248,19 +248,74 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
     sink_(CancelRejected{m.id, m.symbol, RejectReason::NotOrderOwner, m.accountId, true});
     return;
   }
-  // Resolve (reject) any last-look holds referencing this order FIRST: both
-  // modify paths re-shape the order and its reservation, and a hold left
-  // behind would later settle against a reservation that no longer covers it.
+  // The amend is DECIDED before anything is touched. Rejecting the order's
+  // holds (below) reshapes both the order and its reservation, so an amend
+  // that is then refused would have destroyed a hold the order still needs --
+  // the order survives the refusal and its holds do not.
+  //
+  // The resting record cannot be read this early: a maker whose whole size is
+  // held out of the book is absent from it until the holds resolve, and
+  // rejectHoldsFor is what puts it back. So existence comes from the tracking
+  // index, which knows a held-out order is still live, and the checks that
+  // read the amend itself run here. The one that cannot is the price of an
+  // amend that names none: that price is the record's own, and it is checked
+  // below, once the record is readable again.
+  const auto priceRefusal = [this](Price p) -> RejectReason
+  {
+    if (p.raw() <= 0)
+    {
+      return RejectReason::InvalidPrice;
+    }
+    if (!cfg_.tickSize.isZero() && (p.raw() % cfg_.tickSize.raw()) != 0)
+    {
+      return RejectReason::TickSizeViolation;
+    }
+    if (!cfg_.minPrice.isZero() && p < cfg_.minPrice)
+    {
+      return RejectReason::InvalidPrice;
+    }
+    if (!cfg_.maxPrice.isZero() && cfg_.maxPrice < p)
+    {
+      return RejectReason::InvalidPrice;
+    }
+    return RejectReason::None;
+  };
+  if (!pub_.tracked(m.id))
+  {
+    sink_(CancelRejected{m.id, m.symbol, RejectReason::UnknownOrder, m.accountId, true});
+    return;
+  }
+  const uint64_t owner = ownerOf(m.id);
+  if (m.newQty.raw() <= 0)
+  {
+    sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidQuantity, m.accountId, true});
+    return;
+  }
+  const bool amendNamesAPrice = m.newPrice.raw() != 0;
+  if (amendNamesAPrice)
+  {
+    if (const RejectReason r = priceRefusal(m.newPrice); r != RejectReason::None)
+    {
+      sink_(CancelRejected{m.id, m.symbol, r, owner, true});
+      return;
+    }
+  }
+  if (!cfg_.lotSize.isZero() && (m.newQty.raw() % cfg_.lotSize.raw()) != 0)
+  {
+    sink_(CancelRejected{m.id, m.symbol, RejectReason::LotSizeViolation, owner, true});
+    return;
+  }
+
+  // Accepted. Resolve (reject) any last-look holds referencing this order
+  // before reshaping it: both modify paths re-shape the order and its
+  // reservation, and a hold left behind would later settle against a
+  // reservation that no longer covers it. This restores the held slice to the
+  // book, so the resting record is read only now.
   rejectHoldsFor(m.id);
   const RestingOrder* cur = book_.find(m.id);
   if (cur == nullptr)
   {
     sink_(CancelRejected{m.id, m.symbol, RejectReason::UnknownOrder, m.accountId, true});
-    return;
-  }
-  if (m.newQty.raw() <= 0)
-  {
-    sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidQuantity, m.accountId, true});
     return;
   }
 
@@ -284,34 +339,20 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   // earlier life, so this is added back onto every report the re-enter path
   // emits below.
   const Quantity curCumQty = cur->cumQty;
-  const Price newPrice = (m.newPrice.raw() == 0) ? curPrice : m.newPrice;
+  const Price newPrice = amendNamesAPrice ? m.newPrice : curPrice;
 
-  // Validate the new price/qty before mutating so a bad modify leaves the
-  // original order untouched.
-  if (newPrice.raw() <= 0)
+  // An amend that names no price keeps the order's own, which was checked when
+  // the order was admitted -- but the instrument can have been retuned since
+  // (SetBands, a new tick), and a kept price that no longer obeys it is
+  // refused the same as any other. This is the one gate the holds are already
+  // resolved for: the price it reads only becomes readable with them gone.
+  if (!amendNamesAPrice)
   {
-    sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct, true});
-    return;
-  }
-  if (!cfg_.tickSize.isZero() && (newPrice.raw() % cfg_.tickSize.raw()) != 0)
-  {
-    sink_(CancelRejected{m.id, m.symbol, RejectReason::TickSizeViolation, acct, true});
-    return;
-  }
-  if (!cfg_.minPrice.isZero() && newPrice < cfg_.minPrice)
-  {
-    sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct, true});
-    return;
-  }
-  if (!cfg_.maxPrice.isZero() && cfg_.maxPrice < newPrice)
-  {
-    sink_(CancelRejected{m.id, m.symbol, RejectReason::InvalidPrice, acct, true});
-    return;
-  }
-  if (!cfg_.lotSize.isZero() && (m.newQty.raw() % cfg_.lotSize.raw()) != 0)
-  {
-    sink_(CancelRejected{m.id, m.symbol, RejectReason::LotSizeViolation, acct, true});
-    return;
+    if (const RejectReason r = priceRefusal(newPrice); r != RejectReason::None)
+    {
+      sink_(CancelRejected{m.id, m.symbol, r, acct, true});
+      return;
+    }
   }
   // The book's own band, for the same reason submit asks: an amend to a price
   // the book has no level for would take the order off the book and then fail
