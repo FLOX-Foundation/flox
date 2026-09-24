@@ -26,6 +26,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "callback_guard.h"
 #include "flox/capi/flox_capi.h"
 #include "flox/capi/order_type_names.hpp"
 #include "flox/common.h"
@@ -210,29 +211,22 @@ inline PyExchangeCapabilities pyCapsFromC(const FloxExchangeCapabilities& c)
   return p;
 }
 
-// ── Helper: invoke Python callback under GIL, swallow exceptions ────────
+// ── Helper: invoke Python callback under GIL, contain exceptions ────────
 //
 // Hooks fire from C-ABI consumer threads (live engine) or the publisher
 // thread (sync runner). Either way we must hold the GIL while invoking
-// virtual dispatch. Exceptions from Python are caught and printed —
-// propagating them across the C ABI boundary is undefined behaviour.
+// virtual dispatch. An exception from Python is contained here and its
+// text is reported through the engine log — propagating it across the C
+// ABI boundary is undefined behaviour. callback_guard.h states the whole
+// policy. Returns true when the callback completed; `source` names it in
+// the report and defaults to the enclosing bridge function.
 
 template <typename Fn>
-inline void invokeUnderGil(Fn fn)
+inline bool invokeUnderGil(Fn fn, const char* source = nullptr,
+                           const std::source_location loc = std::source_location::current())
 {
   py::gil_scoped_acquire gil;
-  try
-  {
-    fn();
-  }
-  catch (const py::error_already_set& e)
-  {
-    PyErr_Print();
-  }
-  catch (const std::exception& e)
-  {
-    PySys_WriteStderr("flox hook callback raised: %s\n", e.what());
-  }
+  return guardCallback(fn, source, loc);
 }
 
 // ── PnLTracker hook ──────────────────────────────────────────────────────
@@ -364,9 +358,13 @@ class PyRiskManagerTrampoline : public PyRiskManager
 inline uint8_t riskAllowBridge(void* ud, const FloxSignal* sig)
 {
   auto* py_obj = static_cast<PyRiskManager*>(ud);
-  uint8_t result = 1;
+  // Deny unless the callable says otherwise: a gate that raised, or
+  // answered with something that is not a bool, did not let the signal
+  // through. See callback_guard.h.
+  uint8_t result = kGateDenied;
   invokeUnderGil([&]
-                 { result = py_obj->allow(pySignalFromC(sig)) ? 1u : 0u; });
+                 { result = py_obj->allow(pySignalFromC(sig)) ? kGateAllowed : kGateDenied; },
+                 "RiskManager.allow");
   return result;
 }
 
@@ -420,9 +418,13 @@ class PyKillSwitchTrampoline : public PyKillSwitch
 inline uint8_t killCheckBridge(void* ud, const FloxSignal* sig)
 {
   auto* py_obj = static_cast<PyKillSwitch*>(ud);
-  uint8_t result = 1;
+  // Deny unless the callable says otherwise: a gate that raised, or
+  // answered with something that is not a bool, did not let the signal
+  // through. See callback_guard.h.
+  uint8_t result = kGateDenied;
   invokeUnderGil([&]
-                 { result = py_obj->check(pySignalFromC(sig)) ? 1u : 0u; });
+                 { result = py_obj->check(pySignalFromC(sig)) ? kGateAllowed : kGateDenied; },
+                 "KillSwitch.check");
   return result;
 }
 
@@ -475,9 +477,13 @@ class PyOrderValidatorTrampoline : public PyOrderValidator
 inline uint8_t orderValidateBridge(void* ud, const FloxSignal* sig)
 {
   auto* py_obj = static_cast<PyOrderValidator*>(ud);
-  uint8_t result = 1;
+  // Deny unless the callable says otherwise: a gate that raised, or
+  // answered with something that is not a bool, did not let the signal
+  // through. See callback_guard.h.
+  uint8_t result = kGateDenied;
   invokeUnderGil([&]
-                 { result = py_obj->validate(pySignalFromC(sig)) ? 1u : 0u; });
+                 { result = py_obj->validate(pySignalFromC(sig)) ? kGateAllowed : kGateDenied; },
+                 "OrderValidator.validate");
   return result;
 }
 
@@ -1097,7 +1103,8 @@ inline void loggerBridge(void* /*ud*/, int32_t level, const char* msg)
     if (!cb.is_none())
     {
       cb(level, msg ? std::string(msg) : std::string{});
-    } });
+    } },
+                 "the log callback");
 }
 
 inline void setPythonLogCallback(py::object cb)
@@ -1471,9 +1478,11 @@ class PyRiskManagerCxxAdapter : public flox::IRiskManager
   }
   bool allow(const flox::Order& order) const override
   {
-    bool result = true;
+    // Same rule as the C-ABI bridge: no answer means deny.
+    bool result = false;
     invokeUnderGil([&]
-                   { result = _delegate->allow(pySignalFromOrder(order)); });
+                   { result = _delegate->allow(pySignalFromOrder(order)); },
+                   "RiskManager.allow");
     return result;
   }
 
@@ -1493,9 +1502,13 @@ class PyKillSwitchCxxAdapter : public flox::IKillSwitch
   // store its inverse as `_triggered`.
   void check(const flox::Order& order) override
   {
-    bool allowed = true;
+    // A check that raised did not clear trading, so it halts — and this
+    // interface latches, so a broken kill switch stops the run rather
+    // than being asked again on the next order.
+    bool allowed = false;
     invokeUnderGil([&]
-                   { allowed = _delegate->check(pySignalFromOrder(order)); });
+                   { allowed = _delegate->check(pySignalFromOrder(order)); },
+                   "KillSwitch.check");
     if (!allowed)
     {
       _triggered = true;
@@ -1527,9 +1540,11 @@ class PyOrderValidatorCxxAdapter : public flox::IOrderValidator
   // can raise via the engine's REJECTED order event.
   bool validate(const flox::Order& order, std::string& /*reason*/) const override
   {
-    bool valid = true;
+    // Same rule as the C-ABI bridge: no answer means reject.
+    bool valid = false;
     invokeUnderGil([&]
-                   { valid = _delegate->validate(pySignalFromOrder(order)); });
+                   { valid = _delegate->validate(pySignalFromOrder(order)); },
+                   "OrderValidator.validate");
     return valid;
   }
 
