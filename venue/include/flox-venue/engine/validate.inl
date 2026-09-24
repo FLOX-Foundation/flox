@@ -33,7 +33,7 @@ void MatchingEngine<Book>::setAdmissionProfile(uint64_t account, const Admission
 }
 
 template <class Book>
-const std::unordered_map<uint64_t, AdmissionProfile>& MatchingEngine<Book>::admissionProfiles() const noexcept
+std::unordered_map<uint64_t, AdmissionProfile> MatchingEngine<Book>::admissionProfiles() const
 {
   return credit_.admissionProfiles();
 }

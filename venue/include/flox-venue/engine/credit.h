@@ -22,6 +22,7 @@
  */
 #pragma once
 
+#include "flox-venue/engine/snapshot_lock.h"
 #include "flox-venue/engine/sorted_keys.h"
 #include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
@@ -34,6 +35,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 
@@ -100,6 +102,7 @@ class Credit
   // for the checkpoint state hash.
   void setAdmissionProfile(uint64_t account, const AdmissionProfile& p)
   {
+    std::lock_guard<SnapshotLock> lk(admissionLock_);
     if (p.allowedTypes == 0 && p.allowedTif == 0 && p.deny == 0)
     {
       admission_.erase(account);
@@ -108,8 +111,14 @@ class Credit
     admission_[account] = p;
   }
 
-  const std::unordered_map<uint64_t, AdmissionProfile>& admissionProfiles() const noexcept
+  // Handed out BY VALUE, under engine::SnapshotLock: the /metrics thread
+  // samples this table (docs/venue/perimeter.md) while the consumer is free to
+  // retune an account, and a reference into the live map would put a rehash
+  // under a reader's iterator. The engine's own paths read admission_ directly
+  // -- they are the consumer thread, and the consumer never races itself.
+  std::unordered_map<uint64_t, AdmissionProfile> admissionProfiles() const
   {
+    std::lock_guard<SnapshotLock> lk(admissionLock_);
     return admission_;
   }
 
@@ -471,6 +480,7 @@ class Credit
 
   void restoreAdmission(const std::unordered_map<uint64_t, AdmissionProfile>& m)
   {
+    std::lock_guard<SnapshotLock> lk(admissionLock_);
     admission_ = m;
   }
 
@@ -634,6 +644,7 @@ class Credit
   // The credit half of the snapshot clone: the two tables, and nothing else.
   void copyStateFrom(const Credit& other)
   {
+    std::lock_guard<SnapshotLock> lk(admissionLock_);
     admission_ = other.admission_;
     accountLimits_ = other.accountLimits_;
     reserve_ = other.reserve_;
@@ -750,6 +761,8 @@ class Credit
   // "everything permitted", so an engine that was never given profiles behaves
   // exactly as before.
   std::unordered_map<uint64_t, AdmissionProfile> admission_;
+  // Mutable because taking a snapshot is a const operation on the engine.
+  mutable SnapshotLock admissionLock_;
   std::unordered_map<uint64_t, AccountLimits> accountLimits_;
 
   uint64_t admissionRejects_{0};  // observability: a counterparty sending what it may not
