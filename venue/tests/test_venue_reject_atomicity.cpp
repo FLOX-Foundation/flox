@@ -527,6 +527,97 @@ TEST(RejectAtomicity, AModifyOnAFullyHeldOutMakerIsValidatedNotDeclaredUnknown)
   EXPECT_EQ(eng.book().find(1), nullptr);  // still held out, not restored
 }
 
+// A ModifyOrder naming an id the engine has never seen. The answer is the
+// amend's LAST word, not its first: existence has to be settled before the
+// amend's own fields are read, or an unknown id comes back with a verdict on
+// a quantity or a price that belongs to no order. And nothing else may move
+// -- no report but the refusal, no resting order touched, no hold resolved.
+TEST(RejectAtomicity, AModifyForAnUnknownOrderIsRefusedAndTouchesNothing)
+{
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(lastLookCfg(), cap.sink());
+
+  NewOrder maker = limit(1, Side::SELL, 100, 5, 1);
+  maker.lastLook = true;
+  maker.clientOrderId = 11;
+  eng.submit(InboundCommand{maker}, 1);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 100, 3, 2)}, 2);  // 3 held out
+  eng.submit(InboundCommand{limit(3, Side::BUY, 95, 4, 1)}, 3);   // a second resting order
+
+  uint64_t heldId = 0;
+  for (const auto& e : cap.ev)
+  {
+    if (const auto* h = std::get_if<FillHeld>(&e))
+    {
+      heldId = h->heldId;
+    }
+  }
+  ASSERT_NE(heldId, 0u);
+  ASSERT_EQ(eng.openHolds(), 1u);
+  ASSERT_EQ(restingOf(eng.book(), 1).leaves, qty(2));
+  ASSERT_EQ(restingOf(eng.book(), 3).leaves, qty(4));
+
+  // An id the venue never issued, amended three ways: a quantity that is not
+  // a quantity, a price off the tick, and a perfectly ordinary amend. All
+  // three answer the same thing, because the order does not exist.
+  cap.clear();
+  eng.submit(InboundCommand{ModifyOrder{999, SYM, {}, Price{}, Quantity{}, 1}}, 4);
+  EXPECT_EQ(cap.ev.size(), 1u);
+  EXPECT_TRUE(cap.cancelRejected(999, RejectReason::UnknownOrder));
+  EXPECT_FALSE(cap.cancelRejected(999, RejectReason::InvalidQuantity));
+
+  cap.clear();
+  eng.submit(InboundCommand{ModifyOrder{999, SYM, {}, px(100.005), qty(1), 1}}, 5);
+  EXPECT_EQ(cap.ev.size(), 1u);
+  EXPECT_TRUE(cap.cancelRejected(999, RejectReason::UnknownOrder));
+  EXPECT_FALSE(cap.cancelRejected(999, RejectReason::TickSizeViolation));
+
+  cap.clear();
+  eng.submit(InboundCommand{ModifyOrder{999, SYM, {}, px(99), qty(1), 1}}, 6);
+  EXPECT_EQ(cap.ev.size(), 1u);
+  EXPECT_TRUE(cap.cancelRejected(999, RejectReason::UnknownOrder));
+
+  // Nothing the engine was holding moved.
+  EXPECT_EQ(eng.openHolds(), 1u);
+  EXPECT_TRUE(eng.hasHold(heldId));
+  EXPECT_EQ(restingOf(eng.book(), 1).leaves, qty(2));
+  EXPECT_EQ(restingOf(eng.book(), 1).price, px(100));
+  EXPECT_EQ(restingOf(eng.book(), 3).leaves, qty(4));
+  EXPECT_EQ(restingOf(eng.book(), 3).price, px(95));
+  EXPECT_FALSE(eng.book().contains(999));
+}
+
+// The same question for an id that DID exist and was cancelled: the tracking
+// index forgot it, so it is as unknown as one never issued, and an amend on
+// it gets the same word back rather than a verdict on its fields.
+TEST(RejectAtomicity, AModifyForACancelledOrderIsRefusedAsUnknown)
+{
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  NewOrder o = limit(7, Side::SELL, 105, 2, 1);
+  o.clientOrderId = 77;
+  eng.submit(InboundCommand{o}, 1);
+  ASSERT_TRUE(eng.book().contains(7));
+  eng.submit(InboundCommand{CancelOrder{7, SYM, {}, 1}}, 2);
+  ASSERT_FALSE(eng.book().contains(7));
+
+  cap.clear();
+  eng.submit(InboundCommand{ModifyOrder{7, SYM, {}, Price{}, Quantity{}, 1}}, 3);
+  EXPECT_EQ(cap.ev.size(), 1u);
+  EXPECT_TRUE(cap.cancelRejected(7, RejectReason::UnknownOrder));
+  EXPECT_FALSE(cap.cancelRejected(7, RejectReason::InvalidQuantity));
+
+  cap.clear();
+  eng.submit(InboundCommand{ModifyOrder{7, SYM, {}, px(105.005), qty(1), 1}}, 4);
+  EXPECT_EQ(cap.ev.size(), 1u);
+  EXPECT_TRUE(cap.cancelRejected(7, RejectReason::UnknownOrder));
+  EXPECT_FALSE(cap.cancelRejected(7, RejectReason::TickSizeViolation));
+
+  EXPECT_FALSE(eng.book().contains(7));
+  EXPECT_TRUE(eng.snapshotAccount(1).openOrders.empty());
+}
+
 // A bare NewOrder -- no quote involved -- must be refused on the instrument's
 // own state with the reason that state carries. applyQuote reads the same
 // gate, and the quote tests above would stay green if validate() stopped

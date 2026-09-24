@@ -64,6 +64,13 @@ SymbolConfig luldCfg()
   return c;
 }
 
+SymbolConfig lastLookCfg()
+{
+  SymbolConfig c = cfg();
+  c.lastLookWindowNs = DurationNs{1000000};
+  return c;
+}
+
 NewOrder limit(OrderId id, Side s, double p, double q, uint64_t acct,
                TimeInForce tif = TimeInForce::GTC)
 {
@@ -134,6 +141,33 @@ struct Cap
     for (const auto& e : ev)
     {
       if (std::get_if<Trade>(&e) != nullptr)
+      {
+        ++n;
+      }
+    }
+    return n;
+  }
+
+  int cancelCount(CancelReason r) const
+  {
+    int n = 0;
+    for (const auto& e : ev)
+    {
+      if (const auto* x = std::get_if<OrderCanceled>(&e); x != nullptr && x->reason == r)
+      {
+        ++n;
+      }
+    }
+    return n;
+  }
+
+  template <class T>
+  int count() const
+  {
+    int n = 0;
+    for (const auto& e : ev)
+    {
+      if (std::get_if<T>(&e) != nullptr)
       {
         ++n;
       }
@@ -262,6 +296,107 @@ TEST(OcoCommitBoundary, ALuldRefusalLeavesNoDeadIdInTheGroup)
   EXPECT_FALSE(cap.canceled(31, CancelReason::OcoTriggered));
   EXPECT_TRUE(eng.book().contains(31));
   EXPECT_TRUE(hasOpenOrder(eng, 1, 31, 99.5));
+}
+
+// ---- the residual cancel after a PARTIAL fill ------------------------------
+
+// The residual-cancel branch is the dead leg's only exit: the order was never
+// tracked, so no forgetOrder will ever run for it. Whether it printed first
+// changes nothing about that -- a leg that filled part of its size and had
+// the rest cancelled is just as gone as one that filled nothing, and just as
+// obliged to leave the group on its way out.
+TEST(OcoCommitBoundary, APartiallyFilledResidualLeavesTheGroup)
+{
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(cfg(), cap.sink());
+
+  eng.submit(InboundCommand{limit(1, Side::SELL, 100, 2, 2)}, 1);  // unrelated liquidity
+
+  NewOrder legA = limit(20, Side::SELL, 110, 1, 1);
+  legA.ocoGroup = 7;
+  eng.submit(InboundCommand{legA}, 2);  // group 7 = [20], resting
+  ASSERT_TRUE(eng.book().contains(20));
+
+  NewOrder legB = limit(21, Side::BUY, 100, 5, 1, TimeInForce::IOC);
+  legB.ocoGroup = 7;
+  cap.clear();
+  eng.submit(InboundCommand{legB}, 3);  // prints 2, the other 3 are cancelled
+
+  EXPECT_EQ(cap.trades(), 1);
+  ASSERT_TRUE(cap.canceled(21, CancelReason::ImmediateOrCancelResidual));
+
+  // The print decided the group: the sibling loses, once, and the leg that
+  // won is not cancelled for having won.
+  EXPECT_EQ(cap.cancelCount(CancelReason::OcoTriggered), 1);
+  EXPECT_TRUE(cap.canceled(20, CancelReason::OcoTriggered));
+  EXPECT_FALSE(cap.canceled(21, CancelReason::OcoTriggered));
+  EXPECT_FALSE(eng.book().contains(20));
+
+  // And the dead id is out of the group: reused, it is an ordinary order that
+  // no later print can reach.
+  eng.submit(InboundCommand{limit(21, Side::BUY, 95, 1, 1)}, 4);
+  ASSERT_TRUE(hasOpenOrder(eng, 1, 21, 95));
+
+  cap.clear();
+  eng.submit(InboundCommand{limit(1, Side::SELL, 95, 1, 2)}, 5);  // print against the reused id
+  EXPECT_EQ(cap.trades(), 1);
+  EXPECT_EQ(cap.cancelCount(CancelReason::OcoTriggered), 0);
+  EXPECT_FALSE(cap.canceled(21, CancelReason::OcoTriggered));
+}
+
+// The same exit, where the group's OTHER member is the maker the leg printed
+// against and is consumed by that print. The sibling is gone and forgotten,
+// so the group's last member is the dead leg itself -- and the only thing
+// that takes it out is its own unlink on the way through the residual
+// cancel. Leave it in and the resolution hands the group's own winner list a
+// dead id to cancel: it rests nowhere, so nothing is reported, but the
+// cancel path resolves that id's last-look holds first -- and this leg has
+// one, taken from a non-firm maker on the same sweep. A hold that belongs to
+// a settled print is collateral damage.
+TEST(OcoCommitBoundary, APartiallyFilledResidualDoesNotTakeItsOwnHoldDownWithIt)
+{
+  Cap cap;
+  MatchingEngine<MatchingBook> eng(lastLookCfg(), cap.sink());
+
+  NewOrder legA = limit(20, Side::SELL, 100, 2, 1);
+  legA.ocoGroup = 7;
+  eng.submit(InboundCommand{legA}, 1);  // group 7 = [20], firm, best ask
+
+  NewOrder soft = limit(11, Side::SELL, 101, 2, 3);
+  soft.lastLook = true;
+  eng.submit(InboundCommand{soft}, 2);  // non-firm, one tick behind
+  ASSERT_TRUE(eng.book().contains(11));
+
+  NewOrder legB = limit(21, Side::BUY, 101, 6, 1, TimeInForce::IOC);
+  legB.ocoGroup = 7;
+  cap.clear();
+  eng.submit(InboundCommand{legB}, 3);
+
+  // What the sweep did: printed 2 against the sibling (consuming it), held 2
+  // against the non-firm maker, cancelled the 2 it could not fill.
+  EXPECT_EQ(cap.trades(), 1);
+  EXPECT_EQ(cap.count<FillHeld>(), 1);
+  ASSERT_TRUE(cap.canceled(21, CancelReason::ImmediateOrCancelResidual));
+  EXPECT_FALSE(eng.book().contains(20));
+
+  uint64_t heldId = 0;
+  for (const auto& e : cap.ev)
+  {
+    if (const auto* h = std::get_if<FillHeld>(&e))
+    {
+      heldId = h->heldId;
+    }
+  }
+  ASSERT_NE(heldId, 0u);
+
+  // The hold is untouched: it belongs to a print that has not been decided
+  // yet, and the dead leg's departure from the group is not a cancel of it.
+  EXPECT_EQ(cap.count<FillRejected>(), 0);
+  EXPECT_EQ(eng.openHolds(), 1u);
+  EXPECT_TRUE(eng.hasHold(heldId));
+  EXPECT_EQ(cap.cancelCount(CancelReason::OcoTriggered), 0);
+  // The non-firm maker's whole size is held out of the book and stays there.
+  EXPECT_EQ(eng.book().find(11), nullptr);
 }
 
 // ---- controls: green today, and a fix must keep them green -----------------

@@ -796,6 +796,53 @@ MUTATIONS: list[Mutation] = [
         target=ATOM_TEST,
         test="RejectAtomicity.SetAdmissionProfileForAForeignSymbolIsIgnored",
     ),
+
+    # ---- onModify: the existence gate removed outright --------------------
+    Mutation(
+        name="modify-existence-gate-removed",
+        why=("onModify stops asking whether the id exists at all, so an unknown id falls through "
+             "to the amend's own field checks and comes back with a verdict on a quantity or a "
+             "price that belongs to no order (InvalidQuantity / TickSizeViolation instead of "
+             "UnknownOrder). The later book_.find guard hides it for a well-formed amend, which "
+             "is why an ill-formed one has to be the test"),
+        file=ORDERS,
+        old="""  if (!pub_.tracked(m.id))
+  {
+    sink_(CancelRejected{m.id, m.symbol, RejectReason::UnknownOrder, m.accountId, true});
+    return;
+  }""",
+        new="""  if (false)
+  {
+    sink_(CancelRejected{m.id, m.symbol, RejectReason::UnknownOrder, m.accountId, true});
+    return;
+  }""",
+        target=ATOM_TEST,
+        test="RejectAtomicity.AModifyForAnUnknownOrderIsRefusedAndTouchesNothing:"
+             "RejectAtomicity.AModifyForACancelledOrderIsRefusedAsUnknown",
+    ),
+
+    # ---- validate.inl: the residual-cancel unlink made conditional --------
+    Mutation(
+        name="oco-unlink-residual-only-when-nothing-filled",
+        why=("the residual-cancel branch only unlinks a leg that printed NOTHING, so a leg that "
+             "filled part of its size and had the rest cancelled stays in its group. The "
+             "resolution then hands the group's loser list a dead id, whose cancel path resolves "
+             "that id's last-look holds on the way through -- a hold belonging to a print that "
+             "has not been decided yet"),
+        file=VALIDATE,
+        old="""    oco_.unlink(o.id);
+    sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId, o.clientOrderId,
+                        out.leaves, out.filled});""",
+        new="""    if (out.filled.raw() == 0)
+    {
+      oco_.unlink(o.id);
+    }
+    sink_(OrderCanceled{o.id, o.symbol, out.residualCancelReason, o.accountId, o.clientOrderId,
+                        out.leaves, out.filled});""",
+        target=OCO_TEST,
+        test="OcoCommitBoundary.APartiallyFilledResidualLeavesTheGroup:"
+             "OcoCommitBoundary.APartiallyFilledResidualDoesNotTakeItsOwnHoldDownWithIt",
+    ),
 ]
 
 
