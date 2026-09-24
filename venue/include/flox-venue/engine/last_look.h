@@ -776,6 +776,13 @@ class LastLook
       {
         RestingOrder rebuilt{h.taker, h.takerAccount, h.takerPrice, h.qty, h.takerSide};
         rebuilt.clientOrderId = h.takerClientOrderId;
+        // Its own flag, for the same reason the maker rebuild carries one: a
+        // reduce-only leg reserves no margin, so re-resting it as a plain
+        // order leaves an order on the book that can OPEN a position with
+        // nothing behind it. There is no post-only counterpart: an order that
+        // would cross is refused before it reaches a maker, so no hold's
+        // taker is ever post-only.
+        rebuilt.reduceOnly = h.takerReduceOnly;
         // T059: this hold held the taker's entire remaining size (nothing
         // else rested), so its life-to-date total is exactly what it had
         // confirmed before the hold opened -- the held qty itself never
