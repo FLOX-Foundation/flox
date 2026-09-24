@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "flox-connectors/execution/fill_watermark.h"
+
 #include <flox/book/bus/book_update_bus.h>
 #include <flox/book/bus/trade_bus.h>
 #include <flox/common.h>
@@ -104,6 +106,12 @@ class BitgetExchangeConnector : public IExchangeConnector
   // out of range, so leaving it at InvalidExchangeId kept the cross-venue book
   // permanently empty in live.
   ExchangeId _exchangeId{InvalidExchangeId};
+
+  // The venue re-pushes an order's current state after every private
+  // resubscribe, so the same fill can arrive more than once. accBaseVolume is
+  // the order's cumulative filled quantity; publishing only what it adds makes
+  // the repeat a no-op instead of a second fill. See FillWatermark.
+  FillWatermark _reportedFill;
 
   std::shared_ptr<ILogger> _logger;
 

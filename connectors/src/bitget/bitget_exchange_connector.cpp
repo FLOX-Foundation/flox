@@ -631,11 +631,13 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
             ev.fillQty = *fillQtyOpt;
           }
         }
+        bool haveCumulative = false;
         if (auto acc = d["accBaseVolume"]; !acc.error())
         {
           if (auto filledOpt = util::parseQty(acc.get_string().value()))
           {
             ev.order.filledQuantity = *filledOpt;
+            haveCumulative = true;
           }
         }
 
@@ -658,6 +660,27 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
         else
         {
           ev.status = OrderEventStatus::SUBMITTED;
+        }
+
+        const bool isFill = (ev.status == OrderEventStatus::FILLED ||
+                             ev.status == OrderEventStatus::PARTIALLY_FILLED);
+        if (isFill && haveCumulative)
+        {
+          // A push that carries no new cumulative quantity is the venue
+          // repeating itself, not a second execution.
+          const Quantity newlyFilled = _reportedFill.advance(ev.order.id, ev.order.filledQuantity);
+          if (newlyFilled.isZero())
+          {
+            continue;
+          }
+          if (ev.fillQty.isZero())
+          {
+            ev.fillQty = newlyFilled;
+          }
+        }
+        if (ev.status == OrderEventStatus::FILLED || ev.status == OrderEventStatus::CANCELED)
+        {
+          _reportedFill.complete(ev.order.id);
         }
 
         ev.publishNs = nowMonoNanos();

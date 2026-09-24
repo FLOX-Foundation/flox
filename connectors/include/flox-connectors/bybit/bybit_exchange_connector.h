@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "flox-connectors/execution/fill_watermark.h"
+
 #include <flox/book/bus/book_update_bus.h>
 #include <flox/book/bus/trade_bus.h>
 #include <flox/common.h>
@@ -19,7 +21,6 @@
 #include <flox/net/abstract_websocket_client.h>
 
 #include <atomic>
-#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -104,11 +105,8 @@ class BybitExchangeConnector : public IExchangeConnector
   // quantity and writes the increment into ev.fillQty. Returns false when a
   // fill status brings no new quantity -- the same execution already reached
   // the bus from the other private topic, and republishing it would double the
-  // position. See _reportedFill.
+  // position.
   bool applyFillWatermark(OrderEvent& ev, Quantity cumulative);
-
-  // Cumulative quantity already published for an order, zero if unknown.
-  Quantity reportedFill(OrderId id) const;
 
   BybitConfig _config;
 
@@ -137,32 +135,15 @@ class BybitExchangeConnector : public IExchangeConnector
   std::unordered_map<SymbolId, BookSeqState> _bookSeq;
   std::atomic<uint64_t> _bookGapCount{0};
 
-  // Cumulative filled quantity already published to the order bus for each
-  // order, keyed by the engine's own OrderId.
+  // Cross-topic fill de-duplication and cumulative-to-delta conversion.
   //
-  // Two jobs at once. The "order" topic carries the venue's cumulative fill
-  // state (cumExecQty), not a per-message delta, so the increment has to be
-  // derived here or OrderEvent::fillQty stays zero on every fill. And the
-  // private stream subscribes to both "order" and "execution", which announce
-  // the *same* execution: publishing both books twice the quantity that
-  // actually traded. Deriving every fill from this watermark solves both --
-  // whichever topic reports an execution first advances the watermark and
-  // publishes the increment, and the other one computes a zero increment and
-  // publishes nothing.
-  //
-  // The entry deliberately outlives the order's terminal status: the duplicate
-  // of the last fill arrives on the other topic *after* it, so erasing on
-  // terminal would let that duplicate through as a fresh fill. Entries are
-  // evicted in completion order once kCompletedOrderHistory of them have piled
-  // up. Only touched from the private-stream callback, so no locking.
-  struct ReportedFill
-  {
-    Quantity cumulative{};
-    bool completed{false};
-  };
-  static constexpr size_t kCompletedOrderHistory = 4096;
-  std::unordered_map<OrderId, ReportedFill> _reportedFill;
-  std::deque<OrderId> _completedOrders;
+  // The private stream subscribes to both "order" and "execution", which
+  // announce the *same* execution -- the order topic as a cumulative total
+  // (cumExecQty), the execution topic as a single fill. Publishing both booked
+  // twice the quantity that actually traded, and the cumulative half left
+  // OrderEvent::fillQty at zero. Both are the watermark's job; see
+  // FillWatermark.
+  FillWatermark _reportedFill;
 
   std::shared_ptr<ILogger> _logger;
 

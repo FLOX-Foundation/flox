@@ -662,41 +662,21 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
   }
 }
 
-Quantity BybitExchangeConnector::reportedFill(OrderId id) const
-{
-  auto it = _reportedFill.find(id);
-  return (it != _reportedFill.end()) ? it->second.cumulative : Quantity{};
-}
-
 bool BybitExchangeConnector::applyFillWatermark(OrderEvent& ev, Quantity cumulative)
 {
-  const bool isFill =
-      (ev.status == OrderEventStatus::PARTIALLY_FILLED || ev.status == OrderEventStatus::FILLED);
-
-  auto& entry = _reportedFill[ev.order.id];
-  const int64_t increment = cumulative.raw() - entry.cumulative.raw();
-  if (increment > 0)
-  {
-    entry.cumulative = cumulative;
-  }
-
-  ev.fillQty = (increment > 0) ? Quantity::fromRaw(increment) : Quantity{};
+  ev.fillQty = _reportedFill.advance(ev.order.id, cumulative);
 
   const bool terminal =
       (ev.status == OrderEventStatus::FILLED || ev.status == OrderEventStatus::CANCELED ||
        ev.status == OrderEventStatus::REJECTED || ev.status == OrderEventStatus::EXPIRED);
-  if (terminal && !entry.completed)
+  if (terminal)
   {
-    entry.completed = true;
-    _completedOrders.push_back(ev.order.id);
-    while (_completedOrders.size() > kCompletedOrderHistory)
-    {
-      _reportedFill.erase(_completedOrders.front());
-      _completedOrders.pop_front();
-    }
+    _reportedFill.complete(ev.order.id);
   }
 
-  return !isFill || increment > 0;
+  const bool isFill =
+      (ev.status == OrderEventStatus::PARTIALLY_FILLED || ev.status == OrderEventStatus::FILLED);
+  return !isFill || !ev.fillQty.isZero();
 }
 
 void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
@@ -929,12 +909,17 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
 
         // The watermark is cumulative, so an execution frame has to be
         // expressed as a cumulative total too. orderQty - leavesQty is that
-        // total straight from the venue; without those fields the only
-        // cumulative available is what this connector has already published
-        // plus execQty.
+        // total straight from the venue, and Bybit V5 sends both on every
+        // execution frame. The fallback below covers a frame that arrives
+        // without them: treating execQty as an increment on what has already
+        // been published keeps a repeat of that same frame from booking twice,
+        // but it cannot tell whether the order topic has already reported this
+        // execution, so cross-topic de-duplication is only as good as those two
+        // fields.
         const Quantity cumulative =
-            haveCumulative ? ev.order.filledQuantity
-                           : Quantity::fromRaw(reportedFill(ev.order.id).raw() + qtyOpt->raw());
+            haveCumulative
+                ? ev.order.filledQuantity
+                : Quantity::fromRaw(_reportedFill.reported(ev.order.id).raw() + qtyOpt->raw());
         if (!applyFillWatermark(ev, cumulative))
         {
           continue;
