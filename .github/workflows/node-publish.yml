@@ -162,7 +162,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: prebuilt-${{ matrix.platform }}-${{ matrix.arch }}
-          path: node/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/flox_node.node
+          # Upload the parent directory, not the per-platform directory
+          # and not the .node file inside it. A single-file `path` makes
+          # upload-artifact drop the containing directory, so the
+          # artifact's root becomes a bare `flox_node.node` for every
+          # matrix leg; three artifacts shaped that way collide on the
+          # exact same path once merge-multiple flattens them below.
+          # `node/prebuilds` at this point holds exactly one
+          # `<platform>-<arch>/` subdirectory, so uploading it keeps
+          # that subdirectory in the artifact and each of the three
+          # artifacts gets a distinct root: `<platform>-<arch>/flox_node.node`.
+          path: node/prebuilds
 
   publish:
     needs: [build, run-core-tests, check-tag-on-main]
@@ -195,6 +205,35 @@ jobs:
         with:
           path: node/prebuilds
           merge-multiple: true
+
+      - name: Install package dependencies
+        working-directory: node
+        run: npm install
+
+      - name: Verify the packed tarball actually installs and loads
+        working-directory: node
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm pack
+          tarball="$(ls flox-foundation-flox-*.tgz)"
+          check_dir="$(mktemp -d)"
+          cp "$tarball" "$check_dir/"
+          rm -f "$tarball"
+          pushd "$check_dir" >/dev/null
+          npm init -y >/dev/null
+          npm install "./$tarball"
+          node -e "
+            const flox = require('@flox-foundation/flox');
+            const reg = new flox.SymbolRegistry();
+            const sym = reg.addSymbol('bybit', 'BTCUSDT', 0.01);
+            if (sym === undefined || sym === null) {
+              throw new Error('native addon call returned nothing');
+            }
+            console.log('native addon loaded and callable, symbol id:', sym);
+          "
+          popd >/dev/null
+          rm -rf "$check_dir"
 
       - name: Publish
         working-directory: node
