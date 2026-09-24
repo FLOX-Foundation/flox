@@ -1,10 +1,20 @@
 """
-python/tests/test_hooks.py — smoke-test pybind11 wrappers for the
-extension hooks (PnLTracker, StorageSink, RiskManager, KillSwitch,
-OrderValidator, MarketDataRecorderHook, ReplaySource, Executor,
-ExecutionListener, set_log_callback).
+python/tests/test_hooks.py — the pybind11 wrappers for the extension
+hooks (PnLTracker, StorageSink, RiskManager, KillSwitch, OrderValidator,
+MarketDataRecorderHook, ReplaySource, Executor, ExecutionListener,
+set_log_callback), plus the fail-closed rule the three pre-trade gates
+owe a Python callable that raises.
+
+Every case in this file used to be unfailable under pytest: check() only
+counted and printed, and the exit code was read behind
+`if __name__ == "__main__"`, which CI never runs. CI runs
+`pytest python/tests -q`, so eleven green cases here said nothing about
+the binding. check() now asserts on the spot and test_no_failures() is
+the file-level backstop, matching test_bindings.py:505 and
+test_dataset_export.py:64.
 
 Run from repo root:
+    PYTHONPATH=build/python python3 -m pytest python/tests/test_hooks.py
     PYTHONPATH=build/python python3 python/tests/test_hooks.py
 """
 
@@ -28,6 +38,9 @@ def check(cond, msg):
     else:
         print(f"  FAIL  {msg}")
         _failed += 1
+    # The assert is the point: without it every line below was a print
+    # and the file passed no matter what the binding did.
+    assert cond, msg
 
 
 def make_runner_with_strategy():
@@ -343,17 +356,101 @@ def test_log_callback():
     check(True, "set_log_callback wires + detaches without crash")
 
 
+# ── Pre-trade gates must fail closed ─────────────────────────────────
+#
+# include/flox/capi/flox_capi_spec.hpp:2306 — "Returning 0 (deny) drops
+# the signal entirely; returning 1 (allow) lets it propagate."
+# include/flox/capi/flox_capi.h:47 — a call the engine had to stop
+# "returns its failure value and leaves a description behind". A gate
+# that raised never answered, so its failure value is deny.
+#
+# Red today: python/hook_bindings.h:364 (also :420, :475) pre-initialises
+# `uint8_t result = 1` and invokeUnderGil (:220) swallows the exception,
+# so a broken gate is an open gate.
+
+
+def _gate_denies_on_raise(name, hook, attach):
+    reg, runner, strat, sym_id, fired_signal = make_runner_with_strategy()
+    attach(runner, hook)
+    runner.start()
+    raised = None
+    try:
+        runner.on_trade(sym_id, 100.0, 1.0, True, 1_000)
+    except BaseException as exc:      # re-raising is allowed, silence is not
+        raised = exc
+    runner.stop()
+    check(len(fired_signal) == 0,
+          f"{name} that raises must deny the signal, "
+          f"{len(fired_signal)} got through")
+    return raised
+
+
+def test_risk_manager_denies_when_it_raises():
+    print("test_risk_manager_denies_when_it_raises")
+
+    class RM(flox.RiskManager):
+        def allow(self, sig):
+            raise RuntimeError("risk gate is broken")
+
+    _gate_denies_on_raise("RiskManager.allow", RM(),
+                          lambda r, h: r.set_risk_manager(h))
+
+
+def test_kill_switch_denies_when_it_raises():
+    print("test_kill_switch_denies_when_it_raises")
+
+    class KS(flox.KillSwitch):
+        def check(self, sig):
+            raise RuntimeError("kill switch is broken")
+
+    _gate_denies_on_raise("KillSwitch.check", KS(),
+                          lambda r, h: r.set_kill_switch(h))
+
+
+def test_order_validator_denies_when_it_raises():
+    print("test_order_validator_denies_when_it_raises")
+
+    class OV(flox.OrderValidator):
+        def validate(self, sig):
+            raise RuntimeError("validator is broken")
+
+    _gate_denies_on_raise("OrderValidator.validate", OV(),
+                          lambda r, h: r.set_order_validator(h))
+
+
+def test_no_failures():
+    """File-level backstop.
+
+    Each check() above also asserts on the spot; this reports the whole
+    file as one collectable case so a check added later without an
+    assertion cannot go unnoticed either.
+    """
+    assert _failed == 0, f"{_failed} check(s) failed; see output above"
+
+
 if __name__ == "__main__":
-    test_pnl_tracker()
-    test_storage_sink()
-    test_risk_manager_drops_signal()
-    test_kill_switch_drops_signal()
-    test_order_validator_drops_signal()
-    test_executor_receives_signals()
-    test_market_data_recorder()
-    test_execution_listener_with_backtest()
-    test_executor_with_backtest()
-    test_lp_signal_fields()
-    test_log_callback()
+    # check() asserts now, so run each case through a guard or the first
+    # failure would cut the summary short.
+    def _run(fn):
+        try:
+            fn()
+        except AssertionError:
+            pass
+
+    for _case in (test_pnl_tracker,
+                  test_storage_sink,
+                  test_risk_manager_drops_signal,
+                  test_kill_switch_drops_signal,
+                  test_order_validator_drops_signal,
+                  test_executor_receives_signals,
+                  test_market_data_recorder,
+                  test_execution_listener_with_backtest,
+                  test_executor_with_backtest,
+                  test_lp_signal_fields,
+                  test_log_callback,
+                  test_risk_manager_denies_when_it_raises,
+                  test_kill_switch_denies_when_it_raises,
+                  test_order_validator_denies_when_it_raises):
+        _run(_case)
     print(f"\n{_passed} passed, {_failed} failed")
     sys.exit(0 if _failed == 0 else 1)
