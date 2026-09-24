@@ -2873,7 +2873,14 @@ inline void bindStrategy(py::module_& m)
   m.def("set_log_callback", &flox_py::setPythonLogCallback, py::arg("callback"),
         "Install a Python callable as the global log sink. Pass None to "
         "detach. Callable receives (level: int, msg: str); level: 0=info, "
-        "1=warn, 2=error.");
+        "1=warn, 2=error. The binding detaches it automatically at "
+        "interpreter shutdown.");
+
+  // The sink is a Python callable held by the C API for the whole
+  // process. Detach it while the interpreter is still up, or shutdown
+  // releases it afterwards and the process crashes on exit.
+  py::module_::import("atexit").attr("register")(
+      py::cpp_function(&flox_py::logCallbackTeardown));
 
   py::class_<PyRunner>(m, "Runner")
       .def(py::init([](SymbolRegistry* reg, py::object on_signal, bool threaded)

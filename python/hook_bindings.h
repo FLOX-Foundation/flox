@@ -1089,10 +1089,13 @@ class PyExecutorOwner
 
 // ── Logger callback ─────────────────────────────────────────────────────
 
+// Deliberately leaked: the slot holds a Python object, and a static
+// destructor runs after the interpreter is gone, where releasing it
+// segfaults. logCallbackTeardown() empties it while Python is still up.
 inline py::object& globalLogCallback()
 {
-  static py::object cb;
-  return cb;
+  static py::object* cb = new py::object();
+  return *cb;
 }
 
 inline void loggerBridge(void* /*ud*/, int32_t level, const char* msg)
@@ -1105,6 +1108,16 @@ inline void loggerBridge(void* /*ud*/, int32_t level, const char* msg)
       cb(level, msg ? std::string(msg) : std::string{});
     } },
                  "the log callback");
+}
+
+// Detach the sink before the interpreter tears down. A Python callable
+// left installed at that point is released — and can still be called by
+// a C++ thread — after finalisation, which crashes the process on exit.
+// Registered with atexit at module init.
+inline void logCallbackTeardown()
+{
+  flox_set_log_callback(nullptr, nullptr);
+  globalLogCallback() = py::none();
 }
 
 inline void setPythonLogCallback(py::object cb)
