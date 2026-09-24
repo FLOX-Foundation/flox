@@ -102,6 +102,7 @@ private:
     }
 
     ev.recvNs = flox::nowNsMonotonic();
+    ev.sourceExchange = _exchangeId;  // from registry->registerExchange(...)
 
     emitBookUpdate(ev);
   }
@@ -211,6 +212,26 @@ void handleMessage(const RawMessage& raw) {
   emitTrade(ev);
 }
 ```
+
+### Source exchange
+
+Every `BookUpdateEvent` must also name the venue it came from:
+
+```cpp
+// In the constructor -- registerExchange is idempotent, and an id resolved
+// lazily on the first frame is InvalidExchangeId for whatever ran before it.
+_exchangeId = registry->registerExchange(exchangeId());
+
+// On every book event
+ev.sourceExchange = _exchangeId;
+```
+
+`CompositeBookMatrix::onBookUpdate` returns immediately for an update whose
+`sourceExchange` is out of range, so a connector that leaves the field at
+`InvalidExchangeId` contributes nothing to the cross-venue book — it is simply
+absent from best bid/ask, with no error anywhere. `recvNs` is the other half of
+the same contract: `checkStaleness()` skips any venue whose `lastUpdateNs` is
+still zero, so an unstamped feed that freezes keeps being quoted forever.
 
 ### Error Handling
 

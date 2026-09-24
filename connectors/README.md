@@ -9,6 +9,19 @@ Adapters in this directory:
 - **Hyperliquid** — WebSocket + REST executor (uses `utils/hl_signerd.py` as the signing daemon).
 - **Polymarket** — WebSocket + Rust FFI executor.
 
+## The live fill contract
+
+Every connector here reports fills under the same rules; see [docs/explanation/connectors.md](../docs/explanation/connectors.md) for the reasoning behind each.
+
+- `OrderEvent::fillQty` is the size that just traded, `order.filledQuantity` the cumulative one.
+- `OrderEvent::fillPrice` is the price it traded at. Unset means the position is booked at zero.
+- One event per execution, even when the venue announces it on two channels.
+- `order.id` is the id the engine issued (sent as the venue's client order id and read back), never the venue's own order id.
+- A venue rejection publishes `REJECTED` with the venue's reason text and leaves no live order behind.
+- Every event carries `recvNs`, stamped on receipt, and every book event carries `sourceExchange`.
+
+`tests/unit_test_*_fill_contract.cpp` pins this per venue, offline.
+
 ## Build
 
 The connectors are part of the FLOX repo and are built when the parent project is configured with `-DFLOX_BUILD_CONNECTORS=ON`. The static library exposes the target `flox::connectors` (alias of `flox-connectors`).
