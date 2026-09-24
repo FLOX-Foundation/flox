@@ -41,6 +41,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <deque>
+#include <map>
 #include <vector>
 
 using namespace flox;
@@ -103,6 +105,19 @@ struct Tape
       }
     }
     return nullptr;
+  }
+  // Accepts that claim the order is working ON the book. A parked stop is
+  // acked too (restingOnBook = false), and that ack is not what these tests
+  // are asking about.
+  size_t acceptsResting(OrderId id) const
+  {
+    size_t n = 0;
+    for (const auto& e : events)
+    {
+      const auto* a = std::get_if<OrderAccepted>(&e);
+      n += (a != nullptr && a->id == id && a->restingOnBook) ? 1 : 0;
+    }
+    return n;
   }
   size_t countAccepts() const
   {
@@ -217,67 +232,81 @@ double lookupNs(const LadderBook& book, OrderId first, uint64_t span, int batche
   return std::max(samples[samples.size() / 2], 0.25);
 }
 
-constexpr uint64_t kCycles = 1'000'000;  // add+cancel pairs of distinct ids
+// A rolling window of live orders, which is what an order book actually is.
+// An add/cancel PAIR -- add one, cancel the same one -- keeps at most one entry
+// in the table at a time and so never builds a probe chain for a deletion to
+// cut; the window below keeps kLive orders resting at all times and retires the
+// oldest to make room, so every cancel happens with a thousand neighbours in
+// the table and the chain it has to close is real.
+constexpr int32_t kIndexPool = 1024;
+constexpr uint64_t kLive = 1000;  // resting at all times
+constexpr uint64_t kCycles = 1'000'000;
 constexpr OrderId kChurnBase = 1'000'000;
-constexpr OrderId kProbeBase = 100;  // the orders left resting, added last
-constexpr uint64_t kProbes = 64;
+constexpr OrderId kProbeBase = 100;
 constexpr OrderId kAbsentBase = 900'000'000;  // ids the book never held
 constexpr uint64_t kAbsentSpan = 64;
+
+// 64 levels, walked in a way that spreads the window over them.
+double churnPrice(uint64_t i) { return 1.0 + 0.01 * double(i % 64); }
 
 LadderBook::Config indexCfg()
 {
   return LadderBook::Config{
-      .basePriceRaw = 0, .tickRaw = px(0.01).raw(), .numLevels = 4096, .maxOrders = 1 << 14};
-}
-
-void restProbes(LadderBook& book)
-{
-  for (uint64_t i = 0; i < kProbes; ++i)
-  {
-    ASSERT_EQ(book.addResting(Side::BUY, resting(kProbeBase + i, Side::BUY, 1.0 + 0.01 * double(i), 1.0)),
-              BookAddResult::Accepted);
-  }
+      .basePriceRaw = 0, .tickRaw = px(0.01).raw(), .numLevels = 4096, .maxOrders = kIndexPool};
 }
 
 }  // namespace
 
 // A venue runs for a day; the index must not care how many orders went through
-// it, only how many are in it. One million add/cancel pairs is a quiet morning
-// on one instrument.
+// it, only how many are in it. A million retirements against a window of a
+// thousand live orders is a quiet morning on one instrument.
 //
 // Two lookups are timed because the engine does both: contains() on an id the
 // book does not hold is validate()'s duplicate-id gate on every single new
 // order, and contains()/find() on a resting id is cancel, modify and every
 // report. Three times the fresh cost is already generous -- the promise is
 // O(1).
+//
+// The cancels are checked as they go, not only timed: a deletion that leaves a
+// hole in its probe chain orphans whatever the chain reached past it, and the
+// first symptom is an order that cannot be taken off the book.
 TEST(LadderBookIdIndex, ALookupCostsTheSameAfterAMillionOrderLifecycles)
 {
   LadderBook fresh(indexCfg());
-  restProbes(fresh);
+  for (uint64_t i = 0; i < kLive; ++i)
+  {
+    ASSERT_EQ(fresh.addResting(Side::BUY, resting(kProbeBase + i, Side::BUY, churnPrice(i), 1.0)),
+              BookAddResult::Accepted);
+  }
   const double freshAbsent = lookupNs(fresh, kAbsentBase, kAbsentSpan, 65, 2000, false);
-  const double freshPresent = lookupNs(fresh, kProbeBase, kProbes, 65, 2000, true);
+  const double freshPresent = lookupNs(fresh, kProbeBase, kLive, 65, 2000, true);
 
   LadderBook aged(indexCfg());
-  for (uint64_t i = 0; i < kCycles; ++i)
+  for (uint64_t i = 0; i < kLive; ++i)
   {
-    const OrderId id = kChurnBase + i;
-    ASSERT_EQ(aged.addResting(Side::BUY, resting(id, Side::BUY, 1.0, 1.0)),
-              BookAddResult::Accepted)
-        << "the book refused churn order " << id;
-    ASSERT_TRUE(aged.cancel(id).has_value()) << "churn order " << id << " never reached the index";
+    ASSERT_EQ(aged.addResting(Side::BUY, resting(kChurnBase + i, Side::BUY, churnPrice(i), 1.0)),
+              BookAddResult::Accepted);
   }
-  ASSERT_TRUE(aged.empty()) << "the churn left orders behind; the measurement is not comparable";
-  restProbes(aged);
-
-  // A fast index that lost the orders would pass the timing and fail the venue.
-  for (uint64_t i = 0; i < kProbes; ++i)
+  for (uint64_t i = kLive; i < kCycles; ++i)
   {
-    ASSERT_TRUE(aged.contains(kProbeBase + i))
-        << "order " << (kProbeBase + i) << " rests but the id index does not have it";
+    const OrderId retire = kChurnBase + i - kLive;
+    ASSERT_TRUE(aged.cancel(retire).has_value())
+        << "order " << retire << " was resting and the index cannot find it any more";
+    ASSERT_EQ(aged.addResting(Side::BUY, resting(kChurnBase + i, Side::BUY, churnPrice(i), 1.0)),
+              BookAddResult::Accepted)
+        << "the book refused order " << (kChurnBase + i) << " with a node just freed";
+  }
+
+  // The window that survived the churn: every one of them still findable.
+  const OrderId liveBase = kChurnBase + kCycles - kLive;
+  for (uint64_t i = 0; i < kLive; ++i)
+  {
+    ASSERT_TRUE(aged.contains(liveBase + i))
+        << "order " << (liveBase + i) << " rests but the id index does not have it";
   }
 
   const double agedAbsent = lookupNs(aged, kAbsentBase, kAbsentSpan, 65, 2000, false);
-  const double agedPresent = lookupNs(aged, kProbeBase, kProbes, 65, 2000, true);
+  const double agedPresent = lookupNs(aged, liveBase, kLive, 65, 2000, true);
 
   EXPECT_LE(agedAbsent, 3.0 * freshAbsent)
       << "contains() on a new id: " << freshAbsent << " ns fresh, " << agedAbsent << " ns after "
@@ -285,6 +314,140 @@ TEST(LadderBookIdIndex, ALookupCostsTheSameAfterAMillionOrderLifecycles)
   EXPECT_LE(agedPresent, 3.0 * freshPresent)
       << "contains() on a resting id: " << freshPresent << " ns fresh, " << agedPresent
       << " ns after " << kCycles << " lifecycles";
+}
+
+// The load bound, stated as what it buys.
+//
+// The id table is sized past twice the node pool, so however the book is
+// driven the table cannot pass half full: every probe and every deletion scan
+// meets an empty slot, insertSlot cannot fail, and an order can always be
+// found and taken off again. That invariant is what makes the rest of the
+// index safe, and it is invisible in any test that leaves the pool half used
+// -- so this one fills the pool completely and keeps it full.
+//
+// Full occupancy is also the state a real venue reaches at its busiest, which
+// is when losing an order costs the most.
+TEST(LadderBookIdIndex, EveryOrderIsFindableWithThePoolCompletelyFull)
+{
+  constexpr int32_t kPool = 512;
+  constexpr uint64_t kSpread = 7919;  // coprime with the table: ids land all over it
+  constexpr int kLevels = 16;
+  constexpr uint64_t kRounds = 20'000;
+
+  LadderBook book(LadderBook::Config{
+      .basePriceRaw = 0, .tickRaw = px(0.01).raw(), .numLevels = 4096, .maxOrders = kPool});
+
+  std::deque<OrderId> live;
+  std::map<int64_t, int> byPrice;  // resting orders per price level, for the book checks
+  const auto priceOf = [](uint64_t n)
+  { return 1.0 + 0.01 * double(n % kLevels); };
+
+  // What the book says about itself has to agree with what the index says, at
+  // every point: the orders on the levels are exactly the orders in the index,
+  // the best bid is the best price anybody is resting at, and the depth is the
+  // orders that are there.
+  const auto consistent = [&](const char* when)
+  {
+    size_t onLevels = 0;
+    book.forEachOrder(
+        [&](const RestingOrder& o)
+        {
+          ++onLevels;
+          EXPECT_TRUE(book.contains(o.id))
+              << when << ": order " << o.id << " sits on a level and is not in the index";
+        });
+    EXPECT_EQ(onLevels, live.size()) << when << ": the levels hold a different set than the index";
+    for (OrderId id : live)
+    {
+      ASSERT_TRUE(book.contains(id)) << when << ": order " << id << " was lost by the index";
+      const RestingOrder* o = book.find(id);
+      ASSERT_NE(o, nullptr) << when << ": order " << id << " has no node";
+      EXPECT_EQ(o->id, id) << when << ": the index points at somebody else's node";
+    }
+    ASSERT_FALSE(byPrice.empty());
+    ASSERT_TRUE(book.bestBid().has_value()) << when << ": orders are resting and there is no bid";
+    EXPECT_EQ(book.bestBid().value().raw(), byPrice.rbegin()->first)
+        << when << ": the best bid is not the best price anybody is resting at";
+    EXPECT_EQ(book.availableWithin(Side::SELL, px(0.0), true).raw(),
+              Quantity::fromDouble(double(live.size())).raw())
+        << when << ": the depth on the levels is not the orders that are in the index";
+  };
+
+  for (uint64_t i = 0; i < static_cast<uint64_t>(kPool); ++i)
+  {
+    const OrderId id = 1 + i * kSpread;
+    ASSERT_EQ(book.addResting(Side::BUY, resting(id, Side::BUY, priceOf(i), 1.0)),
+              BookAddResult::Accepted)
+        << "the book refused order " << (i + 1) << " of a pool of " << kPool;
+    live.push_back(id);
+    ++byPrice[px(priceOf(i)).raw()];
+  }
+  ASSERT_TRUE(book.full()) << "the pool holds " << kPool << " and " << kPool << " are resting";
+  ASSERT_EQ(live.size(), static_cast<size_t>(kPool));
+  consistent("with the pool full");
+
+  // The cost side of the same invariant, which is the half of it a functional
+  // check cannot see: a table sized to the pool instead of past twice it still
+  // answers correctly, it just answers after walking every slot. The miss is
+  // the one the engine pays for on every new order (validate's duplicate-id
+  // gate), measured against the same book holding a single order.
+  LadderBook oneOrder(LadderBook::Config{
+      .basePriceRaw = 0, .tickRaw = px(0.01).raw(), .numLevels = 4096, .maxOrders = kPool});
+  ASSERT_EQ(oneOrder.addResting(Side::BUY, resting(7, Side::BUY, 1.0, 1.0)),
+            BookAddResult::Accepted);
+  const double emptyMiss = lookupNs(oneOrder, kAbsentBase, kAbsentSpan, 65, 2000, false);
+  const double fullMiss = lookupNs(book, kAbsentBase, kAbsentSpan, 65, 2000, false);
+  EXPECT_LE(fullMiss, 8.0 * emptyMiss)
+      << "contains() on a new id: " << emptyMiss << " ns with one order resting, " << fullMiss
+      << " ns with the pool full. The table is sized so occupancy cannot pass half, which is "
+         "what keeps a miss to a couple of probes at any occupancy";
+
+  // Retire the oldest, enter a new one, over and over with every node in use:
+  // the table never gets a quiet moment, and a deletion that fails to close
+  // its chain takes a neighbour with it.
+  for (uint64_t r = 0; r < kRounds; ++r)
+  {
+    const OrderId retire = live.front();
+    live.pop_front();
+    const RestingOrder* going = book.find(retire);
+    ASSERT_NE(going, nullptr) << "round " << r << ": order " << retire << " is gone from the index";
+    const int64_t priceRaw = going->price.raw();
+    ASSERT_TRUE(book.cancel(retire).has_value())
+        << "round " << r << ": order " << retire << " can no longer be taken off the book";
+    if (--byPrice[priceRaw] == 0)
+    {
+      byPrice.erase(priceRaw);
+    }
+
+    const uint64_t n = static_cast<uint64_t>(kPool) + r;
+    const OrderId entering = 1 + n * kSpread;
+    ASSERT_EQ(book.addResting(Side::BUY, resting(entering, Side::BUY, priceOf(n), 1.0)),
+              BookAddResult::Accepted)
+        << "round " << r << ": the book refused an order with a node just freed";
+    live.push_back(entering);
+    ++byPrice[px(priceOf(n)).raw()];
+
+    if (r % 2000 == 0)
+    {
+      consistent("at full occupancy");
+      if (::testing::Test::HasFatalFailure())
+      {
+        return;
+      }
+    }
+  }
+  consistent("after the churn");
+
+  // And the pool empties completely: nothing is left stuck in a node or a slot.
+  while (!live.empty())
+  {
+    const OrderId id = live.front();
+    live.pop_front();
+    ASSERT_TRUE(book.cancel(id).has_value()) << "order " << id << " cannot be cancelled";
+  }
+  EXPECT_TRUE(book.empty()) << "orders remain on the book after every id was cancelled";
+  EXPECT_FALSE(book.full()) << "every node was returned and the pool still says it is full";
+  EXPECT_FALSE(book.bestBid().has_value()) << "an empty book still quotes a bid";
 }
 
 // ---- finding 8: an order the book did not take is not accepted ------------
@@ -358,6 +521,67 @@ TEST(LadderBookAcceptance, AnOrderTheBookCannotTakeIsRejectedNotAccepted)
   // cannot tell them apart retries the one it should not.
   EXPECT_NE(outOfBand, poolFull) << "out-of-band price and exhausted pool answer the same reason: "
                                  << toString(outOfBand);
+}
+
+// The gate is asked BEFORE the order is committed to matching, and that is the
+// whole point of it: addResting is the authority on what the book will take,
+// but by the time addResting sees an order it may already have traded, and a
+// print cannot be taken back. An order priced where this ladder has no level
+// therefore never reaches the matcher at all -- it is refused, the book it
+// would have swept is untouched, and no trade is printed against it.
+//
+// Both directions, because the ladder is bounded at both ends and the taker's
+// limit is clamped into it: a buy above the top would otherwise sweep every
+// ask on the ladder, and a sell below the base every bid.
+TEST(LadderBookAcceptance, AnOutOfBandOrderNeverReachesTheMatcher)
+{
+  SymbolConfig cfg;
+  cfg.id = SYM;
+  cfg.tickSize = px(0.01);
+  // The collar is off, as it is by default: the ladder's band is the only
+  // thing standing between the order and the book.
+
+  Tape tape;
+  MatchingEngine<LadderBook> eng(cfg, tape.sink(),
+                                 LadderBook{LadderBook::Config{.basePriceRaw = px(100.0).raw(),
+                                                               .tickRaw = px(0.01).raw(),
+                                                               .numLevels = 100'000,
+                                                               .maxOrders = 64}});
+
+  eng.submit(InboundCommand{limit(1, Side::SELL, 500.0, 5.0)}, 1);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 400.0, 5.0)}, 2);
+  ASSERT_EQ(tape.accepts(1), 1u);
+  ASSERT_EQ(tape.accepts(2), 1u);
+
+  // A buy above the top of the ladder, crossing the resting ask by 1500.
+  eng.submit(InboundCommand{limit(3, Side::BUY, 2000.0, 5.0)}, 3);
+  // A sell below the base, crossing the resting bid by 350.
+  eng.submit(InboundCommand{limit(4, Side::SELL, 50.0, 5.0)}, 4);
+
+  for (const OrderId id : {OrderId{3}, OrderId{4}})
+  {
+    EXPECT_EQ(tape.accepts(id), 0u) << "order " << id << " was acked as working";
+    const OrderRejected* r = tape.reject(id);
+    ASSERT_NE(r, nullptr) << "order " << id << " was neither accepted nor rejected";
+    EXPECT_EQ(r->reason, RejectReason::InvalidPrice);
+    EXPECT_EQ(tape.canceled(id), nullptr)
+        << "order " << id << " was canceled, which means it reached the book and printed first";
+    EXPECT_FALSE(eng.book().contains(id));
+  }
+
+  EXPECT_EQ(tape.firstTrade(), nullptr) << "an order the book cannot hold swept the book anyway";
+  EXPECT_EQ(eng.tradesGenerated(), 0u);
+
+  // The resting liquidity is exactly as it was.
+  EXPECT_EQ(eng.restingOrderCount(), 2u);
+  ASSERT_TRUE(eng.book().bestAsk().has_value());
+  EXPECT_EQ(eng.book().bestAsk().value().raw(), px(500.0).raw());
+  ASSERT_TRUE(eng.book().bestBid().has_value());
+  EXPECT_EQ(eng.book().bestBid().value().raw(), px(400.0).raw());
+  ASSERT_NE(eng.book().find(1), nullptr);
+  EXPECT_EQ(eng.book().find(1)->leaves.raw(), qty(5.0).raw()) << "the resting ask was eaten";
+  ASSERT_NE(eng.book().find(2), nullptr);
+  EXPECT_EQ(eng.book().find(2)->leaves.raw(), qty(5.0).raw()) << "the resting bid was eaten";
 }
 
 // ---- finding 9: a price below the base -------------------------------------
@@ -533,11 +757,16 @@ TEST(LadderBookLiftedOrders, APegRepricedOutsideTheLadderIsCanceledNotLost)
   EXPECT_EQ(tape.modified(2), nullptr) << "an OrderModified for an order on no book";
 }
 
-// An amend to a price the ladder has no level for. The amend lifts the order
-// off the book to re-enter it, so the failure mode is losing the order in
-// between: whatever the engine answers, the order is never both gone from the
-// book and unreported.
-TEST(LadderBookLiftedOrders, AnAmendToAPriceOutsideTheLadderNeverLosesTheOrder)
+// An amend to a price the ladder has no level for, and the exact answer the
+// engine gives: refused before anything is lifted.
+//
+// The amend path works by taking the order off the book and entering it again,
+// so the question has to be asked before the lift -- once the order is off,
+// the only honest answer left is a cancel, and the owner asked for neither. It
+// is the same gate submit asks (canRest), in the same place relative to the
+// commitment, and the order comes out of it exactly as it went in: same price,
+// same size, same queue position, still resting.
+TEST(LadderBookLiftedOrders, AnAmendToAPriceOutsideTheLadderIsRefusedBeforeTheLift)
 {
   SymbolConfig cfg;
   cfg.id = SYM;
@@ -552,7 +781,9 @@ TEST(LadderBookLiftedOrders, AnAmendToAPriceOutsideTheLadderNeverLosesTheOrder)
                                     .maxOrders = 64}});
 
   eng.submit(InboundCommand{limit(1, Side::BUY, 1002.0, 2.0)}, 1);
+  eng.submit(InboundCommand{limit(2, Side::BUY, 1001.0, 1.0)}, 2);
   ASSERT_EQ(tape.accepts(1), 1u);
+  ASSERT_EQ(tape.accepts(2), 1u);
 
   ModifyOrder m;
   m.id = 1;
@@ -560,32 +791,45 @@ TEST(LadderBookLiftedOrders, AnAmendToAPriceOutsideTheLadderNeverLosesTheOrder)
   m.newPrice = px(1500.0);  // no level on this ladder
   m.newQty = qty(2.0);
   m.accountId = 7;
-  eng.submit(InboundCommand{m}, 2);
+  eng.submit(InboundCommand{m}, 3);
 
   const CancelRejected* cr = tape.cancelRejected(1);
-  const OrderCanceled* c = tape.canceled(1);
-  if (cr != nullptr)
-  {
-    // Refused before the order was lifted: it is still resting, at its own
-    // price, and nothing about it changed.
-    EXPECT_EQ(cr->reason, RejectReason::InvalidPrice);
-    EXPECT_TRUE(cr->wasReplace);
-    ASSERT_TRUE(eng.book().contains(1)) << "the amend was refused and the order is gone anyway";
-    EXPECT_EQ(eng.book().find(1)->price.raw(), px(1002.0).raw());
-    EXPECT_EQ(eng.restingOrderCount(), 1u);
-    EXPECT_EQ(tape.modified(1), nullptr) << "refused, and an OrderModified went out anyway";
-    EXPECT_EQ(c, nullptr) << "refused and canceled at the same time";
-  }
-  else
-  {
-    // Lifted and refused on the way back: the order is gone, and its owner is
-    // told that it is gone rather than that it was modified.
-    ASSERT_NE(c, nullptr) << "the amend lifted the order off the book and reported nothing";
-    EXPECT_EQ(c->reason, CancelReason::BookRefused);
-    EXPECT_FALSE(eng.book().contains(1));
-    EXPECT_EQ(eng.restingOrderCount(), 0u) << "the engine still counts the order it lost";
-    EXPECT_EQ(tape.modified(1), nullptr) << "an OrderModified for an order on no book";
-  }
+  ASSERT_NE(cr, nullptr) << "the amend was neither refused nor reported";
+  EXPECT_EQ(cr->reason, RejectReason::InvalidPrice)
+      << "the price is the client's, and it is the thing that is wrong";
+  EXPECT_TRUE(cr->wasReplace) << "a refused replace is not a refused cancel";
+  EXPECT_EQ(cr->account, 7u);
+
+  EXPECT_EQ(tape.canceled(1), nullptr) << "refused, and the order was killed anyway";
+  EXPECT_EQ(tape.modified(1), nullptr) << "refused, and an OrderModified went out anyway";
+
+  // The order is untouched: the amend never lifted it.
+  ASSERT_TRUE(eng.book().contains(1)) << "a refused amend took the order off the book";
+  const RestingOrder* o = eng.book().find(1);
+  ASSERT_NE(o, nullptr);
+  EXPECT_EQ(o->price.raw(), px(1002.0).raw()) << "the order moved on a refused amend";
+  EXPECT_EQ(o->leaves.raw(), qty(2.0).raw());
+  EXPECT_EQ(eng.restingOrderCount(), 2u);
+  ASSERT_TRUE(eng.book().bestBid().has_value());
+  EXPECT_EQ(eng.book().bestBid().value().raw(), px(1002.0).raw());
+
+  // Queue position survives too: order 1 is still ahead of nobody at its own
+  // price, so the check that means something is that a re-entered order would
+  // have gone to the tail of a NEW level -- it is still on its old one.
+  std::vector<RestingOrder> level;
+  eng.book().bestLevel(Side::BUY, level);
+  ASSERT_EQ(level.size(), 1u);
+  EXPECT_EQ(level.front().id, 1u);
+
+  // And an amend the ladder CAN take still works, so the gate is not refusing
+  // everything.
+  m.newPrice = px(1003.0);
+  eng.submit(InboundCommand{m}, 4);
+  const OrderModified* mod = tape.modified(1);
+  ASSERT_NE(mod, nullptr) << "an in-band amend was refused as well";
+  EXPECT_EQ(mod->price.raw(), px(1003.0).raw());
+  ASSERT_NE(eng.book().find(1), nullptr);
+  EXPECT_EQ(eng.book().find(1)->price.raw(), px(1003.0).raw());
 }
 
 // A last-look reject restores liquidity the hold had taken off the book, and
@@ -635,6 +879,143 @@ TEST(LadderBookLiftedOrders, ALastLookRestoreTheBookRefusesCancelsTheMaker)
   EXPECT_FALSE(eng.book().contains(1));
   EXPECT_EQ(eng.restingOrderCount(), 2u) << "only the two orders that hold the pool are resting";
   EXPECT_EQ(tape.modified(1), nullptr) << "an OrderModified for a maker on no book";
+}
+
+// A triggered stop re-enters matching directly -- not through onNew -- so it
+// reaches the book without having passed the pre-commit price gate. Its limit
+// price was legal for the instrument when it was parked and the ladder has no
+// level for it, which is a thing the venue only finds out at the moment the
+// stop fires.
+//
+// Two answers, and which one the owner gets depends on whether the stop
+// printed on its way in. A reject cannot follow its own executions, so once
+// there is a trade on the wire the residual is canceled instead.
+TEST(LadderBookLiftedOrders, ATriggeredStopTheBookCannotTakeIsNotAcked)
+{
+  SymbolConfig cfg;
+  cfg.id = SYM;
+  cfg.tickSize = px(0.01);
+
+  const auto ladder = []
+  {
+    return LadderBook{LadderBook::Config{.basePriceRaw = px(100.0).raw(),
+                                         .tickRaw = px(0.01).raw(),
+                                         .numLevels = 100'000,  // [100.00, 1100.00)
+                                         .maxOrders = 64}};
+  };
+  const auto stopAt = [](OrderId id, double trigger, double limitPrice, double q)
+  {
+    NewOrder o = limit(id, Side::SELL, limitPrice, q);
+    o.accountId = 2;
+    o.type = OrderType::STOP_LIMIT;
+    o.triggerPrice = px(trigger);
+    return o;
+  };
+
+  {
+    // Nothing left to trade with when the stop fires: an ordinary reject.
+    Tape tape;
+    MatchingEngine<LadderBook> eng(cfg, tape.sink(), ladder());
+    eng.submit(InboundCommand{limit(1, Side::BUY, 500.0, 1.0)}, 1);
+    eng.submit(InboundCommand{stopAt(2, /*trigger=*/500.0, /*limit=*/50.0, 1.0)}, 2);
+    ASSERT_EQ(tape.acceptsResting(2), 0u) << "a parked stop is not on the book";
+
+    // The print that sets the last price and fires the stop.
+    eng.submit(InboundCommand{limit(3, Side::SELL, 500.0, 1.0)}, 3);
+    ASSERT_NE(tape.firstTrade(), nullptr) << "the stop never had a trigger price";
+
+    const OrderRejected* r = tape.reject(2);
+    ASSERT_NE(r, nullptr) << "the stop fired into a price with no level and was acked";
+    EXPECT_EQ(r->reason, RejectReason::InvalidPrice);
+    EXPECT_EQ(tape.acceptsResting(2), 0u) << "a stop the book refused was acked as working";
+    EXPECT_EQ(tape.canceled(2), nullptr) << "nothing printed, so this is a reject, not a cancel";
+    EXPECT_FALSE(eng.book().contains(2));
+    EXPECT_EQ(eng.restingOrderCount(), 0u) << "the engine tracks a stop that is on no book";
+  }
+
+  {
+    // The stop sweeps a bid on its way in, so it has printed: cancel.
+    Tape tape;
+    MatchingEngine<LadderBook> eng(cfg, tape.sink(), ladder());
+    eng.submit(InboundCommand{limit(1, Side::BUY, 500.0, 1.0)}, 1);
+    eng.submit(InboundCommand{limit(2, Side::BUY, 480.0, 1.0)}, 2);
+    eng.submit(InboundCommand{stopAt(3, /*trigger=*/500.0, /*limit=*/50.0, 2.0)}, 3);
+    eng.submit(InboundCommand{limit(4, Side::SELL, 500.0, 1.0)}, 4);
+
+    EXPECT_EQ(tape.reject(3), nullptr) << "the stop printed; a reject would contradict its trade";
+    const OrderCanceled* c = tape.canceled(3);
+    ASSERT_NE(c, nullptr) << "the stop's residual was left unreported";
+    EXPECT_EQ(c->reason, CancelReason::BookRefused);
+    EXPECT_EQ(c->account, 2u);
+    EXPECT_EQ(c->cumQty.raw(), qty(1.0).raw()) << "it filled one against the 480 bid";
+    EXPECT_EQ(c->leavesQty.raw(), qty(1.0).raw()) << "and one is what the book would not take";
+    EXPECT_EQ(tape.acceptsResting(3), 0u) << "a stop the book refused was acked as working";
+    EXPECT_FALSE(eng.book().contains(3));
+    EXPECT_EQ(eng.restingOrderCount(), 0u) << "the engine tracks a stop that is on no book";
+    EXPECT_FALSE(eng.book().bestBid().has_value()) << "both bids were swept";
+  }
+}
+
+// The other half of the last-look restore: the TAKER whose whole order went
+// into the hold. Nothing of it rests while the hold is open -- the hold record
+// is the only thing that knows about it -- so a reject has to build it back
+// from that record and find it a node. The maker gets its node back first
+// (it was lifted and put straight back), which leaves the pool exactly as
+// full as it was, and the taker's rebuild has nowhere to go.
+//
+// A taker that is told nothing here is the worst of the three: its order is
+// not on the book, not held any more, and its owner last heard that a fill was
+// pending.
+TEST(LadderBookLiftedOrders, ALastLookRestoreTheBookRefusesCancelsTheTaker)
+{
+  SymbolConfig cfg;
+  cfg.id = SYM;
+  cfg.tickSize = px(0.01);
+  cfg.lastLookWindowNs = DurationNs{1'000'000};
+
+  Tape tape;
+  MatchingEngine<LadderBook> eng(
+      cfg, tape.sink(),
+      LadderBook{LadderBook::Config{
+          .basePriceRaw = 0, .tickRaw = px(0.01).raw(), .numLevels = 100'000, .maxOrders = 2}});
+
+  NewOrder mk = limit(1, Side::SELL, 100.0, 5.0);
+  mk.accountId = 1;
+  mk.lastLook = true;
+  eng.submit(InboundCommand{mk}, 1);
+  NewOrder tk = limit(2, Side::BUY, 100.0, 3.0);
+  tk.accountId = 2;
+  tk.tif = TimeInForce::GTC;  // a residual of this taker WOULD rest
+  eng.submit(InboundCommand{tk}, 2);
+
+  const FillHeld* h = tape.held();
+  ASSERT_NE(h, nullptr) << "no hold was opened";
+  ASSERT_EQ(h->qty.raw(), qty(3.0).raw()) << "the hold must take the taker's whole order";
+  ASSERT_EQ(h->makerDisplayAfter.raw(), qty(2.0).raw()) << "the maker keeps the rest displayed";
+  const uint64_t heldId = h->heldId;  // by value: the tape moves under the submits below
+  ASSERT_TRUE(eng.book().contains(1)) << "a partially held maker stays on the book";
+  ASSERT_FALSE(eng.book().contains(2)) << "a fully held taker rests nothing";
+
+  // The one free node goes to somebody else while the hold is open.
+  eng.submit(InboundCommand{limit(3, Side::BUY, 90.0, 1.0)}, 3);
+  ASSERT_TRUE(eng.book().full()) << "the pool is what the rebuild has to fit into";
+
+  eng.submit(InboundCommand{LastLookDecision{heldId, SYM, /*accept=*/false, {}, 1}}, 4);
+
+  // The maker was lifted and put straight back: its own node was free.
+  EXPECT_NE(tape.modified(1), nullptr) << "the maker's held size was not returned to it";
+  EXPECT_TRUE(eng.book().contains(1));
+
+  const OrderCanceled* c = tape.canceled(2);
+  ASSERT_NE(c, nullptr) << "the taker was rebuilt into nothing and nobody was told";
+  EXPECT_EQ(c->reason, CancelReason::BookRefused);
+  EXPECT_EQ(c->account, 2u);
+  EXPECT_EQ(c->leavesQty.raw(), qty(3.0).raw()) << "the whole held quantity is what was killed";
+  EXPECT_EQ(c->cumQty.raw(), qty(0.0).raw()) << "a rejected hold settles no trade";
+  EXPECT_EQ(tape.acceptsResting(2), 0u) << "a taker the book refused was acked as working";
+  EXPECT_FALSE(eng.book().contains(2));
+  EXPECT_EQ(eng.restingOrderCount(), 2u) << "only the maker and the order that took the node rest";
+  EXPECT_EQ(eng.openHolds(), 0u) << "the hold was resolved either way";
 }
 
 // ---- recovery --------------------------------------------------------------
