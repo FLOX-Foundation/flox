@@ -40,6 +40,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -102,18 +103,44 @@ class FixCodec
   // immediately after it), so a later MassQuote replaces the very legs a
   // QuoteCancel would have taken down -- the "replaced atomically, same ids"
   // contract QuoteLadder already documents.
+  // The (account, symbol) pairs a quoting id block can be derived for. The
+  // fold is positional rather than arithmetic, so each field needs a width:
+  // Symbol keeps all 32 bits SymbolId has, and Account gets 24 -- 16,777,216
+  // accounts on one venue. A pair outside that is refused by decode() naming
+  // Account(1), never folded modulo anything: wrapping is how two makers end
+  // up sharing one ladder, which is the failure this range exists to make
+  // impossible rather than unlikely.
+  static constexpr uint64_t kQuoteAccountLimit = 1ULL << 24;
+
+  static constexpr bool quoteIdBlockInRange(uint64_t accountId) noexcept
+  {
+    return accountId < kQuoteAccountLimit;
+  }
+
+  // Defined for a pair quoteIdBlockInRange accepts; decode() refuses the rest
+  // before reaching here.
   static OrderId quoteLadderIdBase(uint64_t accountId, SymbolId symbol) noexcept
   {
     constexpr uint64_t kBlock = 2ULL * kQuoteLadderLevels;
-    // Folded with distinct multipliers so two different (account, symbol)
-    // pairs land in different blocks; offset above a range a hand-assigned
-    // ClOrdID (NewOrderSingle's 11, reused as the venue OrderId) would
-    // plausibly use, purely so the two ranges read as distinct in a capture
-    // -- a quotes-only session's DenyNewOrder profile is what actually keeps
-    // them from ever colliding for real.
+    // Account in the high bits, symbol in the low 32, one block width per
+    // pair: injective by construction over the whole range above. The
+    // multiply-and-add this replaces (account * 4099 + symbol) was not --
+    // (1, 4099) and (2, 0) both folded to 8198 and shared sixteen ids, so
+    // either maker's QuoteCancel took the other's ladder down -- and no
+    // choice of multiplier fixes that, it only moves which pairs collide.
+    //
+    // The marker keeps the block above a range a hand-assigned ClOrdID
+    // (NewOrderSingle's 11, reused as the venue OrderId) would plausibly use,
+    // purely so the two ranges read as distinct in a capture -- a quotes-only
+    // session's DenyNewOrder profile is what actually keeps them from ever
+    // colliding for real.
     constexpr uint64_t kMarker = 0x51'00000000ULL;  // 'Q'
-    return static_cast<OrderId>(kMarker +
-                                (accountId * 4099ULL + static_cast<uint64_t>(symbol)) * kBlock);
+    constexpr uint64_t kSymbolBits = 32;
+    static_assert((((kQuoteAccountLimit - 1) << kSymbolBits) | 0xFFFFFFFFULL) <=
+                      (std::numeric_limits<uint64_t>::max() - kMarker) / kBlock,
+                  "the widest pair in range must still fit above the marker without wrapping");
+    return static_cast<OrderId>(
+        kMarker + (((accountId << kSymbolBits) | static_cast<uint64_t>(symbol)) * kBlock));
   }
 
   // FIX integrity: if a CheckSum (tag 10) is present it MUST be correct --
@@ -408,6 +435,11 @@ class FixCodec
       {
         return refuse("Account", 1, "required, and must be a decimal integer below 2^64");
       }
+      if (!quoteIdBlockInRange(l.accountId))
+      {
+        return refuse("Account", 1,
+                      "above the range a quoting id block is derived for (below 2^24)");
+      }
       if (!has(117) || !u64(117, l.clientOrderId))
       {
         return refuse("QuoteID", 117, "required, and must be a decimal integer below 2^64");
@@ -558,6 +590,11 @@ class FixCodec
       if (!has(1) || !u64(1, l.accountId))
       {
         return refuse("Account", 1, "required, and must be a decimal integer below 2^64");
+      }
+      if (!quoteIdBlockInRange(l.accountId))
+      {
+        return refuse("Account", 1,
+                      "above the range a quoting id block is derived for (below 2^24)");
       }
       if (!has(55) || !sym(55, l.symbol))
       {

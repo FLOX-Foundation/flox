@@ -135,6 +135,34 @@ stamp after decode, unlike `NewOrderSingle`: the id block is derived from
 so a decode that tolerated a missing Account would leave the ladder's own
 `accountId` field disagreeing with the id block it was built from.
 
+"Exactly the legs the last MassQuote on *that* account/symbol put up" is a
+claim in two directions: one pair always reaches its own block, and no other
+pair ever reaches it. The original fold, `account * 4099 + symbol`, only
+delivered the first -- `(1, 4099)` and `(2, 0)` both fold to 8198 and were
+handed the same sixteen ids, so either maker's QuoteCancel took the other's
+ladder down. A bigger multiplier moves which pairs collide; it does not
+remove the collision.
+
+**The range.** The fold is positional, so each field has a width:
+
+| Field | Width | Range |
+|---|---|---|
+| `Symbol` (55) | 32 bits | `0 .. 4294967295` -- the whole `SymbolId` type |
+| `Account` (1) | 24 bits | `0 .. 16777215` (`FixCodec::kQuoteAccountLimit - 1`) |
+
+`bidIdBase = kMarker + ((account << 32) | symbol) * 2 * kQuoteLadderLevels`,
+`askIdBase = bidIdBase + kQuoteLadderLevels`. Injective over that whole range
+by construction, and the blocks tile it: adjacent pairs are exactly one block
+width apart, so no leg of one pair can land in another pair's block.
+
+An `Account` above the range is **refused** naming `Account(1)`, on MassQuote
+and QuoteCancel alike (`FixCodec::quoteIdBlockInRange`). A venue cannot fold
+2^64 accounts x 2^32 symbols into 2^64 ids sixteen at a time -- the pigeonhole
+is not negotiable -- so the choice is between refusing the pairs that do not
+fit and wrapping two makers onto one ladder. A maker told "your account id is
+outside the quoting range" can be given an account id inside it; a maker whose
+quotes are cancelled by a stranger cannot tell that is what happened.
+
 ## QuoteCancel (35=Z) in
 
 | Tag | Field | Maps to |

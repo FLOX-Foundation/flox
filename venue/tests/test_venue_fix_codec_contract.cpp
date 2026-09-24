@@ -108,4 +108,80 @@ TEST(FixCodecContractTimeInForce, GtdExpiryIsOnlySetByGtd)
       << "the milliseconds of an ExpireTime are optional";
 }
 
+std::string quoteCancel(const std::string& account, const std::string& symbol)
+{
+  return field(35, "Z") + field(1, account) + field(55, symbol);
+}
+
+const QuoteLadder* asLadder(const std::optional<InboundCommand>& cmd)
+{
+  return cmd.has_value() ? std::get_if<QuoteLadder>(&*cmd) : nullptr;
+}
+
+// The edge of the range the codec folds, from both sides. The range is a
+// documented bound (docs/venue/fix-quoting.md), so it is worth a test that
+// fails when it moves silently: one account short of the limit still quotes,
+// the limit itself is refused naming the field, and the refusal is the only
+// thing between an out-of-range account and a wrapped id block.
+TEST(FixCodecContractQuoteIdBlock, TheAccountRangeIsWhereTheDocumentationSaysItIs)
+{
+  EXPECT_TRUE(FixCodec::quoteIdBlockInRange(0));
+  EXPECT_TRUE(FixCodec::quoteIdBlockInRange(FixCodec::kQuoteAccountLimit - 1));
+  EXPECT_FALSE(FixCodec::quoteIdBlockInRange(FixCodec::kQuoteAccountLimit));
+  EXPECT_FALSE(FixCodec::quoteIdBlockInRange(UINT64_MAX));
+
+  std::string reason;
+  const auto last =
+      FixCodec::decode(quoteCancel(std::to_string(FixCodec::kQuoteAccountLimit - 1), "1"), &reason);
+  ASSERT_NE(asLadder(last), nullptr) << reason;
+
+  const auto over =
+      FixCodec::decode(quoteCancel(std::to_string(FixCodec::kQuoteAccountLimit), "1"), &reason);
+  EXPECT_FALSE(over.has_value()) << "an account the fold cannot carry was accepted";
+  EXPECT_NE(reason.find("Account"), std::string::npos) << reason;
+  EXPECT_NE(reason.find("(1)"), std::string::npos) << reason;
+}
+
+// The whole SymbolId width is inside the range: a venue that hands out sparse
+// or hashed symbol ids must not discover at the top of uint32 that its maker
+// cannot quote.
+TEST(FixCodecContractQuoteIdBlock, EveryPairAtTheEdgesOfBothFieldsGetsItsOwnBlock)
+{
+  const uint64_t accounts[] = {0, 1, 2, 1000000, FixCodec::kQuoteAccountLimit - 2,
+                               FixCodec::kQuoteAccountLimit - 1};
+  const SymbolId symbols[] = {0, 1, 4099, 65535, 65536, 2147483648U, 4294967294U, 4294967295U};
+
+  std::unordered_set<OrderId> ids;
+  for (uint64_t account : accounts)
+  {
+    for (SymbolId symbol : symbols)
+    {
+      std::string reason;
+      const auto cmd =
+          FixCodec::decode(quoteCancel(std::to_string(account), std::to_string(symbol)), &reason);
+      const QuoteLadder* l = asLadder(cmd);
+      ASSERT_NE(l, nullptr) << "account " << account << " symbol " << symbol << ": " << reason;
+      EXPECT_EQ(l->bidIdBase, FixCodec::quoteLadderIdBase(account, symbol));
+      EXPECT_EQ(l->askIdBase, l->bidIdBase + kQuoteLadderLevels);
+      for (uint64_t i = 0; i < 2ULL * kQuoteLadderLevels; ++i)
+      {
+        EXPECT_TRUE(ids.insert(l->bidIdBase + i).second)
+            << "account " << account << " symbol " << symbol << " leg " << i;
+      }
+    }
+  }
+}
+
+// Adjacent symbols are exactly one block apart, which is what makes the
+// blocks tile rather than overlap, and the bid half always precedes the ask
+// half by kQuoteLadderLevels.
+TEST(FixCodecContractQuoteIdBlock, BlocksTileTheIdSpaceOneBlockApart)
+{
+  constexpr uint64_t kBlock = 2ULL * kQuoteLadderLevels;
+  EXPECT_EQ(FixCodec::quoteLadderIdBase(7, 1), FixCodec::quoteLadderIdBase(7, 0) + kBlock);
+  EXPECT_EQ(FixCodec::quoteLadderIdBase(8, 0),
+            FixCodec::quoteLadderIdBase(7, 4294967295U) + kBlock);
+  EXPECT_GT(FixCodec::quoteLadderIdBase(0, 0), 0ULL) << "the block sits above the ClOrdID range";
+}
+
 }  // namespace
