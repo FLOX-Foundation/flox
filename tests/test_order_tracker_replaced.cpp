@@ -65,10 +65,65 @@ TEST(OrderTrackerReplacedTest, ReplacedOrderRefusesFurtherTransitions)
   ASSERT_TRUE(tracker.onSubmitted(makeOrder(1), "ex-1"));
   ASSERT_TRUE(tracker.onReplaced(1, makeOrder(2), "ex-2"));
 
+  EXPECT_FALSE(tracker.onFilled(1, Quantity::fromDouble(0.5)));
   EXPECT_FALSE(tracker.onCanceled(1));
   EXPECT_FALSE(tracker.onExpired(1));
   EXPECT_FALSE(tracker.onPendingCancel(1));
+  EXPECT_FALSE(tracker.onRejected(1, "late reject"));
   EXPECT_EQ(tracker.getStatus(1), OrderEventStatus::REPLACED);
+
+  // onFilled() has to ask isTerminal() rather than carry its own list of
+  // terminal statuses: a private list is what let a replaced order keep
+  // accumulating fills.
+  auto superseded = tracker.get(1);
+  ASSERT_TRUE(superseded.has_value());
+  EXPECT_EQ(superseded->filled.raw(), 0);
+  EXPECT_EQ(tracker.activeOrderCount(), 1u);
+}
+
+// The same private-list hazard on the other status onFilled() used to miss.
+TEST(OrderTrackerReplacedTest, FilledOrderRefusesAnotherFill)
+{
+  OrderTracker tracker;
+
+  ASSERT_TRUE(tracker.onSubmitted(makeOrder(1), "ex-1"));
+  ASSERT_TRUE(tracker.onFilled(1, Quantity::fromDouble(1.0)));
+  ASSERT_EQ(tracker.getStatus(1), OrderEventStatus::FILLED);
+
+  EXPECT_FALSE(tracker.onFilled(1, Quantity::fromDouble(0.5)));
+
+  auto state = tracker.get(1);
+  ASSERT_TRUE(state.has_value());
+  EXPECT_EQ(state->status, OrderEventStatus::FILLED);
+  EXPECT_EQ(state->filled.raw(), Quantity::fromDouble(1.0).raw());
+}
+
+// An amend on a tracker saturated with live orders succeeds by recycling the
+// entry it supersedes. The superseded order has to be marked REPLACED before
+// room is requested: ask first and the old order is still counted as live, so
+// pruning cannot reclaim it and the replace is refused - which drops the
+// venue's acknowledgement of an order that is already working.
+TEST(OrderTrackerReplacedTest, AmendAtCapacityRecyclesTheSupersededOrder)
+{
+  OrderTracker tracker{4};
+
+  for (OrderId id = 1; id <= 4; ++id)
+  {
+    ASSERT_TRUE(tracker.onSubmitted(makeOrder(id), "ex"));
+  }
+  ASSERT_EQ(tracker.totalOrderCount(), 4u);
+  ASSERT_EQ(tracker.activeOrderCount(), 4u);
+
+  EXPECT_TRUE(tracker.onReplaced(1, makeOrder(5), "ex-5"));
+
+  EXPECT_EQ(tracker.totalOrderCount(), 4u);
+  EXPECT_EQ(tracker.activeOrderCount(), 4u);
+  EXPECT_TRUE(tracker.isActive(5));
+  EXPECT_FALSE(tracker.isActive(1));
+  for (OrderId id = 2; id <= 4; ++id)
+  {
+    EXPECT_TRUE(tracker.isActive(id)) << "live order " << id << " was lost to the amend";
+  }
 }
 
 // isTerminal() must stay narrow: a live order is not swept away by a fix that

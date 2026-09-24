@@ -126,4 +126,16 @@ TEST(OrderTrackerCapacityTest, LiveOrdersAreNotEvictedToMakeRoom)
   {
     EXPECT_TRUE(tracker.isActive(id)) << "live order " << id << " was evicted";
   }
+
+  // Saturated with live orders and no history left to reclaim. Making room by
+  // evicting a live entry would leave a working order on the venue that the
+  // process no longer tracks, so the insert is refused instead.
+  EXPECT_FALSE(tracker.onSubmitted(makeOrder(13), "ex"));
+  EXPECT_FALSE(tracker.exists(13));
+  EXPECT_EQ(tracker.totalOrderCount(), 8u);
+  EXPECT_EQ(tracker.activeOrderCount(), 8u);
+  for (OrderId id : live)
+  {
+    EXPECT_TRUE(tracker.isActive(id)) << "live order " << id << " was evicted for a refused submit";
+  }
 }

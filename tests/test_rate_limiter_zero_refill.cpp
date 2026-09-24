@@ -101,6 +101,32 @@ TEST(RateLimiterZeroRefillTest, ZeroRefillBucketIsRefilledOnlyByReset)
   EXPECT_FALSE(limiter.tryAcquire());
 }
 
+// The other end of the same division. A rate above one token per nanosecond
+// rounds the period down to zero, which is a second division by zero in
+// refill() and a "no wait at all" answer from timeUntilAvailable(). The period
+// is clamped to 1 ns: the bucket cannot be drained faster than that anyway.
+TEST(RateLimiterZeroRefillTest, RefillRateAboveOneTokenPerNanosecondHasADefinedPeriod)
+{
+  RateLimiter limiter({.capacity = 4, .refillRate = 4'000'000'000u});
+
+  EXPECT_EQ(limiter.capacity(), 4u);
+  EXPECT_EQ(limiter.refillRate(), 4'000'000'000u);
+
+  EXPECT_TRUE(limiter.tryAcquire(4));
+  EXPECT_EQ(limiter.available(), 0u);
+
+  const auto wait = limiter.timeUntilAvailable(1);
+  EXPECT_GT(wait, RateLimiter::Duration::zero());
+  EXPECT_LE(wait, RateLimiter::Duration(1));
+
+  // refill() divides by the same period, so it must not divide by zero here
+  // either: one millisecond is far more than the whole bucket's worth of
+  // tokens, and the refill caps at capacity.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  EXPECT_TRUE(limiter.tryAcquire());
+  EXPECT_EQ(limiter.available(), 3u);
+}
+
 // A non-zero refill rate must keep behaving exactly as before: the fix is a
 // guard on the zero case, not a change of the token-bucket semantics.
 TEST(RateLimiterZeroRefillTest, NonZeroRefillRateIsUnaffected)

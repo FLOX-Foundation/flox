@@ -38,7 +38,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <thread>
 
 using namespace flox;
@@ -255,4 +258,192 @@ TEST(OrderRouterConcurrencyTest, DisabledDestinationTakesNothingAfterTheDisable)
 
   EXPECT_EQ(e1.submits.load(), afterDisable);
   EXPECT_FALSE(router.isEnabled(1));
+}
+
+// route() must never dereference an executor pointer it has not checked. The
+// pointer is re-read after the enabled check for that reason: a control thread
+// can null it out between the two. Unregistering in a loop against a routing
+// thread has to stay TSan-clean and crash-free, and every route has to end in
+// a submit on a live executor or in an error - never in a call through a
+// pointer that was already withdrawn.
+TEST(OrderRouterConcurrencyTest, UnregisterRacesWithRoute)
+{
+  OrderRouter<4> router;
+  CountingExecutor executor;
+
+  router.registerExecutor(0, &executor);
+  router.setRoutingStrategy(RoutingStrategy::RoundRobin);
+  router.setFailoverPolicy(FailoverPolicy::Reject);
+
+  constexpr int kRoutes = 50'000;
+
+  std::atomic<bool> stop{false};
+  std::atomic<bool> go{false};
+  std::thread control(
+      [&]
+      {
+        while (!go.load(std::memory_order_relaxed))
+        {
+        }
+        while (!stop.load(std::memory_order_relaxed))
+        {
+          router.registerExecutor(0, nullptr);
+          router.registerExecutor(0, &executor);
+        }
+      });
+
+  go.store(true, std::memory_order_relaxed);
+
+  int accepted = 0;
+  int refused = 0;
+  for (int i = 0; i < kRoutes; ++i)
+  {
+    const auto err = routeOne(router, 1, Side::BUY, static_cast<OrderId>(i) + 1);
+    if (err == RoutingError::Success)
+    {
+      ++accepted;
+    }
+    else
+    {
+      ++refused;
+      ASSERT_TRUE(err == RoutingError::NoExecutor || err == RoutingError::ExchangeDisabled)
+          << "route " << i << " returned an unexpected error";
+    }
+  }
+
+  stop.store(true, std::memory_order_relaxed);
+  control.join();
+
+  EXPECT_EQ(accepted + refused, kRoutes);
+  EXPECT_EQ(executor.submits.load(), accepted);
+}
+
+// The same contract without the threads: once a destination is unregistered,
+// route() and routeTo() report an error and the executor is not called.
+TEST(OrderRouterConcurrencyTest, UnregisteredDestinationReportsAnErrorInsteadOfCalling)
+{
+  OrderRouter<4> router;
+  CountingExecutor executor;
+
+  router.registerExecutor(0, &executor);
+  router.setRoutingStrategy(RoutingStrategy::RoundRobin);
+  router.setFailoverPolicy(FailoverPolicy::Reject);
+
+  ASSERT_EQ(routeOne(router, 1, Side::BUY, 1), RoutingError::Success);
+  ASSERT_EQ(executor.submits.load(), 1);
+
+  router.registerExecutor(0, nullptr);
+
+  EXPECT_FALSE(router.isEnabled(0));
+  EXPECT_EQ(router.enabledCount(), 0u);
+  EXPECT_EQ(routeOne(router, 1, Side::BUY, 2), RoutingError::NoExecutor);
+  EXPECT_EQ(routeOneTo(router, 0, 1, Side::BUY, 3), RoutingError::NoExecutor);
+  EXPECT_EQ(router.cancelOn(0, 3), RoutingError::NoExecutor);
+  EXPECT_EQ(executor.submits.load(), 1);
+  EXPECT_EQ(executor.cancels.load(), 0);
+
+  // Failover has nothing to fail over to, and must not fall back on the
+  // pointer it probed before the enabled check.
+  router.setFailoverPolicy(FailoverPolicy::FailoverToBest);
+  EXPECT_EQ(routeOne(router, 1, Side::BUY, 4), RoutingError::NoExecutor);
+  EXPECT_EQ(executor.submits.load(), 1);
+}
+
+// An exchange id outside [0, MaxExchanges) is refused, not written past the
+// end of the destination arrays. The bounds check in setEnabled() is the only
+// thing standing between a caller's bad id and an out-of-range store, so the
+// state of every valid destination has to survive the attempt untouched.
+TEST(OrderRouterConcurrencyTest, OutOfRangeDestinationIsRefusedAndChangesNothing)
+{
+  OrderRouter<4> router;
+  CountingExecutor executors[4];
+
+  for (ExchangeId ex = 0; ex < 4; ++ex)
+  {
+    router.registerExecutor(ex, &executors[ex]);
+  }
+  router.setFailoverPolicy(FailoverPolicy::Reject);
+  ASSERT_EQ(router.enabledCount(), 4u);
+
+  router.setEnabled(4, true);
+  router.setEnabled(4, false);
+  router.setEnabled(5, true);
+  router.registerExecutor(4, &executors[0]);
+  router.setEnabled(InvalidExchangeId, true);
+
+  EXPECT_EQ(router.enabledCount(), 4u);
+  EXPECT_FALSE(router.isEnabled(4));
+  EXPECT_FALSE(router.isEnabled(InvalidExchangeId));
+  for (ExchangeId ex = 0; ex < 4; ++ex)
+  {
+    EXPECT_TRUE(router.isEnabled(ex)) << "destination " << ex << " changed state";
+  }
+
+  EXPECT_EQ(routeOneTo(router, 4, 1, Side::BUY, 1), RoutingError::NoExecutor);
+  EXPECT_EQ(routeOneTo(router, InvalidExchangeId, 1, Side::BUY, 2), RoutingError::NoExecutor);
+  EXPECT_EQ(router.cancelOn(4, 1), RoutingError::NoExecutor);
+
+  for (auto& executor : executors)
+  {
+    EXPECT_EQ(executor.submits.load(), 0);
+    EXPECT_EQ(executor.cancels.load(), 0);
+  }
+
+  // The last valid destination is the one an off-by-one store would land next
+  // to; routing still reaches it.
+  router.setRoutingStrategy(RoutingStrategy::RoundRobin);
+  ASSERT_EQ(routeOneTo(router, 3, 1, Side::BUY, 3), RoutingError::Success);
+  EXPECT_EQ(executors[3].submits.load(), 1);
+}
+
+// The same bounds check, made observable. An out-of-range id is not just
+// "refused": without the check, setEnabled() stores through _enabled[id],
+// which for a large id is memory outside the router entirely. The router is
+// placed at the front of a heap block whose remainder is a known byte
+// pattern, so the store that the check prevents has somewhere to land and the
+// test can see it. The id is sizeof(OrderRouter<4>), which puts the write past
+// the end of the router and well inside the pattern whatever the member
+// layout is, and keeps the (also out-of-range) _executors read inside the same
+// allocation so the probe itself stays in bounds.
+namespace
+{
+
+struct RouterProbe
+{
+  OrderRouter<4> router;
+  unsigned char tail[4096];
+};
+
+constexpr unsigned char kTailFill = 0xAB;
+
+}  // namespace
+
+TEST(OrderRouterConcurrencyTest, OutOfRangeDestinationWritesNothingPastTheDestinationArrays)
+{
+  auto probe = std::make_unique<RouterProbe>();
+  std::memset(probe->tail, kTailFill, sizeof(probe->tail));
+
+  CountingExecutor executors[4];
+  for (ExchangeId ex = 0; ex < 4; ++ex)
+  {
+    probe->router.registerExecutor(ex, &executors[ex]);
+  }
+  ASSERT_EQ(probe->router.enabledCount(), 4u);
+
+  const auto outOfRange = static_cast<ExchangeId>(sizeof(OrderRouter<4>));
+  probe->router.setEnabled(outOfRange, true);
+  probe->router.setEnabled(outOfRange, false);
+  probe->router.registerExecutor(outOfRange, &executors[0]);
+
+  for (size_t i = 0; i < sizeof(probe->tail); ++i)
+  {
+    ASSERT_EQ(probe->tail[i], kTailFill)
+        << "an out-of-range destination id wrote " << i << " byte(s) past the router";
+  }
+
+  EXPECT_EQ(probe->router.enabledCount(), 4u);
+  for (ExchangeId ex = 0; ex < 4; ++ex)
+  {
+    EXPECT_TRUE(probe->router.isEnabled(ex)) << "destination " << ex << " changed state";
+  }
 }
