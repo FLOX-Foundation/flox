@@ -224,7 +224,46 @@ class EventBus : public ISubsystem
     {
       return ConsumerHealth::HEALTHY;
     }
-    return _healthBook[consumerIndex].state;
+    return _healthBook[consumerIndex].state.load(std::memory_order_acquire);
+  }
+
+  // What the last sweep saw for one consumer, as one update: the state, the
+  // sequence it had reached, and the instant that sequence last moved.
+  // lastChange moves only together with lastSeen, so the pair answers "is this
+  // consumer progressing, and if not, since when" -- which the state alone
+  // does not.
+  struct ConsumerHealthReport
+  {
+    ConsumerHealth state{ConsumerHealth::HEALTHY};
+    int64_t lastSeen{-1};
+    std::chrono::steady_clock::time_point lastChange{};
+  };
+
+  ConsumerHealthReport consumerHealthReport(uint32_t consumerIndex) const
+  {
+    ConsumerHealthReport report;
+    if (consumerIndex >= MaxConsumers)
+    {
+      return report;
+    }
+    const HealthBook& book = _healthBook[consumerIndex];
+    for (;;)
+    {
+      const uint32_t before = book.version.load(std::memory_order_acquire);
+      if ((before & 1u) != 0u)
+      {
+        continue;  // a sweep is mid-update; its next store releases us
+      }
+      report.state = book.state.load(std::memory_order_relaxed);
+      report.lastSeen = book.lastSeen.load(std::memory_order_relaxed);
+      const int64_t ticks = book.lastChangeTicks.load(std::memory_order_relaxed);
+      std::atomic_thread_fence(std::memory_order_acquire);
+      if (book.version.load(std::memory_order_relaxed) == before)
+      {
+        report.lastChange = HealthBook::timeOf(ticks);
+        return report;
+      }
+    }
   }
 
   // Counts from the last recorded per-consumer states, without re-sweeping and
@@ -236,11 +275,12 @@ class EventBus : public ISubsystem
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < n; ++i)
     {
-      if (_healthBook[i].state == ConsumerHealth::STALLED)
+      const ConsumerHealth state = _healthBook[i].state.load(std::memory_order_acquire);
+      if (state == ConsumerHealth::STALLED)
       {
         ++sweep.stalled;
       }
-      else if (_healthBook[i].state == ConsumerHealth::DEAD)
+      else if (state == ConsumerHealth::DEAD)
       {
         ++sweep.dead;
       }
@@ -266,7 +306,13 @@ class EventBus : public ISubsystem
     for (uint32_t i = 0; i < n; ++i)
     {
       auto& book = _healthBook[i];
+      // The checker is the only writer, so it reads its own last update back
+      // relaxed and republishes the whole of it below.
+      int64_t seen = book.lastSeen.load(std::memory_order_relaxed);
+      int64_t changeTicks = book.lastChangeTicks.load(std::memory_order_relaxed);
+      const ConsumerHealth previous = book.state.load(std::memory_order_relaxed);
       ConsumerHealth next = ConsumerHealth::HEALTHY;
+      bool progressed = false;
 
       if (_consumers[i].failed.load(std::memory_order_acquire))
       {
@@ -275,20 +321,26 @@ class EventBus : public ISubsystem
       else
       {
         const int64_t s = _consumers[i].seq.load(std::memory_order_acquire);
-        if (s != book.lastSeen)
+        if (s != seen)
         {
-          book.lastSeen = s;
-          book.lastChange = now;
+          seen = s;
+          changeTicks = HealthBook::ticksOf(now);
+          progressed = true;
         }
-        else if (s < head && now - book.lastChange >= _healthCfg.stallThreshold)
+        else if (s < head &&
+                 now - HealthBook::timeOf(changeTicks) >= _healthCfg.stallThreshold)
         {
           next = ConsumerHealth::STALLED;
         }
       }
 
-      if (next != book.state)
+      if (progressed || next != previous)
       {
-        book.state = next;
+        book.write(seen, changeTicks, next);
+      }
+
+      if (next != previous)
+      {
         if (next == ConsumerHealth::DEAD)
         {
           FLOX_LOG_ERROR("EventBus consumer " << i << " is dead (handler threw)");
@@ -296,7 +348,7 @@ class EventBus : public ISubsystem
         else if (next == ConsumerHealth::STALLED)
         {
           FLOX_LOG_WARN("EventBus consumer " << i << " stalled: seq="
-                                             << book.lastSeen << " head=" << head);
+                                             << seen << " head=" << head);
         }
         if (_healthCfg.callback)
         {
@@ -508,8 +560,7 @@ class EventBus : public ISubsystem
       // consumer stalled before it has had any time at all -- which a consumer
       // thread hid by being faster than the first sweep, and a consumer
       // stepped from outside does not.
-      _healthBook[i] = HealthBook{};
-      _healthBook[i].lastChange = startedAt;
+      _healthBook[i].reset(startedAt);
       auto& slot = _consumers[i];
       slot.next = -1;
       slot.failed.store(false, std::memory_order_relaxed);
@@ -1622,13 +1673,57 @@ class EventBus : public ISubsystem
   std::mutex _readyMutex;
   std::atomic<uint32_t> _active{0};
 
-  // Health checker bookkeeping. Touched only by the single health-checker
-  // thread (see checkHealth), so plain members are fine.
+  // Health checker bookkeeping. Written by the single health checker (see
+  // checkHealth) and read by whoever supervises the bus: consumerHealth(),
+  // healthSnapshot() and consumerHealthReport() are advertised as callable at
+  // any time, from any thread, so these fields are typed for the threads that
+  // read them and not only for the one that writes them.
+  //
+  // The three fields are also one update. A state on its own does not say
+  // whether a consumer is making progress; the sequence and the instant it
+  // last moved do, and a report that takes the sequence from one sweep and the
+  // instant from another describes progress that never happened. A version
+  // counter around the writer's stores -- odd while a sweep is writing -- lets
+  // a reader retry until it has a whole update. It costs the reader a retry it
+  // almost never takes and the writer two stores per changed consumer, and
+  // neither is anywhere near the publish path.
   struct HealthBook
   {
-    int64_t lastSeen{-1};
-    std::chrono::steady_clock::time_point lastChange{};
-    ConsumerHealth state{ConsumerHealth::HEALTHY};
+    std::atomic<uint32_t> version{0};
+    std::atomic<int64_t> lastSeen{-1};
+    // The time_point's representation, because an atomic needs a trivially
+    // copyable arithmetic type and steady_clock::time_point is reassembled
+    // from this without loss.
+    std::atomic<int64_t> lastChangeTicks{0};
+    std::atomic<ConsumerHealth> state{ConsumerHealth::HEALTHY};
+
+    static int64_t ticksOf(std::chrono::steady_clock::time_point tp) noexcept
+    {
+      return static_cast<int64_t>(tp.time_since_epoch().count());
+    }
+    static std::chrono::steady_clock::time_point timeOf(int64_t ticks) noexcept
+    {
+      return std::chrono::steady_clock::time_point{
+          std::chrono::steady_clock::duration{ticks}};
+    }
+
+    // Single writer: the health checker. Everything a reader must see as one
+    // update goes between the two odd/even version stores.
+    void write(int64_t seen, int64_t changeTicks, ConsumerHealth st) noexcept
+    {
+      const uint32_t v = version.load(std::memory_order_relaxed);
+      version.store(v + 1, std::memory_order_relaxed);
+      std::atomic_thread_fence(std::memory_order_release);
+      lastSeen.store(seen, std::memory_order_relaxed);
+      lastChangeTicks.store(changeTicks, std::memory_order_relaxed);
+      state.store(st, std::memory_order_release);
+      version.store(v + 2, std::memory_order_release);
+    }
+
+    void reset(std::chrono::steady_clock::time_point at) noexcept
+    {
+      write(-1, ticksOf(at), ConsumerHealth::HEALTHY);
+    }
   };
   std::array<HealthBook, MaxConsumers> _healthBook{};
   HealthConfig _healthCfg{};
