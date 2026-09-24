@@ -50,16 +50,18 @@ RejectReason MatchingEngine<Book>::validateConditional(const NewOrder& o) const
   return credit_.validateConditional(o, cfg_);
 }
 
+// Whether the instrument is in a state that accepts order entry at all, and
+// the refusal if it is not. Outermost first: a client whose order is refused
+// deserves the reason that tells it what to do next. Delisted means do not
+// come back; closed means next session; halted means something is wrong with
+// the instrument now.
+//
+// Order-shaped commands that do not route through validate() ask this
+// directly: a quote replaces two resting orders, so it has to know the
+// replacements are admissible BEFORE it pulls what is there.
 template <class Book>
-RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
+RejectReason MatchingEngine<Book>::instrumentStateRefusal() const
 {
-  if (o.symbol != cfg_.id)
-  {
-    return RejectReason::UnknownSymbol;
-  }
-  // Outermost first: a client whose order is refused deserves the reason that
-  // tells it what to do next. Delisted means do not come back; closed means
-  // next session; halted means something is wrong with the instrument now.
   if (session_.delisted())
   {
     return RejectReason::InstrumentDelisted;
@@ -71,6 +73,20 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
   if (cfg_.halted)
   {
     return RejectReason::Halted;
+  }
+  return RejectReason::None;
+}
+
+template <class Book>
+RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
+{
+  if (o.symbol != cfg_.id)
+  {
+    return RejectReason::UnknownSymbol;
+  }
+  if (const RejectReason r = instrumentStateRefusal(); r != RejectReason::None)
+  {
+    return r;
   }
   // Before any gate keyed on the type. Everything below that asks about a
   // price -- the tick, the band, the fat-finger notional -- is written as

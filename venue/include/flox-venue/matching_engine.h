@@ -272,6 +272,7 @@ class MatchingEngine
 
  private:
   // engine/validate.inl
+  RejectReason instrumentStateRefusal() const;
   RejectReason validateConditional(const NewOrder& o) const;
   RejectReason validate(const NewOrder& o) const;
   RejectReason admissionGate(const NewOrder& o) const;

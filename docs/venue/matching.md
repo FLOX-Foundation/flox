@@ -704,7 +704,12 @@ Before the first trade there is no reference price, so no band exists yet.
   `MmpTriggered` fires.
 - **Mass quote.** `Quote` replaces both sides of a two-sided quote atomically,
   by id: the engine cancels `bidId` and `askId` and re-posts them at the new
-  prices, so a maker keeps one pair of ids and reuses it. Both legs inherit the
+  prices, so a maker keeps one pair of ids and reuses it. Atomically also
+  against the instrument's state: the quote asks whether the instrument admits
+  order entry at all BEFORE it pulls anything, so a quote sent into a halted or
+  closed instrument is refused whole and leaves the maker's existing quote
+  resting. Reading that gate only per leg, on the way in, pulled the old quote
+  and then refused both replacements. Both legs inherit the
   quote's `stp`, `lastLook`, `postOnly`, `reduceOnly`, `tif`,
   `visibleQuantity` and `expiryNs`, so a quote has every control a single
   order has. `postOnly` is the one a quote needs most: a maker repricing into a
@@ -958,7 +963,9 @@ flowchart TD
     MOD[ModifyOrder] --> VM[tick / band / lot] --> HOLDS[resolve open holds]
     HOLDS --> PERP3[perpRiskGate] --> FUND3[reserveFunds] --> MATCH
 
-    QUOTE[Quote] --> HOLDS2[resolve open holds] --> LEGS[each leg through NewOrder]
+    QUOTE[Quote] --> QST{instrument<br/>trading?}
+    QST -->|halted, closed,<br/>delisted| REJ
+    QST -->|yes| HOLDS2[resolve open holds] --> LEGS[each leg through NewOrder]
     LEGS --> DEDUP
 
     PEG[reference moves] --> HOLDS3[resolve open holds] --> FUND4[reserveFunds<br/>at the new price] --> BOOK[re-enter book]
@@ -981,7 +988,7 @@ leg goes through that path.
 | conditional (parked) | yes | - | yes | yes | yes | yes | - | - | - |
 | stop trigger | yes | - | yes | yes | yes | yes | yes | - | - |
 | modify | yes | - | yes | yes | yes | yes | yes | - | yes |
-| quote (per leg) | yes | yes | yes | yes | yes | yes | yes | - | yes |
+| quote (per leg) | yes, and once for the whole quote before the replace | yes | yes | yes | yes | yes | yes | - | yes |
 | peg reprice | - | - | yes | yes | yes | yes | yes | - | yes |
 | auction uncross | - | - | - | yes | - | - | yes | yes | - |
 | hold accept | - | - | - | - | - | - | - | yes | yes |
