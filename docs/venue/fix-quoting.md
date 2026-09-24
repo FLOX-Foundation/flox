@@ -74,7 +74,7 @@ is reachable only through the non-FIX transports.
 (`.250` -> `...250000000` in `NewOrder::expiryNs`), and the parse is the exact
 inverse of the `SendingTime` (52) printer both ends of a session already share.
 A month outside 1-12, a day the month does not have, an hour above 23, a year
-before 1970 or any other shape is refused naming `ExpireTime(126)`. On a
+before 1970, after 2261 (nanoseconds since the epoch no longer fit an int64) or any other shape is refused naming `ExpireTime(126)`. On a
 `TimeInForce` other than GTD, tag 126 carries no FIX meaning and is ignored.
 
 ## MassQuote (35=i) in

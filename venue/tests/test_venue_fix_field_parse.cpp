@@ -202,7 +202,9 @@ TEST(FixFieldParseTimestamp, CalendarAndClockRangesEnforced)
   EXPECT_FALSE(parseUtcTimestampNs("20260925-12:00:61.000", ns)) << "second 61";
   EXPECT_TRUE(parseUtcTimestampNs("20260925-12:00:60.000", ns)) << "the FIX 4.4 leap second";
   EXPECT_FALSE(parseUtcTimestampNs("19691231-23:59:59.999", ns)) << "before the epoch";
-  EXPECT_TRUE(parseUtcTimestampNs("99991231-23:59:59.999", ns)) << "the last four-digit year";
+  EXPECT_TRUE(parseUtcTimestampNs("22611231-23:59:59.999", ns)) << "the last year whose nanoseconds fit an int64";
+  EXPECT_FALSE(parseUtcTimestampNs("22620101-00:00:00", ns)) << "a year past the int64 nanosecond range";
+  EXPECT_FALSE(parseUtcTimestampNs("99991231-23:59:59.999", ns)) << "the last four-digit year overflows";
 }
 
 }  // namespace

@@ -131,7 +131,8 @@ constexpr bool digits(std::string_view t, size_t from, size_t n, unsigned& out) 
 // outside 1-12, a day the month does not have (so 20260229 is refused and
 // 20240229 is not), an hour above 23, a minute above 59, and a year before
 // 1970 -- the venue's timestamps are unsigned time since the epoch, and a
-// sub-epoch expiry is a typo, not a date. Seconds may be 60: FIX 4.4 allows
+// sub-epoch expiry is a typo, not a date -- and a year after 2261, past which
+// nanoseconds since the epoch no longer fit an int64. Seconds may be 60: FIX 4.4 allows
 // the leap second, and it lands on the following minute the way a POSIX epoch
 // count does.
 inline bool parseUtcTimestampNs(std::string_view t, int64_t& outNs) noexcept
@@ -166,7 +167,9 @@ inline bool parseUtcTimestampNs(std::string_view t, int64_t& outNs) noexcept
       return false;
     }
   }
-  if (year < 1970 || month < 1 || month > 12 || day < 1 ||
+  // 2262-04-11 is where int64 nanoseconds run out; the year bound keeps the
+  // multiplication below from overflowing on any accepted date.
+  if (year < 1970 || year > 2261 || month < 1 || month > 12 || day < 1 ||
       day > detail::daysInMonth(year, month) || hour > 23 || minute > 59 || second > 60)
   {
     return false;
