@@ -86,6 +86,7 @@ Price getAvgEntryPrice(SymbolId symbol) const;
 std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override;
 Price getRealizedPnl(SymbolId symbol) const;
 Price getTotalRealizedPnl() const;
+size_t trackedSymbolCount() const;
 CostBasisMethod method() const;
 ```
 
@@ -94,6 +95,14 @@ CostBasisMethod method() const;
 there instead, so a caller cannot mistake "flat" for "entered at zero". The
 strategy context reads the override; see
 [IPositionManager](abstract_position_manager.md).
+
+All position queries are read-only: querying a symbol that never traded does
+not create an entry for it. `_states` is a plain (non-`mutable`)
+`SymbolStateMap`, so these `const` methods bind `SymbolStateMap`'s `const
+operator[]`, which never marks a symbol initialized and never allocates an
+overflow entry. `trackedSymbolCount()` (`_states.size()` under the lock)
+exists to make that observable: it only grows from an actual fill, never
+from a query.
 
 ### Order Event Handlers
 
