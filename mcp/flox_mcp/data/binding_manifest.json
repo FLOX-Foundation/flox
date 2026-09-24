@@ -22145,6 +22145,11 @@
         },
         {
           "kind": "method",
+          "name": "trackedSymbolCount",
+          "parent": "PositionTracker"
+        },
+        {
+          "kind": "method",
           "name": "updatePosition",
           "parent": "PositionTracker"
         },

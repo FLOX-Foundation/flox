@@ -19,7 +19,7 @@ class SymbolStateMap;
 The container uses a two-tier approach:
 
 1. **Flat array** (symbols 0-255): Direct O(1) access, cache-line aligned
-2. **Overflow vector** (symbols >= 256): Linear search, rare case
+2. **Overflow deque** (symbols >= 256): Linear search, rare case
 
 ```cpp
 alignas(64) std::array<State, kMaxSymbols> _flat{};
@@ -28,9 +28,26 @@ OverflowStorage<State, std::is_move_constructible_v<State>> _overflowStorage;
 ```
 
 `OverflowStorage` is conditional: for a move-constructible `State` it holds a
-`std::vector<std::pair<SymbolId, State>>`; for a non-move-constructible `State` it is an empty stub
+`std::deque<std::pair<SymbolId, State>>`; for a non-move-constructible `State` it is an empty stub
 whose `size()` is always 0. So a `State` that cannot be moved gets no overflow tier at all — only the
 flat array is available, and symbols at or above `kMaxSymbols` are not storable.
+
+The overflow tier is a `std::deque`, not a `std::vector`: a vector reallocates and moves every
+existing element once its capacity runs out, which would invalidate every reference `operator[]`,
+`tryGet`, and any live iterator had already handed out for an overflow symbol. A deque's
+`push_back`/`emplace_back` never relocates existing elements, so a reference obtained from an
+earlier overflow lookup stays valid across later insertions of *other* overflow symbols (only
+iterators are invalidated by that, and this class never caches one across a mutation).
+
+The **const** `operator[]`, `tryGet`, and `contains` never create an entry and never mark a symbol
+initialized — a read-only query on a symbol that was never written returns a default-constructed
+`State` (for the flat range) or a shared static empty `State` (for the overflow range) without
+changing `size()` or what `forEach` visits. Only the non-const `operator[]` creates state. A caller
+that reaches this container through a `mutable` member from a `const` method has to be careful which
+overload actually gets picked — a `mutable` member is never `const`, so `mutable T member` plus
+`member[symbol]` inside a `const` method binds the non-const overload regardless of the method's own
+constness, silently creating state on a read. `PositionTracker` had exactly this bug; see
+[position_tracker.md](../position/position_tracker.md).
 
 ## API
 

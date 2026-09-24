@@ -117,6 +117,16 @@ class PositionTracker : public IPositionManager
     return Price::fromRaw(total);
   }
 
+  // Number of symbols with recorded state. Exists so a caller (and the
+  // test for it) can observe that a pure query never grows this -- see the
+  // note on `_states` below. Not part of IPositionManager; this is a
+  // diagnostic, not something strategy code should branch on.
+  size_t trackedSymbolCount() const
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _states.size();
+  }
+
   void onOrderPartiallyFilled(const Order& order, Quantity fillQty) override
   {
     std::lock_guard<std::mutex> lock(_mutex);
@@ -247,7 +257,16 @@ class PositionTracker : public IPositionManager
 
   CostBasisMethod _method;
   mutable std::mutex _mutex;
-  mutable SymbolStateMap<PositionState> _states;
+  // Not mutable. Every write goes through a non-const method (updatePosition
+  // and friends), so this never needs to change from a const one -- and it
+  // must not appear to, either: `mutable` here used to make the const query
+  // methods below pick SymbolStateMap's non-const operator[] (a mutable
+  // member is never const, regardless of the enclosing method), which marks
+  // the symbol initialized on a plain read. A symbol that never traded then
+  // showed up in size()/forEach()/getTotalRealizedPnl() just because
+  // someone asked about it. Leaving this non-mutable makes the const
+  // methods bind the const overload instead, which never marks anything.
+  SymbolStateMap<PositionState> _states;
 };
 
 }  // namespace flox

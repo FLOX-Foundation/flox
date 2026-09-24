@@ -15,10 +15,10 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <deque>
 #include <memory>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 namespace flox
 {
@@ -78,9 +78,11 @@ class SymbolStateMap
       }
       return _table->flat[symbol];
     }
-    // For non-movable types there is no growable overflow storage (a
-    // std::vector reallocation would need to move State, and State holds
-    // atomics). Route the write to a dedicated scratch slot instead of
+    // For non-movable types there is no growable overflow storage: even
+    // with the deque below (stable addresses, no reallocation), inserting
+    // a new entry still move-constructs a State into the pair, and
+    // non-movable State holds atomics. Route the write to a dedicated
+    // scratch slot instead of
     // `flat[0]`: aliasing symbol 0 silently corrupted a live, unrelated
     // symbol's data (and the assert that was meant to catch this in
     // debug compiles out entirely under NDEBUG, i.e. in every release
@@ -181,13 +183,27 @@ class SymbolStateMap
 
   void clear() noexcept
   {
-    // For non-movable types, just reset the initialized flags
-    if constexpr (std::is_move_constructible_v<State>)
+    // Destroy-and-reconstruct in place rather than `flat = {}`: assigning a
+    // freshly-defaulted array requires State to be move- (or copy-)
+    // assignable, which the non-movable case (State holding atomics) is
+    // not, so that assignment used to be skipped entirely for it -- leaving
+    // the old data behind under freshly-cleared `initialized` flags, i.e.
+    // the next `operator[]` on that symbol handed back the previous run's
+    // state as if it were new. Placement construction only needs State to
+    // be default-constructible, which every State here already is (the
+    // `Table` and the overflow scratch slot both default-construct it).
+    for (State& state : _table->flat)
     {
-      _table->flat = {};
+      std::destroy_at(&state);
+      std::construct_at(&state);
     }
     _table->initialized = {};
     _overflowStorage.clear();
+    if constexpr (!std::is_move_constructible_v<State>)
+    {
+      std::destroy_at(&_overflowScratch);
+      std::construct_at(&_overflowScratch);
+    }
   }
 
   template <typename Func>
@@ -346,6 +362,9 @@ class SymbolStateMap
   }
 
  private:
+  // Grows `overflow()` by one entry. `State&` results handed out by earlier
+  // calls (and by tryGet/iterators) must stay valid across this -- see the
+  // std::deque choice on OverflowStorage below.
   State& getOverflow(SymbolId symbol)
     requires std::is_move_constructible_v<State>
   {
@@ -374,11 +393,21 @@ class SymbolStateMap
     return empty;
   }
 
-  // Helper to conditionally include overflow storage
+  // Helper to conditionally include overflow storage.
+  //
+  // std::deque, not std::vector: growing a vector past its capacity
+  // reallocates and moves every existing element, which invalidates every
+  // reference `operator[]`/`tryGet`/an iterator has already handed out --
+  // `State& a = map[300]; State& b = map[301];` could leave `a` pointing at
+  // freed memory. A deque's push/emplace at either end never relocates
+  // existing elements (only its internal map of chunks grows), so
+  // references and pointers into it survive later insertions; only
+  // iterators are invalidated, and this class does not cache those across
+  // a mutation.
   template <typename T, bool Enable>
   struct OverflowStorage
   {
-    std::vector<std::pair<SymbolId, T>> data;
+    std::deque<std::pair<SymbolId, T>> data;
     void clear() { data.clear(); }
     size_t size() const { return data.size(); }
   };

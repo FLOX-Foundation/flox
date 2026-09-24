@@ -121,6 +121,108 @@ TEST_F(SymbolStateMapTest, ClearResetsAll)
   EXPECT_FALSE(map.contains(1));
 }
 
+// W33-T013, finding 4: getOverflow() used to emplace_back into a std::vector,
+// which reallocates and moves every existing element once capacity runs out
+// -- invalidating every reference operator[]/tryGet/an iterator had already
+// handed out. `State& a = map[300];` followed by enough further overflow
+// inserts left `a` pointing at freed memory. The overflow container is now a
+// std::deque, whose push/emplace at either end never relocates existing
+// elements, so this checks the address itself stays put across a lot of
+// growth -- not just that the value read back is still right (a linear scan
+// by symbol id would report the right value from either container; it is
+// the pointer identity that the vector broke).
+TEST_F(SymbolStateMapTest, OverflowReferencesStableAcrossGrowth)
+{
+  struct TestState
+  {
+    int value{0};
+  };
+  SymbolStateMap<TestState, 10> map;
+
+  map[300].value = 111;
+  const auto addrBefore = reinterpret_cast<std::uintptr_t>(&map[300]);
+
+  // Comfortably past any small_vector-style initial capacity a std::vector
+  // implementation might pick; std::vector would have reallocated several
+  // times over this many push_backs.
+  for (SymbolId sym = 301; sym < 400; ++sym)
+  {
+    map[sym].value = static_cast<int>(sym);
+  }
+
+  const auto addrAfter = reinterpret_cast<std::uintptr_t>(&map[300]);
+  EXPECT_EQ(addrBefore, addrAfter)
+      << "overflow growth must not relocate a previously returned entry";
+  EXPECT_EQ(map[300].value, 111);
+}
+
+// W33-T013, finding 4, the two-live-references form from the review: a
+// reference obtained before growth must still observe writes made to it
+// after growth (i.e. it is the same object, not a stale copy).
+TEST_F(SymbolStateMapTest, OverflowReferenceUsableAfterLaterInsertions)
+{
+  struct TestState
+  {
+    int value{0};
+  };
+  SymbolStateMap<TestState, 10> map;
+
+  TestState& a = map[300];
+  a.value = 1;
+  for (SymbolId sym = 301; sym < 350; ++sym)
+  {
+    map[sym].value = static_cast<int>(sym);
+  }
+  a.value = 2;
+
+  EXPECT_EQ(map[300].value, 2);
+}
+
+// W33-T013, finding 9: clear() reset `initialized` unconditionally but only
+// reassigned `flat` when State is move-constructible; for a State holding
+// atomics (the documented non-movable case), the old data survived under a
+// freshly-cleared flag, so the next operator[] handed back the previous
+// run's values looking like a brand new entry.
+TEST_F(SymbolStateMapTest, ClearResetsNonMovableState)
+{
+  struct AtomicState
+  {
+    std::atomic<int> value{0};
+  };
+  static_assert(!std::is_move_constructible_v<AtomicState>,
+                "this test is only meaningful for a non-movable State");
+
+  SymbolStateMap<AtomicState> map;
+  map[3].value.store(77, std::memory_order_relaxed);
+  ASSERT_EQ(map[3].value.load(std::memory_order_relaxed), 77);
+
+  map.clear();
+
+  EXPECT_EQ(map[3].value.load(std::memory_order_relaxed), 0)
+      << "clear() must reset a non-movable State's data, not just its "
+         "initialized flag";
+}
+
+// Const access must not create entries or mark a symbol initialized -- this
+// already held before W33-T013 (the non-const overload is the one that had
+// the bug; see the PositionTracker tests below for where that actually bit).
+// Kept here as a direct regression guard on SymbolStateMap's own contract.
+TEST_F(SymbolStateMapTest, ConstAccessDoesNotMarkInitialized)
+{
+  struct TestState
+  {
+    int value{0};
+  };
+  SymbolStateMap<TestState, 10> map;
+  const auto& constMap = map;
+
+  EXPECT_EQ(constMap[5].value, 0);
+  EXPECT_EQ(constMap[500].value, 0);  // overflow range
+  EXPECT_EQ(map.size(), 0u);
+  EXPECT_FALSE(map.contains(5));
+  EXPECT_FALSE(map.contains(500));
+}
+
 class SymbolContextTest : public ::testing::Test
 {
  protected:
@@ -581,6 +683,62 @@ TEST_F(PositionTrackerTest, FlipPositionLongToShort)
   EXPECT_EQ(tracker.getPosition(1).toDouble(), -5.0);
   EXPECT_NEAR(tracker.getRealizedPnl(1).toDouble(), 100.0, 0.01);
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 110.0);
+}
+
+// W33-T013, finding 5: getPosition/getAvgEntryPrice/getRealizedPnl are const,
+// but reached SymbolStateMap through a `mutable` member -- which picks
+// SymbolStateMap's non-const operator[] regardless of the caller being
+// const, and that overload marks the symbol initialized on a plain read (and
+// for a symbol past the flat table, allocates an overflow entry). A symbol
+// that never traded then showed up in size()/forEach()/getTotalRealizedPnl()
+// merely because something asked about it. trackedSymbolCount() (added
+// alongside this fix) exposes the count for the test to check directly.
+TEST_F(PositionTrackerTest, ConstQueriesDoNotMarkSymbolInitialized)
+{
+  const PositionTracker tracker(1);
+
+  ASSERT_EQ(tracker.trackedSymbolCount(), 0u);
+
+  EXPECT_EQ(tracker.getPosition(7).toDouble(), 0.0);
+  EXPECT_EQ(tracker.getAvgEntryPrice(7).toDouble(), 0.0);
+  EXPECT_EQ(tracker.getRealizedPnl(7).toDouble(), 0.0);
+  EXPECT_FALSE(tracker.getAverageEntryPrice(7).has_value());
+
+  EXPECT_EQ(tracker.trackedSymbolCount(), 0u)
+      << "a read-only query on a symbol that never traded must not make it "
+         "appear tracked";
+  EXPECT_EQ(tracker.getTotalRealizedPnl().toDouble(), 0.0);
+}
+
+// Same finding, the overflow-range half: querying a symbol past the flat
+// table's 256 slots used to allocate an overflow entry from a const method.
+TEST_F(PositionTrackerTest, ConstQueriesDoNotAllocateOverflowEntry)
+{
+  const PositionTracker tracker(1);
+  constexpr SymbolId kOverflowSymbol = 300;
+
+  EXPECT_EQ(tracker.getPosition(kOverflowSymbol).toDouble(), 0.0);
+  EXPECT_EQ(tracker.getAvgEntryPrice(kOverflowSymbol).toDouble(), 0.0);
+  EXPECT_EQ(tracker.getRealizedPnl(kOverflowSymbol).toDouble(), 0.0);
+
+  EXPECT_EQ(tracker.trackedSymbolCount(), 0u);
+}
+
+// A traded symbol must of course still count -- the fix must not make
+// PositionTracker forget real state, only stop inventing it on reads.
+TEST_F(PositionTrackerTest, TradedSymbolIsTracked)
+{
+  PositionTracker tracker(1);
+
+  Order buy{.id = 1,
+            .side = Side::BUY,
+            .price = Price::fromDouble(100.0),
+            .quantity = Quantity::fromDouble(1.0),
+            .type = OrderType::MARKET,
+            .symbol = 42};
+  tracker.onOrderFilled(buy);
+
+  EXPECT_EQ(tracker.trackedSymbolCount(), 1u);
 }
 
 // Tests for Strategy integration with OrderTracker and PositionManager
