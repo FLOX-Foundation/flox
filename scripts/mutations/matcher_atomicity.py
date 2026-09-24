@@ -493,7 +493,7 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="modify-existence-back-to-book-find",
         why=("existence goes back to book_.find(m.id) == nullptr instead of pub_.tracked(m.id) -- "
-             "wrong for a maker whose whole size is held out of the book (T005 finding 21's own "
+             "wrong for a maker whose whole size is held out of the book (the finding's own "
              "motivating case). No acceptance test builds that fully-held-out state: HeldMaker "
              "only holds 3 of 5, leaving 2 resting, so book_.find still succeeds either way"),
         file=ORDERS,
