@@ -385,6 +385,16 @@ class SimulatedExecutor : public IOrderExecutor
   // they are matched at the open and not at the previous bar's close.
   void setBarMarketState(SymbolId symbol, Price price);
   void stepBarPrice(SymbolId symbol, Price price);
+  // Bar data carries no trade stream, so the queue tracker would never hear a
+  // print and every resting limit would sit forever. A bar step that trades
+  // strictly through a resting order's price proves the queue ahead of it
+  // traded, so the step is handed to the tracker as a synthetic print at that
+  // level, sized to reach the order standing furthest back. How much of it
+  // each order gets is then the queue model's decision, not a hardcoded fill.
+  void driveQueueFromBarStep(SymbolId symbol, Price stepPrice);
+  // Iceberg refresh, level compaction and removal of fully-filled queued
+  // orders. Shared by every path that lets the queue tracker fill orders.
+  void settleQueuedFills();
   // Shared prologue of every onBar overload: runs the outage state machine and
   // says whether the venue is up enough to take the bar at all.
   bool barFeedAllowed();
