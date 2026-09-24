@@ -14105,6 +14105,11 @@
         },
         {
           "kind": "method",
+          "name": "resetRunState",
+          "parent": "BacktestRunner"
+        },
+        {
+          "kind": "method",
           "name": "result",
           "parent": "BacktestRunner"
         },
@@ -21115,6 +21120,11 @@
         },
         {
           "kind": "method",
+          "name": "clear",
+          "parent": "OrderQueueTracker"
+        },
+        {
+          "kind": "method",
           "name": "compact",
           "parent": "OrderQueueTracker"
         },
@@ -23305,6 +23315,21 @@
         },
         {
           "kind": "method",
+          "name": "barCallbackWindowOpen",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "barFeedAllowed",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "beginBarCallbackWindow",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "bestAskPrice",
           "parent": "SimulatedExecutor"
         },
@@ -23390,7 +23415,17 @@
         },
         {
           "kind": "method",
+          "name": "consumeLadder",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "drainQueueFills",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "driveQueueFromBarStep",
           "parent": "SimulatedExecutor"
         },
         {
@@ -23401,6 +23436,11 @@
         {
           "kind": "method",
           "name": "emitTrailingUpdate",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "endBarCallbackWindow",
           "parent": "SimulatedExecutor"
         },
         {
@@ -23446,6 +23486,11 @@
         {
           "kind": "method",
           "name": "finalizePendingSubmissions",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "findLadder",
           "parent": "SimulatedExecutor"
         },
         {
@@ -23496,6 +23541,11 @@
         {
           "kind": "method",
           "name": "hasRateLimitPolicy",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "heldOrderCount",
           "parent": "SimulatedExecutor"
         },
         {
@@ -23585,12 +23635,22 @@
         },
         {
           "kind": "method",
+          "name": "releaseHeldOrders",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "removePendingOrder",
           "parent": "SimulatedExecutor"
         },
         {
           "kind": "method",
           "name": "replaceOrder",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
           "parent": "SimulatedExecutor"
         },
         {
@@ -23621,6 +23681,11 @@
         {
           "kind": "method",
           "name": "sampleSubmitAckLatency",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "setBarMarketState",
           "parent": "SimulatedExecutor"
         },
         {
@@ -23761,6 +23826,11 @@
         {
           "kind": "method",
           "name": "setVenueAvailability",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "settleQueuedFills",
           "parent": "SimulatedExecutor"
         },
         {

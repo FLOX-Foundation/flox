@@ -41,7 +41,13 @@ resting order between two observations — a 1-minute or 1-hour bar
 rather than a tick — the order still trades at its own price. It does
 not collect the distance the touch travelled. A limit order that
 arrives already marketable is a different case: it crosses the book,
-pays the touch and is reported as a taker fill.
+walks the visible ladder up to its own limit price and is reported as
+a taker fill.
+
+On bar data the FIFO models (`tob`, `full`) fill a resting order when
+a bar trades strictly through its price; a bar that only touches the
+price leaves the queue alone. See
+[Queue simulation](../reference/api/backtest/queue_simulation.md#bar-data).
 
 `none` is fast and it gets the economics of a fill right. What it does
 not give you is queue position: an order at the back of a deep level

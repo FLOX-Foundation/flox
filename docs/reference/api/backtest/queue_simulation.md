@@ -78,8 +78,27 @@ In C API: `flox_simulated_executor_on_trade_qty(executor, symbol, price, quantit
 
 In JavaScript: `executor.onTradeQty(symbol, price, quantity, isBuy)`.
 
+## Bar data
+
+Bars carry no trade stream, so there is nothing to consume a queue with. A bar step that trades
+**strictly through** a resting order's price is therefore handed to the tracker as one synthetic
+print at that level, sized to reach the order standing furthest back in the queue; how much of it
+each order gets is the model's decision, exactly as for a real print. A bar that only *touches* the
+price fills nothing — touching a level is not trading through it.
+
+One print per level, not per order: two orders resting at the same price sit behind the same queue,
+and printing twice would trade that queue twice.
+
+This is what makes the canned venue presets usable on bars. `VenueStack::binance_um_futures`,
+`bybit_linear` and `okx_swap` all wire `QueueModel::FULL`; before, a queue model on bar data meant
+resting limits that never filled at all.
+
 ## Caveats
 
-- When no trade events flow in, queued orders never fill. That is faithful to the market: without executions no one consumes the queue.
+- When neither trades nor bars flow in, queued orders never fill. That is faithful to the market:
+  without executions no one consumes the queue.
+- A bar only says the price traded through the level, never how much of the queue the print was. The
+  synthetic print assumes the level cleared, which is the optimistic end of what a bar can support —
+  intrabar trade data is the way to do better.
 - Orders placed away from the tracked levels fall back to `NONE` behavior.
 - The `FULL` mode's behavior beyond `queueDepth` levels is the same as `NONE`.

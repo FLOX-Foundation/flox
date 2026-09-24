@@ -71,9 +71,41 @@ public:
 | Method | Input | Notes |
 |--------|-------|-------|
 | `run(reader)` | An `IMultiSegmentReader` | The general path |
-| `runBars(bars)` | A `std::vector<BarEvent>` | Each bar updates the `SimulatedExecutor` so resting orders and SL/TP match against `bar.high` / `bar.low` / `bar.close`, then dispatches to `Strategy::onBar` and any registered subscriber. Bars must be in non-decreasing `endTime` order |
+| `runBars(bars)` | A `std::vector<BarEvent>` | Each bar updates the `SimulatedExecutor` — open first, then low, high and close, so resting orders and SL/TP match against the intrabar extremes — and is then dispatched to `Strategy::onBar` and any registered subscriber. An order the callback emits is held for the next bar's open (see below). Bars must be in non-decreasing `endTime` order |
 | `runTape(dir)` | One `.floxlog` directory | Opens the tape via `replay::createMultiSegmentReader`. Throws if `dir` is not a `.floxlog` directory or holds no segments |
 | `runTapes(dirs)` | N `.floxlog` directories, merged on read | Symbols are rekeyed into the engine registry via `(metadata.exchange, name)`, so strategies that pre-resolved venue-tagged symbols see the merger's ids. Throws if any input is not `.floxlog`, or if two inputs declare overlapping book streams for the same symbol (`OverlappingBookStreamError`). `runTapes({t})` equals `runTape(t)` modulo the rekey |
+
+## Bar callbacks fill at the next open
+
+The strategy is shown a bar the simulator has already walked, so open, high, low and close are all
+in the market state when its callback runs. An order emitted from there is held and released at the
+**next bar's open** for that symbol — the first price that exists after the strategy could have
+decided to send it. It is not matched against the bar it was shown, and not against the next bar's
+extremes either.
+
+- An order emitted on the last bar never fills: there is no next open. It is still held when the run
+  ends, visible as `executor().heldOrderCount()`.
+- Deferring does not drop, split or resize the order, and a cancel in the same callback pulls it
+  before it is ever submitted.
+- An order emitted for a *different* symbol waits for that symbol's next bar, not for the next bar
+  of any symbol.
+- This applies to the built-in simulator. A custom executor installed with `setExecutor` receives
+  signals directly and owns its own matching, so it is on its own here.
+
+Tick and book replay (`run`, `runTape`, `runTapes`) is not affected: there the next event is the
+next price, and the strategy callback runs after the event has been matched.
+
+## Reruns
+
+Every entry point — `run`, `runBars`, `runTape`, `runTapes` and interactive `start` — clears the
+previous run first: the executor's fills, live, held and conditional orders, market state and
+ladder, the built-in position tracker, the clock, and the event counters. A second run therefore
+reports that run, not the sum of every run so far, and repeats bit for bit.
+
+What is **not** cleared: configuration of any kind (slippage, queue model, latencies, rate limits,
+gates, listeners, subscribers, breakpoints) and anything owned outside the runner — a `VenueStack`'s
+account, fee schedule, funding state and liquidation engine, and any book pushed by hand into the
+executor before the run. Push it again if the run depends on it.
 
 ## Pre-Trade Gates
 
@@ -144,7 +176,9 @@ flowchart TB
     ST --> Emit[emitMarketBuy / emitMarketSell]
     Emit --> Signal[BacktestRunner.onSignal]
     Signal --> Submit[SimulatedExecutor.submitOrder]
-    Submit --> Fill[Fill]
+    Submit --> Hold[held to the next bar open, bar runs only]
+    Hold --> Fill[Fill]
+    Submit --> Fill
     Fill --> Result[BacktestResult]
 ```
 
@@ -192,6 +226,7 @@ std::cout << "Sharpe: " << stats.sharpeRatio << "\n";
 - The runner calls `executor.applyConfig(config)` at construction, so slippage, per-symbol overrides, and queue simulation are ready before any events are processed.
 - Trade events from the replay stream pass their quantities to the executor via `onTrade(symbol, price, qty, isBuy)`, which is required for queue-simulated fills.
 - All fills are recorded in `BacktestResult`.
+- Each run starts from a clean executor and position tracker; see [Reruns](#reruns).
 
 ## See Also
 
