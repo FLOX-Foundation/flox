@@ -608,11 +608,20 @@ TEST(EngineClearing, SnapshotRoundTripReproducesTheState)
             src.clearing.nextFundingNs(SeqNanos{}).raw());
 }
 
-TEST(EngineClearing, RestorePositionRefusesAZeroOrDuplicateRecord)
+TEST(EngineClearing, RestorePositionRefusesADuplicateRecordAndKeepsAFlatOne)
 {
-  Host h(perpCfg());
-  EXPECT_FALSE(h.clearing.restorePosition(RestorePosition{1, 0, px(500).raw(), {}, 0}, true));
+  // A flat entry is a state the engine holds on purpose: an operator
+  // correction that zeroes a position leaves it in the table, margin
+  // untouched, and hashPositions folds it -- so the record has to restore
+  // (W33-T002). It used to be read as corruption, which made every
+  // checkpoint taken after such a correction unloadable.
+  Host flat(perpCfg());
+  EXPECT_TRUE(flat.clearing.restorePosition(RestorePosition{1, 0, 0, {}, 0}, true));
+  EXPECT_EQ(flat.clearing.positionQty(1), 0);
+  EXPECT_FALSE(flat.clearing.restorePosition(RestorePosition{1, 0, 0, {}, 0}, true))
+      << "the account arrived twice";
 
+  Host h(perpCfg());
   h.led.deposit(1, USD, money(1000));
   EXPECT_TRUE(
       h.clearing.restorePosition(RestorePosition{1, qty(2).raw(), px(500).raw(), {}, money(100)}, false));

@@ -459,7 +459,14 @@ class Clearing
   // splits, so the margin is already reserved and must not be moved again.
   bool restorePosition(const RestorePosition& r, bool exactBalanceRestore)
   {
-    if (r.qtyRaw == 0 || positions_.count(r.account) != 0)
+    // A zero quantity is a state the engine really holds, not corruption: an
+    // operator correction that flattens a position leaves the entry in place
+    // deliberately, because it moves no margin (see adjustPosition and the
+    // note on AdjustPosition), and hashPositions folds that entry. Refusing
+    // the record here made every checkpoint taken after such a correction
+    // unloadable -- the writer and the loader have to describe the same
+    // engine. A repeated account is still corruption.
+    if (positions_.count(r.account) != 0)
     {
       return false;
     }

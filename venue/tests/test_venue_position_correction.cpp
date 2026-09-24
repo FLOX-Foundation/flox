@@ -246,6 +246,53 @@ TEST(PositionCorrection, APositionCorrectedToFlatKeepsNoEntryPrice)
   EXPECT_EQ(a->entryAfterRaw, 0);
 }
 
+// A correction that flattens a position leaves the account in the position
+// table -- flat, with whatever margin the correction deliberately did not
+// move -- and the snapshot has to be able to carry that. It used to write a
+// RestorePosition with qtyRaw == 0, which the loader read as corruption and
+// refused, taking SnapshotEnd and the whole generation with it: one operator
+// correction made every subsequent checkpoint of that shard unloadable.
+TEST(PositionCorrection, ASnapshotOfAFlattenedPositionStillLoads)
+{
+  const std::string path = tmpPath("venue_position_flat_snapshot", ".snap");
+  std::remove(path.c_str());
+
+  Venue v;
+  v.eng.submit(InboundCommand{adjust(1, -5.0, 0.0, AdjustReason::Reconciliation, "flatten")}, 3);
+  ASSERT_EQ(v.eng.positionQty(1), 0);
+  {
+    Journal out(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    v.eng.writeSnapshot(out);
+    out.flush();
+  }
+
+  Ledger led2;
+  MatchingEngine<MatchingBook> rec(cfg(), [](const OutboundEvent&) {});
+  rec.setLedger(&led2, VENUE_ACCT);
+  const auto records = Journal::loadTimed(path);
+  ASSERT_GE(records.size(), 2u);
+  for (const auto& [ts, cmd] : records)
+  {
+    EXPECT_TRUE(rec.applySnapshotRecord(cmd, ts)) << "record " << cmd.index();
+  }
+  EXPECT_EQ(rec.stateHash(), v.eng.stateHash());
+  EXPECT_EQ(rec.positionQty(1), 0);
+  std::remove(path.c_str());
+}
+
+// The tripwire the loader still owes the file: one account cannot arrive
+// twice.
+TEST(PositionCorrection, ARepeatedPositionRecordIsStillRefused)
+{
+  Venue v;
+  RestorePosition r{};
+  r.account = 1;
+  r.qtyRaw = qty(5).raw();
+  r.entryRaw = px(100).raw();
+  EXPECT_FALSE(v.eng.applySnapshotRecord(InboundCommand{r}, 4))
+      << "account 1 already holds a position";
+}
+
 // The correction is a journaled command like any other, so it survives a
 // restart. A correction applied outside the journal would vanish on recovery,
 // which is the whole reason this is a command and not a setter.
