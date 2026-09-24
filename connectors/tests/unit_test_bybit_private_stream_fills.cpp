@@ -21,12 +21,11 @@
  * the canonical dispatch path actually delivers -- not just on the raw
  * OrderEvent struct fields.
  *
- * Out of scope, and not claimed fixed here: Bybit republishes the same
- * underlying fill on both the "order" and "execution" topics
- * independently, so a consumer naively summing fillQty across *both*
- * topics at once still double-counts. That is a separate design question
- * (which topic is authoritative, or whether to de-duplicate) from the
- * "fillQty is always zero" bug these tests pin.
+ * These tests feed one topic at a time, which is deliberate: each topic on
+ * its own must report real fill sizes. The separate question of what the bus
+ * delivers when the SAME underlying fill arrives on both topics -- and the
+ * price it fills at, and the order id it arrives under -- is pinned in
+ * unit_test_bybit_fill_contract.cpp.
  */
 
 #include "flox-connectors/bybit/bybit_exchange_connector.h"
