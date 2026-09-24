@@ -175,7 +175,7 @@ void ReplayConnector::emitTradeFromRecord(const replay::TradeRecord& record)
   event.trade.instrument = static_cast<InstrumentType>(record.instrument);
   event.trade.price = Price::fromRaw(record.price_raw);
   event.trade.quantity = Quantity::fromRaw(record.qty_raw);
-  event.trade.isBuy = (record.side == 1);
+  event.trade.isBuy = (record.side == 0);
   event.trade.exchangeTsNs = UnixNanos::fromRaw(record.exchange_ts_ns);
 
   event.trade_id = record.trade_id;

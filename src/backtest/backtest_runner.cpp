@@ -369,7 +369,7 @@ void BacktestRunner::processEvent(const replay::ReplayEvent& event)
     trade_ev.trade.symbol = event.trade.symbol_id;
     trade_ev.trade.price = Price::fromRaw(event.trade.price_raw);
     trade_ev.trade.quantity = Quantity::fromRaw(event.trade.qty_raw);
-    trade_ev.trade.isBuy = (event.trade.side == 1);
+    trade_ev.trade.isBuy = (event.trade.side == 0);
     trade_ev.trade.exchangeTsNs = UnixNanos::fromRaw(event.trade.exchange_ts_ns);
     trade_ev.trade.instrument = static_cast<InstrumentType>(event.trade.instrument);
     trade_ev.exchangeMsgTsNs = UnixNanos::fromRaw(event.trade.exchange_ts_ns);

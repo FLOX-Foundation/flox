@@ -107,6 +107,10 @@ struct alignas(8) TradeRecord
   int64_t qty_raw{0};
   uint64_t trade_id{0};
   uint32_t symbol_id{0};
+  // Aggressor side, encoded as flox::Side: 0 = buy, 1 = sell. The same byte in
+  // docs/spec/floxlog.md, in every archive importer and in the C, Node and
+  // Python writers. Readers that treated 1 as the buy inverted the aggressor of
+  // every tape they touched; see docs/spec/floxlog.md, "Side byte".
   uint8_t side{0};
   uint8_t instrument{0};
   uint16_t exchange_id{0};

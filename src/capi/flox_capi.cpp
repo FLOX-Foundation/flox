@@ -6968,7 +6968,7 @@ class OhlcvBacktestReader : public replay::IMultiSegmentReader
     ev.trade.price_raw = b.price_raw;
     ev.trade.qty_raw = Quantity::fromDouble(1.0).raw();
     ev.trade.symbol_id = b.symbol_id;
-    ev.trade.side = 1;
+    ev.trade.side = 0;  // buy, in the tape's encoding
     return ev;
   }
 

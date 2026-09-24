@@ -100,8 +100,8 @@ void BinaryLogRecorderHook::onTrade(uint32_t symbol_id, int64_t price_raw,
   rec.price_raw = price_raw;
   rec.qty_raw = qty_raw;
   rec.symbol_id = symbol_id;
-  // Side convention: 0 = buy, 1 = sell, matching flox::Side and the
-  // existing trade-record encoding throughout the codebase.
+  // Side convention: 0 = buy, 1 = sell, matching flox::Side, the TradeRecord
+  // row of docs/spec/floxlog.md and every other writer of the format.
   rec.side = is_buy ? 0 : 1;
   rec.exchange_id = _config.exchange_id;
 

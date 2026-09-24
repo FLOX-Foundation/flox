@@ -111,6 +111,12 @@ A reader that sees an unknown `rec_version` must reject the frame.
 | 45 | 1 | `instrument` | `0` spot, `1` perp, etc. (see Instrument codes). |
 | 46 | 2 | `exchange_id` | Numeric exchange tag. |
 
+#### Side byte
+
+`side` is the aggressor of the trade, never the resting maker, and it is encoded as `flox::Side`: **`0` = buy, `1` = sell**. Every writer of the format has always used that encoding -- the C++ recorder hook, `flox_data_writer_write_trade`, the Node and Python `DataWriter`s and all the exchange-archive importers -- so the bytes on disk are what this table says and no tape needs migrating.
+
+What was wrong was the read side. Until this was fixed, `ReplayConnector`, `BacktestRunner::runTape`, `StrategyPump` and `preagg_bars` decoded `side == 1` as the buy and so **inverted** the aggressor of every tape they replayed, while the aggregators (`BinCountAggregator`, `VolumeBinAggregator`) and the Node and QuickJS readers decoded the same byte correctly. Anything derived from the aggressor through one of those four readers -- queue position, maker/taker classification, buy/sell-driven strategy logic, signed volume -- is inverted in results produced before the fix and has to be recomputed. The tapes themselves are unaffected, which is why the format carries no marker for this: a marker would say something about the writer, and the writer was never the side that was wrong.
+
 ### `BookRecordHeader` (40 bytes, 8-byte aligned)
 
 | Offset | Size | Field | Notes |
