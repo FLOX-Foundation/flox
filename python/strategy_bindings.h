@@ -1431,9 +1431,16 @@ class PyLiveEngine
     flox_live_engine_stop(_engine);
   }
 
+  // The three publish_* methods release the GIL for the duration of the
+  // call, the way stop() does. Publishing gates on the consumer once the
+  // ring is full (event_bus.h), and the consumer thread needs the GIL to
+  // finish the Python callback that would drain it — holding the GIL
+  // here wedges the two threads against each other. Nothing below
+  // touches a Python object: the vectors were already converted.
   void publish_trade(uint32_t symbol, double price, double qty,
                      bool is_buy, int64_t ts_ns)
   {
+    py::gil_scoped_release release;
     flox_live_engine_publish_trade(_engine, symbol, price, qty,
                                    static_cast<uint8_t>(is_buy), ts_ns);
   }
@@ -1447,6 +1454,7 @@ class PyLiveEngine
   {
     uint32_t nb = static_cast<uint32_t>(bid_prices.size());
     uint32_t na = static_cast<uint32_t>(ask_prices.size());
+    py::gil_scoped_release release;
     flox_live_engine_publish_book_snapshot(_engine, symbol,
                                            bid_prices.data(), bid_qtys.data(), nb,
                                            ask_prices.data(), ask_qtys.data(), na,
@@ -1459,6 +1467,7 @@ class PyLiveEngine
                    int64_t start_time_ns, int64_t end_time_ns,
                    uint8_t close_reason)
   {
+    py::gil_scoped_release release;
     flox_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,
                                  open, high, low, close, volume, buy_volume,
                                  start_time_ns, end_time_ns, close_reason);
