@@ -191,10 +191,12 @@ TEST(ConductClOrdIdWindow, RestoreReproducesTheWindowTheSnapshotDescribed)
   {
     const auto* r = std::get_if<RestoreClOrdIds>(&c);
     ASSERT_NE(r, nullptr);
-    back.restore(r->account, r->generation, r->ids, r->count);
+    back.restore(r->account, r->generation, r->ids, r->count, r->rotatedAtNs);
   }
-  // rotatedAtNs is not carried by the record, so the two hashes differ by it
-  // alone; what the restored window has to reproduce is which ids block.
+  // The rotation moment rides the record too (W33-T002), so the restored
+  // window is the SAME state and not merely one that blocks the same ids --
+  // which is what the engine's own SnapshotEnd hash check demands.
+  EXPECT_EQ(back.hashInto(0), w.hashInto(0));
   EXPECT_TRUE(back.duplicate(7, 1, 1500, 0));
   EXPECT_TRUE(back.duplicate(7, 2, 1500, 0));
   EXPECT_FALSE(back.duplicate(7, 3, 1500, 0));

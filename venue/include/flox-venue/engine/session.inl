@@ -377,6 +377,26 @@ void MatchingEngine<Book>::runAuction()
           StpState::auctionVerdict(stpOf(bidId), stpOf(askId));
       if (v.engaged)
       {
+        // A verdict that engages has to name what to do about the pair, and
+        // this loop's only way forward is that action: it re-peeks the same
+        // best bid and best ask every pass, so a verdict that decrements
+        // nothing and cancels neither leg leaves the book exactly as it
+        // found it and comes round to the identical pair forever -- the
+        // consumer thread inside it, the shard silent. Not hypothetical: a
+        // self-trade mode outside STPMode's values engages (it is not None)
+        // and matches none of the actions below.
+        //
+        // Answered as the most protective verdict rather than by breaking
+        // out: the pair must not print, both legs are crossing, and a
+        // verdict that cannot say which side to keep is not evidence for
+        // keeping either. Both go, with the reason every other STP cancel
+        // carries, so the owner sees it on its own stream.
+        if (!v.decrement && !v.cancelBid && !v.cancelAsk)
+        {
+          cancelForStp(bidId, bAcct);
+          cancelForStp(askId, aAcct);
+          continue;
+        }
         if (v.decrement)
         {
           // Trim both legs by the overlap; no print, and whatever is left of

@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/messages.h"
@@ -488,7 +489,7 @@ class LastLook
     for (uint64_t hid : sortedIds())
     {
       const Held& x = held_.at(hid);
-      h = mix(h, 0xB004U);
+      h = mix(h, hash_tags::kHold);
       h = mix(h, x.id);
       h = mix(h, x.taker);
       h = mix(h, x.takerAccount);
@@ -504,6 +505,17 @@ class LastLook
       h = mix(h, static_cast<uint64_t>(x.takerExpiryNs.raw()));
       h = mix(h, x.makerReduceOnly ? 1U : 0U);
       h = mix(h, x.takerReduceOnly ? 1U : 0U);
+      // The reference the hold was stamped against. It is written and
+      // restored, and it decides both the tolerance reject and the conduct
+      // split, so a value that drifted or came back wrong changes how the
+      // hold resolves -- the digest has to see it. Only when set, the same
+      // "zero == absent" rule the ids below follow: a hold opened with
+      // neither side quoted and nothing printed carries 0 and hashes as it
+      // did before.
+      if (x.refAtHoldRaw != 0)
+      {
+        h = mix(h, static_cast<uint64_t>(x.refAtHoldRaw));
+      }
       if (x.makerClientOrderId != 0)
       {
         h = mix(h, x.makerClientOrderId);  // only when set: a hold without one hashes as before
@@ -776,6 +788,13 @@ class LastLook
       {
         RestingOrder rebuilt{h.taker, h.takerAccount, h.takerPrice, h.qty, h.takerSide};
         rebuilt.clientOrderId = h.takerClientOrderId;
+        // Its own flag, for the same reason the maker rebuild carries one: a
+        // reduce-only leg reserves no margin, so re-resting it as a plain
+        // order leaves an order on the book that can OPEN a position with
+        // nothing behind it. There is no post-only counterpart: an order that
+        // would cross is refused before it reaches a maker, so no hold's
+        // taker is ever post-only.
+        rebuilt.reduceOnly = h.takerReduceOnly;
         // T059: this hold held the taker's entire remaining size (nothing
         // else rested), so its life-to-date total is exactly what it had
         // confirmed before the hold opened -- the held qty itself never

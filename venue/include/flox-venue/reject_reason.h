@@ -83,6 +83,16 @@ enum class RejectReason : uint8_t
   // T063: a quotes-only counterparty (AdmissionDeny::DenyNewOrder) sent a
   // plain order. Appended -- the wire enum is append-only.
   NewOrderNotPermitted,  // the profile forbids NewOrder
+  // An order type outside the values OrderType names. Distinct from
+  // OrderTypeNotPermitted, which is a profile's answer about a type that
+  // exists: this one is the venue's, and no profile has to be configured for
+  // it. Appended -- the wire enum is append-only.
+  //
+  // It has its own value because the two ask the counterparty for different
+  // things. "Not permitted" means talk to whoever set your entitlements;
+  // "unknown" means your encoder and this venue disagree about the schema,
+  // and no entitlement change will help.
+  UnknownOrderType,
 };
 
 enum class CancelReason : uint8_t

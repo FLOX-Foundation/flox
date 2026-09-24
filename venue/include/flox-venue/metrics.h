@@ -103,7 +103,7 @@ struct Metrics
   // show up in the total and nowhere else. test_venue_reject_reasons pins the
   // two together by asking toString whether anything past the end has a name.
   static constexpr size_t kReasons =
-      static_cast<size_t>(RejectReason::NewOrderNotPermitted) + 1;
+      static_cast<size_t>(RejectReason::UnknownOrderType) + 1;
   std::array<uint64_t, kReasons> rejectsByReason{};  // indexed by RejectReason
 
   // Symbols with a non-default scale must be registered so trade notional is

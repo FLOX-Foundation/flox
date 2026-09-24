@@ -6,15 +6,19 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  */
+#include "flox-venue/journal.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
+#include "support/tmp_path.h"
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <vector>
 
 using namespace flox;
 using namespace flox::venue;
+using flox::venue::test::tmpPath;
 
 namespace
 {
@@ -225,6 +229,81 @@ TEST(ClOrdIdWindow, WhenTheWindowRotatedIsPartOfTheState)
 
   EXPECT_NE(atSameClock(1), atSameClock(50))
       << "the rotation time is invisible to the state hash";
+}
+
+// The rotation moment is state the hash folds, so it has to ride the
+// snapshot too: without it a recovered engine rebuilds every id but rotates
+// on a different schedule, and SnapshotEnd refuses the file it was handed.
+// With clOrdIdWindowNs at its default of 0 nothing rotates and the hole is
+// invisible, which is why this test sets a window.
+TEST(ClOrdIdWindow, ASnapshotOfARotatedWindowStillLoads)
+{
+  const std::string path = tmpPath("clordid_window_snapshot", ".snap");
+  std::remove(path.c_str());
+
+  Venue v{kDay};
+  v.eng.submit(InboundCommand{ord(1, 11, /*acct=*/1)}, 1);
+  v.eng.submit(InboundCommand{ord(2, 22, /*acct=*/1)}, kDay + 1);  // rotates
+  {
+    Journal out(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    v.eng.writeSnapshot(out);
+    out.flush();
+  }
+
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> rec(cfg(kDay), [&](const OutboundEvent& e)
+                                   { ev.push_back(e); });
+  const auto records = Journal::loadTimed(path);
+  ASSERT_GE(records.size(), 2u);
+  for (const auto& [ts, cmd] : records)
+  {
+    EXPECT_TRUE(rec.applySnapshotRecord(cmd, ts)) << "record " << cmd.index();
+  }
+  EXPECT_EQ(rec.stateHash(), v.eng.stateHash());
+  // And the restored window rotates on the writer's schedule, not on a fresh
+  // one: the id from the current half is still blocked just before the next
+  // boundary and free just past the one after it.
+  ev.clear();
+  rec.submit(InboundCommand{ord(3, 22, /*acct=*/1)}, 2 * kDay - 1);
+  bool refused = false;
+  for (const auto& e : ev)
+  {
+    if (const auto* r = std::get_if<OrderRejected>(&e))
+    {
+      refused = refused || r->reason == RejectReason::DuplicateClientOrderId;
+    }
+  }
+  EXPECT_TRUE(refused) << "the restored window rotated on its own schedule";
+  std::remove(path.c_str());
+}
+
+// The half the writer was on matters as much as the ids. Here the current
+// half is empty (the repeat found the id in the previous one and inserted
+// nothing), so the file carries a single generation-1 batch -- and the
+// rotation moment has to ride it, or the recovered engine rotates on a
+// schedule of its own.
+TEST(ClOrdIdWindow, ASnapshotWithOnlyThePreviousHalfPopulatedStillLoads)
+{
+  const std::string path = tmpPath("clordid_window_prev_only", ".snap");
+  std::remove(path.c_str());
+
+  Venue v{kDay};
+  v.eng.submit(InboundCommand{ord(1, 11, /*acct=*/1)}, 1);
+  v.eng.submit(InboundCommand{ord(2, 11, /*acct=*/1)}, kDay + 1);  // rotates, then finds it in prev
+
+  {
+    Journal out(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    v.eng.writeSnapshot(out);
+    out.flush();
+  }
+
+  MatchingEngine<MatchingBook> rec(cfg(kDay), [](const OutboundEvent&) {});
+  for (const auto& [ts, cmd] : Journal::loadTimed(path))
+  {
+    EXPECT_TRUE(rec.applySnapshotRecord(cmd, ts)) << "record " << cmd.index();
+  }
+  EXPECT_EQ(rec.stateHash(), v.eng.stateHash());
+  std::remove(path.c_str());
 }
 
 }  // namespace

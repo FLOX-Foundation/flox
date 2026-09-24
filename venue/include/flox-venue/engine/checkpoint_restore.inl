@@ -153,7 +153,7 @@ std::optional<bool> MatchingEngine<Book>::applyComponentRestore(const InboundCom
     {
       return false;
     }
-    clOrdIds_.restore(r->account, r->generation, r->ids, r->count);
+    clOrdIds_.restore(r->account, r->generation, r->ids, r->count, r->rotatedAtNs);
     return true;
   }
   if (const auto* r = std::get_if<RestoreFunding>(&cmd))
@@ -277,6 +277,14 @@ bool MatchingEngine<Book>::applyRestoreStop(const RestoreStop& r)
   // No processTriggers: a restore is not a market event; an in-the-money
   // stop at write time would already have fired live.
   stops_.add(r.order, r.trigger, r.order.type == OrderType::TRAILING_STOP);
+  // The same registration the live admission path makes (onNew): a GTD
+  // conditional that never reaches the expiry book never expires at all, so a
+  // restore that only rebuilt the stop book left the recovered venue holding
+  // a deadline nothing sweeps.
+  if (r.order.tif == TimeInForce::GTD && static_cast<bool>(r.order.expiryNs))
+  {
+    expiry_.set(r.order.id, r.order.expiryNs);
+  }
   return true;
 }
 

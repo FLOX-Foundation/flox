@@ -9,6 +9,7 @@
 #pragma once
 
 #include "flox-venue/engine/sorted_keys.h"
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/messages.h"
@@ -120,7 +121,7 @@ class MmpState
     for (uint64_t acct : sortedKeysOf(cfg_))
     {
       const Cfg& c = cfg_.at(acct);
-      h = mix(h, 0xB006U);
+      h = mix(h, hash_tags::kMmpConfig);
       h = mix(h, acct);
       h = mix(h, static_cast<uint64_t>(c.qtyLimit.raw()));
       h = mix(h, static_cast<uint64_t>(c.windowNs.count()));
@@ -137,7 +138,7 @@ class MmpState
       {
         continue;
       }
-      h = mix(h, 0xB00AU);
+      h = mix(h, hash_tags::kMmpFills);
       h = mix(h, acct);
       for (const auto& [ts, q] : w.fills)
       {

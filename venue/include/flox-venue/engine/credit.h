@@ -23,6 +23,7 @@
 #pragma once
 
 #include "flox-venue/engine/sorted_keys.h"
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/ledger.h"
@@ -147,7 +148,15 @@ class Credit
     // two are the same struct by the time they get here. See onNew, which
     // checks DenyNewOrder itself, gated on clOrdIdChecked (false only for a
     // genuine top-level NewOrder).
-    if (p.allowedTypes != 0 && (p.allowedTypes & (1u << static_cast<uint32_t>(o.type))) == 0)
+    // allowedTypes and allowedTif are 32-bit bitmaps indexed by the enum
+    // value, so a field carrying a value the enum does not name has no bit
+    // to test -- and shifting a 32-bit word by 32 or more is undefined, not
+    // merely a wrong answer. The refusal is the same either way: a profile
+    // that lists what it permits cannot have listed a value that does not
+    // exist. Checked here rather than left to validate(), because admission
+    // runs first and this is the shift.
+    if (p.allowedTypes != 0 &&
+        (!inRange(o.type) || (p.allowedTypes & (1u << static_cast<uint32_t>(o.type))) == 0))
     {
       return RejectReason::OrderTypeNotPermitted;
     }
@@ -174,7 +183,8 @@ class Credit
     {
       return RejectReason::RestingNotPermitted;
     }
-    if (p.allowedTif != 0 && (p.allowedTif & (1u << static_cast<uint32_t>(o.tif))) == 0)
+    if (p.allowedTif != 0 &&
+        (!inRange(o.tif) || (p.allowedTif & (1u << static_cast<uint32_t>(o.tif))) == 0))
     {
       return RejectReason::TimeInForceNotPermitted;
     }
@@ -513,7 +523,7 @@ class Credit
     for (uint64_t acct : sortedKeysOf(accountLimits_))
     {
       const AccountLimits& l = accountLimits_.at(acct);
-      h = mix(h, 0xB00EU);
+      h = mix(h, hash_tags::kAccountRiskLimits);
       h = mix(h, acct);
       h = mix(h, static_cast<uint64_t>(l.maxOrderQty.raw()));
       h = mix(h, static_cast<uint64_t>(l.maxOrderNotional.raw()));
@@ -571,7 +581,7 @@ class Credit
     for (uint64_t acct : sortedKeysOf(admission_))
     {
       const AdmissionProfile& p = admission_.at(acct);
-      h = mix(h, 0xB00DU);
+      h = mix(h, hash_tags::kAdmissionProfile);
       h = mix(h, acct);
       h = mix(h, p.allowedTypes);
       h = mix(h, p.allowedTif);
@@ -585,7 +595,7 @@ class Credit
     for (OrderId id : sortedKeysOf(reserve_))
     {
       const Reservation& r = reserve_.at(id);
-      h = mix(h, 0xB009U);
+      h = mix(h, hash_tags::kReservation);
       h = mix(h, id);
       h = mix(h, r.account);
       h = mix(h, r.asset);

@@ -72,6 +72,17 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
   {
     return RejectReason::Halted;
   }
+  // Before any gate keyed on the type. Everything below that asks about a
+  // price -- the tick, the band, the fat-finger notional -- is written as
+  // `o.type == OrderType::LIMIT`, so a type this build does not name passed
+  // every one of them and rested at whatever price the submission carried.
+  // Turning the checks around (run them unless the type is MARKET) would
+  // only move the guess: the answer is that the venue does not match an
+  // order type it cannot name, whichever side of the comparison it is on.
+  if (!inRange(o.type))
+  {
+    return RejectReason::UnknownOrderType;
+  }
   if (o.quantity.raw() <= 0)
   {
     return RejectReason::InvalidQuantity;

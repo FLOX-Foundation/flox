@@ -335,9 +335,24 @@ The perimeter is fuzzed, and the rules are explicit:
   equivalent state in the TLS and WebSocket gateways). Dropping them would
   offset the stream by exactly that many bytes, and every length prefix after
   it would be read from the middle of a message.
+- **An enum-typed field carries only values the schema defines.** `Side`,
+  `OrderType`, `TimeInForce`, `STPMode` and `PegRef` each cross the wire as
+  one byte, and a byte holds 256 values where these name at most eight.
+  `SbeOrderEntryCodec::decode` range-checks every one of them (`inRange`,
+  `flox-venue/messages.h`) before it builds a command, on `EnterOrder` and on
+  `QuoteLadder` alike, and a value outside the set is a decode failure like
+  any other -- `RejectReason::MalformedMessage` to the client, and
+  `decode(p, n, err)` naming the field for the operator's log. Carrying such
+  a byte inward makes the engine answer for a value it never defined: an
+  order type wider than the 32-bit admission bitmap that indexes it, or a
+  self-trade mode the auction uncross has no action for.
 
 `test_venue_parser_fuzz` drives all decoders with random and adversarial
-input; the sanitizer gate runs it under ASAN/UBSAN.
+input; the sanitizer gate runs it under ASAN/UBSAN. The order-entry fuzz does
+not stop at "it did not crash": every frame it decodes has its enum fields
+checked against the same `inRange` the decoder uses, and is then submitted to
+a live engine under the golden replay driver's per-command event budget
+(`venue/tests/test_venue_golden_replay.cpp`).
 
 ## Control plane
 

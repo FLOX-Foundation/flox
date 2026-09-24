@@ -9,6 +9,7 @@
 #pragma once
 
 #include "flox-venue/engine/sorted_keys.h"
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/messages.h"
@@ -135,7 +136,7 @@ class PegBook
     for (OrderId id : sortedKeysOf(pegged_))
     {
       const Peg& p = pegged_.at(id);
-      h = mix(h, 0xB003U);
+      h = mix(h, hash_tags::kPeg);
       h = mix(h, id);
       h = mix(h, static_cast<uint64_t>(p.side));
       h = mix(h, static_cast<uint64_t>(p.ref));

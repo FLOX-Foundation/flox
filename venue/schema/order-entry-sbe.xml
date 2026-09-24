@@ -132,7 +132,11 @@
     <type name="PriceRaw" primitiveType="int64"/>
     <type name="QtyRaw"   primitiveType="int64"/>
     <type name="Flag"     primitiveType="uint8"/>   <!-- boolean 0/1 -->
-    <type name="EnumU8"   primitiveType="uint8"/>   <!-- engine enum underlying value -->
+    <!-- Engine enum underlying value. The byte carries 256 values where the
+         enum it stands for names at most eight, and the decoder refuses any
+         value the enum does not name rather than casting it inward
+         (SbeOrderEntryCodec::decode -> inRange, flox-venue/messages.h). -->
+    <type name="EnumU8"   primitiveType="uint8"/>
     <type name="Nanos"    primitiveType="int64"/>
     <type name="SeqNum"   primitiveType="uint64"/>  <!-- per-session exec-report sequence -->
     <type name="NoteText" primitiveType="char" length="32"/>  <!-- NUL-padded operator note -->

@@ -380,6 +380,133 @@ TEST(VenueCheckpoint, EngineSnapshotRoundTrip)
   std::remove(path.c_str());
 }
 
+// A good-till-date CONDITIONAL order is registered in the expiry book when it
+// is admitted -- a stop whose deadline passes before it ever triggers has to
+// expire, not wait forever for a price that may never come. Restoring one put
+// it back in the stop book and nowhere else, so the recovered venue held a
+// GTD stop that could never expire; and the state hash could not see the
+// difference, because the stop section folded the deadline off the RECORD
+// rather than off the expiry book the engine actually sweeps.
+TEST(VenueCheckpoint, ARestoredGtdStopStillExpires)
+{
+  const std::string path = pidPath("checkpoint_gtd_stop") + ".snap";
+  std::remove(path.c_str());
+
+  const int64_t deadline = 50'000'000;
+
+  MatchingEngine<MatchingBook> eng(cfg(), [](const OutboundEvent&) {});
+  NewOrder stop = limit(1, Side::SELL, 0.0, 2.0, 1);
+  stop.type = OrderType::STOP_MARKET;
+  stop.triggerPrice = px(90.0);
+  stop.tif = TimeInForce::GTD;
+  stop.expiryNs = SeqNanos::fromRaw(deadline);
+  eng.submit(InboundCommand{stop}, 1000);
+
+  {
+    Journal out(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    eng.writeSnapshot(out);
+    out.flush();
+  }
+
+  std::vector<OutboundEvent> recEv;
+  MatchingEngine<MatchingBook> rec(cfg(), [&](const OutboundEvent& e)
+                                   { recEv.push_back(e); });
+  for (const auto& [ts, cmd] : Journal::loadTimed(path))
+  {
+    ASSERT_TRUE(rec.applySnapshotRecord(cmd, ts)) << "record " << cmd.index();
+  }
+  EXPECT_EQ(rec.stateHash(), eng.stateHash());
+
+  // Past the deadline on both: the sweep runs before the command.
+  std::vector<OutboundEvent> liveEv;
+  MatchingEngine<MatchingBook> live(cfg(), [&](const OutboundEvent& e)
+                                    { liveEv.push_back(e); });
+  live.submit(InboundCommand{stop}, 1000);
+  live.submit(InboundCommand{TimeTick{SYM}}, deadline + 1000);
+  rec.submit(InboundCommand{TimeTick{SYM}}, deadline + 1000);
+
+  const auto expired = [](const std::vector<OutboundEvent>& ev)
+  {
+    for (const auto& e : ev)
+    {
+      if (const auto* c = std::get_if<OrderCanceled>(&e))
+      {
+        if (c->id == 1 && c->reason == CancelReason::Expired)
+        {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  EXPECT_TRUE(expired(liveEv)) << "the live engine expires its own GTD stop";
+  EXPECT_TRUE(expired(recEv)) << "the restored GTD stop never expires";
+  EXPECT_EQ(rec.stateHash(), live.stateHash());
+  std::remove(path.c_str());
+}
+
+// A hold's reference price is written and restored, and it decides both the
+// tolerance reject and the conduct split -- so a snapshot that carries a
+// different one describes a venue that will resolve the hold differently.
+// The hash has to see it, or a torn or drifted value rides through
+// SnapshotEnd unnoticed.
+TEST(VenueCheckpoint, AHoldsReferencePriceIsPartOfTheState)
+{
+  const std::string path = pidPath("checkpoint_hold_ref") + ".snap";
+  std::remove(path.c_str());
+
+  venue::SymbolConfig c = cfg();
+  c.lastLookWindowNs = DurationNs{10'000'000};
+
+  Ledger led;
+  MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
+  eng.setLedger(&led, VENUE_ACCT);
+  eng.submit(InboundCommand{Deposit{1, BASE, {}, baseRaw(100), SYM}}, 1000);
+  eng.submit(InboundCommand{Deposit{2, QUOTE, {}, quoteRaw(100000), SYM}}, 2000);
+  NewOrder maker = limit(1, Side::SELL, 100.00, 5.0, 1);
+  maker.lastLook = true;
+  eng.submit(InboundCommand{maker}, 3000);
+  // Both sides quoted, so the hold has a mid to stamp itself against: with no
+  // bid and no print the reference is 0 and there is nothing to tamper with.
+  eng.submit(InboundCommand{limit(2, Side::BUY, 99.00, 1.0, 2)}, 3500);
+  NewOrder taker = limit(3, Side::BUY, 100.00, 3.0, 2);
+  taker.tif = TimeInForce::IOC;
+  eng.submit(InboundCommand{taker}, 4000);
+  ASSERT_EQ(eng.openHolds(), 1U);
+
+  {
+    Journal out(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    eng.writeSnapshot(out);
+    out.flush();
+  }
+
+  auto records = Journal::loadTimed(path);
+  bool tampered = false;
+  for (auto& [ts, cmd] : records)
+  {
+    (void)ts;
+    if (auto* r = std::get_if<RestoreHeld>(&cmd))
+    {
+      ASSERT_NE(r->refAtHoldRaw, 0) << "the hold carries no reference to tamper with";
+      r->refAtHoldRaw += px(1.0).raw();
+      tampered = true;
+    }
+  }
+  ASSERT_TRUE(tampered);
+
+  Ledger led2;
+  MatchingEngine<MatchingBook> rec(c, [](const OutboundEvent&) {});
+  rec.setLedger(&led2, VENUE_ACCT);
+  bool allApplied = true;
+  for (const auto& [ts, cmd] : records)
+  {
+    allApplied = rec.applySnapshotRecord(cmd, ts) && allApplied;
+  }
+  EXPECT_FALSE(allApplied) << "a hold whose reference price moved still verified";
+  EXPECT_NE(rec.stateHash(), eng.stateHash());
+  std::remove(path.c_str());
+}
+
 // The core differential guarantee: a long random session with a checkpoint at
 // an arbitrary point recovers (snapshot + tail segments) into EXACTLY the
 // state a full-history replay produces -- state hash equal AND the event hash

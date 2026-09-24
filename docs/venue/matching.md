@@ -86,6 +86,17 @@ A mass quote carries the mode too, and both of its legs inherit it -- so a
 maker that quotes rather than sending individual orders is not left without the
 control.
 
+In the auction the verdict comes off both resting orders rather than an
+aggressor, and the uncross loop depends on it naming an action: the loop
+re-peeks the same best bid and best ask every pass, so a verdict that
+decrements nothing and cancels neither leg would leave the book untouched and
+come round to the identical pair forever. A verdict that engages without
+naming an action is therefore carried out as `CancelBoth` -- the pair must not
+print, both legs are crossing, and nothing in such a verdict says which side to
+keep. It is unreachable through the decoders, which refuse a mode outside
+`STPMode` at the wire ([perimeter](perimeter.md#hostile-input)); the uncross
+does not rely on that being the only way in.
+
 ### Last look, and the option inside it
 
 A held fill is an option the maker holds for the length of the window, and an
@@ -289,6 +300,15 @@ checked on entry.
 | `allowedTypes` | bitmask over `OrderType`; 0 = no restriction |
 | `allowedTif` | bitmask over `TimeInForce`; 0 = no restriction |
 | `deny` | `DenyResting`, `DenyAmend`, `DenyCancel`, `DenyQuote`, `DenyNewOrder` |
+
+Both bitmaps are 32 bits wide and indexed by the enum value, so a profile that
+lists what it permits cannot have listed a value the enum does not name: such
+an order is `OrderTypeNotPermitted` / `TimeInForceNotPermitted` without the
+shift ever being taken. An order type outside `OrderType` is refused by
+`validate()` regardless of any profile, with its own reason
+(`UnknownOrderType`) -- the price, tick and band checks there are written for
+a `LIMIT`, so a type the venue cannot name would otherwise reach the book at
+a price nothing had looked at.
 
 An absent profile permits everything, so an engine never given one behaves as
 before. `DenyResting` rejects GTC, GTD and post-only on admission rather than

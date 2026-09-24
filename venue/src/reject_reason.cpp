@@ -90,6 +90,8 @@ const char* toString(RejectReason r) noexcept
       return "AdjustmentNeedsEntry";
     case RejectReason::NewOrderNotPermitted:
       return "NewOrderNotPermitted";
+    case RejectReason::UnknownOrderType:
+      return "UnknownOrderType";
   }
   return "?";
 }

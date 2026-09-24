@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/event_sink.h"
 #include "flox-venue/journal.h"
@@ -405,7 +406,7 @@ class Clearing
     // an engine that saw no funding hashes as it did before these fields.
     if (fundingRateRaw_ != 0 || fundingIntervalNs_.count() != 0 || nextFundingNs_.raw() != 0)
     {
-      h = mix(h, 0xB00BU);
+      h = mix(h, hash_tags::kFunding);
       h = mix(h, static_cast<uint64_t>(fundingRateRaw_));
       h = mix(h, static_cast<uint64_t>(fundingIntervalNs_.count()));
       h = mix(h, static_cast<uint64_t>(nextFundingNs_.raw()));
@@ -418,7 +419,7 @@ class Clearing
     for (uint64_t acct : sortedAccounts())
     {
       const Position& p = positions_.at(acct);
-      h = mix(h, 0xB005U);
+      h = mix(h, hash_tags::kPosition);
       h = mix(h, acct);
       h = mix(h, static_cast<uint64_t>(p.qtyRaw));
       h = mix(h, static_cast<uint64_t>(p.entryRaw));
@@ -459,7 +460,14 @@ class Clearing
   // splits, so the margin is already reserved and must not be moved again.
   bool restorePosition(const RestorePosition& r, bool exactBalanceRestore)
   {
-    if (r.qtyRaw == 0 || positions_.count(r.account) != 0)
+    // A zero quantity is a state the engine really holds, not corruption: an
+    // operator correction that flattens a position leaves the entry in place
+    // deliberately, because it moves no margin (see adjustPosition and the
+    // note on AdjustPosition), and hashPositions folds that entry. Refusing
+    // the record here made every checkpoint taken after such a correction
+    // unloadable -- the writer and the loader have to describe the same
+    // engine. A repeated account is still corruption.
+    if (positions_.count(r.account) != 0)
     {
       return false;
     }

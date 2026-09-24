@@ -415,6 +415,63 @@ TEST(VenueEngineLastLook, RejectRebuildsAMakerHeldWhollyOutOfTheBook)
   EXPECT_EQ(mod->clientOrderId, 777U);
 }
 
+// The taker gets the same treatment when a hold took IT wholly off the book.
+// A reduce-only leg reserves no margin (that is the point of reduce-only), so
+// re-resting it as a plain order puts an order on the book that can OPEN a
+// position with nothing behind it.
+TEST(VenueEngineLastLook, RejectRebuildsATakerHeldWhollyOutOfTheBookWithItsFlags)
+{
+  FakeBook b;
+  LastLook ll;
+  NewOrder t = taker(20, Side::BUY, 100.0, 2.0, 2);
+  t.tif = TimeInForce::GTC;  // the residual rests, so there is something to rebuild
+  t.reduceOnly = true;
+  t.clientOrderId = 888;
+
+  ll.create(b, maker(10, Side::SELL, 100.0, 2.0, 1), qty(2.0), t, ns(0));
+  ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
+
+  ASSERT_NE(b.at(20), nullptr);
+  EXPECT_EQ(b.at(20)->clientOrderId, 888U);
+  EXPECT_TRUE(b.at(20)->reduceOnly) << "the restored taker can open a position with no margin";
+}
+
+// The flag restoreTaker does NOT carry, and why it does not have to. A
+// post-only order that would cross is refused before the matcher reaches the
+// resting side, so it never takes a last-look maker and there is no hold whose
+// taker could be post-only. Pinned here so the asymmetry with reduceOnly above
+// reads as a decision rather than as the same oversight twice.
+TEST(VenueEngineLastLook, APostOnlyTakerNeverOpensAHold)
+{
+  venue::SymbolConfig c;
+  c.id = SYM;
+  c.tickSize = px(0.01);
+  c.lastLookWindowNs = DurationNs{1'000'000'000};
+
+  std::vector<OutboundEvent> ev;
+  MatchingEngine<MatchingBook> e(c, [&ev](const OutboundEvent& x)
+                                 { ev.push_back(x); });
+  NewOrder m = taker(10, Side::SELL, 100.0, 2.0, 1);
+  m.lastLook = true;
+  e.submit(InboundCommand{m}, 1);
+  NewOrder t = taker(20, Side::BUY, 100.0, 2.0, 2);
+  t.postOnly = true;
+  ev.clear();
+  e.submit(InboundCommand{t}, 2);
+
+  EXPECT_EQ(e.openHolds(), 0U);
+  const OrderRejected* rej = nullptr;
+  for (const OutboundEvent& x : ev)
+  {
+    if (const auto* r = std::get_if<OrderRejected>(&x))
+    {
+      rej = r;
+    }
+  }
+  ASSERT_NE(rej, nullptr);
+  EXPECT_EQ(rej->reason, RejectReason::PostOnlyWouldCross);
+}
+
 // The maker is restored before the taker: both reports describe the same
 // moment, and the order they are published in is part of the stream.
 TEST(VenueEngineLastLook, RefusedLegsAreRestoredMakerFirst)
