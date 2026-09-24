@@ -9,9 +9,10 @@
 
 #pragma once
 
+#include <algorithm>
 #include <atomic>
-#include <cassert>
 #include <chrono>
+#include <cstdint>
 
 namespace flox
 {
@@ -28,14 +29,16 @@ class RateLimiter
   struct Config
   {
     uint32_t capacity;    ///< Maximum tokens in bucket
-    uint32_t refillRate;  ///< Tokens added per second (must be > 0)
+    uint32_t refillRate;  ///< Tokens added per second; 0 means "never refills"
   };
 
+  /// A refillRate of 0 is a valid configuration, not an error: the bucket is a
+  /// fixed burst budget of exactly `capacity` tokens that only reset() brings
+  /// back. It used to be guarded by an assert alone, which NDEBUG removes from
+  /// every shipped build and left refill() evaluating seconds(1) / 0.
   explicit RateLimiter(Config config)
       : _capacity(config.capacity), _refillRate(config.refillRate), _tokens(config.capacity), _lastRefill(Clock::now().time_since_epoch().count())
   {
-    // refillRate == 0 would divide by zero in refill()/timeUntilAvailable().
-    assert(config.refillRate > 0 && "RateLimiter refillRate must be > 0");
   }
 
   /// Try to acquire tokens. Returns true if successful.
@@ -54,7 +57,9 @@ class RateLimiter
     return false;
   }
 
-  /// Time until tokens become available
+  /// Time until tokens become available. Duration::max() means "never": either
+  /// the bucket does not refill at all, or the request is larger than the
+  /// bucket can ever hold.
   [[nodiscard]] Duration timeUntilAvailable(uint32_t tokens = 1) const noexcept
   {
     uint32_t current = _tokens.load(std::memory_order_relaxed);
@@ -63,9 +68,13 @@ class RateLimiter
       return Duration::zero();
     }
 
-    uint32_t needed = tokens - current;
-    auto nsPerToken = std::chrono::nanoseconds(std::chrono::seconds(1)) / _refillRate;
-    return Duration(needed * nsPerToken.count());
+    if (_refillRate == 0 || tokens > _capacity)
+    {
+      return Duration::max();
+    }
+
+    const uint32_t needed = tokens - current;
+    return Duration(static_cast<int64_t>(needed) * nsPerToken());
   }
 
   /// Current available tokens
@@ -85,28 +94,52 @@ class RateLimiter
   uint32_t refillRate() const noexcept { return _refillRate; }
 
  private:
+  static constexpr int64_t kNanosPerSecond = 1'000'000'000;
+
+  /// Nanoseconds per token, never zero. A rate above one token per nanosecond
+  /// would round the period down to zero and make the division below a second
+  /// division by zero; the bucket cannot be drained faster than that anyway,
+  /// so clamping the period costs nothing.
+  int64_t nsPerToken() const noexcept
+  {
+    const int64_t ns = kNanosPerSecond / static_cast<int64_t>(_refillRate);
+    return ns > 0 ? ns : 1;
+  }
+
   void refill() noexcept
   {
+    if (_refillRate == 0)
+    {
+      return;
+    }
+
     auto now = Clock::now();
     auto lastNs = _lastRefill.load(std::memory_order_relaxed);
     auto last = Clock::time_point(Duration(lastNs));
 
     auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - last);
-    auto nsPerToken = std::chrono::nanoseconds(std::chrono::seconds(1)) / _refillRate;
+    const int64_t perToken = nsPerToken();
 
-    if (elapsed < nsPerToken)
+    if (elapsed.count() < perToken)
     {
       return;
     }
 
-    auto tokensToAdd = static_cast<uint32_t>(elapsed.count() / nsPerToken.count());
+    // Capped here rather than only after the add: an uncapped count overflows
+    // the uint32_t cast after a long idle period and lands on an arbitrary
+    // small number of tokens.
+    int64_t tokensToAdd = elapsed.count() / perToken;
+    if (tokensToAdd > static_cast<int64_t>(_capacity))
+    {
+      tokensToAdd = static_cast<int64_t>(_capacity);
+    }
     if (tokensToAdd == 0)
     {
       return;
     }
 
     // Try to update last refill time
-    auto newLastNs = (last + tokensToAdd * nsPerToken).time_since_epoch().count();
+    auto newLastNs = (last + Duration(tokensToAdd * perToken)).time_since_epoch().count();
     if (!_lastRefill.compare_exchange_strong(lastNs, newLastNs, std::memory_order_acq_rel))
     {
       return;  // Another thread refilled
@@ -117,7 +150,9 @@ class RateLimiter
     uint32_t newTokens;
     do
     {
-      newTokens = std::min(current + tokensToAdd, _capacity);
+      newTokens = static_cast<uint32_t>(
+          std::min<uint64_t>(static_cast<uint64_t>(current) + static_cast<uint64_t>(tokensToAdd),
+                             static_cast<uint64_t>(_capacity)));
     } while (!_tokens.compare_exchange_weak(current, newTokens, std::memory_order_acq_rel));
   }
 

@@ -31,14 +31,14 @@ class SimulatedExecutor : public IRoutableExecutor
 
   void submit(SymbolId symbol,
               Side side,
-              int64_t priceRaw,
-              int64_t quantityRaw,
+              Price price,
+              Quantity quantity,
               OrderId orderId) override
   {
     std::cout << "  [" << _name << "] ORDER: id=" << orderId << " " << (side == Side::BUY ? "BUY" : "SELL") << " "
-              << (quantityRaw / 1'000'000.0) << " @ " << (priceRaw / 1'000'000.0) << "\n";
+              << (quantity.raw() / 1'000'000.0) << " @ " << (price.raw() / 1'000'000.0) << "\n";
     ++_orderCount;
-    _totalVolume += quantityRaw;
+    _totalVolume += quantity.raw();
   }
 
   void cancel(OrderId orderId) override
@@ -300,26 +300,26 @@ void demoOrderRouting()
   for (int i = 0; i < 3; ++i)
   {
     ExchangeId routedTo;
-    router.route(1, Side::BUY, 50000'000'000LL, 10'000'000LL, 100 + i, &routedTo);
+    router.route(1, Side::BUY, Price::fromRaw(50000'000'000LL), Quantity::fromRaw(10'000'000LL), 100 + i, &routedTo);
   }
 
   // Lowest latency routing
   std::cout << "\n2. Lowest-Latency routing:\n";
   router.setRoutingStrategy(RoutingStrategy::LowestLatency);
   ExchangeId routedTo;
-  router.route(1, Side::BUY, 50000'000'000LL, 10'000'000LL, 200, &routedTo);
+  router.route(1, Side::BUY, Price::fromRaw(50000'000'000LL), Quantity::fromRaw(10'000'000LL), 200, &routedTo);
   std::cout << "  -> Routed to exchange " << static_cast<int>(routedTo) << " (lowest latency)\n";
 
   // Explicit routing
   std::cout << "\n3. Explicit routing to Kraken:\n";
-  router.routeTo(2, 1, Side::SELL, 50001'000'000LL, 5'000'000LL, 300);
+  router.routeTo(2, 1, Side::SELL, Price::fromRaw(50001'000'000LL), Quantity::fromRaw(5'000'000LL), 300);
 
   // Failover demo
   std::cout << "\n4. Failover demo (Binance disabled):\n";
   router.setEnabled(0, false);
   router.setFailoverPolicy(FailoverPolicy::FailoverToBest);
   router.setRoutingStrategy(RoutingStrategy::LowestLatency);
-  auto err = router.route(1, Side::BUY, 50000'000'000LL, 10'000'000LL, 400, &routedTo);
+  auto err = router.route(1, Side::BUY, Price::fromRaw(50000'000'000LL), Quantity::fromRaw(10'000'000LL), 400, &routedTo);
   if (err == RoutingError::Success)
   {
     std::cout << "  -> Failed over to exchange " << static_cast<int>(routedTo) << "\n";
@@ -430,8 +430,8 @@ void demoArbitrage()
     router.registerExecutor(2, &krakenExec);
 
     std::cout << "\nExecuting arbitrage:\n";
-    router.routeTo(0, 1, Side::BUY, bestAsk.priceRaw, maxQty, 1);
-    router.routeTo(2, 1, Side::SELL, bestBid.priceRaw, maxQty, 2);
+    router.routeTo(0, 1, Side::BUY, Price::fromRaw(bestAsk.priceRaw), Quantity::fromRaw(maxQty), 1);
+    router.routeTo(2, 1, Side::SELL, Price::fromRaw(bestBid.priceRaw), Quantity::fromRaw(maxQty), 2);
   }
 }
 

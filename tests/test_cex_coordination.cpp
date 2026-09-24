@@ -807,14 +807,14 @@ class MockOrderExecutor : public IRoutableExecutor
  public:
   void submit(SymbolId symbol,
               Side side,
-              int64_t priceRaw,
-              int64_t quantityRaw,
+              Price price,
+              Quantity quantity,
               OrderId orderId) override
   {
     lastSymbol = symbol;
     lastSide = side;
-    lastPrice = priceRaw;
-    lastQty = quantityRaw;
+    lastPrice = price;
+    lastQty = quantity;
     lastOrderId = orderId;
     ++submitCount;
   }
@@ -827,8 +827,8 @@ class MockOrderExecutor : public IRoutableExecutor
 
   SymbolId lastSymbol{0};
   Side lastSide{Side::BUY};
-  int64_t lastPrice{0};
-  int64_t lastQty{0};
+  Price lastPrice{};
+  Quantity lastQty{};
   OrderId lastOrderId{0};
   OrderId lastCancelId{0};
   int submitCount{0};
@@ -842,7 +842,7 @@ TEST(OrderRouterTest, BasicRouting)
 
   router.registerExecutor(0, &executor);
 
-  auto err = router.route(1, Side::BUY, 50000 * 1'000'000LL, 100 * 1'000'000LL, 12345);
+  auto err = router.route(1, Side::BUY, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(100 * 1'000'000LL), 12345);
 
   EXPECT_EQ(err, RoutingError::Success);
   EXPECT_EQ(executor.submitCount, 1);
@@ -859,7 +859,7 @@ TEST(OrderRouterTest, ExplicitRouting)
   router.registerExecutor(0, &executor0);
   router.registerExecutor(1, &executor1);
 
-  auto err = router.routeTo(1, 1, Side::SELL, 50000 * 1'000'000LL, 100 * 1'000'000LL, 12345);
+  auto err = router.routeTo(1, 1, Side::SELL, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(100 * 1'000'000LL), 12345);
 
   EXPECT_EQ(err, RoutingError::Success);
   EXPECT_EQ(executor0.submitCount, 0);
@@ -874,7 +874,7 @@ TEST(OrderRouterTest, DisabledExchange)
   router.registerExecutor(0, &executor);
   router.setEnabled(0, false);
 
-  auto err = router.routeTo(0, 1, Side::BUY, 50000 * 1'000'000LL, 100 * 1'000'000LL, 12345);
+  auto err = router.routeTo(0, 1, Side::BUY, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(100 * 1'000'000LL), 12345);
 
   EXPECT_EQ(err, RoutingError::ExchangeDisabled);
   EXPECT_EQ(executor.submitCount, 0);
@@ -884,7 +884,7 @@ TEST(OrderRouterTest, NoExecutor)
 {
   OrderRouter<4> router;
 
-  auto err = router.route(1, Side::BUY, 50000 * 1'000'000LL, 100 * 1'000'000LL, 12345);
+  auto err = router.route(1, Side::BUY, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(100 * 1'000'000LL), 12345);
 
   EXPECT_EQ(err, RoutingError::NoExecutor);
 }
@@ -899,7 +899,7 @@ TEST(OrderRouterTest, FailoverPolicy)
 
   // Try to route to exchange 0 (not available), should failover to 1
   ExchangeId routedTo = InvalidExchangeId;
-  auto err = router.route(1, Side::BUY, 50000 * 1'000'000LL, 100 * 1'000'000LL, 12345, &routedTo);
+  auto err = router.route(1, Side::BUY, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(100 * 1'000'000LL), 12345, &routedTo);
 
   EXPECT_EQ(err, RoutingError::Success);
   EXPECT_EQ(routedTo, 1);
@@ -917,9 +917,9 @@ TEST(OrderRouterTest, RoundRobinStrategy)
   router.setRoutingStrategy(RoutingStrategy::RoundRobin);
 
   ExchangeId ex1, ex2, ex3;
-  router.route(1, Side::BUY, 50000 * 1'000'000LL, 100 * 1'000'000LL, 1, &ex1);
-  router.route(1, Side::BUY, 50000 * 1'000'000LL, 100 * 1'000'000LL, 2, &ex2);
-  router.route(1, Side::BUY, 50000 * 1'000'000LL, 100 * 1'000'000LL, 3, &ex3);
+  router.route(1, Side::BUY, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(100 * 1'000'000LL), 1, &ex1);
+  router.route(1, Side::BUY, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(100 * 1'000'000LL), 2, &ex2);
+  router.route(1, Side::BUY, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(100 * 1'000'000LL), 3, &ex3);
 
   // Should cycle through exchanges
   EXPECT_NE(ex1, ex2);
@@ -982,7 +982,7 @@ TEST(CEXIntegrationTest, FullWorkflow)
 
   // Route should prefer Binance (lower latency)
   ExchangeId routedTo;
-  router.route(btcBinance, Side::BUY, 50000 * 1'000'000LL, 10 * 1'000'000LL, 1, &routedTo);
+  router.route(btcBinance, Side::BUY, Price::fromRaw(50000 * 1'000'000LL), Quantity::fromRaw(10 * 1'000'000LL), 1, &routedTo);
 
   EXPECT_EQ(routedTo, binance);
   EXPECT_EQ(binanceExec.submitCount, 1);

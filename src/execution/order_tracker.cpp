@@ -5,11 +5,54 @@
 namespace flox
 {
 
+OrderTracker::OrderTracker(size_t capacity) : _capacity(capacity)
+{
+  // Sized once so the bound is also a memory bound: the map never rehashes
+  // past the configured capacity on the order path.
+  _orders.reserve(capacity);
+}
+
+bool OrderTracker::makeRoomLocked()
+{
+  if (_orders.size() < _capacity)
+  {
+    return true;
+  }
+
+  // Full: recycle the history. The scan is O(capacity) but only runs on an
+  // insert that would otherwise breach the bound, and it reclaims every
+  // terminal entry at once, so it is amortised over the whole batch.
+  pruneTerminalLocked();
+  return _orders.size() < _capacity;
+}
+
+void OrderTracker::pruneTerminalLocked()
+{
+  for (auto it = _orders.begin(); it != _orders.end();)
+  {
+    if (it->second.isTerminal())
+    {
+      it = _orders.erase(it);
+    }
+    else
+    {
+      ++it;
+    }
+  }
+}
+
 bool OrderTracker::onSubmitted(const Order& order, std::string_view exchangeOrderId, std::string_view clientOrderId)
 {
   FLOX_PROFILE_SCOPE("OrderTracker::onSubmitted");
 
   std::lock_guard<std::mutex> lock(_mutex);
+
+  if (!_orders.contains(order.id) && !makeRoomLocked())
+  {
+    FLOX_LOG_ERROR("[OrderTracker] Refusing orderId=" << order.id << ": tracker full at "
+                                                      << _capacity << " live orders.");
+    return false;
+  }
 
   auto [it, inserted] = _orders.try_emplace(order.id);
   if (!inserted)
@@ -43,9 +86,7 @@ bool OrderTracker::onFilled(OrderId id, Quantity fill)
   }
 
   auto& state = it->second;
-  if (state.status == OrderEventStatus::CANCELED ||
-      state.status == OrderEventStatus::REJECTED ||
-      state.status == OrderEventStatus::EXPIRED)
+  if (state.isTerminal())
   {
     FLOX_LOG_WARN("[OrderTracker] onFilled for terminal order " << id << " (status=" << static_cast<int>(state.status) << ")");
     return false;
@@ -176,6 +217,16 @@ bool OrderTracker::onReplaced(OrderId oldId, const Order& newOrder, std::string_
     oldIt->second.lastUpdate = now();
   }
 
+  // Order matters: the superseded entry is terminal by now, so on a full
+  // tracker an amend chain recycles its own history instead of being refused.
+  // makeRoomLocked() invalidates oldIt.
+  if (!_orders.contains(newOrder.id) && !makeRoomLocked())
+  {
+    FLOX_LOG_ERROR("[OrderTracker] Refusing replace into orderId=" << newOrder.id << ": tracker full at "
+                                                                   << _capacity << " live orders.");
+    return false;
+  }
+
   auto [newIt, inserted] = _orders.try_emplace(newOrder.id);
   if (!inserted)
   {
@@ -255,17 +306,7 @@ size_t OrderTracker::totalOrderCount() const
 void OrderTracker::pruneTerminal()
 {
   std::lock_guard<std::mutex> lock(_mutex);
-  for (auto it = _orders.begin(); it != _orders.end();)
-  {
-    if (it->second.isTerminal())
-    {
-      it = _orders.erase(it);
-    }
-    else
-    {
-      ++it;
-    }
-  }
+  pruneTerminalLocked();
 }
 
 }  // namespace flox

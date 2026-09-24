@@ -208,7 +208,7 @@ class RateLimitedExecutor : public IRoutableExecutor
   {
   }
 
-  void submit(SymbolId symbol, Side side, int64_t priceRaw, int64_t quantityRaw,
+  void submit(SymbolId symbol, Side side, Price price, Quantity quantity,
               OrderId orderId) override
   {
     const auto d = _budgeter->tryAcquire(_strategyId, LiveRateLimitBudgeter::Action::Submit,
@@ -218,7 +218,7 @@ class RateLimitedExecutor : public IRoutableExecutor
       reject(orderId, d);
       return;
     }
-    _inner->submit(symbol, side, priceRaw, quantityRaw, orderId);
+    _inner->submit(symbol, side, price, quantity, orderId);
   }
 
   void cancel(OrderId orderId) override

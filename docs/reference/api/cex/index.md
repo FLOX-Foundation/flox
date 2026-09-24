@@ -70,7 +70,7 @@ OrderRouter<4> router;
 router.registerExecutor(binance, &binanceExecutor);
 router.registerExecutor(bybit, &bybitExecutor);
 router.setRoutingStrategy(RoutingStrategy::BestPrice);
-router.route(btcBinance, Side::BUY, priceRaw, qtyRaw, orderId);
+router.route(btcBinance, Side::BUY, price, quantity, orderId);
 ```
 
 ## Thread Safety Model
@@ -93,7 +93,7 @@ CompositeBookMatrix.onBookUpdate()   CompositeBookMatrix.bestBid()
 | AggregatedPositionTracker | ExecutionBus consumer | Strategy consumer | Atomic position snapshot |
 | ExchangeClockSync | Connector thread | OrderRouter | Single writer, atomic reads |
 | SplitOrderTracker | Single thread only | Single thread only | No atomics needed |
-| OrderRouter | N/A (stateless routing) | Strategy thread | Reads atomic data from above |
+| OrderRouter | Control thread (registerExecutor / setEnabled) | Strategy thread | Atomic executor table and enabled flags; atomic round-robin cursor |
 
 ## Performance
 

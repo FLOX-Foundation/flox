@@ -21240,6 +21240,11 @@
         },
         {
           "kind": "method",
+          "name": "executor",
+          "parent": "OrderRouter"
+        },
+        {
+          "kind": "method",
           "name": "findAnyEnabled",
           "parent": "OrderRouter"
         },
@@ -21325,6 +21330,11 @@
         },
         {
           "kind": "method",
+          "name": "capacity",
+          "parent": "OrderTracker"
+        },
+        {
+          "kind": "method",
           "name": "exists",
           "parent": "OrderTracker"
         },
@@ -21341,6 +21351,11 @@
         {
           "kind": "method",
           "name": "isActive",
+          "parent": "OrderTracker"
+        },
+        {
+          "kind": "method",
+          "name": "makeRoomLocked",
           "parent": "OrderTracker"
         },
         {
@@ -21381,6 +21396,11 @@
         {
           "kind": "method",
           "name": "pruneTerminal",
+          "parent": "OrderTracker"
+        },
+        {
+          "kind": "method",
+          "name": "pruneTerminalLocked",
           "parent": "OrderTracker"
         },
         {
@@ -22346,6 +22366,11 @@
         {
           "kind": "method",
           "name": "capacity",
+          "parent": "RateLimiter"
+        },
+        {
+          "kind": "method",
+          "name": "nsPerToken",
           "parent": "RateLimiter"
         },
         {

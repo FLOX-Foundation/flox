@@ -15,6 +15,7 @@
 #include "flox/util/sync/exchange_clock_sync.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 
 namespace flox
@@ -56,10 +57,13 @@ class IRoutableExecutor
  public:
   virtual ~IRoutableExecutor() = default;
 
+  // Price and Quantity, not two int64_t raws: this is the one call where a
+  // swapped pair cannot be recovered afterwards, and the Decimal tags exist
+  // precisely to make that swap a compile error.
   virtual void submit(SymbolId symbol,
                       Side side,
-                      int64_t priceRaw,
-                      int64_t quantityRaw,
+                      Price price,
+                      Quantity quantity,
                       OrderId orderId) = 0;
 
   virtual void cancel(OrderId orderId) = 0;
@@ -73,8 +77,10 @@ class OrderRouter : public ISubsystem
   {
     if (exchange < MaxExchanges)
     {
-      _executors[exchange] = executor;
-      _enabled[exchange] = (executor != nullptr);
+      // Release: a routing thread that acquires the pointer also sees the
+      // executor the control thread finished constructing.
+      _executors[exchange].store(executor, std::memory_order_release);
+      _enabled[exchange].store(executor != nullptr, std::memory_order_release);
     }
   }
 
@@ -82,35 +88,36 @@ class OrderRouter : public ISubsystem
   {
     if (exchange < MaxExchanges)
     {
-      _enabled[exchange] = enabled && (_executors[exchange] != nullptr);
+      const bool hasExecutor = _executors[exchange].load(std::memory_order_acquire) != nullptr;
+      _enabled[exchange].store(enabled && hasExecutor, std::memory_order_release);
     }
   }
 
   bool isEnabled(ExchangeId exchange) const
   {
-    return exchange < MaxExchanges && _enabled[exchange];
+    return exchange < MaxExchanges && _enabled[exchange].load(std::memory_order_acquire);
   }
 
-  void setCompositeBook(CompositeBookMatrix<MaxExchanges>* book) { _book = book; }
+  void setCompositeBook(CompositeBookMatrix<MaxExchanges>* book) { _book.store(book, std::memory_order_release); }
 
-  void setClockSync(ExchangeClockSync<MaxExchanges>* clockSync) { _clockSync = clockSync; }
+  void setClockSync(ExchangeClockSync<MaxExchanges>* clockSync) { _clockSync.store(clockSync, std::memory_order_release); }
 
-  void setRoutingStrategy(RoutingStrategy strategy) { _strategy = strategy; }
+  void setRoutingStrategy(RoutingStrategy strategy) { _strategy.store(strategy, std::memory_order_relaxed); }
 
-  void setFailoverPolicy(FailoverPolicy policy) { _failoverPolicy = policy; }
+  void setFailoverPolicy(FailoverPolicy policy) { _failoverPolicy.store(policy, std::memory_order_relaxed); }
 
   RoutingError route(SymbolId symbol,
                      Side side,
-                     int64_t priceRaw,
-                     int64_t quantityRaw,
+                     Price price,
+                     Quantity quantity,
                      OrderId orderId,
                      ExchangeId* outExchange = nullptr)
   {
     ExchangeId target = selectExchange(symbol, side);
 
-    if (target == InvalidExchangeId || target >= MaxExchanges || !_executors[target])
+    if (target == InvalidExchangeId || target >= MaxExchanges || !executor(target))
     {
-      if (_failoverPolicy == FailoverPolicy::FailoverToBest)
+      if (_failoverPolicy.load(std::memory_order_relaxed) == FailoverPolicy::FailoverToBest)
       {
         target = findAnyEnabled();
         if (target == InvalidExchangeId)
@@ -124,9 +131,17 @@ class OrderRouter : public ISubsystem
       }
     }
 
-    if (!_enabled[target])
+    if (!_enabled[target].load(std::memory_order_acquire))
     {
       return RoutingError::ExchangeDisabled;
+    }
+
+    // Re-read after the enabled check rather than reusing the earlier probe:
+    // the pointer is what the call below dereferences.
+    auto* targetExecutor = executor(target);
+    if (!targetExecutor)
+    {
+      return RoutingError::NoExecutor;
     }
 
     if (outExchange)
@@ -134,31 +149,32 @@ class OrderRouter : public ISubsystem
       *outExchange = target;
     }
 
-    _executors[target]->submit(symbol, side, priceRaw, quantityRaw, orderId);
+    targetExecutor->submit(symbol, side, price, quantity, orderId);
     return RoutingError::Success;
   }
 
   RoutingError routeTo(ExchangeId exchange,
                        SymbolId symbol,
                        Side side,
-                       int64_t priceRaw,
-                       int64_t quantityRaw,
+                       Price price,
+                       Quantity quantity,
                        OrderId orderId)
   {
     if (exchange >= MaxExchanges)
     {
       return RoutingError::NoExecutor;
     }
-    if (!_executors[exchange])
+    auto* targetExecutor = executor(exchange);
+    if (!targetExecutor)
     {
       return RoutingError::NoExecutor;
     }
-    if (!_enabled[exchange])
+    if (!_enabled[exchange].load(std::memory_order_acquire))
     {
       return RoutingError::ExchangeDisabled;
     }
 
-    _executors[exchange]->submit(symbol, side, priceRaw, quantityRaw, orderId);
+    targetExecutor->submit(symbol, side, price, quantity, orderId);
     return RoutingError::Success;
   }
 
@@ -168,18 +184,19 @@ class OrderRouter : public ISubsystem
     {
       return RoutingError::NoExecutor;
     }
-    if (!_executors[exchange])
+    auto* targetExecutor = executor(exchange);
+    if (!targetExecutor)
     {
       return RoutingError::NoExecutor;
     }
 
-    _executors[exchange]->cancel(orderId);
+    targetExecutor->cancel(orderId);
     return RoutingError::Success;
   }
 
   ExchangeId selectExchange(SymbolId symbol, Side side) const
   {
-    switch (_strategy)
+    switch (_strategy.load(std::memory_order_relaxed))
     {
       case RoutingStrategy::BestPrice:
         return selectByBestPrice(symbol, side);
@@ -199,7 +216,7 @@ class OrderRouter : public ISubsystem
     size_t count = 0;
     for (size_t ex = 0; ex < MaxExchanges; ++ex)
     {
-      if (_enabled[ex])
+      if (_enabled[ex].load(std::memory_order_acquire))
       {
         ++count;
       }
@@ -208,9 +225,15 @@ class OrderRouter : public ISubsystem
   }
 
  private:
+  IRoutableExecutor* executor(ExchangeId exchange) const
+  {
+    return _executors[exchange].load(std::memory_order_acquire);
+  }
+
   ExchangeId selectByBestPrice(SymbolId symbol, Side side) const
   {
-    if (!_book)
+    auto* book = _book.load(std::memory_order_acquire);
+    if (!book)
     {
       return findAnyEnabled();
     }
@@ -218,8 +241,8 @@ class OrderRouter : public ISubsystem
     if (side == Side::BUY)
     {
       // For buy, we want the lowest ask price
-      auto ask = _book->bestAsk(symbol);
-      if (ask.valid && _enabled[ask.exchange])
+      auto ask = book->bestAsk(symbol);
+      if (ask.valid && ask.exchange < MaxExchanges && _enabled[ask.exchange].load(std::memory_order_acquire))
       {
         return ask.exchange;
       }
@@ -227,8 +250,8 @@ class OrderRouter : public ISubsystem
     else
     {
       // For sell, we want the highest bid price
-      auto bid = _book->bestBid(symbol);
-      if (bid.valid && _enabled[bid.exchange])
+      auto bid = book->bestBid(symbol);
+      if (bid.valid && bid.exchange < MaxExchanges && _enabled[bid.exchange].load(std::memory_order_acquire))
       {
         return bid.exchange;
       }
@@ -239,7 +262,8 @@ class OrderRouter : public ISubsystem
 
   ExchangeId selectByLowestLatency() const
   {
-    if (!_clockSync)
+    auto* clockSync = _clockSync.load(std::memory_order_acquire);
+    if (!clockSync)
     {
       return findAnyEnabled();
     }
@@ -249,12 +273,12 @@ class OrderRouter : public ISubsystem
 
     for (size_t ex = 0; ex < MaxExchanges; ++ex)
     {
-      if (!_enabled[ex])
+      if (!_enabled[ex].load(std::memory_order_acquire))
       {
         continue;
       }
 
-      auto est = _clockSync->estimate(static_cast<ExchangeId>(ex));
+      auto est = clockSync->estimate(static_cast<ExchangeId>(ex));
       if (est.sampleCount > 0 && est.latencyNs < bestLatency)
       {
         bestLatency = est.latencyNs;
@@ -267,7 +291,8 @@ class OrderRouter : public ISubsystem
 
   ExchangeId selectByLargestSize(SymbolId symbol, Side side) const
   {
-    if (!_book)
+    auto* book = _book.load(std::memory_order_acquire);
+    if (!book)
     {
       return findAnyEnabled();
     }
@@ -277,7 +302,7 @@ class OrderRouter : public ISubsystem
 
     for (size_t ex = 0; ex < MaxExchanges; ++ex)
     {
-      if (!_enabled[ex])
+      if (!_enabled[ex].load(std::memory_order_acquire))
       {
         continue;
       }
@@ -285,7 +310,7 @@ class OrderRouter : public ISubsystem
       int64_t size = 0;
       if (side == Side::BUY)
       {
-        auto ask = _book->askForExchange(symbol, static_cast<ExchangeId>(ex));
+        auto ask = book->askForExchange(symbol, static_cast<ExchangeId>(ex));
         if (ask.valid)
         {
           size = ask.qtyRaw;
@@ -293,7 +318,7 @@ class OrderRouter : public ISubsystem
       }
       else
       {
-        auto bid = _book->bidForExchange(symbol, static_cast<ExchangeId>(ex));
+        auto bid = book->bidForExchange(symbol, static_cast<ExchangeId>(ex));
         if (bid.valid)
         {
           size = bid.qtyRaw;
@@ -312,12 +337,15 @@ class OrderRouter : public ISubsystem
 
   ExchangeId selectRoundRobin() const
   {
+    // One fetch_add per probe: two routing threads each get their own slot
+    // instead of read-modify-writing a plain counter, and neither can hand
+    // the same destination to both.
     for (size_t i = 0; i < MaxExchanges; ++i)
     {
-      _rrIndex = (_rrIndex + 1) % MaxExchanges;
-      if (_enabled[_rrIndex])
+      const size_t idx = _rrIndex.fetch_add(1, std::memory_order_relaxed) % MaxExchanges;
+      if (_enabled[idx].load(std::memory_order_acquire))
       {
-        return static_cast<ExchangeId>(_rrIndex);
+        return static_cast<ExchangeId>(idx);
       }
     }
     return InvalidExchangeId;
@@ -327,7 +355,7 @@ class OrderRouter : public ISubsystem
   {
     for (size_t ex = 0; ex < MaxExchanges; ++ex)
     {
-      if (_enabled[ex])
+      if (_enabled[ex].load(std::memory_order_acquire))
       {
         return static_cast<ExchangeId>(ex);
       }
@@ -335,13 +363,17 @@ class OrderRouter : public ISubsystem
     return InvalidExchangeId;
   }
 
-  std::array<IRoutableExecutor*, MaxExchanges> _executors{};
-  std::array<bool, MaxExchanges> _enabled{};
-  CompositeBookMatrix<MaxExchanges>* _book{nullptr};
-  ExchangeClockSync<MaxExchanges>* _clockSync{nullptr};
-  RoutingStrategy _strategy{RoutingStrategy::BestPrice};
-  FailoverPolicy _failoverPolicy{FailoverPolicy::Reject};
-  mutable size_t _rrIndex{0};
+  // Every word route() reads is written by a control thread (registerExecutor,
+  // setEnabled, the setters) while a strategy thread routes, and _rrIndex is
+  // read-modify-written by the routing threads themselves. All of it is atomic
+  // and none of it takes a lock: route() stays on the order path.
+  std::array<std::atomic<IRoutableExecutor*>, MaxExchanges> _executors{};
+  std::array<std::atomic<bool>, MaxExchanges> _enabled{};
+  std::atomic<CompositeBookMatrix<MaxExchanges>*> _book{nullptr};
+  std::atomic<ExchangeClockSync<MaxExchanges>*> _clockSync{nullptr};
+  std::atomic<RoutingStrategy> _strategy{RoutingStrategy::BestPrice};
+  std::atomic<FailoverPolicy> _failoverPolicy{FailoverPolicy::Reject};
+  mutable std::atomic<size_t> _rrIndex{0};
 };
 
 }  // namespace flox

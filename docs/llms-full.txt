@@ -5428,14 +5428,14 @@ router.setFailoverPolicy(FailoverPolicy::FailoverToBest);
 
 // Route orders
 ExchangeId routed;
-auto err = router.route(btcBinance, Side::BUY, priceRaw, qtyRaw, orderId, &routed);
+auto err = router.route(btcBinance, Side::BUY, price, quantity, orderId, &routed);
 
 if (err == RoutingError::Success) {
   // Order sent to 'routed' exchange
 }
 
 // Or route explicitly
-router.routeTo(binance, btcBinance, Side::BUY, priceRaw, qtyRaw, orderId);
+router.routeTo(binance, btcBinance, Side::BUY, price, quantity, orderId);
 ```
 
 ## 6. Track Split Orders

@@ -68,20 +68,20 @@ class FixRoutableExecutor : public IRoutableExecutor
     }
   }
 
-  void submit(SymbolId symbol, Side side, int64_t priceRaw, int64_t quantityRaw,
+  void submit(SymbolId symbol, Side side, Price price, Quantity quantity,
               OrderId orderId) override
   {
     NewOrderRequest o;
     o.clOrdId = orderId;
     o.symbol = symbol;
     o.side = side;
-    o.type = priceRaw == 0 ? OrderType::MARKET : OrderType::LIMIT;
-    o.price = Price::fromRaw(priceRaw);
-    o.quantity = Quantity::fromRaw(quantityRaw);
+    o.type = price.raw() == 0 ? OrderType::MARKET : OrderType::LIMIT;
+    o.price = price;
+    o.quantity = quantity;
     o.accountId = accountId_;
     {
       std::lock_guard<std::mutex> lk(m_);
-      live_[orderId] = Live{symbol, side, Quantity::fromRaw(quantityRaw)};
+      live_[orderId] = Live{symbol, side, quantity};
     }
     if (!initiator_.submit(o, clock_()))
     {
