@@ -26,6 +26,7 @@
 #include "flox/engine/abstract_subsystem.h"
 #include "flox/strategy/symbol_state_map.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -39,7 +40,11 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
  public:
   BarAggregator(Policy policy, BarBus* bus) : _policy(std::move(policy)), _bus(bus) {}
 
-  void start() override { _state.clear(); }
+  void start() override
+  {
+    _state.clear();
+    _lateTradeCount = 0;
+  }
 
   void stop() override
   {
@@ -70,25 +75,36 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
       return;
     }
 
+    if constexpr (DetectsLateTrades<Policy>)
+    {
+      // Dropped, not folded in: see TimeBarPolicy::isLate.
+      if (_policy.isLate(trade, state.bar)) [[unlikely]]
+      {
+        ++_lateTradeCount;
+        return;
+      }
+    }
+
     if (_policy.shouldClose(trade, state.bar)) [[unlikely]]
     {
-      emitBar(trade.trade.symbol, state);
-      // Renko is the one policy whose close can gap past more than one
-      // brick on a single trade; it alone offers gapBricks() to fill in the
-      // ones a continuous price path would have produced. The other six
-      // policies never gain this branch (`requires` fails to compile it for
-      // them at all), so this cannot turn into an unbounded loop for a
-      // policy whose very first trade already clears its threshold.
-      if constexpr (requires(const Policy& p, const TradeEvent& t, const Bar& b) {
-                      { p.gapBricks(t, b) } -> std::same_as<std::vector<Bar>>;
-                    })
+      if constexpr (ClosesAndReopens<Policy>)
       {
-        for (const Bar& synthetic : _policy.gapBricks(trade, state.bar))
-        {
-          publishBar(trade.trade.symbol, state.instrument, synthetic);
-        }
+        // Renko is the one policy whose close is not "publish the bar as it
+        // stands": the brick has to be finished at the boundary and the next
+        // one opened there, and a single trade can span several bricks. The
+        // policy does all of it and hands back every bar to publish, so this
+        // copy of the close path cannot drift from the other three.
+        const InstrumentType instrument = state.instrument;
+        const SymbolId symbol = trade.trade.symbol;
+        _policy.closeAndReopen(trade, state.bar,
+                               [&](const Bar& bar)
+                               { publishBar(symbol, instrument, bar); });
       }
-      _policy.initBar(trade, state.bar);
+      else
+      {
+        emitBar(trade.trade.symbol, state);
+        _policy.initBar(trade, state.bar);
+      }
       state.instrument = trade.trade.instrument;
       return;
     }
@@ -97,6 +113,12 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
   }
 
   const Policy& policy() const noexcept { return _policy; }
+
+  // Trades dropped because they belonged to a bar that was already gone.
+  // Always 0 for a policy with no notion of a late trade. Losing feed data
+  // silently is exactly what a cross-venue merge produces, so the count is
+  // readable rather than implicit.
+  std::uint64_t lateTradeCount() const noexcept { return _lateTradeCount; }
 
  private:
   struct SymbolState
@@ -129,6 +151,7 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
   Policy _policy;
   BarBus* _bus;
   SymbolStateMap<SymbolState> _state;
+  std::uint64_t _lateTradeCount = 0;
 };
 
 // Convenient type aliases

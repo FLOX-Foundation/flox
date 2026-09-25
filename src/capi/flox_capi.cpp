@@ -1850,6 +1850,24 @@ uint32_t flox_simulated_executor_fill_count(FloxSimulatedExecutorHandle h)
 // Bar aggregation
 // ============================================================
 
+static FloxBar toFloxBar(const Bar& bar)
+{
+  return {bar.startTime.time_since_epoch().count(),
+          bar.endTime.time_since_epoch().count(),
+          bar.open.raw(),
+          bar.high.raw(),
+          bar.low.raw(),
+          bar.close.raw(),
+          bar.volume.raw(),
+          bar.buyVolume.raw(),
+          static_cast<uint32_t>(bar.tradeCount.raw())};
+}
+
+// The batch copy of the close path. It has to agree bar for bar with
+// BarAggregator::onTrade and MultiTimeframeAggregator::processPolicy, so the
+// two policy customization points -- a late trade the policy recognizes, and
+// a policy that owns its own close -- are branched on here in the same order
+// and with the same meaning.
 template <typename Policy>
 static uint32_t doAggregateC(Policy& policy, const int64_t* ts, const double* px,
                              const double* qty, const uint8_t* ib, size_t n, FloxBar* bars_out,
@@ -1858,6 +1876,17 @@ static uint32_t doAggregateC(Policy& policy, const int64_t* ts, const double* px
   uint32_t count = 0;
   Bar currentBar;
   bool initialized = false;
+
+  // Reports the true total even past max_bars so a caller that sized its
+  // buffer to the trade count can tell the result was truncated and retry.
+  const auto writeBar = [&](const Bar& bar)
+  {
+    if (count < max_bars)
+    {
+      bars_out[count] = toFloxBar(bar);
+    }
+    count++;
+  };
 
   for (size_t i = 0; i < n; ++i)
   {
@@ -1876,47 +1905,25 @@ static uint32_t doAggregateC(Policy& policy, const int64_t* ts, const double* px
       continue;
     }
 
+    if constexpr (DetectsLateTrades<Policy>)
+    {
+      if (policy.isLate(trade, currentBar))
+      {
+        continue;
+      }
+    }
+
     if (policy.shouldClose(trade, currentBar))
     {
-      if (count < max_bars)
+      if constexpr (ClosesAndReopens<Policy>)
       {
-        bars_out[count] = {currentBar.startTime.time_since_epoch().count(),
-                           currentBar.endTime.time_since_epoch().count(),
-                           currentBar.open.raw(),
-                           currentBar.high.raw(),
-                           currentBar.low.raw(),
-                           currentBar.close.raw(),
-                           currentBar.volume.raw(),
-                           currentBar.buyVolume.raw(),
-                           static_cast<uint32_t>(currentBar.tradeCount.raw())};
+        policy.closeAndReopen(trade, currentBar, writeBar);
       }
-      count++;
-      // See flox::BarAggregator::onTrade for why this is gated on the
-      // policy actually offering gapBricks() -- only Renko does, so the
-      // other five policies bound through this same template are
-      // unaffected.
-      if constexpr (requires(Policy& p, const TradeEvent& t, const Bar& b) {
-                      { p.gapBricks(t, b) } -> std::same_as<std::vector<Bar>>;
-                    })
+      else
       {
-        for (const Bar& synthetic : policy.gapBricks(trade, currentBar))
-        {
-          if (count < max_bars)
-          {
-            bars_out[count] = {synthetic.startTime.time_since_epoch().count(),
-                               synthetic.endTime.time_since_epoch().count(),
-                               synthetic.open.raw(),
-                               synthetic.high.raw(),
-                               synthetic.low.raw(),
-                               synthetic.close.raw(),
-                               synthetic.volume.raw(),
-                               synthetic.buyVolume.raw(),
-                               static_cast<uint32_t>(synthetic.tradeCount.raw())};
-          }
-          count++;
-        }
+        writeBar(currentBar);
+        policy.initBar(trade, currentBar);
       }
-      policy.initBar(trade, currentBar);
       continue;
     }
     policy.update(trade, currentBar);
@@ -1961,15 +1968,7 @@ uint32_t flox_aggregate_volume_bars(const int64_t* ts, const double* px, const d
 
 static void writeFloxBar(const Bar& bar, FloxBar* out)
 {
-  out->start_time_ns = bar.startTime.time_since_epoch().count();
-  out->end_time_ns = bar.endTime.time_since_epoch().count();
-  out->open_raw = bar.open.raw();
-  out->high_raw = bar.high.raw();
-  out->low_raw = bar.low.raw();
-  out->close_raw = bar.close.raw();
-  out->volume_raw = bar.volume.raw();
-  out->buy_volume_raw = bar.buyVolume.raw();
-  out->trade_count = static_cast<uint32_t>(bar.tradeCount.raw());
+  *out = toFloxBar(bar);
 }
 
 uint8_t flox_strategy_last_closed_bar(FloxStrategyHandle s, uint32_t symbol,

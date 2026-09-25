@@ -72,6 +72,13 @@ inline PyExtBar barToExtBar(const Bar& b)
 
 // Batch aggregation: takes pre-extracted vectors (no GIL needed).
 //
+// This is one of four copies of the close path (the others: BarAggregator,
+// MultiTimeframeAggregator, and doAggregateC in the C ABI). The two policy
+// customization points -- a late trade the policy recognizes, and a policy
+// that owns its own close, both declared in aggregation_policy.h -- are
+// branched on here in the same order and with the same meaning, so the four
+// produce the same bars for the same trades.
+//
 // Only fully closed bars are returned -- the trailing bar still open when
 // the input runs out is dropped, exactly like the C ABI's doAggregateC
 // (src/capi/flox_capi.cpp), which every other binding (Node, QuickJS,
@@ -112,22 +119,27 @@ std::vector<PyExtBar> doAggregate(Policy& policy, const int64_t* ts, const doubl
       continue;
     }
 
+    if constexpr (flox::DetectsLateTrades<Policy>)
+    {
+      if (policy.isLate(trade, currentBar))
+      {
+        continue;
+      }
+    }
+
     if (policy.shouldClose(trade, currentBar))
     {
-      bars.push_back(barToExtBar(currentBar));
-      // See flox::BarAggregator::onTrade for why this is gated on the
-      // policy actually offering gapBricks() -- only Renko does, so the
-      // other six policies bound through this same template are unaffected.
-      if constexpr (requires(Policy& p, const TradeEvent& t, const Bar& b) {
-                      { p.gapBricks(t, b) } -> std::same_as<std::vector<Bar>>;
-                    })
+      if constexpr (flox::ClosesAndReopens<Policy>)
       {
-        for (const Bar& synthetic : policy.gapBricks(trade, currentBar))
-        {
-          bars.push_back(barToExtBar(synthetic));
-        }
+        policy.closeAndReopen(trade, currentBar,
+                              [&bars](const Bar& bar)
+                              { bars.push_back(barToExtBar(bar)); });
       }
-      policy.initBar(trade, currentBar);
+      else
+      {
+        bars.push_back(barToExtBar(currentBar));
+        policy.initBar(trade, currentBar);
+      }
       continue;
     }
 

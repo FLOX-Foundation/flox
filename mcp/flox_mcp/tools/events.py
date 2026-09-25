@@ -38,7 +38,7 @@ _SCHEMAS: dict[str, list[tuple[str, str, str, str]]] = {
     "FloxBarData": [
         ("symbol", "uint32_t", "id", "Symbol ID."),
         ("bar_type", "uint8_t", "enum", "0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi."),
-        ("close_reason", "uint8_t", "enum", "0=Threshold, 2=Forced, 3=Warmup (1 is unused; set by the caller before BarMatrix::warmup(), never by the engine)."),
+        ("close_reason", "uint8_t", "enum", "0=Threshold, 1=Gap, 2=Forced, 3=Warmup (Gap marks the bar absorbing the remainder of a Renko jump past kMaxGapBricks; Warmup is set by the caller before BarMatrix::warmup(), never by the engine)."),
         ("bar_type_param", "uint64_t", "—", "Interval ns / tick count / volume threshold per type."),
         ("open_raw", "int64_t", "price * 1e8", "Open price."),
         ("high_raw", "int64_t", "price * 1e8", "High."),

@@ -15,6 +15,7 @@ enum class BarType : uint8_t {
 
 enum class BarCloseReason : uint8_t {
   Threshold = 0,  // Normal close: interval/count/volume reached
+  Gap = 1,        // A price jump too wide to walk brick by brick -- see RenkoBarPolicy::kMaxGapBricks
   Forced = 2,     // Forced close: stop() called or manual flush
   Warmup = 3      // Set by the caller, not the engine -- see BarMatrix::warmup()
 };
@@ -46,7 +47,7 @@ struct Bar {
 | `tradeCount` | `Quantity` | Number of trades aggregated into this bar. |
 | `startTime` | `TimePoint` | Bar open timestamp. |
 | `endTime` | `TimePoint` | Bar close timestamp. |
-| `reason` | `BarCloseReason` | Why this bar was closed. `BarAggregator` and `MultiTimeframeAggregator` set `Threshold` for a normal close and `Forced` for a `stop()` flush. `Warmup` is never assigned by the engine itself -- set it on the `Bar` objects you build from historical data before calling `BarMatrix::warmup()`, and it carries through unchanged. There is no `Gap` value: closing a bar early because of a time gap would need a gap detector, and none of the seven bar policies has one. |
+| `reason` | `BarCloseReason` | Why this bar was closed. `BarAggregator` and `MultiTimeframeAggregator` set `Threshold` for a normal close and `Forced` for a `stop()` flush. `Gap` marks the one bar that absorbs the remainder of a Renko price jump too wide to walk brick by brick -- it is taller than one brick and closes on the far boundary; see [Bar types](../../../explanation/bar-types.md) and `RenkoBarPolicy::kMaxGapBricks`. `Warmup` is never assigned by the engine itself -- set it on the `Bar` objects you build from historical data before calling `BarMatrix::warmup()`, and it carries through unchanged. |
 
 ## Delta Calculation
 

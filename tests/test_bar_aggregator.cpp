@@ -314,7 +314,9 @@ TEST(TimeBarPolicyTest, LateTradeDoesNotCloseBarEarlyOrBreakMonotonicity)
 
   ASSERT_EQ(result.size(), 2);
   EXPECT_EQ(result[0].startTime, ts(60));
-  EXPECT_EQ(result[0].tradeCount.raw(), 4);
+  // The late trade is not a member of this bar either -- it is dropped, not
+  // folded in; see TimeBarLateTradeTest in test_bar_aggregator_semantics.cpp.
+  EXPECT_EQ(result[0].tradeCount.raw(), 3);
   EXPECT_EQ(result[1].startTime, ts(120));
   EXPECT_EQ(result[1].tradeCount.raw(), 1);
   EXPECT_LT(result[0].startTime, result[1].startTime) << "bar.startTime must be monotonic";
@@ -478,12 +480,12 @@ TEST(RenkoBarPolicyTest, CreatesBricksOnPriceMove)
 
 // A single trade that gaps 5.5 brick-widths past the open (100 -> 155,
 // brick size 10) used to collapse into one zero-range bar and silently drop
-// the other 4.5 bricks' worth of movement. It must now come out as the real
-// bar (open=high=low=close=100, since no trade touched a price in between)
-// followed by 4 synthesized bricks that walk the price up from 100 to 150
-// in clean steps of 10, with a new bar left open at 155 for whatever comes
-// next -- exactly the number of complete bricks a continuous price path
-// would have produced.
+// the other 4.5 bricks' worth of movement. It must come out as 5 bricks that
+// walk the price from 100 to 150 in clean steps of 10 -- the brick that was
+// forming closes at the first boundary the trade crossed (100 -> 110), then 4
+// synthesized bricks carry it to 150 -- with a new bar left open at 150, the
+// boundary, for whatever comes next. See RenkoSemanticsTest in
+// test_bar_aggregator_semantics.cpp for the brick-geometry rules this obeys.
 TEST(RenkoBarPolicyTest, GapPastSeveralBricksSynthesizesTheMissingOnes)
 {
   std::vector<Bar> result;
@@ -504,9 +506,7 @@ TEST(RenkoBarPolicyTest, GapPastSeveralBricksSynthesizesTheMissingOnes)
                                  "brick-widths spans 5 complete bricks)";
 
   EXPECT_EQ(result[0].open, Price::fromDouble(100.0));
-  EXPECT_EQ(result[0].high, Price::fromDouble(100.0));
-  EXPECT_EQ(result[0].low, Price::fromDouble(100.0));
-  EXPECT_EQ(result[0].close, Price::fromDouble(100.0));
+  EXPECT_EQ(result[0].close, Price::fromDouble(110.0));
 
   const double expectedOpens[] = {110.0, 120.0, 130.0, 140.0};
   const double expectedCloses[] = {120.0, 130.0, 140.0, 150.0};
@@ -519,8 +519,8 @@ TEST(RenkoBarPolicyTest, GapPastSeveralBricksSynthesizesTheMissingOnes)
     EXPECT_EQ(brick.low, Price::fromDouble(expectedOpens[i])) << "brick " << i;
   }
 
-  // Reported as forced-closed by stop(), open at the raw trade price (155),
-  // still 5 points short of the next brick.
+  // The bar left open covers 150 -> 155, still 5 points short of the next
+  // brick boundary at 160.
   ASSERT_EQ(result.size(), 5);
 }
 

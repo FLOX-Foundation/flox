@@ -47,12 +47,13 @@ check('aggregateRenkoBars synthesizes the bricks a 5.5-brick gap spans', () => {
 
   const bars = flox.aggregateRenkoBars(ts, px, qty, ib, 10.0);
 
-  // The real bar (100 -> 100) plus 4 synthesized bricks -- 5 bars. No bar
-  // for the new brick the C ABI leaves open at 155; see the file comment.
+  // The real bar (100 -> 110, closed at the first boundary the gapping
+  // trade crossed) plus 4 synthesized bricks -- 5 bars. No bar for the new
+  // brick the C ABI leaves open at 150; see the file comment.
   assert.strictEqual(bars.length, 5, '1 real + 4 synthesized bricks');
 
   assert.strictEqual(bars[0].open, 100);
-  assert.strictEqual(bars[0].close, 100);
+  assert.strictEqual(bars[0].close, 110);
 
   const expectedOpens = [110, 120, 130, 140];
   const expectedCloses = [120, 130, 140, 150];
@@ -70,8 +71,9 @@ check('aggregateRenkoBars leaves an ordinary single-brick close alone', () => {
 
   const bars = flox.aggregateRenkoBars(ts, px, qty, ib, 10.0);
 
-  assert.strictEqual(bars.length, 1, 'one closed brick, no trailing bar for the open one at 114');
+  assert.strictEqual(bars.length, 1, 'one closed brick, no trailing bar for the open one at 110 -> 114');
   assert.strictEqual(bars[0].open, 100);
+  assert.strictEqual(bars[0].close, 110, 'a brick closes at its boundary, not at the crossing trade');
 });
 
 if (passed === 2 && process.exitCode === undefined) {

@@ -14485,7 +14485,7 @@ All callbacks are optional.
 | `volume`, `buyVolume` | `number` | Total / buy-side volume |
 | `startTimeNs`, `endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
 | `barType`, `barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
-| `closeReason` | `number` | 0=Threshold, 2=Forced, 3=Warmup (1 is unused). The engine emits `Threshold` for a normal close and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
+| `closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine emits `Threshold` for a normal close, `Gap` for the bar that absorbs the remainder of a Renko price jump too wide to walk brick by brick, and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
 
 ### SymbolContext (`ctx`)
 
@@ -17014,7 +17014,7 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `bar.volume`, `bar.buyVolume` | `number` | Total / buy-side volume |
 | `bar.startTimeNs`, `bar.endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
 | `bar.barType`, `bar.barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
-| `bar.closeReason` | `number` | 0=Threshold, 2=Forced, 3=Warmup (1 is unused). The engine emits `Threshold` for a normal close and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
+| `bar.closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine emits `Threshold` for a normal close, `Gap` for the bar that absorbs the remainder of a Renko price jump too wide to walk brick by brick, and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
 
 ### `onStart()` / `onStop()`
 
@@ -19519,6 +19519,10 @@ TimeBarAggregator aggregator(TimeBarPolicy(std::chrono::seconds(60)), &bus);
 - Comparing to external data sources
 - Building indicators that expect regular intervals
 
+**Late trades**: a time bar is a clock construct, so a trade can arrive for a bucket that is no longer open — routine when several venue feeds are merged, or when a feed reconnects and replays. A trade whose aligned bucket is *earlier* than the live bar's `startTime` is **dropped**, and the drop is counted in `BarAggregator::lateTradeCount()` (and `MultiTimeframeAggregator::lateTradeCount()`). It is not folded into the live bar: doing that made the trade's price the live bar's close, and possibly its high or low, so the bar published for an interval reported a price that never traded inside it. Nor does it reopen the bucket it belongs to: that bar has already been published, and reopening it would break the monotonicity of `bar.startTime` that `BarSeries` and `BarMatrix` rely on.
+
+The rule is about the *bucket*, not about arrival order. A trade that arrives out of order but still falls inside the live bucket is ordinary data and is folded in like any other; only a trade from an earlier bucket is dropped. If the count keeps climbing, the feed merge upstream is delivering trades later than one bar interval and the interval — or the merge — needs to change.
+
 ## Tick Bars
 
 ```cpp
@@ -19606,7 +19610,18 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
 
 **Unique property**: Renko bars only move one direction until reversal. A series of up-bricks means consistent upward movement without significant pullbacks.
 
-**Gaps**: a brick closes when a trade's price is at least one brick size away from the brick's open (which is the previous brick's close). If a single trade jumps several brick sizes at once -- a real gap, or just a thin book -- Flox fills in the intermediate bricks a continuous price path would have produced: the brick that was already forming closes as it stood before that trade (with the real volume and trade count it accumulated), and then one synthetic brick per additional whole brick width is emitted, walking the price from there to the new trade in clean steps of exactly one brick size. A new brick opens at the trade's exact price for whatever comes next. For example, a trade that jumps from 100 to 155 with a brick size of 10 spans 5.5 bricks: the real brick (100 to 100) plus 4 synthesized bricks (110, 120, 130, 140, each one brick tall) account for the 5 complete bricks the move spans, leaving a new brick open at 155. The synthesized bricks have no volume or trade count of their own -- no trade happened at those prices -- so treat them as a price-path marker, not as a record of activity.
+**Where a brick closes**: a brick closes when a trade's price is at least one brick size away from the brick's open. The brick is a price construct, so both ends of the close are fixed by the grid rather than by the trade that happened to cross it:
+
+- The crossing trade is applied **first** and is counted in the brick it completes — its notional lands in that brick's `volume` and its tick in that brick's `tradeCount`.
+- The brick closes **at the boundary**, exactly one brick size from its open and in the direction of the move.
+- The next brick **opens at that same boundary**, not at the crossing trade's price, so bricks chain (`bricks[i].open == bricks[i-1].close`) and the grid never drifts.
+- The brick's extreme on the side of the move is the boundary; the crossing trade's overshoot past it belongs to the brick that opens next, which is where it is reported. The opposite side keeps whatever retracement the trades actually made, so a brick can have a wick against the move but not with it.
+
+Brick size 10 with trades 100, 95, 111 therefore produces one brick, `open 100 → close 110`, `low 95`, `tradeCount 3`; the brick that opens next runs from 110 and stands at 111. The brick that opens after a close starts empty (`tradeCount 0`, `volume 0`) — the trade that opened it was already counted — while its `close` tracks the current price, so a `stop()` flush still reports where the price stands.
+
+**Gaps**: if a single trade jumps several brick sizes at once — a real gap, or just a thin book — Flox fills in the intermediate bricks a continuous price path would have produced. The brick that was forming closes at the first boundary the trade crossed, then one synthetic brick per additional whole brick width walks the price toward the trade in clean steps of exactly one brick size, and the new brick opens at the last boundary reached. A trade that jumps from 100 to 155 with a brick size of 10 spans 5.5 bricks: the real brick (100 → 110) plus 4 synthesized bricks (110 → 120, 120 → 130, 130 → 140, 140 → 150) account for the 5 complete bricks the move spans, leaving a new brick open at 150 — the boundary — with the leftover 5 points showing as its close. The synthesized bricks have no volume or trade count of their own — no trade happened at those prices — so treat them as a price-path marker, not as a record of activity.
+
+**The gap walk is bounded**: at most `RenkoBarPolicy::kMaxGapBricks` (1024) bars are published for any one trade, including the brick that was forming. Without the bound, the cost of a single print scales with how far the price moved: a brick size of 0.01 and a print from 1.00 to 100000.00 spans ten million bricks, which stalls the bus and exhausts memory inside one `onTrade()`. When the bound is hit, the last bar published absorbs the whole remainder of the move: it is taller than one brick, it closes on the far boundary so the grid stays aligned with the price, and it carries `BarCloseReason::Gap` so a consumer can tell a truncated walk from a complete one instead of silently seeing fewer bricks than the move spanned. `Gap` is the only reason the engine sets besides `Threshold` and `Forced`.
 
 `param()` reports the brick size in the instrument's own price units (e.g. `10` for `RenkoBarPolicy::fromDouble(10.0)`), matching `TimeframeId::renko(brickSize)`.
 

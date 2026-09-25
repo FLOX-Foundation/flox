@@ -11319,6 +11319,11 @@
           "name": "BarSeries"
         },
         {
+          "header": "include/flox/aggregator/aggregation_policy.h",
+          "kind": "type",
+          "name": "BarSink"
+        },
+        {
           "header": "include/flox/strategy/bar_strategy.h",
           "kind": "type",
           "name": "BarStrategy"
@@ -14275,6 +14280,11 @@
         },
         {
           "kind": "method",
+          "name": "lateTradeCount",
+          "parent": "BarAggregator"
+        },
+        {
+          "kind": "method",
           "name": "onTrade",
           "parent": "BarAggregator"
         },
@@ -14452,6 +14462,11 @@
           "kind": "method",
           "name": "size",
           "parent": "BarSeries"
+        },
+        {
+          "kind": "method",
+          "name": "operator",
+          "parent": "BarSink"
         },
         {
           "kind": "method",
@@ -20455,6 +20470,11 @@
         },
         {
           "kind": "method",
+          "name": "lateTradeCount",
+          "parent": "MultiTimeframeAggregator"
+        },
+        {
+          "kind": "method",
           "name": "numTimeframes",
           "parent": "MultiTimeframeAggregator"
         },
@@ -20471,6 +20491,11 @@
         {
           "kind": "method",
           "name": "processSlot",
+          "parent": "MultiTimeframeAggregator"
+        },
+        {
+          "kind": "method",
+          "name": "publishBar",
           "parent": "MultiTimeframeAggregator"
         },
         {
@@ -22635,17 +22660,22 @@
         },
         {
           "kind": "method",
+          "name": "closeAndReopen",
+          "parent": "RenkoBarPolicy"
+        },
+        {
+          "kind": "method",
           "name": "fromDouble",
           "parent": "RenkoBarPolicy"
         },
         {
           "kind": "method",
-          "name": "gapBricks",
+          "name": "initBar",
           "parent": "RenkoBarPolicy"
         },
         {
           "kind": "method",
-          "name": "initBar",
+          "name": "openAtBoundary",
           "parent": "RenkoBarPolicy"
         },
         {
@@ -22656,6 +22686,11 @@
         {
           "kind": "method",
           "name": "shouldClose",
+          "parent": "RenkoBarPolicy"
+        },
+        {
+          "kind": "method",
+          "name": "syntheticBrick",
           "parent": "RenkoBarPolicy"
         },
         {
@@ -24991,6 +25026,11 @@
         {
           "kind": "method",
           "name": "initBar",
+          "parent": "TimeBarPolicy"
+        },
+        {
+          "kind": "method",
+          "name": "isLate",
           "parent": "TimeBarPolicy"
         },
         {
