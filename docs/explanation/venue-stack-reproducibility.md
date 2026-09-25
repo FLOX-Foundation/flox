@@ -93,7 +93,7 @@ ordered.
 
 ## Regression test
 
-`tests/test_w15_reproducibility.cpp` (gated under
+`tests/test_venue_stack_reproducibility.cpp` (gated under
 `FLOX_ENABLE_BACKTEST`) runs every VenueStack twice with identical
 inputs and asserts every captured engine stat is bit-identical.
 Scenarios:

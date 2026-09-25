@@ -163,7 +163,7 @@ Mutating tools:
   + config + dep hashes). `flox bundle replay` reruns it
   byte-identically. `flox bundle validate` checks the archive.
 - The venue-stack is bit-deterministic across runs (verified
-  via `test_w15_reproducibility.cpp`): identical inputs → identical
+  via `test_venue_stack_reproducibility.cpp`): identical inputs → identical
   engine state.
 
 ## Calibration + analysis

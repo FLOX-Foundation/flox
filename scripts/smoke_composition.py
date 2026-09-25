@@ -3,7 +3,7 @@
 SimulatedExecutor, run a short synthetic tape, and assert the result
 matches a fixed-shape summary.
 
-The point isn't to validate correctness deeply (test_w15_composition.cpp
+The point isn't to validate correctness deeply (test_venue_stack_composition.cpp
 already does that). The point is to catch wiring/init-order/dead-
 export regressions before they reach production. Designed to run in
 under 30 seconds on CI.
