@@ -1665,6 +1665,26 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
   Napi::ObjectReference _recorder_binlog_ref;
   std::unique_ptr<flox_node::ExecutorHost> _executor_host;
 
+  // Every hook host in hooks.h calls straight into JS from the C bridge the
+  // engine invokes it by, so a threaded Runner -- whose engine calls those
+  // bridges from a C++ consumer thread -- would be reaching into V8 off the
+  // JS thread. index.d.ts has documented the four inline hooks as sync only
+  // since they were added; nothing enforced it, and all seven were accepted
+  // and wired into the LiveEngine. Detaching (a null argument) is always
+  // allowed: it touches no JS.
+  bool requireSyncHook(Napi::Env env, const char* setter)
+  {
+    if (_mode == Mode::Sync)
+    {
+      return true;
+    }
+    Napi::Error::New(env, std::string(setter) +
+                              " requires a sync Runner: the hook runs inline on the JS "
+                              "thread, which a threaded Runner does not dispatch from")
+        .ThrowAsJavaScriptException();
+    return false;
+  }
+
   Napi::Value setPnlTracker(const Napi::CallbackInfo& info)
   {
     auto env = info.Env();
@@ -1679,6 +1699,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       {
         flox_live_engine_set_pnl_tracker(_engine, nullptr);
       }
+      return env.Undefined();
+    }
+    if (!requireSyncHook(env, "setPnlTracker"))
+    {
       return env.Undefined();
     }
     _pnl_host = std::make_unique<flox_node::PnLTrackerHost>(env, info[0].As<Napi::Object>());
@@ -1709,6 +1733,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       }
       return env.Undefined();
     }
+    if (!requireSyncHook(env, "setStorageSink"))
+    {
+      return env.Undefined();
+    }
     _storage_host = std::make_unique<flox_node::StorageSinkHost>(env, info[0].As<Napi::Object>());
     if (_mode == Mode::Sync)
     {
@@ -1735,6 +1763,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       {
         flox_live_engine_set_risk_manager(_engine, nullptr);
       }
+      return env.Undefined();
+    }
+    if (!requireSyncHook(env, "setRiskManager"))
+    {
       return env.Undefined();
     }
     _risk_host = std::make_unique<flox_node::RiskManagerHost>(env, info[0].As<Napi::Object>());
@@ -1765,6 +1797,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       }
       return env.Undefined();
     }
+    if (!requireSyncHook(env, "setKillSwitch"))
+    {
+      return env.Undefined();
+    }
     _kill_host = std::make_unique<flox_node::KillSwitchHost>(env, info[0].As<Napi::Object>());
     if (_mode == Mode::Sync)
     {
@@ -1791,6 +1827,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       {
         flox_live_engine_set_order_validator(_engine, nullptr);
       }
+      return env.Undefined();
+    }
+    if (!requireSyncHook(env, "setOrderValidator"))
+    {
       return env.Undefined();
     }
     _validator_host =
@@ -1821,6 +1861,11 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       {
         flox_live_engine_set_market_data_recorder(_engine, nullptr);
       }
+      return env.Undefined();
+    }
+
+    if (!requireSyncHook(env, "setMarketDataRecorder"))
+    {
       return env.Undefined();
     }
 
@@ -1878,6 +1923,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       {
         flox_live_engine_set_executor(_engine, nullptr);
       }
+      return env.Undefined();
+    }
+    if (!requireSyncHook(env, "setExecutor"))
+    {
       return env.Undefined();
     }
     _executor_host = std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>());

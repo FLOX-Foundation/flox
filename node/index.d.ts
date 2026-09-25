@@ -542,16 +542,25 @@ export class Runner {
   ): void;
 
   // ── Hook setters ──
+  //
+  // Every one of these runs its JS on the thread the Runner dispatches
+  // from, so all of them are sync only and all of them throw when the
+  // Runner is `threaded`. Passing `null` detaches and is always allowed.
+  /** Sync only — PnLTracker.onSignal is called inline. Throws if `threaded`. */
   setPnlTracker(tracker: PnLTracker | null): void;
+  /** Sync only — StorageSink.store is called inline. Throws if `threaded`. */
   setStorageSink(sink: StorageSink | null): void;
   /** Sync only — RiskManager.allow is read inline. Throws if `threaded`. */
   setRiskManager(rm: RiskManager | null): void;
-  /** Sync only — KillSwitch.check is read inline. */
+  /** Sync only — KillSwitch.check is read inline. Throws if `threaded`. */
   setKillSwitch(ks: KillSwitch | null): void;
-  /** Sync only — OrderValidator.validate is read inline. */
+  /** Sync only — OrderValidator.validate is read inline. Throws if `threaded`. */
   setOrderValidator(ov: OrderValidator | null): void;
+  /** Sync only — the recorder's callbacks run inline. Throws if `threaded`.
+   *  A `BinaryLogRecorderHook` records in C++ and calls no JS, but goes
+   *  through the same setter and the same rule. */
   setMarketDataRecorder(recorder: MarketDataRecorderHook | BinaryLogRecorderHook | null): void;
-  /** Sync only — Executor.capabilities() is read inline. */
+  /** Sync only — Executor.capabilities() is read inline. Throws if `threaded`. */
   setExecutor(executor: Executor | null): void;
 
   /** Auto-capture every signal into the given `.floxrun` recorder.

@@ -20,20 +20,22 @@
 //
 // Each hook host:
 //   - extracts named function references from the JS object on attach;
-//   - derives from TsfnHost for cross-thread invocation in HookMode::Threaded
-//     (LiveEngine consumer threads can't touch V8 directly);
+//   - calls straight back into JS from the C bridge;
 //   - owns a Flox<Hook>Handle via RAII; non-copyable.
 //
-// On the lifetime of the threaded halves, see node/src/tsfn_util.h. A hook
-// host's channel is scoped to the host rather than to a run, because a hook is
-// attached and detached by the caller rather than by start()/stop().
+// Every host here runs on the JS thread and only there. Each of these hooks is
+// read inline by the engine while a signal is in flight -- a gate decides
+// whether the signal survives, an executor is handed the order it produced --
+// so there is no point at which the result could be delivered on a later tick.
+// A Runner that dispatches on a background thread refuses to take any of them
+// (see RunnerNode::requireSyncHook in strategy.h); that refusal is what makes
+// the JS-thread invariant a property of the code rather than of the call sites
+// nobody has written yet.
 //
-// Note which of these paths runs today: nothing constructs a hook host with
-// HookMode::Threaded. Every hook a Runner exposes is reachable only from the
-// JS thread -- signals originate in the emitter handed to a strategy callback,
-// which the strategy's own channel has already delivered onto that thread --
-// so the Sync branch is the one that fires, and the queued branches below are
-// kept correct rather than exercised.
+// This file used to carry a second half -- a mode enum and a
+// ThreadSafeFunction path behind it, for a threaded case nothing constructed.
+// Dead plumbing that looks like a safety net is worse than none: it made the
+// inline calls read as one branch of a choice, when they were the only branch.
 
 #pragma once
 
@@ -46,6 +48,7 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -151,36 +154,17 @@ inline Napi::BigInt64Array bookLevelsToBigInt64(Napi::Env env, const FloxBookLev
   return Napi::BigInt64Array::New(env, elems, buf, 0);
 }
 
-// Hook host mode:
-//   Sync: callbacks fire on the JS thread (synchronous Runner /
-//         BacktestRunner). Use direct Napi::FunctionReference::Call —
-//         no TSF queuing, so the result is observable immediately on
-//         return from runner.onTrade / runOhlcv.
-//   Threaded: callbacks fire from a C++ consumer thread (LiveEngine).
-//             Must go through Napi::ThreadSafeFunction; the JS handler
-//             runs at the next Node event loop tick.
-enum class HookMode
-{
-  Sync,
-  Threaded
-};
-
 // ── PnLTracker ──────────────────────────────────────────────────────────
 
-struct PnLTrackerHost : TsfnHost
+struct PnLTrackerHost
 {
   Napi::FunctionReference on_signal_fn;
-  HookMode mode;
   Napi::Env env;
   FloxPnLTrackerHandle handle{nullptr};
 
-  PnLTrackerHost(Napi::Env env_, Napi::Object obj, HookMode m = HookMode::Sync)
-      : TsfnHost(env_), on_signal_fn(takeFn(obj, "onSignal")), mode(m), env(env_)
+  PnLTrackerHost(Napi::Env env_, Napi::Object obj)
+      : on_signal_fn(takeFn(obj, "onSignal")), env(env_)
   {
-    if (mode == HookMode::Threaded)
-    {
-      openChannel("flox_pnl_cb");
-    }
     FloxPnLTrackerCallbacks cb{};
     cb.on_signal = &PnLTrackerHost::onSignalBridge;
     cb.user_data = this;
@@ -203,41 +187,20 @@ struct PnLTrackerHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->on_signal_fn.Call({signalToJs(self->env, sig)});
-      return;
-    }
-    auto* sig_copy = new FloxSignal(*sig);
-    self->post(sig_copy,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, FloxSignal* s)
-               {
-                 std::unique_ptr<FloxSignal> guard(s);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_signal_fn.Call({signalToJs(env, s)});
-               });
+    self->on_signal_fn.Call({signalToJs(self->env, sig)});
   }
 };
 
 // ── StorageSink ─────────────────────────────────────────────────────────
 
-struct StorageSinkHost : TsfnHost
+struct StorageSinkHost
 {
   Napi::FunctionReference store_fn;
-  HookMode mode;
   Napi::Env env;
   FloxStorageSinkHandle handle{nullptr};
 
-  StorageSinkHost(Napi::Env env_, Napi::Object obj, HookMode m = HookMode::Sync)
-      : TsfnHost(env_), store_fn(takeFn(obj, "store")), mode(m), env(env_)
+  StorageSinkHost(Napi::Env env_, Napi::Object obj) : store_fn(takeFn(obj, "store")), env(env_)
   {
-    if (mode == HookMode::Threaded)
-    {
-      openChannel("flox_storage_cb");
-    }
     FloxStorageSinkCallbacks cb{};
     cb.store = &StorageSinkHost::storeBridge;
     cb.user_data = this;
@@ -260,22 +223,7 @@ struct StorageSinkHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->store_fn.Call({signalToJs(self->env, sig)});
-      return;
-    }
-    auto* sig_copy = new FloxSignal(*sig);
-    self->post(sig_copy,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, FloxSignal* s)
-               {
-                 std::unique_ptr<FloxSignal> guard(s);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->store_fn.Call({signalToJs(env, s)});
-               });
+    self->store_fn.Call({signalToJs(self->env, sig)});
   }
 };
 
@@ -285,29 +233,6 @@ struct StorageSinkHost : TsfnHost
 // block on the JS callback for the result, which is incompatible with
 // LiveEngine's async consumer thread (would deadlock). Document this
 // limitation: gate hooks only work with the synchronous Runner.
-
-template <typename Callbacks, FloxRiskManagerHandle (*Create)(Callbacks),
-          void (*Destroy)(FloxRiskManagerHandle)>
-struct GateHostBase
-{
-  Napi::FunctionReference fn;
-  FloxRiskManagerHandle handle{nullptr};
-  Napi::Env env;
-
-  GateHostBase(Napi::Env env_, Napi::Object obj, const char* fn_name)
-      : fn(takeFn(obj, fn_name)), env(env_)
-  {
-  }
-  ~GateHostBase()
-  {
-    if (handle)
-    {
-      Destroy(handle);
-    }
-  }
-  GateHostBase(const GateHostBase&) = delete;
-  GateHostBase& operator=(const GateHostBase&) = delete;
-};
 
 struct RiskManagerHost
 {
@@ -420,43 +345,22 @@ struct OrderValidatorHost
 
 // ── MarketDataRecorderHook ──────────────────────────────────────────────
 
-struct MarketDataRecorderHookHost : TsfnHost
+struct MarketDataRecorderHookHost
 {
   Napi::FunctionReference on_trade_fn;
   Napi::FunctionReference on_book_fn;
   Napi::FunctionReference on_start_fn;
   Napi::FunctionReference on_stop_fn;
   FloxMarketDataRecorderHandle handle{nullptr};
-
-  struct TradePayload
-  {
-    FloxTradeData t;
-  };
-  struct BookPayload
-  {
-    uint32_t symbol;
-    uint8_t is_snap;
-    std::vector<FloxBookLevel> bids;
-    std::vector<FloxBookLevel> asks;
-    int64_t ts;
-  };
-
-  HookMode mode;
   Napi::Env env;
 
-  MarketDataRecorderHookHost(Napi::Env env_, Napi::Object obj, HookMode m = HookMode::Sync)
-      : TsfnHost(env_),
-        on_trade_fn(takeFn(obj, "onTrade")),
+  MarketDataRecorderHookHost(Napi::Env env_, Napi::Object obj)
+      : on_trade_fn(takeFn(obj, "onTrade")),
         on_book_fn(takeFn(obj, "onBookUpdate")),
         on_start_fn(takeFn(obj, "onStart")),
         on_stop_fn(takeFn(obj, "onStop")),
-        mode(m),
         env(env_)
   {
-    if (mode == HookMode::Threaded)
-    {
-      openChannel("flox_recorder_cb");
-    }
     FloxMarketDataRecorderCallbacks cb{};
     cb.on_trade = &MarketDataRecorderHookHost::onTradeBridge;
     cb.on_book_update = &MarketDataRecorderHookHost::onBookBridge;
@@ -482,22 +386,7 @@ struct MarketDataRecorderHookHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->on_trade_fn.Call({tradeToJs(self->env, t)});
-      return;
-    }
-    auto* p = new TradePayload{*t};
-    self->post(p,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, TradePayload* tp)
-               {
-                 std::unique_ptr<TradePayload> guard(tp);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_trade_fn.Call({tradeToJs(env, &tp->t)});
-               });
+    self->on_trade_fn.Call({tradeToJs(self->env, t)});
   }
   static void onBookBridge(void* ud, uint32_t symbol, uint8_t is_snap,
                            const FloxBookLevel* bids, uint32_t n_bids,
@@ -509,38 +398,13 @@ struct MarketDataRecorderHookHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->on_book_fn.Call({
-          Napi::Number::New(self->env, symbol),
-          Napi::Boolean::New(self->env, is_snap != 0),
-          bookLevelsToBigInt64(self->env, bids, n_bids),
-          bookLevelsToBigInt64(self->env, asks, n_asks),
-          Napi::BigInt::New(self->env, ts),
-      });
-      return;
-    }
-    auto* p = new BookPayload{symbol, is_snap, {}, {}, ts};
-    p->bids.assign(bids, bids + n_bids);
-    p->asks.assign(asks, asks + n_asks);
-    self->post(p,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, BookPayload* bp)
-               {
-                 std::unique_ptr<BookPayload> guard(bp);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_book_fn.Call({
-                     Napi::Number::New(env, bp->symbol),
-                     Napi::Boolean::New(env, bp->is_snap != 0),
-                     bookLevelsToBigInt64(env, bp->bids.data(),
-                                          static_cast<uint32_t>(bp->bids.size())),
-                     bookLevelsToBigInt64(env, bp->asks.data(),
-                                          static_cast<uint32_t>(bp->asks.size())),
-                     Napi::BigInt::New(env, bp->ts),
-                 });
-               });
+    self->on_book_fn.Call({
+        Napi::Number::New(self->env, symbol),
+        Napi::Boolean::New(self->env, is_snap != 0),
+        bookLevelsToBigInt64(self->env, bids, n_bids),
+        bookLevelsToBigInt64(self->env, asks, n_asks),
+        Napi::BigInt::New(self->env, ts),
+    });
   }
   static void onStartBridge(void* ud)
   {
@@ -549,21 +413,7 @@ struct MarketDataRecorderHookHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->on_start_fn.Call({});
-      return;
-    }
-    self->post(new TsfnNoPayload{},
-               [self, owner = self->owner()](Napi::Env, Napi::Function, TsfnNoPayload* np)
-               {
-                 std::unique_ptr<TsfnNoPayload> guard(np);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_start_fn.Call({});
-               });
+    self->on_start_fn.Call({});
   }
   static void onStopBridge(void* ud)
   {
@@ -572,27 +422,13 @@ struct MarketDataRecorderHookHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->on_stop_fn.Call({});
-      return;
-    }
-    self->post(new TsfnNoPayload{},
-               [self, owner = self->owner()](Napi::Env, Napi::Function, TsfnNoPayload* np)
-               {
-                 std::unique_ptr<TsfnNoPayload> guard(np);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_stop_fn.Call({});
-               });
+    self->on_stop_fn.Call({});
   }
 };
 
 // ── Executor ────────────────────────────────────────────────────────────
 
-struct ExecutorHost : TsfnHost
+struct ExecutorHost
 {
   Napi::FunctionReference submit_fn;
   Napi::FunctionReference cancel_fn;
@@ -605,11 +441,8 @@ struct ExecutorHost : TsfnHost
   Napi::Env env;
   FloxExecutorHandle handle{nullptr};
 
-  HookMode mode;
-
-  ExecutorHost(Napi::Env env_, Napi::Object obj, HookMode m = HookMode::Sync)
-      : TsfnHost(env_),
-        submit_fn(takeFn(obj, "submit")),
+  ExecutorHost(Napi::Env env_, Napi::Object obj)
+      : submit_fn(takeFn(obj, "submit")),
         cancel_fn(takeFn(obj, "cancel")),
         cancel_all_fn(takeFn(obj, "cancelAll")),
         replace_fn(takeFn(obj, "replace")),
@@ -617,13 +450,8 @@ struct ExecutorHost : TsfnHost
         capabilities_fn(takeFn(obj, "capabilities")),
         on_start_fn(takeFn(obj, "onStart")),
         on_stop_fn(takeFn(obj, "onStop")),
-        env(env_),
-        mode(m)
+        env(env_)
   {
-    if (mode == HookMode::Threaded)
-    {
-      openChannel("flox_executor_cb");
-    }
     FloxExecutorCallbacks cb{};
     cb.submit = &ExecutorHost::submitBridge;
     cb.cancel = &ExecutorHost::cancelBridge;
@@ -646,21 +474,6 @@ struct ExecutorHost : TsfnHost
   ExecutorHost(const ExecutorHost&) = delete;
   ExecutorHost& operator=(const ExecutorHost&) = delete;
 
-  struct OrderPayload
-  {
-    FloxOrder o;
-  };
-  struct ReplacePayload
-  {
-    uint64_t old_id;
-    FloxOrder o;
-  };
-  struct OcoPayload
-  {
-    FloxOrder a;
-    FloxOrder b;
-  };
-
   static void submitBridge(void* ud, const FloxOrder* o)
   {
     auto* self = static_cast<ExecutorHost*>(ud);
@@ -668,22 +481,7 @@ struct ExecutorHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->submit_fn.Call({orderToJs(self->env, o)});
-      return;
-    }
-    auto* p = new OrderPayload{*o};
-    self->post(p,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, OrderPayload* op)
-               {
-                 std::unique_ptr<OrderPayload> guard(op);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->submit_fn.Call({orderToJs(env, &op->o)});
-               });
+    self->submit_fn.Call({orderToJs(self->env, o)});
   }
   static void cancelBridge(void* ud, uint64_t id)
   {
@@ -692,19 +490,7 @@ struct ExecutorHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->cancel_fn.Call({Napi::Number::New(self->env, static_cast<double>(id))});
-      return;
-    }
-    auto* p = new uint64_t(id);
-    self->post(p,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, uint64_t* idp)
-               {
-                 std::unique_ptr<uint64_t> guard(idp);
-                 self->cancel_fn.Call(
-                     {Napi::Number::New(env, static_cast<double>(*idp))});
-               });
+    self->cancel_fn.Call({Napi::Number::New(self->env, static_cast<double>(id))});
   }
   static void cancelAllBridge(void* ud, uint32_t s)
   {
@@ -713,18 +499,7 @@ struct ExecutorHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->cancel_all_fn.Call({Napi::Number::New(self->env, s)});
-      return;
-    }
-    auto* p = new uint32_t(s);
-    self->post(p,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, uint32_t* sp)
-               {
-                 std::unique_ptr<uint32_t> guard(sp);
-                 self->cancel_all_fn.Call({Napi::Number::New(env, *sp)});
-               });
+    self->cancel_all_fn.Call({Napi::Number::New(self->env, s)});
   }
   static void replaceBridge(void* ud, uint64_t old_id, const FloxOrder* o)
   {
@@ -733,28 +508,10 @@ struct ExecutorHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->replace_fn.Call({
-          Napi::Number::New(self->env, static_cast<double>(old_id)),
-          orderToJs(self->env, o),
-      });
-      return;
-    }
-    auto* p = new ReplacePayload{old_id, *o};
-    self->post(p,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, ReplacePayload* rp)
-               {
-                 std::unique_ptr<ReplacePayload> guard(rp);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->replace_fn.Call({
-                     Napi::Number::New(env, static_cast<double>(rp->old_id)),
-                     orderToJs(env, &rp->o),
-                 });
-               });
+    self->replace_fn.Call({
+        Napi::Number::New(self->env, static_cast<double>(old_id)),
+        orderToJs(self->env, o),
+    });
   }
   static void submitOcoBridge(void* ud, const FloxOrder* a, const FloxOrder* b)
   {
@@ -763,28 +520,12 @@ struct ExecutorHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->submit_oco_fn.Call({orderToJs(self->env, a), orderToJs(self->env, b)});
-      return;
-    }
-    auto* p = new OcoPayload{*a, *b};
-    self->post(p,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, OcoPayload* op)
-               {
-                 std::unique_ptr<OcoPayload> guard(op);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->submit_oco_fn.Call({
-                     orderToJs(env, &op->a),
-                     orderToJs(env, &op->b),
-                 });
-               });
+    self->submit_oco_fn.Call({orderToJs(self->env, a), orderToJs(self->env, b)});
   }
-  // Capabilities is synchronous — engine queries it inline. Only safe
-  // to call from the JS thread (sync Runner / BacktestRunner).
+  // Capabilities is synchronous — the engine queries it inline. It can only
+  // be reached from the JS thread, and by construction rather than by
+  // convention: a threaded Runner refuses setExecutor outright, so the only
+  // runners that hold an executor are the ones whose callbacks run inline.
   static void capabilitiesBridge(void* ud, FloxExchangeCapabilities* out)
   {
     auto* self = static_cast<ExecutorHost*>(ud);
@@ -826,21 +567,7 @@ struct ExecutorHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->on_start_fn.Call({});
-      return;
-    }
-    self->post(new TsfnNoPayload{},
-               [self, owner = self->owner()](Napi::Env, Napi::Function, TsfnNoPayload* np)
-               {
-                 std::unique_ptr<TsfnNoPayload> guard(np);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_start_fn.Call({});
-               });
+    self->on_start_fn.Call({});
   }
   static void onStopBridge(void* ud)
   {
@@ -849,27 +576,13 @@ struct ExecutorHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      self->on_stop_fn.Call({});
-      return;
-    }
-    self->post(new TsfnNoPayload{},
-               [self, owner = self->owner()](Napi::Env, Napi::Function, TsfnNoPayload* np)
-               {
-                 std::unique_ptr<TsfnNoPayload> guard(np);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_stop_fn.Call({});
-               });
+    self->on_stop_fn.Call({});
   }
 };
 
 // ── ExecutionListener ───────────────────────────────────────────────────
 
-struct ExecutionListenerHost : TsfnHost
+struct ExecutionListenerHost
 {
   Napi::FunctionReference on_submitted_fn;
   Napi::FunctionReference on_accepted_fn;
@@ -884,13 +597,10 @@ struct ExecutionListenerHost : TsfnHost
   Napi::FunctionReference on_triggered_fn;
   Napi::FunctionReference on_trailing_update_fn;
   FloxExecutionListenerHandle handle{nullptr};
-
-  HookMode mode;
   Napi::Env env;
 
-  ExecutionListenerHost(Napi::Env env_, Napi::Object obj, HookMode m = HookMode::Sync)
-      : TsfnHost(env_),
-        on_submitted_fn(takeFn(obj, "onSubmitted")),
+  ExecutionListenerHost(Napi::Env env_, Napi::Object obj)
+      : on_submitted_fn(takeFn(obj, "onSubmitted")),
         on_accepted_fn(takeFn(obj, "onAccepted")),
         on_partial_fn(takeFn(obj, "onPartiallyFilled")),
         on_filled_fn(takeFn(obj, "onFilled")),
@@ -902,13 +612,8 @@ struct ExecutionListenerHost : TsfnHost
         on_pending_trigger_fn(takeFn(obj, "onPendingTrigger")),
         on_triggered_fn(takeFn(obj, "onTriggered")),
         on_trailing_update_fn(takeFn(obj, "onTrailingStopUpdated")),
-        mode(m),
         env(env_)
   {
-    if (mode == HookMode::Threaded)
-    {
-      openChannel("flox_listener_cb");
-    }
     FloxExecutionListenerCallbacks cb{};
     cb.on_submitted = &ExecutionListenerHost::onSubmittedBridge;
     cb.on_accepted = &ExecutionListenerHost::onAcceptedBridge;
@@ -935,31 +640,6 @@ struct ExecutionListenerHost : TsfnHost
   ExecutionListenerHost(const ExecutionListenerHost&) = delete;
   ExecutionListenerHost& operator=(const ExecutionListenerHost&) = delete;
 
-  struct OrderEv
-  {
-    FloxOrder o;
-  };
-  struct PartialEv
-  {
-    FloxOrder o;
-    int64_t fill_qty;
-  };
-  struct RejectEv
-  {
-    FloxOrder o;
-    std::string reason;
-  };
-  struct ReplaceEv
-  {
-    FloxOrder a;
-    FloxOrder b;
-  };
-  struct TrailingEv
-  {
-    FloxOrder o;
-    int64_t new_trigger;
-  };
-
   static void singleOrderBridge(ExecutionListenerHost* self, Napi::FunctionReference& fn,
                                 const FloxOrder* o)
   {
@@ -967,22 +647,7 @@ struct ExecutionListenerHost : TsfnHost
     {
       return;
     }
-    if (self->mode == HookMode::Sync)
-    {
-      fn.Call({orderToJs(self->env, o)});
-      return;
-    }
-    auto* ev = new OrderEv{*o};
-    self->post(ev,
-               [&fn, owner = self->owner()](Napi::Env env, Napi::Function, OrderEv* e)
-               {
-                 std::unique_ptr<OrderEv> guard(e);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 fn.Call({orderToJs(env, &e->o)});
-               });
+    fn.Call({orderToJs(self->env, o)});
   }
 
   static void onSubmittedBridge(void* ud, const FloxOrder* o)
@@ -1032,20 +697,10 @@ struct ExecutionListenerHost : TsfnHost
     {
       return;
     }
-    auto* ev = new PartialEv{*o, fill_qty};
-    self->post(ev,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, PartialEv* e)
-               {
-                 std::unique_ptr<PartialEv> guard(e);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_partial_fn.Call({
-                     orderToJs(env, &e->o),
-                     Napi::Number::New(env, e->fill_qty / 1e8),
-                 });
-               });
+    self->on_partial_fn.Call({
+        orderToJs(self->env, o),
+        Napi::Number::New(self->env, fill_qty / 1e8),
+    });
   }
   static void onRejectedBridge(void* ud, const FloxOrder* o, const char* reason)
   {
@@ -1054,20 +709,10 @@ struct ExecutionListenerHost : TsfnHost
     {
       return;
     }
-    auto* ev = new RejectEv{*o, reason ? std::string(reason) : std::string{}};
-    self->post(ev,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, RejectEv* e)
-               {
-                 std::unique_ptr<RejectEv> guard(e);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_rejected_fn.Call({
-                     orderToJs(env, &e->o),
-                     Napi::String::New(env, e->reason),
-                 });
-               });
+    self->on_rejected_fn.Call({
+        orderToJs(self->env, o),
+        Napi::String::New(self->env, reason ? reason : ""),
+    });
   }
   static void onReplacedBridge(void* ud, const FloxOrder* a, const FloxOrder* b)
   {
@@ -1076,20 +721,7 @@ struct ExecutionListenerHost : TsfnHost
     {
       return;
     }
-    auto* ev = new ReplaceEv{*a, *b};
-    self->post(ev,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, ReplaceEv* e)
-               {
-                 std::unique_ptr<ReplaceEv> guard(e);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_replaced_fn.Call({
-                     orderToJs(env, &e->a),
-                     orderToJs(env, &e->b),
-                 });
-               });
+    self->on_replaced_fn.Call({orderToJs(self->env, a), orderToJs(self->env, b)});
   }
   static void onTrailingUpdateBridge(void* ud, const FloxOrder* o, int64_t new_trigger_raw)
   {
@@ -1098,20 +730,10 @@ struct ExecutionListenerHost : TsfnHost
     {
       return;
     }
-    auto* ev = new TrailingEv{*o, new_trigger_raw};
-    self->post(ev,
-               [self, owner = self->owner()](Napi::Env env, Napi::Function, TrailingEv* e)
-               {
-                 std::unique_ptr<TrailingEv> guard(e);
-                 if (owner->retired())
-                 {
-                   return;
-                 }
-                 self->on_trailing_update_fn.Call({
-                     orderToJs(env, &e->o),
-                     Napi::Number::New(env, e->new_trigger / 1e8),
-                 });
-               });
+    self->on_trailing_update_fn.Call({
+        orderToJs(self->env, o),
+        Napi::Number::New(self->env, new_trigger_raw / 1e8),
+    });
   }
 };
 
