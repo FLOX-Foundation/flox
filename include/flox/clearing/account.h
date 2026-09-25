@@ -11,6 +11,7 @@
 
 #include "flox/clearing/leveraged_position.h"
 #include "flox/common.h"
+#include "flox/util/base/scale_check.h"
 
 #include <algorithm>
 #include <cmath>
@@ -53,16 +54,30 @@ class Account
   static constexpr int64_t kThirtyDaysNs = 30LL * 24LL * 3600LL * 1'000'000'000LL;
 
   Account() = default;
-  Account(uint64_t accountId, double equity)
+  Account(uint64_t accountId, Volume equity)
       : _accountId(accountId), _equity(equity)
+  {
+  }
+  // The double-taking forms are the boundary adapters the C ABI, the Python
+  // and Node bindings and configuration files come in through: they quantise
+  // to the 1e-8 scale once, here, instead of leaving a double to travel
+  // through the margin arithmetic. Prefer the fixed-point overloads in engine
+  // code.
+  Account(uint64_t accountId, double equity)
+      : _accountId(accountId), _equity(Volume::fromDouble(equity))
   {
   }
 
   uint64_t accountId() const noexcept { return _accountId; }
 
-  double equity() const noexcept { return _equity; }
-  void setEquity(double e) noexcept { _equity = e; }
-  void addEquity(double delta) noexcept { _equity += delta; }
+  Volume equity() const noexcept { return _equity; }
+  void setEquity(Volume e) noexcept { _equity = e; }
+  void setEquity(double e) noexcept { _equity = Volume::fromDouble(e); }
+  void addEquity(Volume delta) noexcept
+  {
+    _equity = Volume::fromRaw(checkedAddI64(_equity.raw(), delta.raw()));
+  }
+  void addEquity(double delta) noexcept { addEquity(Volume::fromDouble(delta)); }
 
   MarginMode marginMode() const noexcept { return _mode; }
   void setMarginMode(MarginMode mode) noexcept { _mode = mode; }
@@ -83,9 +98,24 @@ class Account
   // requirement (max loss is the premium already paid, so it cannot be
   // liquidated). Wire these from SymbolInfo.contractMultiplier / optionType /
   // side at the position-open path.
+  void openPosition(SymbolId symbol, Quantity quantity, Price entryPrice,
+                    Volume isolatedEquity = Volume{},
+                    Quantity contractMultiplier = Quantity::fromRaw(Quantity::Scale),
+                    bool isLongOption = false);
   void openPosition(SymbolId symbol, double quantity, double entryPrice,
                     double isolatedEquity = 0.0, double contractMultiplier = 1.0,
                     bool isLongOption = false);
+  // Close every leg on `symbol`, realising each one's PnL at the current mark
+  // into account equity first: `quantity * (mark - entryPrice) *
+  // contractMultiplier`, the same expression totalUnrealisedPnl() reports, so
+  // what the account showed as unrealised is exactly what the close books. A
+  // leg on a symbol with no mark is valued at entry and realises nothing,
+  // which is how it was already valued everywhere else.
+  //
+  // This used to erase the legs and leave equity untouched, so a backtest or a
+  // venue ledger that opened and closed positions all day reported the equity
+  // it started with, and every gain or loss went missing unless the caller
+  // remembered to post it by hand through addEquity.
   void closePosition(SymbolId symbol);
   const std::vector<LeveragedPosition>& positions() const noexcept { return _positions; }
   std::vector<LeveragedPosition>& positionsMut() noexcept { return _positions; }
@@ -100,8 +130,9 @@ class Account
   // the stale-mark guard (T053) must pass a real timestamp. The
   // default 0 keeps backwards compatibility with callers that don't
   // care about staleness checks.
+  void setMark(SymbolId symbol, Price price, int64_t tsNs = 0);
   void setMark(SymbolId symbol, double price, int64_t tsNs = 0);
-  double markFor(SymbolId symbol) const;
+  Price markFor(SymbolId symbol) const;
   // Last timestamp any setMark was called for `symbol`. Returns
   // INT64_MIN when the symbol has never been marked. Used by the
   // stale-mark guard.
@@ -119,17 +150,23 @@ class Account
   // FeeSchedule when bound. `symbol` (default 0, "unknown") lets the
   // caller break down rolling notional by symbol for venue tier
   // overrides or analytics; FeeSchedule still reads the aggregate.
+  void recordFill(int64_t tsNs, Volume notional, SymbolId symbol = 0);
   void recordFill(int64_t tsNs, double notional, SymbolId symbol = 0);
-  double rollingNotional30d() const noexcept { return _rollingTotal; }
+  // The window's sum is exact, so there is nothing left for a clamp to hide:
+  // the total used to be a double accumulated with += and -=, where one large
+  // fill swallowed every small one beside it and the subtraction that evicted
+  // the large one took the total negative, at which point it was rewritten as
+  // zero and every fill still inside the window was gone.
+  Volume rollingNotional30d() const noexcept { return _rollingTotal; }
   // Per-symbol rolling notional within the current 30d window.
   // Symbols never seen by recordFill (or whose fills have all been
   // evicted) are absent from the result. The fallback `symbol = 0`
   // bucket carries fills recorded without an explicit symbol.
-  std::vector<std::pair<SymbolId, double>> rollingNotionalBySymbol30d() const;
+  std::vector<std::pair<SymbolId, Volume>> rollingNotionalBySymbol30d() const;
   void resetRolling() noexcept
   {
     _rolling.clear();
-    _rollingTotal = 0.0;
+    _rollingTotal = Volume{};
   }
 
   // Full state reset: clears every open position, every recorded mark,
@@ -142,35 +179,45 @@ class Account
   // and its equity delta from episode N survive into episode N + 1 --
   // openPosition()/closePosition() only ever append to or filter
   // `_positions`, nothing clears it on its own between runs.
-  void reset(double equity) noexcept
+  void reset(Volume equity) noexcept
   {
     _positions.clear();
     _marks.clear();
     _equity = equity;
     resetRolling();
   }
+  void reset(double equity) noexcept { reset(Volume::fromDouble(equity)); }
 
   // Aggregate views over the position book. All scale each leg by its
   // contractMultiplier, so a 100-multiplier option counts 100x a perp of the
   // same quantity and price.
-  double totalNotional() const;
-  double totalUnrealisedPnl() const;
+  Volume totalNotional() const;
+  Volume totalUnrealisedPnl() const;
   // Margin-bearing subset: the same aggregates but excluding premium-paid long
   // options, which post no maintenance margin (max loss = premium already
   // paid). For an account with no long options these equal the totals.
-  double marginNotional() const;
-  double marginUnrealisedPnl() const;
+  Volume marginNotional() const;
+  Volume marginUnrealisedPnl() const;
   // Account-level cross-margin equity headroom: equity + margin-bearing uPnL
   // minus the maintenance margin required at the given tier on the
   // margin-bearing notional. Negative = account is underwater and should be
   // liquidated. Long options never push this negative on their own.
-  double crossHeadroom(double tierFraction) const;
+  // `tierFraction` is a maintenance-margin fraction (0.005 for 0.5%); it is
+  // quantised to the 1e-8 scale before it multiplies the notional, so the
+  // requirement is a fixed-point product like every other number here.
+  Volume crossHeadroom(double tierFraction) const;
 
  private:
   void evictExpired(int64_t nowNs);
 
+  // One leg's marked PnL and one leg's notional, in the fixed point both the
+  // aggregates and closePosition() read them through, so the three can never
+  // disagree about what a leg is worth.
+  static int64_t legUnrealisedPnlRaw(const LeveragedPosition& p, Price mark);
+  static int64_t legNotionalRaw(const LeveragedPosition& p, Price mark);
+
   uint64_t _accountId{0};
-  double _equity{0.0};
+  Volume _equity{};
   MarginMode _mode{MarginMode::Cross};
   std::vector<LeveragedPosition> _positions;
   // Marks are stored as (symbol, price, last-update ts). ts is
@@ -179,18 +226,18 @@ class Account
   struct Mark
   {
     SymbolId symbol;
-    double price;
+    Price price;
     int64_t tsNs;
   };
   std::vector<Mark> _marks;
   struct RollingFill
   {
     int64_t tsNs;
-    double notional;
+    Volume notional;
     SymbolId symbol;
   };
   std::deque<RollingFill> _rolling;
-  double _rollingTotal{0.0};
+  Volume _rollingTotal{};
 };
 
 }  // namespace flox

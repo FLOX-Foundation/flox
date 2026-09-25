@@ -233,4 +233,39 @@ static inline int64_t sdiv_round_nearest(int64_t n, const FastDiv64& fd)
   return negative ? -(int64_t)q : (int64_t)q;
 }
 
+// Signed division rounding toward negative infinity, and its mirror rounding
+// toward positive infinity. An order book snaps an off-tick quote with these:
+// the tick a bid is stored at must never price above what the venue quoted,
+// and the tick an ask is stored at must never price below it. Rounding to the
+// nearest tick moves the quote by up to half a tick in whichever direction is
+// closer, which for half the inputs is the direction that invents liquidity.
+//
+// The magnitude is divided unsigned, as in sdiv_round_nearest, and the
+// remainder decides whether the truncated quotient has to be walked one step.
+// `q * fd.d` cannot overflow: the true product is at most the magnitude.
+static inline int64_t sdiv_floor(int64_t n, const FastDiv64& fd)
+{
+  if (n >= 0)
+  {
+    return (int64_t)udiv_fast((uint64_t)n, fd);
+  }
+  // -(n + 1) + 1 keeps INT64_MIN out of undefined territory.
+  const uint64_t magnitude = (uint64_t)(-(n + 1)) + 1u;
+  const uint64_t q = udiv_fast(magnitude, fd);
+  const bool exact = (q * fd.d) == magnitude;
+  return exact ? -(int64_t)q : -(int64_t)q - 1;
+}
+
+static inline int64_t sdiv_ceil(int64_t n, const FastDiv64& fd)
+{
+  if (n < 0)
+  {
+    const uint64_t magnitude = (uint64_t)(-(n + 1)) + 1u;
+    return -(int64_t)udiv_fast(magnitude, fd);
+  }
+  const uint64_t q = udiv_fast((uint64_t)n, fd);
+  const bool exact = (q * fd.d) == (uint64_t)n;
+  return exact ? (int64_t)q : (int64_t)q + 1;
+}
+
 }  // namespace flox::math

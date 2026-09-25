@@ -69,7 +69,7 @@ inline void bindLiquidationEngine(py::module_& m)
       // orphan leg looked like a 1x perp no matter what the caller intended.
       .def("open_position", [](flox::LiquidationEngine& self, uint64_t account_id, uint32_t symbol, double quantity, double entry_price, double equity, double contract_multiplier, bool is_long_option)
            { self.openPosition(flox::LeveragedPosition{
-                 .accountId = account_id, .symbol = symbol, .quantity = quantity, .entryPrice = entry_price, .equity = equity, .contractMultiplier = contract_multiplier, .isLongOption = is_long_option}); }, py::arg("account_id"), py::arg("symbol"), py::arg("quantity"), py::arg("entry_price"), py::arg("equity"), py::arg("contract_multiplier") = 1.0, py::arg("is_long_option") = false)
+                 .accountId = account_id, .symbol = symbol, .quantity = flox::Quantity::fromDouble(quantity), .entryPrice = flox::Price::fromDouble(entry_price), .equity = flox::Volume::fromDouble(equity), .contractMultiplier = flox::Quantity::fromDouble(contract_multiplier), .isLongOption = is_long_option}); }, py::arg("account_id"), py::arg("symbol"), py::arg("quantity"), py::arg("entry_price"), py::arg("equity"), py::arg("contract_multiplier") = 1.0, py::arg("is_long_option") = false)
       .def("close_position", &flox::LiquidationEngine::closePosition, py::arg("account_id"), py::arg("symbol"))
       .def("on_mark", [](flox::LiquidationEngine& self, uint32_t symbol, double mark_price)
            {

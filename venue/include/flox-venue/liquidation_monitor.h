@@ -36,10 +36,12 @@ class LiquidationMonitor
     flox::LeveragedPosition p;
     p.accountId = account;
     p.symbol = symbol_;
-    p.quantity = signedQty;  // + long, - short
-    p.entryPrice = entry;
-    p.equity = equity;
-    p.contractMultiplier = multiplier;
+    // The monitor's own surface is double-facing; LeveragedPosition is fixed
+    // point, so the quantisation happens here, once, on the way in.
+    p.quantity = flox::Quantity::fromDouble(signedQty);  // + long, - short
+    p.entryPrice = flox::Price::fromDouble(entry);
+    p.equity = flox::Volume::fromDouble(equity);
+    p.contractMultiplier = flox::Quantity::fromDouble(multiplier);
     engine_.openPosition(p);
     pos_[account] = p;
   }
@@ -61,9 +63,9 @@ class LiquidationMonitor
       NewOrder o;
       o.id = (++liqSeq_) | kLiqBit;  // synthetic liquidation order id
       o.symbol = symbol_;
-      o.side = p.quantity > 0 ? Side::SELL : Side::BUY;  // close long -> sell
+      o.side = p.quantity.raw() > 0 ? Side::SELL : Side::BUY;  // close long -> sell
       o.type = OrderType::MARKET;
-      o.quantity = Quantity::fromDouble(std::abs(p.quantity));
+      o.quantity = Quantity::fromRaw(std::abs(p.quantity.raw()));
       o.accountId = acct;
       orders.push_back(o);
       engine_.closePosition(acct, symbol_);

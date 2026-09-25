@@ -57,6 +57,12 @@ public:
 
 1. **Price Indexing**
    Prices are mapped to array indices using `price / tickSize`, enabling constant-time access.
+   A quote that does not sit on a tick is snapped away from the mid: an ask rounds
+   up to the next tick, a bid down to the previous one, so a stored ask is never
+   below the quoted ask and a stored bid never above the quoted bid. A price
+   already on a tick is stored unchanged. `bidAtPrice` / `askAtPrice` snap the
+   same way as the side they query, so a level is found at the price it was sent
+   at. See [Tick snapping](#tick-snapping).
 
 2. **Snapshot Handling**
    A `SNAPSHOT` clears all state and resets index bounds before applying levels.
@@ -152,9 +158,29 @@ QuickJS and Codon wrappers raise in whatever way their language expects.
 Ticks of 1e-8 and 2e-8, which is what the sub-cent pairs quote in, behave like
 any other.
 
+## Tick snapping
+
+An off-tick quote has to be stored at some tick, and which one it is decides
+whether the book can report a price the venue never offered. Snapping to the
+nearest tick moved an ask down by up to half a tick and a bid up by the same,
+so `bestAsk()` handed a strategy a better price than the quote and it sized
+against liquidity that is not there. The book snaps conservatively instead:
+
+| Side | Rule       | Example, tick 1.0 | Stored |
+| ---- | ---------- | ----------------- | ------ |
+| Ask  | round up   | 100.4             | 101.00 |
+| Bid  | round down | 99.6              | 99.00  |
+| Either | unchanged on a tick | 100.0    | 100.00 |
+
+The stored price is therefore equal to the quote or one tick worse, never
+better, whatever the tick size and wherever inside the tick the quote falls.
+A venue that publishes more precision than its own tick (a cent tick with a
+sub-cent quote) is the ordinary case for this, not the corner.
+
 ## Notes
 
 * Extremely fast and deterministic — suitable for backtests and production.
-* Requires external enforcement of tick-aligned prices.
+* Off-tick prices are accepted and snapped conservatively, see above; feeding
+  tick-aligned prices still avoids the loss of precision entirely.
 * Offers predictable latency across workloads, assuming sparse updates.
 * Uses `math::FastDiv64` for optimized tick division.

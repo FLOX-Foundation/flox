@@ -79,13 +79,13 @@ struct StackSnapshot
 StackSnapshot capture(VenueStack& stack)
 {
   StackSnapshot s;
-  s.equity = stack.account().equity();
+  s.equity = stack.account().equity().toDouble();
   s.position_count = stack.account().positionCount();
   s.liquidations_count = stack.liquidation().liquidationsCount();
   s.adl_closeouts_count = stack.liquidation().adlCloseoutsCount();
   s.insurance_payments_count = stack.liquidation().insurancePaymentsCount();
   s.insurance_fund_balance = stack.liquidation().insuranceFundBalance();
-  s.rolling_notional_30d = stack.account().rollingNotional30d();
+  s.rolling_notional_30d = stack.account().rollingNotional30d().toDouble();
   s.fee_tier_index = stack.fees().currentTierIndex();
   s.ticks_to_first_adl = stack.liquidation().ticksToFirstAdl();
   s.cascade_sizes = stack.liquidation().cascadeSizesPerTick();

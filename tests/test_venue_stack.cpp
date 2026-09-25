@@ -46,7 +46,7 @@ TEST(VenueStack, BinanceFactoryWiresEverySubsystem)
   auto stack = VenueStack::binance_um_futures(/*accountId=*/42, /*equity=*/10'000.0);
   EXPECT_EQ(stack.venueName(), "binance_um_futures");
   EXPECT_EQ(stack.account().accountId(), 42u);
-  EXPECT_DOUBLE_EQ(stack.account().equity(), 10'000.0);
+  EXPECT_DOUBLE_EQ(stack.account().equity().toDouble(), 10'000.0);
   EXPECT_EQ(stack.account().marginMode(), MarginMode::Cross);
 
   // FeeSchedule bound to account.
@@ -126,7 +126,7 @@ TEST(VenueStack, FeeBindingTracksAggregateNotional)
 {
   auto stack = VenueStack::binance_um_futures(1, 100.0);
   stack.fees().recordFill(0, 200'000.0);
-  EXPECT_DOUBLE_EQ(stack.account().rollingNotional30d(), 200'000.0);
+  EXPECT_DOUBLE_EQ(stack.account().rollingNotional30d().toDouble(), 200'000.0);
   // FeeSchedule reads aggregate from account; tier > 0 after 250k.
   stack.fees().recordFill(0, 60'000.0);
   EXPECT_GE(stack.fees().currentTierIndex(), 1u);

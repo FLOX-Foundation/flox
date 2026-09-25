@@ -45,6 +45,14 @@ void Account::setMarginModeByName(const std::string& name)
 void Account::openPosition(SymbolId symbol, double quantity, double entryPrice,
                            double isolatedEquity, double contractMultiplier, bool isLongOption)
 {
+  openPosition(symbol, Quantity::fromDouble(quantity), Price::fromDouble(entryPrice),
+               Volume::fromDouble(isolatedEquity), Quantity::fromDouble(contractMultiplier),
+               isLongOption);
+}
+
+void Account::openPosition(SymbolId symbol, Quantity quantity, Price entryPrice,
+                           Volume isolatedEquity, Quantity contractMultiplier, bool isLongOption)
+{
   LeveragedPosition p;
   p.accountId = _accountId;
   p.symbol = symbol;
@@ -61,6 +69,22 @@ void Account::openPosition(SymbolId symbol, double quantity, double entryPrice,
 
 void Account::closePosition(SymbolId symbol)
 {
+  // Realise first, erase second: the legs are what the PnL is computed from.
+  const Price mark = markFor(symbol);
+  if (mark.raw() > 0)
+  {
+    int64_t realised = 0;
+    for (const auto& p : _positions)
+    {
+      if (p.symbol != symbol)
+      {
+        continue;
+      }
+      realised = checkedAddI64(realised, legUnrealisedPnlRaw(p, mark));
+    }
+    _equity = Volume::fromRaw(checkedAddI64(_equity.raw(), realised));
+  }
+
   _positions.erase(
       std::remove_if(_positions.begin(), _positions.end(),
                      [&](const LeveragedPosition& p)
@@ -68,7 +92,29 @@ void Account::closePosition(SymbolId symbol)
       _positions.end());
 }
 
+int64_t Account::legUnrealisedPnlRaw(const LeveragedPosition& p, Price mark)
+{
+  const int64_t diff = checkedSubI64(mark.raw(), p.entryPrice.raw());
+  const int64_t pnl = mulDivI64(p.quantity.raw(), diff, Volume::Scale);
+  return mulDivI64(pnl, p.contractMultiplier.raw(), Quantity::Scale);
+}
+
+int64_t Account::legNotionalRaw(const LeveragedPosition& p, Price mark)
+{
+  const int64_t absQty = p.quantity.raw() < 0 ? -p.quantity.raw() : p.quantity.raw();
+  // The multiplier scales money, so it is applied to the notional rather than
+  // to the quantity: a fractional multiplier would otherwise round the
+  // position size before it ever reached a price.
+  const int64_t notional = mulDivI64(absQty, mark.raw(), Volume::Scale);
+  return mulDivI64(notional, p.contractMultiplier.raw(), Quantity::Scale);
+}
+
 void Account::setMark(SymbolId symbol, double price, int64_t tsNs)
+{
+  setMark(symbol, Price::fromDouble(price), tsNs);
+}
+
+void Account::setMark(SymbolId symbol, Price price, int64_t tsNs)
 {
   for (auto& m : _marks)
   {
@@ -82,7 +128,7 @@ void Account::setMark(SymbolId symbol, double price, int64_t tsNs)
   _marks.push_back(Mark{symbol, price, tsNs});
 }
 
-double Account::markFor(SymbolId symbol) const
+Price Account::markFor(SymbolId symbol) const
 {
   for (const auto& m : _marks)
   {
@@ -91,7 +137,7 @@ double Account::markFor(SymbolId symbol) const
       return m.price;
     }
   }
-  return 0.0;
+  return Price{};
 }
 
 int64_t Account::markTsFor(SymbolId symbol) const
@@ -110,7 +156,7 @@ bool Account::hasStaleMarks(int64_t nowNs, int64_t budgetNs) const
 {
   for (const auto& p : _positions)
   {
-    if (p.quantity == 0.0)
+    if (p.quantity.isZero())
     {
       continue;
     }
@@ -139,15 +185,20 @@ bool Account::hasStaleMarks(int64_t nowNs, int64_t budgetNs) const
 
 void Account::recordFill(int64_t tsNs, double notional, SymbolId symbol)
 {
+  recordFill(tsNs, Volume::fromDouble(notional), symbol);
+}
+
+void Account::recordFill(int64_t tsNs, Volume notional, SymbolId symbol)
+{
   _rolling.push_back(RollingFill{tsNs, notional, symbol});
-  _rollingTotal += notional;
+  _rollingTotal = Volume::fromRaw(checkedAddI64(_rollingTotal.raw(), notional.raw()));
   evictExpired(tsNs);
 }
 
-std::vector<std::pair<SymbolId, double>>
+std::vector<std::pair<SymbolId, Volume>>
 Account::rollingNotionalBySymbol30d() const
 {
-  std::vector<std::pair<SymbolId, double>> out;
+  std::vector<std::pair<SymbolId, Volume>> out;
   for (const auto& f : _rolling)
   {
     bool found = false;
@@ -155,7 +206,7 @@ Account::rollingNotionalBySymbol30d() const
     {
       if (sym == f.symbol)
       {
-        total += f.notional;
+        total = Volume::fromRaw(checkedAddI64(total.raw(), f.notional.raw()));
         found = true;
         break;
       }
@@ -173,83 +224,83 @@ void Account::evictExpired(int64_t nowNs)
   const int64_t cutoff = nowNs - kThirtyDaysNs;
   while (!_rolling.empty() && _rolling.front().tsNs <= cutoff)
   {
-    _rollingTotal -= _rolling.front().notional;
+    _rollingTotal =
+        Volume::fromRaw(checkedSubI64(_rollingTotal.raw(), _rolling.front().notional.raw()));
     _rolling.pop_front();
   }
-  if (_rollingTotal < 0.0)
-  {
-    _rollingTotal = 0.0;
-  }
+  // No clamp: what goes in comes back out to the raw, so a total below zero
+  // would mean a fill was recorded negative, not that the sum drifted, and
+  // rewriting it as zero would throw away every fill still in the window.
 }
 
-double Account::totalNotional() const
+Volume Account::totalNotional() const
 {
-  double n = 0.0;
+  int64_t n = 0;
   for (const auto& p : _positions)
   {
-    const double mark = markFor(p.symbol);
-    const double px = mark > 0.0 ? mark : p.entryPrice;
-    n += std::abs(p.quantity) * px * p.contractMultiplier;
+    const Price mark = markFor(p.symbol);
+    const Price px = mark.raw() > 0 ? mark : p.entryPrice;
+    n = checkedAddI64(n, legNotionalRaw(p, px));
   }
-  return n;
+  return Volume::fromRaw(n);
 }
 
-double Account::totalUnrealisedPnl() const
+Volume Account::totalUnrealisedPnl() const
 {
-  double upnl = 0.0;
+  int64_t upnl = 0;
   for (const auto& p : _positions)
   {
-    const double mark = markFor(p.symbol);
-    if (mark <= 0.0)
+    const Price mark = markFor(p.symbol);
+    if (mark.raw() <= 0)
     {
-      continue;  // no mark → assume valued at entry; zero uPnL.
+      continue;  // no mark -> assume valued at entry; zero uPnL.
     }
-    upnl += p.quantity * (mark - p.entryPrice) * p.contractMultiplier;
+    upnl = checkedAddI64(upnl, legUnrealisedPnlRaw(p, mark));
   }
-  return upnl;
+  return Volume::fromRaw(upnl);
 }
 
-double Account::marginNotional() const
+Volume Account::marginNotional() const
 {
-  double n = 0.0;
+  int64_t n = 0;
   for (const auto& p : _positions)
   {
     if (p.isLongOption)
     {
       continue;  // premium-paid long option posts no maintenance margin
     }
-    const double mark = markFor(p.symbol);
-    const double px = mark > 0.0 ? mark : p.entryPrice;
-    n += std::abs(p.quantity) * px * p.contractMultiplier;
+    const Price mark = markFor(p.symbol);
+    const Price px = mark.raw() > 0 ? mark : p.entryPrice;
+    n = checkedAddI64(n, legNotionalRaw(p, px));
   }
-  return n;
+  return Volume::fromRaw(n);
 }
 
-double Account::marginUnrealisedPnl() const
+Volume Account::marginUnrealisedPnl() const
 {
-  double upnl = 0.0;
+  int64_t upnl = 0;
   for (const auto& p : _positions)
   {
     if (p.isLongOption)
     {
       continue;  // its loss is bounded by the paid premium, not a margin call
     }
-    const double mark = markFor(p.symbol);
-    if (mark <= 0.0)
+    const Price mark = markFor(p.symbol);
+    if (mark.raw() <= 0)
     {
       continue;
     }
-    upnl += p.quantity * (mark - p.entryPrice) * p.contractMultiplier;
+    upnl = checkedAddI64(upnl, legUnrealisedPnlRaw(p, mark));
   }
-  return upnl;
+  return Volume::fromRaw(upnl);
 }
 
-double Account::crossHeadroom(double tierFraction) const
+Volume Account::crossHeadroom(double tierFraction) const
 {
-  const double notional = marginNotional();
-  const double upnl = marginUnrealisedPnl();
-  const double mmReq = notional * tierFraction;
-  return _equity + upnl - mmReq;
+  const int64_t notional = marginNotional().raw();
+  const int64_t upnl = marginUnrealisedPnl().raw();
+  const int64_t mmReq = mulDivI64(notional, Volume::fromDouble(tierFraction).raw(), Volume::Scale);
+  return Volume::fromRaw(checkedSubI64(checkedAddI64(_equity.raw(), upnl), mmReq));
 }
 
 }  // namespace flox

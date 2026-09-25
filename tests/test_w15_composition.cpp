@@ -136,9 +136,9 @@ TEST(W15Composition, LiquidationRoutesThroughRateLimitedExecutor)
   LeveragedPosition p;
   p.accountId = 1;
   p.symbol = BTC;
-  p.quantity = 10.0;
-  p.entryPrice = 100.0;
-  p.equity = 10.0;
+  p.quantity = Quantity::fromDouble(10.0);
+  p.entryPrice = Price::fromDouble(100.0);
+  p.equity = Volume::fromDouble(10.0);
   liq.openPosition(p);
 
   const auto out = liq.onMark(BTC, 80.0);

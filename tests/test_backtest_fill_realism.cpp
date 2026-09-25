@@ -417,9 +417,9 @@ TEST(BacktestFillRealism, RoutedLiquidationWalksTheBook)
   // 10 lots long from 100 with equity 10: underwater at a mark of 80.
   engine.openPosition(LeveragedPosition{.accountId = 1,
                                         .symbol = kSym,
-                                        .quantity = 10.0,
-                                        .entryPrice = 100.0,
-                                        .equity = 10.0});
+                                        .quantity = Quantity::fromDouble(10.0),
+                                        .entryPrice = Price::fromDouble(100.0),
+                                        .equity = Volume::fromDouble(10.0)});
   const auto out = engine.onMark(kSym, 80.0);
   ASSERT_EQ(out.liquidationsCount, 1u);
 

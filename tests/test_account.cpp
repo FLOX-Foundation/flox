@@ -27,7 +27,7 @@ TEST(Account, DefaultsToCrossMode)
 {
   Account a(42, 10'000.0);
   EXPECT_EQ(a.accountId(), 42u);
-  EXPECT_DOUBLE_EQ(a.equity(), 10'000.0);
+  EXPECT_DOUBLE_EQ(a.equity().toDouble(), 10'000.0);
   EXPECT_EQ(a.marginMode(), MarginMode::Cross);
 }
 
@@ -54,13 +54,62 @@ TEST(Account, PositionBookOpenAndClose)
   EXPECT_EQ(a.positions().front().symbol, ETH);
 }
 
+// Closing books the marked PnL. The three tests below pin what that means for
+// the cases the aggregates already had an answer for: an unmarked leg, several
+// legs on one symbol, and a multiplier.
+TEST(Account, ClosePositionBooksExactlyWhatUnrealisedShowed)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 2.0, 50'000.0);
+  a.openPosition(BTC, -0.5, 52'000.0);
+  a.openPosition(ETH, 10.0, 3'000.0);
+  a.setMark(BTC, 51'000.0);
+  a.setMark(ETH, 3'100.0);
+
+  const double totalBefore = a.totalUnrealisedPnl().toDouble();
+  const double ethUpnl = 10.0 * (3'100.0 - 3'000.0);
+  const double btcUpnl = totalBefore - ethUpnl;
+
+  a.closePosition(BTC);
+
+  EXPECT_EQ(a.positionCount(), 1u);
+  EXPECT_DOUBLE_EQ(a.equity().toDouble(), 10'000.0 + btcUpnl);
+  // The ETH leg is untouched: its uPnL is still unrealised.
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), ethUpnl);
+}
+
+TEST(Account, ClosePositionWithoutAMarkRealisesNothing)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 2.0, 50'000.0);
+  // No mark: every aggregate values this leg at entry, so there is nothing to
+  // realise and equity must not move.
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), 0.0);
+
+  a.closePosition(BTC);
+
+  EXPECT_EQ(a.positionCount(), 0u);
+  EXPECT_DOUBLE_EQ(a.equity().toDouble(), 10'000.0);
+}
+
+TEST(Account, ClosePositionScalesTheRealisationByTheContractMultiplier)
+{
+  Account a(1, 10'000.0);
+  a.openPosition(BTC, 2.0, 100.0, /*isolatedEquity=*/0.0, /*contractMultiplier=*/50.0);
+  a.setMark(BTC, 110.0);
+
+  a.closePosition(BTC);
+
+  EXPECT_DOUBLE_EQ(a.equity().toDouble(), 10'000.0 + 2.0 * 10.0 * 50.0);
+}
+
 TEST(Account, MarksDefaultToEntryWhenUnset)
 {
   Account a(1, 1000.0);
   a.openPosition(BTC, 5.0, 50'000.0);
   // No mark set → totalNotional uses entry price.
-  EXPECT_DOUBLE_EQ(a.totalNotional(), 5.0 * 50'000.0);
-  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), 0.0);
+  EXPECT_DOUBLE_EQ(a.totalNotional().toDouble(), 5.0 * 50'000.0);
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), 0.0);
 }
 
 TEST(Account, MarksProduceCrossUpnl)
@@ -70,7 +119,7 @@ TEST(Account, MarksProduceCrossUpnl)
   a.openPosition(ETH, -10.0, 3'000.0);
   a.setMark(BTC, 49'000.0);  // long underwater: -5000
   a.setMark(ETH, 2'800.0);   // short profitable: +2000
-  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), -5000.0 + 2000.0);
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), -5000.0 + 2000.0);
 }
 
 // === Cross-margin liquidation ===
@@ -194,25 +243,25 @@ TEST(Account, RollingNotionalSingleFillNoEviction)
 {
   Account a(1, 0.0);
   a.recordFill(/*tsNs=*/0, /*notional=*/100'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 100'000.0);
 
   // Second fill within 30d → both counted.
   a.recordFill(/*tsNs=*/k30dNs / 2, /*notional=*/50'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 150'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 150'000.0);
 }
 
 TEST(Account, RollingNotionalEvictsExactlyAtBoundary)
 {
   Account a(1, 0.0);
   a.recordFill(/*tsNs=*/0, /*notional=*/100'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 100'000.0);
 
   // A new fill at exactly 30d after the first triggers eviction of
   // the first (evictExpired uses `ts <= cutoff` where
   // cutoff = nowNs - 30d, so a fill at nowNs = 30d makes cutoff = 0
   // and the t=0 fill drops).
   a.recordFill(/*tsNs=*/k30dNs, /*notional=*/40'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 40'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 40'000.0);
 }
 
 TEST(Account, RollingNotionalEvictsMultipleAcrossBoundary)
@@ -222,18 +271,18 @@ TEST(Account, RollingNotionalEvictsMultipleAcrossBoundary)
   a.recordFill(0, 10'000.0);
   a.recordFill(k30dNs / 4, 20'000.0);  // 7.5d
   a.recordFill(k30dNs / 2, 30'000.0);  // 15d
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 60'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 60'000.0);
 
   // Jump 31 days forward → cutoff = 1d, only t=0 fill evicted.
   // t=7.5d and t=15d stay (both > 1d before now=31d).
   const int64_t day = 24LL * 3600LL * 1'000'000'000LL;
   a.recordFill(31LL * day, 5'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 20'000.0 + 30'000.0 + 5'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 20'000.0 + 30'000.0 + 5'000.0);
 
   // Jump further (100d total) — every prior fill is past cutoff
   // (100d - 30d = 70d; all fills below 70d are dropped).
   a.recordFill(100LL * day, 1'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 1'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 1'000.0);
 }
 
 TEST(Account, RollingNotionalLargeFarFutureClearsWindow)
@@ -243,20 +292,20 @@ TEST(Account, RollingNotionalLargeFarFutureClearsWindow)
   {
     a.recordFill(static_cast<int64_t>(i) * 1'000'000'000LL, 10'000.0);
   }
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 100'000.0);
 
   // Fill 100 days later evicts everything prior.
   a.recordFill(100LL * 24LL * 3600LL * 1'000'000'000LL, 7.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 7.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 7.0);
 }
 
 TEST(Account, RollingNotionalResetClearsCounter)
 {
   Account a(1, 0.0);
   a.recordFill(0, 500'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 500'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 500'000.0);
   a.resetRolling();
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 0.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 0.0);
 }
 
 // reset() exists so an Account can be reused across repeated
@@ -275,21 +324,21 @@ TEST(Account, ResetClearsPositionsMarksRollingWindowAndRestoresEquity)
   a.addEquity(-37.5);
 
   ASSERT_EQ(a.positionCount(), 1u);
-  ASSERT_GT(a.rollingNotional30d(), 0.0);
-  ASSERT_NE(a.equity(), 10'000.0);
+  ASSERT_GT(a.rollingNotional30d().toDouble(), 0.0);
+  ASSERT_NE(a.equity().toDouble(), 10'000.0);
 
   a.reset(10'000.0);
 
   EXPECT_EQ(a.positionCount(), 0u);
-  EXPECT_DOUBLE_EQ(a.equity(), 10'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 0.0);
-  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), 0.0);
+  EXPECT_DOUBLE_EQ(a.equity().toDouble(), 10'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 0.0);
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), 0.0);
   // A cleared mark means an immediately re-opened position on the
   // same symbol values at entry price (zero uPnL) rather than the
   // stale mark from before reset -- this is what actually catches a
   // reset that forgets to clear `_marks`.
   a.openPosition(1, 1.0, 100.0);
-  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), 0.0);
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), 0.0);
 }
 
 TEST(Account, ResetLeavesMarginModeUntouched)
@@ -334,7 +383,7 @@ TEST(Account, BoundAccountEvictionVisibleViaFeeSchedule)
   // small fill at the far end to trigger eviction (which only
   // happens on recordFill).
   s.recordFill(31LL * 24LL * 3600LL * 1'000'000'000LL, 1'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 1'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 1'000.0);
   EXPECT_EQ(s.currentTierIndex(), 0u);
 }
 
@@ -388,7 +437,7 @@ TEST(Account, CrossAccountDeficitTriggersAdlAcrossAccounts)
   // liquidates with a 10k deficit. ADL closes aShort's profitable
   // BTC short at the bankruptcy price: it forgoes exactly the gain
   // that absorbs the deficit and keeps only the excess.
-  const double aShortEquityBefore = aShort.equity();
+  const double aShortEquityBefore = aShort.equity().toDouble();
   const auto out = e.onMark(BTC, 40'000.0);
   EXPECT_GE(out.liquidationsCount, 1u);
   EXPECT_GE(out.adlCloseoutsCount, 1u);
@@ -397,7 +446,7 @@ TEST(Account, CrossAccountDeficitTriggersAdlAcrossAccounts)
   // Deficit (10k) == the winner's gain (10k), so the whole gain is
   // confiscated and equity is unchanged. Crediting the full +10k here
   // would leave the deficit unfunded, i.e. create money.
-  EXPECT_DOUBLE_EQ(aShort.equity(), aShortEquityBefore);
+  EXPECT_DOUBLE_EQ(aShort.equity().toDouble(), aShortEquityBefore);
 }
 
 TEST(Account, IsolatedAndCrossAccountsCoexist)
@@ -437,7 +486,7 @@ TEST(Account, FeeScheduleBoundReadsAccountRollingNotional)
 
   // recordFill via FeeSchedule pushes into the account's counter.
   s.recordFill(0, 100'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 100'000.0);
   EXPECT_DOUBLE_EQ(s.rollingNotional30d(), 100'000.0);
 
   // Direct account-level fills (e.g., from other symbols) also
@@ -470,7 +519,7 @@ TEST(Account, FeeScheduleCrossSymbolNotionalTriggersTier)
   ethSched.recordFill(0, 150'000.0);
 
   // Aggregate is 300k → past 250k VIP 1 threshold.
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 300'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 300'000.0);
   EXPECT_GE(btcSched.currentTierIndex(), 1u);
   EXPECT_GE(ethSched.currentTierIndex(), 1u);
 }
@@ -481,11 +530,11 @@ TEST(Account, RecordFillDefaultsToZeroSymbol)
 {
   Account a(1, 0.0);
   a.recordFill(0, 100'000.0);
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 100'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 100'000.0);
   const auto by = a.rollingNotionalBySymbol30d();
   ASSERT_EQ(by.size(), 1u);
   EXPECT_EQ(by[0].first, 0u);
-  EXPECT_DOUBLE_EQ(by[0].second, 100'000.0);
+  EXPECT_DOUBLE_EQ(by[0].second.toDouble(), 100'000.0);
 }
 
 TEST(Account, RecordFillTagsBySymbol)
@@ -495,13 +544,13 @@ TEST(Account, RecordFillTagsBySymbol)
   a.recordFill(0, 50'000.0, ETH);
   a.recordFill(0, 25'000.0, BTC);  // second BTC fill
 
-  EXPECT_DOUBLE_EQ(a.rollingNotional30d(), 175'000.0);
+  EXPECT_DOUBLE_EQ(a.rollingNotional30d().toDouble(), 175'000.0);
   const auto by = a.rollingNotionalBySymbol30d();
   ASSERT_EQ(by.size(), 2u);
   EXPECT_EQ(by[0].first, BTC);
-  EXPECT_DOUBLE_EQ(by[0].second, 125'000.0);
+  EXPECT_DOUBLE_EQ(by[0].second.toDouble(), 125'000.0);
   EXPECT_EQ(by[1].first, ETH);
-  EXPECT_DOUBLE_EQ(by[1].second, 50'000.0);
+  EXPECT_DOUBLE_EQ(by[1].second.toDouble(), 50'000.0);
 }
 
 TEST(Account, PerSymbolBreakdownRespectsEviction)
@@ -519,7 +568,7 @@ TEST(Account, PerSymbolBreakdownRespectsEviction)
   by = a.rollingNotionalBySymbol30d();
   ASSERT_EQ(by.size(), 1u);
   EXPECT_EQ(by[0].first, ETH);
-  EXPECT_DOUBLE_EQ(by[0].second, 50'000.0 + 10'000.0);
+  EXPECT_DOUBLE_EQ(by[0].second.toDouble(), 50'000.0 + 10'000.0);
 }
 
 TEST(Account, FeeScheduleUnboundCounterUnaffectedByAccount)
@@ -546,7 +595,7 @@ TEST(Account, MarkTsRecordedOnSetMark)
 
   // Re-marking overwrites both price and ts.
   a.setMark(BTC, 51'000.0, /*tsNs=*/67890);
-  EXPECT_DOUBLE_EQ(a.markFor(BTC), 51'000.0);
+  EXPECT_DOUBLE_EQ(a.markFor(BTC).toDouble(), 51'000.0);
   EXPECT_EQ(a.markTsFor(BTC), 67890);
 }
 
@@ -622,8 +671,8 @@ TEST(Account, MultiSymbolOnMarksUpdatesAllAccountsAtomically)
   const auto out = e.onMarks(marks);
   EXPECT_EQ(out.liquidationsCount, 0u);
   EXPECT_EQ(a.positionCount(), 2u);
-  EXPECT_DOUBLE_EQ(a.markFor(BTC), 47'000.0);
-  EXPECT_DOUBLE_EQ(a.markFor(ETH), 2'250.0);
+  EXPECT_DOUBLE_EQ(a.markFor(BTC).toDouble(), 47'000.0);
+  EXPECT_DOUBLE_EQ(a.markFor(ETH).toDouble(), 2'250.0);
 }
 
 // === Contract multiplier + option premium semantics ===
@@ -641,11 +690,11 @@ TEST(Account, MultiplierScalesNotionalAndUpnl)
   a.openPosition(ES, 2.0, 4'000.0, /*isolatedEquity=*/0.0, /*contractMultiplier=*/50.0);
   a.setMark(ES, 4'010.0);
 
-  EXPECT_DOUBLE_EQ(a.totalNotional(), 2.0 * 4'010.0 * 50.0);    // 401,000
-  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), 2.0 * 10.0 * 50.0);  // 1,000
+  EXPECT_DOUBLE_EQ(a.totalNotional().toDouble(), 2.0 * 4'010.0 * 50.0);    // 401,000
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), 2.0 * 10.0 * 50.0);  // 1,000
   // No long options here, so margin aggregates equal the totals.
-  EXPECT_DOUBLE_EQ(a.marginNotional(), a.totalNotional());
-  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl(), a.totalUnrealisedPnl());
+  EXPECT_DOUBLE_EQ(a.marginNotional().toDouble(), a.totalNotional().toDouble());
+  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl().toDouble(), a.totalUnrealisedPnl().toDouble());
 }
 
 TEST(Account, PerpUnchangedByMultiplierDefault)
@@ -653,10 +702,10 @@ TEST(Account, PerpUnchangedByMultiplierDefault)
   Account a(1, 1'000.0);
   a.openPosition(BTC, 1.0, 50'000.0);  // default multiplier 1.0, not an option
   a.setMark(BTC, 49'000.0);
-  EXPECT_DOUBLE_EQ(a.totalNotional(), 49'000.0);
-  EXPECT_DOUBLE_EQ(a.marginNotional(), 49'000.0);
-  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl(), -1'000.0);
-  EXPECT_DOUBLE_EQ(a.crossHeadroom(0.005), 1'000.0 - 1'000.0 - 49'000.0 * 0.005);
+  EXPECT_DOUBLE_EQ(a.totalNotional().toDouble(), 49'000.0);
+  EXPECT_DOUBLE_EQ(a.marginNotional().toDouble(), 49'000.0);
+  EXPECT_DOUBLE_EQ(a.totalUnrealisedPnl().toDouble(), -1'000.0);
+  EXPECT_DOUBLE_EQ(a.crossHeadroom(0.005).toDouble(), 1'000.0 - 1'000.0 - 49'000.0 * 0.005);
 }
 
 TEST(Account, LongOptionNotLiquidatedOnAdverseMark)
@@ -669,9 +718,9 @@ TEST(Account, LongOptionNotLiquidatedOnAdverseMark)
   a.setMark(OPT, 1.0);  // option collapses toward worthless
 
   // Carved out of the margin requirement: headroom is just the equity.
-  EXPECT_DOUBLE_EQ(a.marginNotional(), 0.0);
-  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl(), 0.0);
-  EXPECT_DOUBLE_EQ(a.crossHeadroom(0.005), 1'000.0);
+  EXPECT_DOUBLE_EQ(a.marginNotional().toDouble(), 0.0);
+  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl().toDouble(), 0.0);
+  EXPECT_DOUBLE_EQ(a.crossHeadroom(0.005).toDouble(), 1'000.0);
 
   LiquidationEngine e;
   e.addTier(0.0, 0.005);
@@ -689,9 +738,9 @@ TEST(Account, ShortOptionIsMargined)
                  /*isLongOption=*/false);
   a.setMark(OPT, 120.0);  // short loses: -1 * (120 - 50) * 100 = -7000
 
-  EXPECT_DOUBLE_EQ(a.marginNotional(), 1.0 * 120.0 * 100.0);  // 12,000 — margined
-  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl(), -7'000.0);
-  EXPECT_LT(a.crossHeadroom(0.005), 0.0);  // underwater
+  EXPECT_DOUBLE_EQ(a.marginNotional().toDouble(), 1.0 * 120.0 * 100.0);  // 12,000 — margined
+  EXPECT_DOUBLE_EQ(a.marginUnrealisedPnl().toDouble(), -7'000.0);
+  EXPECT_LT(a.crossHeadroom(0.005).toDouble(), 0.0);  // underwater
 
   LiquidationEngine e;
   e.addTier(0.0, 0.005);

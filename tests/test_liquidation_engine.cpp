@@ -23,7 +23,11 @@ constexpr SymbolId BTC = 1;
 
 LeveragedPosition pos(uint64_t acct, double qty, double entry, double equity)
 {
-  return LeveragedPosition{.accountId = acct, .symbol = BTC, .quantity = qty, .entryPrice = entry, .equity = equity};
+  return LeveragedPosition{.accountId = acct,
+                           .symbol = BTC,
+                           .quantity = Quantity::fromDouble(qty),
+                           .entryPrice = Price::fromDouble(entry),
+                           .equity = Volume::fromDouble(equity)};
 }
 }  // namespace
 
@@ -131,7 +135,7 @@ TEST(LiquidationEngine, AdlConfiscatesForgoneGainNotFullUpnl)
   EXPECT_EQ(out.adlClosedOut.front(), 2u);
   // absorbed = min(deficit 550, uPnl 600) = 550; retained = 50.
   // Correct: 100 + 50 = 150. Old buggy behaviour credited full 600 -> 700.
-  EXPECT_DOUBLE_EQ(w.equity(), 150.0);
+  EXPECT_DOUBLE_EQ(w.equity().toDouble(), 150.0);
   EXPECT_EQ(w.positionCount(), 0u);  // fully deleveraged
 }
 
@@ -633,10 +637,11 @@ TEST(LiquidationEngine, ContractMultiplierAppliesToRealizedLossNotJustMarginChec
     e.setLiquidationSlippageBps(0.0);
     e.openPosition(LeveragedPosition{.accountId = 1,
                                      .symbol = BTC,
-                                     .quantity = kQty,
-                                     .entryPrice = kEntry,
-                                     .equity = kMargin,
-                                     .contractMultiplier = kMultiplier});
+                                     .quantity = Quantity::fromDouble(kQty),
+                                     .entryPrice = Price::fromDouble(kEntry),
+                                     .equity = Volume::fromDouble(kMargin),
+                                     .contractMultiplier =
+                                         Quantity::fromDouble(kMultiplier)});
     const auto out = e.onMark(BTC, kMark);
     EXPECT_EQ(out.liquidationsCount, 1u);
     EXPECT_NEAR(out.insuranceFundDelta, -kExpectedDeficit, 1e-6);
@@ -710,7 +715,7 @@ TEST(LiquidationEngine, IsolatedAdlWinnerKeepsMarginAndForgoneGain)
   // absorbed = min(deficit 550, upnl 600) = 550; retained = 50. The leg is
   // gone, so both its $5,000 posted margin and the $50 retained gain must
   // now live on the account's shared equity: 5000 + 50 = 5050.
-  EXPECT_DOUBLE_EQ(w.equity(), 5050.0);
+  EXPECT_DOUBLE_EQ(w.equity().toDouble(), 5050.0);
 }
 
 // Leverage-based ADL rankings (Binance/Bybit) score a candidate by

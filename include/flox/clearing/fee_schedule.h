@@ -145,9 +145,11 @@ class FeeSchedule
   {
     return _tierTransitions;
   }
+  // The schedule's own tier ladder is quoted in double notionals, so a bound
+  // account's fixed-point total is read as one here.
   double rollingNotional30d() const noexcept
   {
-    return _boundAccount != nullptr ? _boundAccount->rollingNotional30d()
+    return _boundAccount != nullptr ? _boundAccount->rollingNotional30d().toDouble()
                                     : _rollingTotal;
   }
 
@@ -220,7 +222,7 @@ class FeeSchedule
       return 0;
     }
     const double rolling = (_boundAccount != nullptr)
-                               ? _boundAccount->rollingNotional30d()
+                               ? _boundAccount->rollingNotional30d().toDouble()
                                : _rollingTotal;
     size_t idx = 0;
     for (size_t i = 0; i < _tiers.size(); ++i)
