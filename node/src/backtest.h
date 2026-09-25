@@ -173,7 +173,8 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
     uint8_t t = 0;
     if (!flox::capi::orderTypeCodeFromName(type, &t))
     {
-      Napi::TypeError::New(info.Env(), "submitOrder: unknown order type '" + type + "'")
+      Napi::TypeError::New(info.Env(),
+                           "submitOrder: " + flox::capi::unknownOrderTypeMessage(type))
           .ThrowAsJavaScriptException();
       return;
     }
