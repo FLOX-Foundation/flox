@@ -57,6 +57,79 @@ std::optional<uint64_t> parseOrderLinkId(Value& d)
 }
 }  // namespace
 
+// "30AUG24" -> 2024-08-30T00:00:00Z. Digits and the three-letter month are
+// matched against fixed ASCII tables, and the date is turned into an instant
+// through std::chrono::sys_days, which is UTC by definition -- neither the
+// host's locale nor its timezone takes part.
+static std::optional<std::chrono::system_clock::time_point> parseOptionExpiryUtc(
+    std::string_view token)
+{
+  static constexpr std::string_view kMonths[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                                                   "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+
+  // "30AUG24" and the single-digit-day form "1JAN25" are both what the venue
+  // writes; everything after the day is a fixed five characters.
+  if (token.size() != 7 && token.size() != 6)
+  {
+    return std::nullopt;
+  }
+  const std::size_t dayDigits = token.size() - 5;
+
+  auto digitsToInt = [](std::string_view sv) -> std::optional<int>
+  {
+    int value = 0;
+    for (char c : sv)
+    {
+      if (c < '0' || c > '9')
+      {
+        return std::nullopt;
+      }
+      value = value * 10 + (c - '0');
+    }
+    return value;
+  };
+
+  const auto day = digitsToInt(token.substr(0, dayDigits));
+  const auto year = digitsToInt(token.substr(dayDigits + 3, 2));
+  if (!day || !year)
+  {
+    return std::nullopt;
+  }
+
+  std::string monthToken(token.substr(dayDigits, 3));
+  for (char& c : monthToken)
+  {
+    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  }
+
+  unsigned month = 0;
+  for (unsigned i = 0; i < 12; ++i)
+  {
+    if (kMonths[i] == monthToken)
+    {
+      month = i + 1;
+      break;
+    }
+  }
+  if (month == 0)
+  {
+    return std::nullopt;
+  }
+
+  // Two-digit years on this venue are this century; the option chain carries
+  // nothing older.
+  const std::chrono::year_month_day ymd{std::chrono::year{2000 + *year}, std::chrono::month{month},
+                                        std::chrono::day{static_cast<unsigned>(*day)}};
+  if (!ymd.ok())
+  {
+    return std::nullopt;
+  }
+
+  return std::chrono::system_clock::time_point(
+      std::chrono::duration_cast<std::chrono::system_clock::duration>(
+          std::chrono::sys_days(ymd).time_since_epoch()));
+}
+
 std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
                                             std::string_view exchange = "bybit")
 {
@@ -86,17 +159,19 @@ std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
       std::string(fullSymbol.substr(dash2 + 1, dash3 - dash2 - 1));  // e.g. 50000
   std::string typeStr = std::string(fullSymbol.substr(dash3 + 1));   // e.g. C or P
 
-  // Parse date
-  std::istringstream iss(expiryStr);
-  std::tm tm = {};
-  iss >> std::get_time(&tm, "%d%b%y");  // format: 30AUG24
-
-  if (iss.fail())
+  // Date, e.g. "30AUG24". The venue writes it as a fixed ASCII protocol
+  // token in UTC, so it is parsed as one: std::get_time("%b") matches month
+  // names out of the global locale and fails outright under any locale that
+  // does not abbreviate August as "AUG" (the symbol then registers as a Spot
+  // instrument with no strike and no expiry), and std::mktime reads the
+  // broken-down time as *local*, which moved the expiry by the host's UTC
+  // offset -- up to a full calendar day.
+  const auto parsedExpiry = parseOptionExpiryUtc(expiryStr);
+  if (!parsedExpiry)
   {
     return std::nullopt;
   }
-
-  auto expiry_tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+  const auto expiry_tp = *parsedExpiry;
 
   // Strike
   auto strikeOpt = util::safeParseDouble(strikeStr);
