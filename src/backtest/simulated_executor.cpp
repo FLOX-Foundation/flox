@@ -2864,6 +2864,27 @@ void SimulatedExecutor::triggerConditionalOrder(Order& order)
   // if it crosses.
   if (!tryFillOrder(order, /*resting=*/false, triggerBoundRaw))
   {
+    // A limit that rests after firing joins the queue at its level exactly as
+    // a plain limit does on submit. Without this the queue tracker never knew
+    // the order: it reported LevelEmpty however much depth rested there, was
+    // never advanced by prints, and its position events were never emitted.
+    if (fillsAsLimit(order.type) && _queueTracker.enabled())
+    {
+      const MarketState& state = getMarketState(order.symbol);
+      const int64_t orderPriceRaw = order.price.raw();
+      Quantity levelQty = Quantity::fromRaw(0);
+      if (order.side == Side::BUY && state.hasBid && orderPriceRaw == state.bestBidRaw)
+      {
+        levelQty = Quantity::fromRaw(state.bestBidQtyRaw);
+      }
+      else if (order.side == Side::SELL && state.hasAsk && orderPriceRaw == state.bestAskRaw)
+      {
+        levelQty = Quantity::fromRaw(state.bestAskQtyRaw);
+      }
+      _queueTracker.addOrder(order.symbol, order.side, order.price, order.id, order.quantity,
+                             levelQty);
+      _lastEmittedQueueAheadRaw[order.id] = levelQty.raw();
+    }
     _pending_orders.push_back(order);
   }
 }
