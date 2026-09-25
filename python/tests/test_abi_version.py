@@ -13,6 +13,7 @@ the version the library reports, both exposed, and equal.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import flox_py as flox
@@ -108,4 +109,19 @@ def test_every_codon_module_with_c_declarations_runs_the_abi_check() -> None:
     assert not missing, (
         "Codon modules that declare C functions without importing the ABI "
         f"check: {', '.join(missing)}"
+    )
+
+
+def test_the_codon_binding_mirrors_the_header_abi_number() -> None:
+    """abi.codon carries the number by hand, so a bump in the header that
+    forgets it makes every Codon example exit at startup against the
+    library built from that same header."""
+    header = (REPO_ROOT / "include" / "flox" / "capi" / "flox_capi.h").read_text()
+    codon = (REPO_ROOT / "codon" / "flox" / "abi.codon").read_text()
+    in_header = re.search(r"^#define FLOX_CAPI_ABI_VERSION (\d+)$", header, re.M)
+    in_codon = re.search(r"^FLOX_CAPI_ABI_VERSION: int = (\d+)$", codon, re.M)
+    assert in_header and in_codon
+    assert int(in_codon.group(1)) == int(in_header.group(1)), (
+        f"codon/flox/abi.codon says {in_codon.group(1)} but flox_capi.h says "
+        f"{in_header.group(1)}"
     )

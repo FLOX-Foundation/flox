@@ -17,7 +17,7 @@ from sys import exit
 
 from C import flox_capi_abi_version() -> u32
 
-FLOX_CAPI_ABI_VERSION: int = 2
+FLOX_CAPI_ABI_VERSION: int = 3
 
 
 def check_abi_version():
