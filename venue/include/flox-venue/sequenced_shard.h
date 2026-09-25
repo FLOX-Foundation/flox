@@ -556,8 +556,14 @@ class SequencedShard
     return checkpointPublishFailures_.load(std::memory_order_acquire);
   }
 
-  // Consumer-thread stall of the most recent checkpoint (state clone + journal
-  // rotation; serialization runs in the background). Observability gauge.
+  // Consumer-thread stall of the most recent checkpoint: everything between
+  // the moment the consumer stops matching and the moment it resumes -- the
+  // wait for the previous publish and for the checkpoint lane, the state
+  // clone, the journal rotation, the checkpoint hook, and the mutex and thread
+  // spawn that hand the snapshot to the background. Serialization itself runs
+  // on that background thread and is not part of it. Observability gauge: an
+  // operator sizes the venue's worst-case matching gap from this number, so
+  // everything the consumer spends inside a checkpoint has to be in it.
   int64_t lastCheckpointPauseNs() const noexcept
   {
     return lastCheckpointPauseNs_.load(std::memory_order_acquire);
@@ -919,6 +925,14 @@ class SequencedShard
     //
     // A checkpoint asked for by name waits, because somebody is waiting for
     // the answer.
+    //
+    // The pause opens HERE, before the wait and before the lane, because both
+    // run on the consumer thread with matching stopped. A shard crowded out of
+    // the lane stands still for as long as whoever holds it, and a gauge that
+    // starts after that wait reports a pause the shard did not have. The
+    // skipping branch below returns without recording anything: an automatic
+    // checkpoint that skips takes no pause worth the name.
+    const auto pause0 = std::chrono::steady_clock::now();
     if (mandatory)
     {
       waitCheckpointPublish();
@@ -940,7 +954,6 @@ class SequencedShard
         return;
       }
     }
-    const auto pause0 = std::chrono::steady_clock::now();
     auto clone = consumer_.engine().cloneForSnapshot(Book{bookProto_});
     journal_.flush();
     journal_.reopen(segmentPath(journalPath_, ts), Journal::OpenMode::Truncate);
@@ -949,18 +962,6 @@ class SequencedShard
     if (checkpointHook_)
     {
       checkpointHook_(ts);  // sidecar persistence rides the same boundary (consumer thread)
-    }
-    const int64_t pauseNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                std::chrono::steady_clock::now() - pause0)
-                                .count();
-    lastCheckpointPauseNs_.store(pauseNs, std::memory_order_release);
-    checkpointPauseTotalNs_.fetch_add(pauseNs, std::memory_order_relaxed);
-    if (lane_ != nullptr)
-    {
-      // How long the DRIVER was stopped, by anybody on it. Per-shard pauses
-      // do not add up to anything an operator can act on once shards share a
-      // thread.
-      lane_->notePause(pauseNs);
     }
     // The next threshold is a fresh cut, so shards that drifted into step
     // during this segment do not stay there.
@@ -1018,8 +1019,26 @@ class SequencedShard
         return notePublishFailure(snap, "unknown exception");
       }
     };
-    std::lock_guard<std::mutex> lk(ckptMx_);
-    ckptPending_ = std::async(std::launch::async, std::move(publish)).share();
+    {
+      // Still the consumer thread, still not matching: the mutex and the
+      // thread the spawn creates are part of the stall, and a thread spawn is
+      // tens of microseconds -- the same order as the clone this gauge was
+      // built to report. The pause closes after the spawn returns.
+      std::lock_guard<std::mutex> lk(ckptMx_);
+      ckptPending_ = std::async(std::launch::async, std::move(publish)).share();
+    }
+    const int64_t pauseNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now() - pause0)
+                                .count();
+    lastCheckpointPauseNs_.store(pauseNs, std::memory_order_release);
+    checkpointPauseTotalNs_.fetch_add(pauseNs, std::memory_order_relaxed);
+    if (lane_ != nullptr)
+    {
+      // How long the DRIVER was stopped, by anybody on it. Per-shard pauses
+      // do not add up to anything an operator can act on once shards share a
+      // thread.
+      lane_->notePause(pauseNs);
+    }
   }
 
   // A failed publish leaves the previous generation as the newest valid one,

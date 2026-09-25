@@ -196,7 +196,9 @@ class MatchingEngine
   {
     return credit_.accountLimits(account);
   }
-  const std::unordered_map<uint64_t, AdmissionProfile>& admissionProfiles() const noexcept;
+  // A SNAPSHOT, by value: this is the /metrics thread's accessor (see
+  // engine/snapshot_lock.h and docs/venue/perimeter.md).
+  std::unordered_map<uint64_t, AdmissionProfile> admissionProfiles() const;
   uint64_t admissionRejects() const noexcept;
 
   // engine/last_look.inl
@@ -236,7 +238,9 @@ class MatchingEngine
 
   // engine/last_look.inl
   uint64_t riskRejectedHolds() const noexcept;
-  const std::unordered_map<uint64_t, LastLookStats>& lastLookStats() const noexcept;
+  // A SNAPSHOT, by value: this is the /metrics thread's accessor (see
+  // engine/snapshot_lock.h and docs/venue/perimeter.md).
+  std::unordered_map<uint64_t, LastLookStats> lastLookStats() const;
   uint64_t toleranceRejectedHolds() const noexcept;
 
   // engine/dispatch.inl

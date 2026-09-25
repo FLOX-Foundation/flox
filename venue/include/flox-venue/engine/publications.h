@@ -12,6 +12,7 @@
 #include "flox-venue/messages.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <unordered_map>
@@ -84,6 +85,7 @@ class Publications
   {
     orderAccount_[id] = account;
     byAccount_[account].insert(id);
+    publishRestingCount();
   }
 
   // Drop an order from the index. Returns whether it was tracked at all, so
@@ -102,6 +104,7 @@ class Publications
       ba->second.erase(id);
     }
     orderAccount_.erase(it);
+    publishRestingCount();
     return true;
   }
 
@@ -125,7 +128,18 @@ class Publications
   bool tracked(OrderId id) const noexcept { return orderAccount_.count(id) != 0; }
 
   // Live resting orders tracked on this symbol (observability gauge).
-  uint64_t restingOrderCount() const noexcept { return orderAccount_.size(); }
+  //
+  // Read off an atomic rather than off the index, because the caller is the
+  // /metrics thread (docs/venue/perimeter.md) and the index is the consumer's:
+  // size() while another thread is inserting is a race, and it is the one
+  // place here where per-ORDER cost would be paid. A lock on every order that
+  // rests or leaves, for a gauge, is not a trade the matching path makes --
+  // one relaxed store is. A count is a single number with no other number it
+  // has to agree with, so nothing is lost by publishing it this way.
+  uint64_t restingOrderCount() const noexcept
+  {
+    return restingCount_.load(std::memory_order_relaxed);
+  }
 
   // How many the account holds; 0 for an account with none, so a cap check
   // needs no separate "is it there" test.
@@ -196,9 +210,17 @@ class Publications
   {
     orderAccount_ = other.orderAccount_;
     byAccount_ = other.byAccount_;
+    publishRestingCount();
   }
 
  private:
+  // Every write to orderAccount_ ends here, so the published count cannot
+  // drift from the index it reports on: it is re-derived rather than stepped.
+  void publishRestingCount() noexcept
+  {
+    restingCount_.store(orderAccount_.size(), std::memory_order_relaxed);
+  }
+
   const EventSink& sink_;
 
   SymbolId symbol_{};
@@ -206,6 +228,9 @@ class Publications
   std::unordered_map<OrderId, uint64_t> orderAccount_;
 
   std::unordered_map<uint64_t, std::unordered_set<OrderId>> byAccount_;
+
+  // orderAccount_.size(), for readers that are not the consumer thread.
+  std::atomic<uint64_t> restingCount_{0};
 };
 
 }  // namespace flox::venue::engine

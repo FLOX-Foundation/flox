@@ -152,7 +152,9 @@ a cherry-picking maker would otherwise keep. Inside the band the maker's answer
 still stands: the tolerance caps the option rather than abolishing last look.
 `0` disables the check.
 
-`MatchingEngine::lastLookStats()` reports per maker how many holds it saw, how
+`MatchingEngine::lastLookStats()` returns a snapshot by value -- it is one of
+the three accessors a /metrics thread may call while the consumer is matching
+(see the thread rule in `docs/venue/perimeter.md`). It reports per maker how many holds it saw, how
 many it refused, and — the number that matters — the split by which way the
 price had moved. A maker applying a symmetric rule refuses about as often when
 the move favoured it as when it did not. One taking the free option refuses

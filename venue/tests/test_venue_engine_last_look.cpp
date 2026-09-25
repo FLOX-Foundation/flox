@@ -588,7 +588,7 @@ TEST(VenueEngineLastLook, StatsSplitRefusalsByDirection)
   b.reference = 800;
   ll.onDecision(b, LastLookDecision{2, SYM, false, {}, 1});
 
-  const LastLookStats& st = ll.stats().at(1);
+  const LastLookStats st = ll.stats().at(1);  // stats() is a snapshot: copy the row out
   EXPECT_EQ(st.held, 2U);
   EXPECT_EQ(st.rejected, 2U);
   EXPECT_EQ(st.accepted, 0U);
@@ -610,7 +610,7 @@ TEST(VenueEngineLastLook, WithoutAStampNoMoveIsMeasurable)
   b.reference = 5000;  // never stamped: unmeasurable, not "moved 4000"
   ll.onDecision(b, LastLookDecision{1, SYM, false, {}, 1});
 
-  const LastLookStats& st = ll.stats().at(1);
+  const LastLookStats st = ll.stats().at(1);  // stats() is a snapshot: copy the row out
   EXPECT_EQ(st.adverse, 0U);
   EXPECT_EQ(st.favourable, 0U);
 }

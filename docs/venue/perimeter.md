@@ -483,3 +483,30 @@ monitoring thread, so a deployment reads `lastLookStats()`,
 `toleranceRejectedHolds()` and `skippedLastLookProRata()` off the engine and
 hands them to `prom::render`. Left unsampled they render zeros, and zeros look
 exactly like a venue where nobody has ever held a fill.
+
+### Who may read the engine while it is matching
+
+Almost everything in the engine belongs to the matching consumer thread and is
+read by nobody else. Three accessors are the exception, because they exist to
+be scraped: **`lastLookStats()`, `admissionProfiles()` and
+`restingOrderCount()` may be called from any thread while the consumer is
+matching** — `MetricsServer` runs its sampler on the connection thread that
+answered the scrape, which is exactly what the section above instructs. No
+other accessor carries that permission; `hasHold()` / `forEachHold()` state
+their own consumer-thread rule and mean it.
+
+The first two hand back a **snapshot by value**, taken under
+`engine::SnapshotLock` (`venue/include/flox-venue/engine/snapshot_lock.h`) --
+a spinlock the consumer takes when it writes one of those containers and the
+sampler takes for the length of one copy. A reference into live storage would
+be neither safe nor useful: unsafe because an insert can rehash the map under
+the reader's iterator, and useless because a page built from a container that
+keeps moving carries two series from two different moments. The lock is a
+spinlock and not a mutex because of who pays: uncontended it is one atomic
+exchange on the consumer, and a scrape happens once every few seconds.
+
+`restingOrderCount()` is published through a relaxed atomic instead, because
+it is the one of the three written on the per-ORDER path -- every order that
+rests or leaves. A lock there, for a gauge, is a cost the matching path does
+not take; a count is a single number with nothing else it has to agree with,
+so nothing is lost by publishing it that way.
