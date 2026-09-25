@@ -72,6 +72,7 @@ add_flox_test(test_multi_feed_clock)
 add_flox_test(test_connection_factory)
 add_flox_test(test_connector_manager)
 add_flox_test(test_decimal)
+add_flox_test(test_decimal_locale)
 # Built twice: once the way this toolchain would, once with the native 128-bit
 # intermediate compiled out, so Decimal's MSVC arithmetic is run here too.
 add_flox_test(test_decimal_portable)
