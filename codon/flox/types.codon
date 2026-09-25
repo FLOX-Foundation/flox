@@ -246,6 +246,8 @@ class OrderEventData:
     queue_total: float
     market_position: str
     distance_to_best_ticks: int
+    # Why the venue rejected the order; empty for every other status.
+    reject_reason: str
 
     def __init__(self):
         self.order_id = 0
@@ -262,6 +264,7 @@ class OrderEventData:
         self.queue_total = 0.0
         self.market_position = ""
         self.distance_to_best_ticks = 0
+        self.reject_reason = ""
 
     @staticmethod
     def from_raw(order_id: int, symbol: int, side_code: int, order_type: int,
@@ -269,7 +272,8 @@ class OrderEventData:
                  exchange_ts_ns: int, is_maker: bool,
                  queue_ahead_raw: int, queue_total_raw: int,
                  market_position_code: int, distance_to_best_ticks: int,
-                 symbol_name: str = "") -> OrderEventData:
+                 symbol_name: str = "",
+                 reject_reason: str = "") -> OrderEventData:
         e = OrderEventData()
         e.order_id = order_id
         e.symbol = symbol
@@ -287,4 +291,5 @@ class OrderEventData:
                              if 0 <= market_position_code < len(_MARKET_POSITION_NAMES)
                              else "")
         e.distance_to_best_ticks = distance_to_best_ticks
+        e.reject_reason = reject_reason
         return e
