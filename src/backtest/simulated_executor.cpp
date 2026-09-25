@@ -23,6 +23,29 @@ namespace flox
 // If the caller left tickSize zero, a single raw price unit is used as a
 // safe fallback.
 
+namespace
+{
+
+// A conditional order that has fired fills like the order it became: the
+// market-style trio walks the book, the limit-style pair rests at its
+// price. It keeps its own type while it does so, because every event it
+// emits has to name the order the caller submitted -- a take-profit that
+// reported MARKET on its fill told the strategy it had placed something
+// it never placed.
+bool fillsAsMarket(OrderType type)
+{
+  return type == OrderType::MARKET || type == OrderType::STOP_MARKET ||
+         type == OrderType::TAKE_PROFIT_MARKET || type == OrderType::TRAILING_STOP;
+}
+
+bool fillsAsLimit(OrderType type)
+{
+  return type == OrderType::LIMIT || type == OrderType::STOP_LIMIT ||
+         type == OrderType::TAKE_PROFIT_LIMIT;
+}
+
+}  // namespace
+
 SimulatedExecutor::SimulatedExecutor(IClock& clock) : _clock(clock)
 {
   _pending_orders.reserve(kDefaultOrderCapacity);
@@ -1573,7 +1596,7 @@ void SimulatedExecutor::driveQueueFromBarStep(SymbolId symbol, Price stepPrice)
 
   for (const auto& order : _pending_orders)
   {
-    if (order.symbol != symbol || order.type != OrderType::LIMIT)
+    if (order.symbol != symbol || !fillsAsLimit(order.type))
     {
       continue;
     }
@@ -1828,7 +1851,7 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting, int64_t trigger
   int64_t levelQtyRaw = 0;
   bool canFill = false;
 
-  if (order.type == OrderType::MARKET)
+  if (fillsAsMarket(order.type))
   {
     if (order.side == Side::BUY && state.hasAsk)
     {
@@ -1880,7 +1903,7 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting, int64_t trigger
   // improvement the resting side collects -- no venue hands that out, and on
   // coarse data the gap is the whole bar.
   bool isMaker = false;
-  if (resting && order.type != OrderType::MARKET)
+  if (resting && !fillsAsMarket(order.type))
   {
     fillPriceRaw = order.price.raw();
     isMaker = true;
@@ -1890,7 +1913,7 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting, int64_t trigger
   // rests instead, which is what a venue does with a stop-limit triggered on a
   // gap. Decided before the walk, so a refused fill does not eat depth on its
   // way out.
-  if (triggerBoundRaw != 0 && order.type != OrderType::MARKET)
+  if (triggerBoundRaw != 0 && !fillsAsMarket(order.type))
   {
     const bool beyondLimit =
         (order.side == Side::BUY && triggerBoundRaw > order.price.raw()) ||
@@ -1913,7 +1936,7 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting, int64_t trigger
   // nothing down; it just stops being cheap.
   if (!isMaker)
   {
-    const int64_t limitRaw = (order.type == OrderType::MARKET) ? 0 : order.price.raw();
+    const int64_t limitRaw = fillsAsMarket(order.type) ? 0 : order.price.raw();
     const LadderWalk walk =
         consumeLadder(order.symbol, order.side, remainingQty.raw(), limitRaw);
     if (walk.walked && walk.takenRaw > 0)
@@ -1938,7 +1961,7 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting, int64_t trigger
   }
 
   // Apply slippage only to market-style fills (limit makers trade at posted price).
-  if (order.type == OrderType::MARKET)
+  if (fillsAsMarket(order.type))
   {
     fillPriceRaw = applySlippage(fillPriceRaw, order.side, order.symbol,
                                  remainingQty, levelQtyRaw);
@@ -1966,7 +1989,7 @@ void SimulatedExecutor::processPendingOrders(SymbolId symbol, const MarketState&
     // rested when it triggered, or an order submitted before the model was
     // configured) has no queue to wait behind, and skipping it on the model
     // alone left it resting for the whole run.
-    if (order.type == OrderType::LIMIT && _queueTracker.enabled() &&
+    if (fillsAsLimit(order.type) && _queueTracker.enabled() &&
         _queueTracker.snapshot(order.id).has_value())
     {
       continue;
@@ -2529,7 +2552,7 @@ void SimulatedExecutor::maybeEmitMarketPositionChanges()
   }
   for (const Order& o : _pending_orders)
   {
-    if (o.type != OrderType::LIMIT)
+    if (!fillsAsLimit(o.type))
     {
       continue;
     }
@@ -2836,16 +2859,6 @@ void SimulatedExecutor::triggerConditionalOrder(Order& order)
   // has already copied onto the order by the time it fires; an order with no
   // trigger price at all carries no bound.
   const int64_t triggerBoundRaw = order.triggerPrice.raw();
-
-  if (order.type == OrderType::STOP_MARKET || order.type == OrderType::TAKE_PROFIT_MARKET ||
-      order.type == OrderType::TRAILING_STOP)
-  {
-    order.type = OrderType::MARKET;
-  }
-  else if (order.type == OrderType::STOP_LIMIT || order.type == OrderType::TAKE_PROFIT_LIMIT)
-  {
-    order.type = OrderType::LIMIT;
-  }
 
   // A triggered conditional order enters the book now, so it is the aggressor
   // if it crosses.
