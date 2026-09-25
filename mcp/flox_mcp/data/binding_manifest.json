@@ -15670,6 +15670,11 @@
         },
         {
           "kind": "method",
+          "name": "minLevel",
+          "parent": "ConsoleLogger"
+        },
+        {
+          "kind": "method",
           "name": "warn",
           "parent": "ConsoleLogger"
         },
@@ -17816,6 +17821,11 @@
         {
           "kind": "method",
           "name": "info",
+          "parent": "ILogger"
+        },
+        {
+          "kind": "method",
+          "name": "minLevel",
           "parent": "ILogger"
         },
         {

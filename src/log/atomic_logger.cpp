@@ -20,6 +20,32 @@ namespace flox
 
 namespace fs = std::filesystem;
 
+const std::string& defaultLogDirectory()
+{
+  // Resolved once: the answer cannot change under a running process, and a
+  // stat per default-constructed options object would be paid on a path that
+  // is often taken in a constructor.
+  static const std::string dir = []
+  {
+    std::error_code ec;
+    const fs::path shm{"/dev/shm"};
+    if (fs::is_directory(shm, ec))
+    {
+      return shm.string();
+    }
+    const fs::path tmp = fs::temp_directory_path(ec);
+    if (!ec && !tmp.empty())
+    {
+      return tmp.string();
+    }
+    // Neither answered: the current directory always exists, and a relative
+    // path is still a file somebody can find. The rotation counter reports it
+    // if even that cannot be opened.
+    return std::string(".");
+  }();
+  return dir;
+}
+
 namespace
 {
 // A producer gives up after this many turns around the claim loop. Each turn
@@ -341,13 +367,14 @@ void AtomicLogger::rotate()
   {
     // The log directory went away or became unwritable under a running
     // process -- a volume unmounted, a disk filled, permissions changed. The
-    // logger keeps going with no file: writeToOutput already drops when
-    // _file is null. Report the transition once rather than on every
-    // rotation, and count them so the drop is visible to a supervisor.
+    // logger keeps going with no file and writeToOutput sends the lines to
+    // stderr, so nothing is lost silently. Report the transition once rather
+    // than on every rotation, and count them so it is visible to a
+    // supervisor.
     if (_rotationFailures.fetch_add(1, std::memory_order_release) == 0)
     {
       const std::string reason = ec ? ec.message() : std::string("cannot open the file");
-      std::fprintf(stderr, "flox: WARN log rotation failed for '%s': %s; log output dropped\n",
+      std::fprintf(stderr, "flox: WARN log rotation failed for '%s': %s; log output goes to stderr\n",
                    path.c_str(), reason.c_str());
     }
   }
@@ -355,17 +382,23 @@ void AtomicLogger::rotate()
 
 void AtomicLogger::writeToOutput(const LogEntry& entry)
 {
-  if (!_file)
-  {
-    return;
-  }
-
   const char* levelStr =
       entry.level == LogLevel::Info ? "INFO" : entry.level == LogLevel::Warn ? "WARN"
                                                                              : "ERROR";
 
   char timebuf[32];
   formatTimestamp(entry.timestamp, timebuf, sizeof(timebuf));
+
+  if (_file == nullptr)
+  {
+    // No file to write to -- the directory went away or became unwritable
+    // under a running process. The line goes to stderr rather than nowhere:
+    // a logger that cannot open its file is a reason to look at the console,
+    // not a reason to discard what it was told. rotationFailures() stays the
+    // machine-readable signal.
+    std::fprintf(stderr, "flox: [%s] %s: %s\n", timebuf, levelStr, entry.message);
+    return;
+  }
 
   int written = std::fprintf(_file, "[%s] %s: %s\n", timebuf, levelStr, entry.message);
   if (written > 0)
