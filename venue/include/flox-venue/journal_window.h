@@ -113,8 +113,7 @@ WindowResult replayWindow(const SymbolConfig& cfg, const std::string& snapshot,
   WindowResult out;
   int64_t eventTs = 0;  // the timestamp of the command being applied
 
-  MatchingEngine<Book> eng(cfg,
-                           [&](const OutboundEvent& e)
+  MatchingEngine<Book> eng(cfg, [&](const OutboundEvent& e)
                            {
                              ++out.eventsTotal;
                              out.streamDigest = hashEvent(out.streamDigest, e);
@@ -127,8 +126,7 @@ WindowResult replayWindow(const SymbolConfig& cfg, const std::string& snapshot,
                              {
                                return;
                              }
-                             out.events.push_back(WindowEvent{eventTs, e});
-                           });
+                             out.events.push_back(WindowEvent{eventTs, e}); }, Book{}, cfg.matchPolicy);
 
   if (!snapshot.empty())
   {

@@ -611,7 +611,7 @@ MUTATIONS: list[Mutation] = [
         why="the per-reason counter array is not grown for the new reason, so counting a "
             "capacity reject writes one past the end of the array",
         file=METRICS,
-        old="static_cast<size_t>(RejectReason::BookCapacityExceeded) + 1;",
+        old="static_cast<size_t>(RejectReason::PegRequiresTick) + 1;",
         new="static_cast<size_t>(RejectReason::NewOrderNotPermitted) + 1;",
         # The third binary is not part of this task's tests: it is the enum/counter
         # pairing test that already lived in the tree, asked here so the verdict

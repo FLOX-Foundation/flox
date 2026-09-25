@@ -263,7 +263,7 @@ class ControlApi
       "listInstrument", "halt", "session", "setFundingSchedule",
       "setBand", "setTriggerRef", "setStpGroup", "setRiskLimits",
       "delist", "setAdmissionProfile", "snapshotNow", "get",
-      "list"};
+      "list", "setAccountRiskLimits", "adjustPosition", "forceClosePosition"};
 
   static bool isBuiltinMethod(std::string_view name)
   {
@@ -505,6 +505,66 @@ class ControlApi
       forward(InboundCommand{r});
       return ok();
     }
+    if (method == "setAccountRiskLimits")
+    {
+      // The same limits as setRiskLimits, bound to ONE account instead of to
+      // the instrument -- what a risk owner above the venue (a prime broker's
+      // limit desk, a margin engine) tightens. Sequenced for the reason the
+      // record exists: a limit that lived outside the journal is a limit the
+      // replay never saw, so an order the live engine refused would be
+      // accepted on replay.
+      //
+      // Masked and paired like its symbol-wide sibling: a request that raises
+      // the position cap must not zero the fat-finger cap by not mentioning
+      // it, and half a pair is a request to remove the other half.
+      SymbolId sym{};
+      uint64_t account = 0;
+      if (!req.symbolField("symbol", sym) || !req.u64Field("account", account))
+      {
+        return err("bad_field");
+      }
+      if (!reg_.get(sym))
+      {
+        return err("unknown_symbol");
+      }
+      SetAccountRiskLimits r;
+      r.symbol = sym;
+      r.account = account;
+      uint64_t maxOpenOrders = 0;
+      if (req.present("maxOrderQty") || req.present("maxOrderNotional"))
+      {
+        if (!req.decimalField("maxOrderQty", r.maxOrderQty) ||
+            !req.decimalField("maxOrderNotional", r.maxOrderNotional))
+        {
+          return err("bad_field");
+        }
+        r.fields |= AccountRiskLimitField::AccountRiskFatFinger;
+      }
+      if (req.present("maxOpenOrders"))
+      {
+        if (!req.u64Field("maxOpenOrders", maxOpenOrders) ||
+            maxOpenOrders > (std::numeric_limits<uint32_t>::max)())
+        {
+          return err("bad_field");
+        }
+        r.fields |= AccountRiskLimitField::AccountRiskMaxOpenOrders;
+        r.maxOpenOrders = static_cast<uint32_t>(maxOpenOrders);
+      }
+      if (req.present("maxPositionQty"))
+      {
+        if (!req.decimalField("maxPositionQty", r.maxPositionQty))
+        {
+          return err("bad_field");
+        }
+        r.fields |= AccountRiskLimitField::AccountRiskMaxPosition;
+      }
+      if (r.fields == 0)
+      {
+        return err("no_limits_named");
+      }
+      forward(InboundCommand{r});
+      return ok();
+    }
     if (method == "delist")
     {
       // Withdraw from trading with no scheduled return: the resting book is
@@ -584,6 +644,106 @@ class ControlApi
       forward(InboundCommand{SetAdmissionProfile{sym, {}, account, p}});
       return ok();
     }
+    if (method == "adjustPosition")
+    {
+      // A position corrected by hand, as a command rather than as a setter --
+      // which is the whole reason AdjustPosition is journaled, and until now
+      // the only way to send one was to call submit() inside the process.
+      //
+      // The reason is required. An adjustment carries no fill behind it, so
+      // the record IS the explanation: without one, a later reader cannot
+      // tell a routine reconciliation from a mistake, and a default would
+      // put a plausible-looking word on a correction nobody characterized.
+      SymbolId sym{};
+      uint64_t account = 0;
+      if (!req.symbolField("symbol", sym) || !req.u64Field("account", account))
+      {
+        return err("bad_field");
+      }
+      if (!reg_.get(sym))
+      {
+        return err("unknown_symbol");
+      }
+      AdjustPosition a;
+      a.symbol = sym;
+      a.accountId = account;
+      if (req.present("qtyDelta"))
+      {
+        Quantity delta{};
+        if (!req.decimalField("qtyDelta", delta))
+        {
+          return err("bad_field");
+        }
+        a.qtyDeltaRaw = delta.raw();  // signed: the correction has a direction
+      }
+      if (req.present("entry"))
+      {
+        Price entry{};
+        if (!req.decimalField("entry", entry) || entry.raw() < 0)
+        {
+          return err("bad_field");
+        }
+        a.entryRaw = entry.raw();
+      }
+      // An entry nobody named stays unset rather than becoming a zero entry,
+      // which would make every later PnL on the account wrong; the engine
+      // refuses the empty correction too, and answering here keeps a request
+      // that says nothing off the journal.
+      if (a.qtyDeltaRaw == 0 && a.entryRaw == 0)
+      {
+        return err("no_adjustment_named");
+      }
+      if (!adjustReasonOf(req.text("reason"), a.reason))
+      {
+        return err("bad_reason");
+      }
+      const std::string note = req.text("note");
+      // Truncated rather than refused: the note is commentary on a correction
+      // the operator has already decided to make, and the body's length is
+      // fixed because it is memcpy'd into the journal like every other.
+      const size_t n = note.size() < kAdjustNoteLen - 1 ? note.size() : kAdjustNoteLen - 1;
+      for (size_t i = 0; i < n; ++i)
+      {
+        a.note[i] = note[i];
+      }
+      forward(InboundCommand{a});
+      return ok();
+    }
+    if (method == "forceClosePosition")
+    {
+      // Closing a position on someone else's decision: a portfolio-margin
+      // model above the per-symbol engines sees the whole basket and this
+      // engine sees one symbol, so the engine is not allowed to judge. An
+      // unnamed size closes the whole position, which is what the record's
+      // qtyRaw == 0 already means.
+      SymbolId sym{};
+      uint64_t account = 0;
+      if (!req.symbolField("symbol", sym) || !req.u64Field("account", account))
+      {
+        return err("bad_field");
+      }
+      if (!reg_.get(sym))
+      {
+        return err("unknown_symbol");
+      }
+      ForceClosePosition fc;
+      fc.symbol = sym;
+      fc.accountId = account;
+      if (req.present("qty"))
+      {
+        Quantity q{};
+        if (!req.decimalField("qty", q) || q.raw() < 0)
+        {
+          return err("bad_field");
+        }
+        // A size, not a direction: which way the close goes is decided by the
+        // position, and a signed request here would let an operator name one
+        // that contradicts it.
+        fc.qtyRaw = q.raw();
+      }
+      forward(InboundCommand{fc});
+      return ok();
+    }
     if (method == "snapshotNow")
     {
       SymbolId sym{};
@@ -635,6 +795,40 @@ class ControlApi
   }
 
  private:
+  // The five reasons a position is corrected by hand, spelled the way the
+  // enum names them. Unknown text is refused rather than mapped to Manual: an
+  // operator who typed a reason this venue does not know said something the
+  // record cannot carry.
+  static bool adjustReasonOf(const std::string& text, AdjustReason& out)
+  {
+    if (text == "reconciliation")
+    {
+      out = AdjustReason::Reconciliation;
+      return true;
+    }
+    if (text == "counterpartyReport")
+    {
+      out = AdjustReason::CounterpartyReport;
+      return true;
+    }
+    if (text == "settlementCorrection")
+    {
+      out = AdjustReason::SettlementCorrection;
+      return true;
+    }
+    if (text == "migration")
+    {
+      out = AdjustReason::Migration;
+      return true;
+    }
+    if (text == "manual")
+    {
+      out = AdjustReason::Manual;
+      return true;
+    }
+    return false;
+  }
+
   void forward(const InboundCommand& cmd)
   {
     if (sink_)

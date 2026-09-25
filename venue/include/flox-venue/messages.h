@@ -42,6 +42,17 @@ enum class PegRef : uint8_t
   Mid,
 };
 
+// How a price level is allocated between the makers resting on it. It lives
+// here, next to the instrument's other wire-level choices, because it is
+// instrument CONFIGURATION: SymbolConfig carries it, and the config is the
+// only route a deployment has into a shard, a journal or a gateway. The
+// Matcher that acts on it is one reader of the answer, not its owner.
+enum class MatchPolicy : uint8_t
+{
+  PriceTimeFifo = 0,
+  ProRata = 1,  // thick-level proportional distribution (crossProRata)
+};
+
 // Which values of an order's enum-typed fields actually exist.
 //
 // Every one of them crosses the wire as a single byte, and a byte carries 256

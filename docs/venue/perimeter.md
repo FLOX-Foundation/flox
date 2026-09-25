@@ -372,8 +372,35 @@ way: `ControlApi` applies a successful mutation to the registry and forwards
 the equivalent command (`ListInstrument`, `SetBands`, `SetTriggerRef`,
 `AdminCmd` halt/resume)
 to its command sink, which the deployment wires into the journaled stream --
-on restart, `InstrumentRegistry::apply` replays those records. There is no
-separate configuration store. See [Runtime and recovery](runtime.md).
+on restart, `InstrumentRegistry::apply` replays those records, driven by
+`SequencedShard::setRegistry(&reg)` (set before `start()`). There is no
+separate configuration store. The shard writes the registry on its consumer
+thread, so serve this api from that thread. See
+[Runtime and recovery](runtime.md).
+
+Three of the verbs act on an ACCOUNT rather than on the instrument, and each
+forwards a record that was already journaled, snapshotted and replayed and had
+no way in from outside the process:
+
+```cpp
+api.handle(R"({"method":"setAccountRiskLimits","symbol":1,"account":7,
+                "maxOrderQty":1.0,"maxOrderNotional":0})");
+api.handle(R"({"method":"adjustPosition","symbol":1,"account":7,"qtyDelta":-2.0,
+                "reason":"counterpartyReport","note":"LP fill 88213"})");
+api.handle(R"({"method":"forceClosePosition","symbol":1,"account":7})");
+```
+
+`setAccountRiskLimits` masks and pairs its fields the way `setRiskLimits` does
+(`maxOrderQty`/`maxOrderNotional` are named together; `maxOpenOrders` and
+`maxPositionQty` are each optional), and a request naming no limit answers
+`no_limits_named`. `adjustPosition` requires the `reason`
+(`reconciliation`, `counterpartyReport`, `settlementCorrection`, `migration`,
+`manual`) -- an adjustment has no fill behind it, so the record is the whole
+explanation, and an unknown word answers `bad_reason` rather than being mapped
+to `manual`. Its `entry` is optional (absent keeps the average entry, and is
+NOT a zero entry), its `note` is truncated to `kAdjustNoteLen - 1`, and a
+request that moves neither size nor entry answers `no_adjustment_named`.
+`forceClosePosition` takes an optional `qty`; absent closes the whole position.
 
 Requests are read literally. A field nobody named is not a zero, so `setBand`
 needs both of its bounds and a paired risk limit needs both of its halves; a
