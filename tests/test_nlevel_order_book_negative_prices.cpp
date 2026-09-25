@@ -376,3 +376,93 @@ TEST(NLevelOrderBookNegativePrices, ARebuiltBookStillQuotesItsTouch)
   ASSERT_TRUE(book.spread().has_value());
   EXPECT_EQ(book.spread()->raw(), Price::fromDouble(1.0).raw());
 }
+
+// A snapshot spanning the whole ladder anchors the window on its lowest tick
+// (reanchor(): a span of MAX_LEVELS or more sets _baseIndex to minIdx), so the
+// best bid lands on ladder index 0 and the best ask on the last slot. Those are
+// ordinary levels, but they are also the two indices an emptiness test can
+// confuse with an empty side: 0 is the falsy one, and the top slot sits one
+// short of the MAX_LEVELS marker that does mean "no side". Every other case in
+// this file quotes somewhere in the middle of the window.
+TEST(NLevelOrderBookNegativePrices, TheWindowsFloorAndTopSlotAreQuotesLikeAnyOther)
+{
+  NLevelOrderBook<64> book{Price::fromDouble(1.0)};
+  // Ticks -100 and -37: a span of exactly 64 levels, so the window is anchored
+  // at -100 and the two quotes take its first and its last slot.
+  book.applyBookUpdate(snapshot().bid(-100.0, 3.0).ask(-37.0, 2.0).event());
+
+  ASSERT_EQ(book.getBidLevels(4).size(), 1u) << "the bid on the window's floor was not stored";
+  ASSERT_EQ(book.getAskLevels(4).size(), 1u) << "the ask on the window's top slot was not stored";
+
+  ASSERT_TRUE(book.bestBid().has_value())
+      << "the bid on the window's floor is reported as no bid";
+  ASSERT_TRUE(book.bestAsk().has_value())
+      << "the ask on the window's top slot is reported as no ask";
+  EXPECT_EQ(book.bestBid()->raw(), Price::fromDouble(-100.0).raw());
+  EXPECT_EQ(book.bestAsk()->raw(), Price::fromDouble(-37.0).raw());
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(-100.0)).raw(), Quantity::fromDouble(3.0).raw());
+  EXPECT_EQ(book.askAtPrice(Price::fromDouble(-37.0)).raw(), Quantity::fromDouble(2.0).raw());
+
+  ASSERT_TRUE(book.spread().has_value()) << "no spread while both sides are quoted";
+  ASSERT_TRUE(book.mid().has_value()) << "no mid while both sides are quoted";
+  EXPECT_EQ(book.spread()->raw(), Price::fromDouble(63.0).raw());
+  EXPECT_EQ(book.mid()->raw(), Price::fromDouble(-68.5).raw());
+  EXPECT_FALSE(book.isCrossed());
+
+  // That these two levels really are the first and the last slot is visible
+  // from outside the book: a quote one tick beyond either end does not fit in
+  // the window, and the window cannot follow it without evicting the live depth
+  // at the other end, so the level is dropped.
+  book.applyBookUpdate(delta().bid(-101.0, 1.0).event());
+  ASSERT_EQ(book.getBidLevels(4).size(), 1u)
+      << "-101.0 fit in the window, so -100.0 was not sitting on its floor";
+  EXPECT_EQ(book.bestBid()->raw(), Price::fromDouble(-100.0).raw());
+
+  book.applyBookUpdate(delta().ask(-36.0, 1.0).event());
+  ASSERT_EQ(book.getAskLevels(4).size(), 1u)
+      << "-36.0 fit in the window, so -37.0 was not sitting on its top slot";
+  EXPECT_EQ(book.bestAsk()->raw(), Price::fromDouble(-37.0).raw());
+}
+
+// The reference says spread "Returns ask - bid spread"
+// (docs/reference/api/book/nlevel_order_book.md:105) and says nothing about
+// what that means once the two sides overlap, so what is pinned here is the
+// sign that formula produces: a crossed book has a negative spread. It is the
+// only reading that keeps spread() and isCrossed() telling the same story, and
+// a feed handler watching the touch invert wants the size of the inversion, not
+// its magnitude with the sign thrown away -- an absolute value would report a
+// crossed book as a wide one.
+TEST(NLevelOrderBookNegativePrices, ACrossedBookReportsANegativeSpread)
+{
+  NLevelOrderBook<> crossed{Price::fromDouble(1.0)};
+  crossed.applyBookUpdate(snapshot().bid(101.0, 1.0).ask(99.0, 1.0).event());
+
+  ASSERT_TRUE(crossed.isCrossed());
+  ASSERT_TRUE(crossed.spread().has_value());
+  EXPECT_LT(crossed.spread()->raw(), 0)
+      << "a bid two ticks above the ask reports a non-negative spread";
+  EXPECT_EQ(crossed.spread()->raw(), Price::fromDouble(-2.0).raw());
+  // The mid stays between the two quotes either way.
+  ASSERT_TRUE(crossed.mid().has_value());
+  EXPECT_EQ(crossed.mid()->raw(), Price::fromDouble(100.0).raw());
+
+  // The same inversion below zero, where the old sentinel hid it entirely.
+  NLevelOrderBook<> crossedBelowZero{Price::fromDouble(1.0)};
+  crossedBelowZero.applyBookUpdate(snapshot().bid(-99.0, 1.0).ask(-101.0, 1.0).event());
+  ASSERT_TRUE(crossedBelowZero.isCrossed());
+  ASSERT_TRUE(crossedBelowZero.spread().has_value());
+  EXPECT_EQ(crossedBelowZero.spread()->raw(), Price::fromDouble(-2.0).raw());
+
+  // A locked book sits on the boundary: zero, with no sign to get wrong.
+  NLevelOrderBook<> locked{Price::fromDouble(1.0)};
+  locked.applyBookUpdate(snapshot().bid(100.0, 1.0).ask(100.0, 1.0).event());
+  ASSERT_TRUE(locked.spread().has_value());
+  EXPECT_EQ(locked.spread()->raw(), 0);
+
+  // Green control: an ordinary book keeps its positive spread, so the case
+  // above pins the sign rather than flipping it everywhere.
+  NLevelOrderBook<> clean{Price::fromDouble(1.0)};
+  clean.applyBookUpdate(snapshot().bid(99.0, 1.0).ask(101.0, 1.0).event());
+  ASSERT_TRUE(clean.spread().has_value());
+  EXPECT_EQ(clean.spread()->raw(), Price::fromDouble(2.0).raw());
+}
