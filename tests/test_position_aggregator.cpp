@@ -35,7 +35,7 @@ static Order makeOrder(OrderId id, SymbolId sym, Side side, double price, double
   return o;
 }
 
-// W32-T012: a handful of concrete key-insertion layouts for the same
+// A handful of concrete key-insertion layouts for the same
 // logical set of positions, tried in order until one produces a native
 // (bucket) traversal that is not already ascending PositionId order.
 // Different standard libraries lay std::unordered_map<PositionId, ...> out
@@ -1074,7 +1074,7 @@ TEST(GroupedQueryTest, GetOpenPositionsBySymbol)
   EXPECT_EQ(positions200.size(), 1);
 }
 
-// W32-T012: getOpenPositions() and forEachOpen() used to hand positions out
+// getOpenPositions() and forEachOpen() used to hand positions out
 // in whatever order _positions (a std::unordered_map<PositionId, ...>)
 // happened to enumerate them -- hash-bucket order, a property of the
 // standard library rather than of the data. Both are fixed to sort by

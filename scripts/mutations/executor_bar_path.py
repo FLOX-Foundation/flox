@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Mutation harness for the executor bar path across the bindings (W33-T036).
+"""Mutation harness for the executor bar path across the bindings.
 
 `flox_simulated_executor_on_bar_ohlc` / `_begin_bar_callback_window` /
 `_end_bar_callback_window` / `_reset`, plus `close_reason` on `FloxBar`, were
 added to the C API and then projected into pybind11, napi, QuickJS and Codon
-(see .notes/tracks/W33-stabilization/T036-bindings.md, "## Код (агент C)").
+(the manual bar path of the simulated executor).
 This script breaks that projection one piece and one binding at a time, and
 checks that the test written for it goes red.
 

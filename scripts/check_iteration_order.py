@@ -35,7 +35,7 @@ order is observable.
 
 Scope is venue/include, plus include/flox/position and include/flox/backtest:
 a backtest is expected to reproduce bit-for-bit on another machine, and
-W32-T012 found a float fold over unordered_* there that libc++ and libstdc++
+an audit found a float fold over unordered_* there that libc++ and libstdc++
 walk in different orders (include/flox/position/portfolio_greeks.h) and
 audited the rest of both directories for the same shape of bug. Each root is
 scanned as headers and the *.inl fragments they include alike -- a fragment

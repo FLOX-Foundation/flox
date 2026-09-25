@@ -77,7 +77,7 @@ std::vector<KeyLayoutAttempt> keyLayoutAttempts(size_t n)
   // Several independent fixed-seed shuffles rather than one: a single
   // layout can enumerate in non-ascending order while still happening to
   // fold to the same bit pattern as sorted order (seen on windows-clang-cl
-  // for the first seed tried during W32-T012). More seeds make it very
+  // for the first seed tried). More seeds make it very
   // unlikely every one of them coincides.
   static constexpr unsigned kSeeds[] = {12345u, 67890u, 24680u, 13579u, 99999u};
   static const char* kNames[] = {
@@ -207,7 +207,7 @@ TEST(PortfolioGreeksTest, VegaBucketedByTenor)
   EXPECT_NEAR(agg.vegaInTenor(VegaTenor::Medium), 0.0, 1e-9);  // nothing in 30-90d
 }
 
-// W32-T012: compute() used to fold delta across positions.positions() in
+// compute() used to fold delta across positions.positions() in
 // whatever order std::unordered_map<PositionId, IndividualPosition> happened
 // to enumerate them, which is a hash-bucket order -- a property of the
 // standard library, not of the data. libc++ and libstdc++ walk the same
