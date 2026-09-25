@@ -237,3 +237,57 @@ def test_an_idl_group_absent_from_the_manifest_is_red(parity_tree):
     assert r.returncode == 1, r.output
     assert "gadget" in r.output
     assert "binding_parity.yaml" in r.output, r.output
+
+
+# ── Third pass: the two reports nothing was reading ───────────────────
+
+
+def test_a_manifest_group_with_no_idl_counterpart_is_red(parity_tree):
+    """The mirror of the check above. A group that was renamed or removed in
+    the IDL leaves an entry behind that declares coverage of nothing, and
+    keeps reading as a group under control -- so the manifest has to be told
+    to drop it."""
+    baseline = parity_tree.run()
+    assert baseline.returncode == 0, baseline.output
+
+    parity_tree.write("tools/codegen/binding_parity.yaml",
+                      parity_tree.read("tools/codegen/binding_parity.yaml") + """\
+  gizmo:
+    pybind11: { status: required, classes: [Widget] }
+    napi: { status: required, classes: [Widget] }
+    codon: { status: required }
+    quickjs: { status: required, classes: [Widget], functions: {} }
+""")
+
+    r = parity_tree.run()
+    assert r.returncode == 1, r.output
+    assert "gizmo" in r.output
+    assert "not found in IDL spec" in r.output, r.output
+    assert "remove from yaml" in r.output, r.output
+
+
+def test_an_allowlisted_function_without_a_reason_is_red(parity_tree):
+    """The allowlist is the inventory of what a binding does not reach, and
+    the reason is the whole entry -- a bare name turns the inventory back
+    into a list of functions nobody has to explain."""
+    parity_tree.drop_line("python/widget_bindings.h", "flox_widget_size")
+    yaml_text = parity_tree.read("tools/codegen/binding_parity.yaml")
+
+    def with_entry(entry: str) -> str:
+        return yaml_text + f"""
+allowlist_functions:
+  pybind11:
+    flox_widget_size:{entry}
+"""
+
+    parity_tree.write("tools/codegen/binding_parity.yaml",
+                      with_entry(' "reached through the C++ class, not the C ABI"'))
+    accepted = parity_tree.run()
+    assert accepted.returncode == 0, accepted.output
+
+    for entry, label in ((' ""', "an empty reason"), ("", "no reason at all")):
+        parity_tree.write("tools/codegen/binding_parity.yaml", with_entry(entry))
+        r = parity_tree.run()
+        assert r.returncode == 1, f"{label} passed: {r.output}"
+        assert "flox_widget_size" in r.output, r.output
+        assert "without a reason" in r.output, r.output
