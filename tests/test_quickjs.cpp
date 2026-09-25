@@ -2281,3 +2281,42 @@ TEST(JsIntegrationTest, CompositeBookDetectsArbitrageAcrossExchanges)
   EXPECT_TRUE(JS_ToBool(ctx, arb)) << "a higher bid on exchange 2 than the ask on exchange 1 is arbitrage";
   JS_FreeValue(ctx, arb);
 }
+
+// ============================================================
+// C ABI version handshake
+// ============================================================
+
+// flox_capi.h asks every caller to "compare FLOX_CAPI_ABI_VERSION against
+// flox_capi_abi_version() once at startup and refuse the mismatch". The
+// embedded engine registers its bindings once, at registerFloxBindings,
+// which is where that comparison belongs; what a script can observe is
+// the pair of numbers it compared. The refusal itself is pinned in
+// tests/test_capi_abi_check.cpp, which can force a wrong number.
+TEST(JsEngineTest, AbiVersionPairIsExposedAndAgrees)
+{
+  FloxJsEngine engine;
+  registerFloxBindings(engine.context());
+
+  JSValue compiled = engine.getGlobalProperty("__FLOX_CAPI_ABI_VERSION");
+  EXPECT_TRUE(JS_IsNumber(compiled))
+      << "the version the binding was compiled against is not exposed";
+  JS_FreeValue(engine.context(), compiled);
+
+  JSValue fn = engine.getGlobalProperty("__flox_capi_abi_version");
+  EXPECT_TRUE(JS_IsFunction(engine.context(), fn))
+      << "the version the library reports is not exposed";
+  JS_FreeValue(engine.context(), fn);
+
+  ASSERT_TRUE(engine.eval(R"(
+    if (typeof __FLOX_CAPI_ABI_VERSION !== 'number') {
+      throw new Error('__FLOX_CAPI_ABI_VERSION missing');
+    }
+    if (typeof __flox_capi_abi_version !== 'function') {
+      throw new Error('__flox_capi_abi_version missing');
+    }
+    if (__flox_capi_abi_version() !== __FLOX_CAPI_ABI_VERSION) {
+      throw new Error('ABI skew: compiled against ' + __FLOX_CAPI_ABI_VERSION +
+                      ', library reports ' + __flox_capi_abi_version());
+    }
+  )")) << engine.getErrorMessage();
+}

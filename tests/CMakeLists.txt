@@ -316,6 +316,12 @@ if(FLOX_BUILD_CAPI)
   target_link_libraries(test_capi_executor PRIVATE flox_capi)
   add_flox_test(test_capi_contract)
   target_link_libraries(test_capi_contract PRIVATE flox_capi)
+  # Reads include/flox/capi/flox_capi.h back as text to check the ownership
+  # notes the calling contract promises.
+  target_compile_definitions(test_capi_contract PRIVATE
+    FLOX_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
+  add_flox_test(test_capi_abi_check)
+  target_link_libraries(test_capi_abi_check PRIVATE flox_capi)
   add_flox_test(test_capi_venue_stack)
   target_link_libraries(test_capi_venue_stack PRIVATE flox_capi)
   add_flox_test(test_capi_diagnostics)

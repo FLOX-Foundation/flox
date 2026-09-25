@@ -13,6 +13,7 @@
 //   1. A null handle returns the function's documented zero value.
 //   2. No exception escapes the boundary.
 //   3. Scratch buffers belong to a handle, not to a thread, and die with it.
+//   4. Every handle-returning function says who owns what it returns.
 //
 // Each of these was reachable from a shipped binding before it was written
 // down, so each gets a test rather than a comment.
@@ -21,10 +22,13 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <regex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -358,4 +362,191 @@ TEST(CapiContractTest, DataWriterCreateOnAnImpossiblePathFailsInsteadOfTerminati
   flox_data_writer_destroy(writer);
 
   std::filesystem::remove_all(dir);
+}
+
+// ── 4. Ownership, written down per function ───────────────────────────
+
+// The header states one ownership rule and states it by name: "a function
+// whose name ends in _create returns a handle the caller owns and must
+// pass to the matching _destroy". Handle-returning functions that are not
+// named that way are outside the rule, and the header said nothing about
+// them -- flox_curve_constant_product, flox_curve_raydium_cp,
+// flox_curve_uniswap_v3, flox_curve_clone and flox_pool_tape_replay hand
+// back an owned handle, flox_run_reader_open hands back one whose partner
+// is flox_run_reader_close rather than a _destroy, and the venue-stack
+// accessors hand back a borrowed one. A binding author following the rule
+// as written leaks or double-frees, so each of them needs a note.
+//
+// The check is deliberately loose about layout: the note may sit in the
+// comment block directly above the declaration, on the declaration's own
+// line, or in any comment anywhere in the header that names the function.
+// It only insists the word is there.
+
+namespace
+{
+
+std::string headerPath()
+{
+  return std::string(FLOX_REPO_ROOT) + "/include/flox/capi/flox_capi.h";
+}
+
+std::vector<std::string> readLines(const std::string& path)
+{
+  std::vector<std::string> lines;
+  std::ifstream in(path);
+  std::string line;
+  while (std::getline(in, line))
+  {
+    lines.push_back(line);
+  }
+  return lines;
+}
+
+std::string toLower(std::string s)
+{
+  for (auto& c : s)
+  {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  return s;
+}
+
+bool mentionsOwnership(const std::string& text)
+{
+  const std::string lowered = toLower(text);
+  return lowered.find("owned") != std::string::npos ||
+         lowered.find("owns") != std::string::npos ||
+         lowered.find("caller owns") != std::string::npos ||
+         lowered.find("borrow") != std::string::npos;
+}
+
+// Every line that is wholly inside a comment, C or C++ style. Good enough
+// for a generated header with no string literal carrying a "/*".
+std::vector<bool> commentLines(const std::vector<std::string>& lines)
+{
+  std::vector<bool> isComment(lines.size(), false);
+  bool inBlock = false;
+  for (size_t i = 0; i < lines.size(); ++i)
+  {
+    const std::string& raw = lines[i];
+    const size_t first = raw.find_first_not_of(" \t");
+    const std::string trimmed = (first == std::string::npos) ? "" : raw.substr(first);
+    if (inBlock)
+    {
+      isComment[i] = true;
+      if (trimmed.find("*/") != std::string::npos)
+      {
+        inBlock = false;
+      }
+      continue;
+    }
+    if (trimmed.rfind("//", 0) == 0)
+    {
+      isComment[i] = true;
+      continue;
+    }
+    if (trimmed.rfind("/*", 0) == 0)
+    {
+      isComment[i] = true;
+      inBlock = trimmed.find("*/") == std::string::npos;
+    }
+  }
+  return isComment;
+}
+
+}  // namespace
+
+TEST(CapiContractTest, EveryHandleReturningFunctionOutsideTheCreateRuleCarriesAnOwnershipNote)
+{
+  const auto lines = readLines(headerPath());
+  ASSERT_FALSE(lines.empty()) << "could not read " << headerPath();
+  const auto isComment = commentLines(lines);
+
+  // Comment blocks, merged across contiguous comment lines, so a note
+  // that names its function from a paragraph elsewhere still counts.
+  std::vector<std::string> blocks;
+  for (size_t i = 0; i < lines.size();)
+  {
+    if (!isComment[i])
+    {
+      ++i;
+      continue;
+    }
+    std::string block;
+    while (i < lines.size() && isComment[i])
+    {
+      block += lines[i];
+      block += "\n";
+      ++i;
+    }
+    blocks.push_back(block);
+  }
+
+  const std::regex decl(R"(^\s*(Flox[A-Za-z0-9]*Handle)\s+(flox_[a-z0-9_]+)\s*\()");
+  std::vector<std::string> undocumented;
+  std::set<std::string> checked;
+
+  for (size_t i = 0; i < lines.size(); ++i)
+  {
+    if (isComment[i])
+    {
+      continue;
+    }
+    std::smatch m;
+    if (!std::regex_search(lines[i], m, decl))
+    {
+      continue;
+    }
+    const std::string name = m[2].str();
+    // Covered by the header's own naming rule.
+    if (name.find("_create") != std::string::npos)
+    {
+      continue;
+    }
+    checked.insert(name);
+
+    std::string context = lines[i];
+    for (size_t back = i; back-- > 0 && isComment[back];)
+    {
+      context = lines[back] + "\n" + context;
+    }
+    if (mentionsOwnership(context))
+    {
+      continue;
+    }
+
+    bool namedElsewhere = false;
+    for (const auto& block : blocks)
+    {
+      if (block.find(name) != std::string::npos && mentionsOwnership(block))
+      {
+        namedElsewhere = true;
+        break;
+      }
+    }
+    if (!namedElsewhere)
+    {
+      undocumented.push_back(name);
+    }
+  }
+
+  // The six the audit named, so an enumeration that silently matched
+  // nothing cannot pass this test.
+  for (const char* expected : {"flox_curve_constant_product", "flox_curve_raydium_cp",
+                               "flox_curve_uniswap_v3", "flox_curve_clone",
+                               "flox_pool_tape_replay", "flox_run_reader_open"})
+  {
+    EXPECT_TRUE(checked.count(expected) == 1)
+        << expected << " was not found as a handle-returning declaration";
+  }
+
+  std::string report;
+  for (const auto& name : undocumented)
+  {
+    report += "\n  " + name;
+  }
+  EXPECT_TRUE(undocumented.empty())
+      << "handle-returning functions outside the _create naming rule with no "
+         "owned/borrowed note:"
+      << report;
 }

@@ -1,7 +1,8 @@
 """Conditional orders through the Python SimulatedExecutor binding.
 
-submit_order accepts stop_market / stop_limit / take_profit_market /
-take_profit_limit / trailing_stop, and the trigger must actually reach
+submit_order accepts stop_market / stop_limit / tp_market / tp_limit /
+trailing_stop -- the names order_type_names.hpp defines -- and the
+trigger must actually reach
 Order::triggerPrice (respectively trailingOffset / trailingCallbackRate)
 on the C++ side. Before the fix the binding dropped the trigger: a BUY
 stop fired on the first trade at any price and a SELL stop never fired.
@@ -96,7 +97,7 @@ class TakeProfitTests(unittest.TestCase):
     def test_sell_tp_fires_at_or_above_trigger(self) -> None:
         d = _Sim()
         d.sim.submit_order(5, "sell", 101.3, 1.0,
-                           type="take_profit_market", symbol=1)
+                           type="tp_market", symbol=1)
         d.trade(101.25)
         self.assertEqual(d.fills(), [], "below trigger must not fire")
         d.trade(101.5)
