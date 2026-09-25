@@ -39,9 +39,12 @@ static constexpr std::string_view kPathModifyTpsl = "/api/v2/mix/order/modify-tp
 
 // Format a double as a fixed-point decimal with up to `max_decimals` fractional
 // digits, rounded half-to-even, trailing zeros stripped. Bitget validates
-// trigger prices against the symbol's pricePrecision (BTC perp = 1 digit) and
-// rejects values like "73577.65" even though they parse to the same number.
-static std::string trimDouble(double v, int max_decimals = 1)
+// prices against the symbol's own precision and rejects values like
+// "73577.65" on an instrument that quotes to one digit, even though they
+// parse to the same number -- so the digit count is a property of the
+// instrument and must come from the registry (decimalsForTick below), never
+// from a default.
+static std::string trimDouble(double v, int max_decimals)
 {
   // Round to max_decimals first.
   double scale = 1.0;
@@ -65,6 +68,45 @@ static std::string trimDouble(double v, int max_decimals = 1)
     }
   }
   return s;
+}
+
+// Fractional digits the Price type itself can carry (its scale is a power of
+// ten), which is the cap on anything formatted below.
+static constexpr int priceDecimals()
+{
+  int digits = 0;
+  for (int64_t scale = Price::Scale; scale > 1; scale /= 10)
+  {
+    ++digits;
+  }
+  return digits;
+}
+
+static constexpr int kPriceDecimals = priceDecimals();
+
+// How many fractional digits this instrument quotes in, from the tick size the
+// registry already holds: 0.1 -> 1, 0.0001 -> 4, 1e-8 -> 8. Every trigger and
+// limit price this connector sends used to be formatted with one digit, an
+// assumption spelled out in trimDouble's own comment ("BTC perp = 1 digit"),
+// which moved a protective stop on anything finer and sent "0" for a symbol
+// priced below 0.05.
+static int decimalsForTick(Price tickSize)
+{
+  int64_t raw = tickSize.raw();
+  if (raw <= 0)
+  {
+    // No usable tick in the registry: send everything the fixed-point type can
+    // carry rather than silently rounding the strategy's price away.
+    return kPriceDecimals;
+  }
+
+  int decimals = kPriceDecimals;
+  while (decimals > 0 && raw % 10 == 0)
+  {
+    raw /= 10;
+    --decimals;
+  }
+  return decimals;
 }
 
 namespace
@@ -508,6 +550,8 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const SymbolInfo& info)
 {
+  const int decimals = decimalsForTick(info.tickSize);
+
   std::string body;
   body.reserve(320);
   body.append("{\"planType\":\"normal_plan\",")
@@ -527,7 +571,7 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
       .append(order.quantity.toString())
       .append("\",")
       .append("\"triggerPrice\":\"")
-      .append(order.triggerPrice.toString())
+      .append(trimDouble(order.triggerPrice.toDouble(), decimals))
       .append("\",")
       .append("\"triggerType\":\"mark_price\",")
       .append("\"side\":\"")
@@ -822,17 +866,18 @@ void BitgetOrderExecutorT<Policies>::sendPlacePosTpsl(SymbolId symbol, HoldSide 
               : slPrice > 0              ? "pos_loss"
                                          : "pos_profit")
       .append("\",");
+  const int decimals = decimalsForTick(info->tickSize);
   if (slPrice > 0)
   {
     body.append("\"stopLossTriggerPrice\":\"")
-        .append(trimDouble(slPrice))
+        .append(trimDouble(slPrice, decimals))
         .append("\",")
         .append("\"stopLossTriggerType\":\"mark_price\",");
   }
   if (tpPrice > 0)
   {
     body.append("\"stopSurplusTriggerPrice\":\"")
-        .append(trimDouble(tpPrice))
+        .append(trimDouble(tpPrice, decimals))
         .append("\",")
         .append("\"stopSurplusTriggerType\":\"mark_price\",");
   }
@@ -932,7 +977,7 @@ void BitgetOrderExecutorT<Policies>::sendModifyPosTpsl(SymbolId symbol,
       .append(trimDouble(qty, /*max_decimals=*/4))
       .append("\",")
       .append("\"triggerPrice\":\"")
-      .append(trimDouble(newTriggerPrice, /*max_decimals=*/1))
+      .append(trimDouble(newTriggerPrice, decimalsForTick(info->tickSize)))
       .append("\",")
       .append("\"triggerType\":\"mark_price\"}");
 
