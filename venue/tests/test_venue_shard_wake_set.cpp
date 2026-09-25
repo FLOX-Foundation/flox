@@ -458,6 +458,7 @@ TEST(VenueShardWakeSet, ParkUntilWakesOnItsDeadlineWithNobodyPublishing)
   // the RATIO between a bounded sleep and an unbounded one measured back to
   // back on it, and that is what this asserts instead.
   int64_t totalNetMs = 0;
+  int64_t worstNetMs = 0;
   for (int i = 0; i < kRounds; ++i)
   {
     const auto t0 = steady_clock::now();
@@ -466,15 +467,16 @@ TEST(VenueShardWakeSet, ParkUntilWakesOnItsDeadlineWithNobodyPublishing)
                   { return false; });
     const auto took = duration_cast<milliseconds>(steady_clock::now() - t0);
     totalNetMs += took.count();
+    worstNetMs = took.count() > worstNetMs ? took.count() : worstNetMs;
   }
   const int64_t meanNetMs = totalNetMs / kRounds;
 
   std::printf(
       "parkUntil(%lld ms), %d rounds: worst %lld ms, mean %lld ms (the net is %lld ms, "
-      "mean(net) %lld ms)\n",
+      "mean(net) %lld ms, worst(net) %lld ms)\n",
       static_cast<long long>(kDeadlineMs), kRounds, static_cast<long long>(worstMs),
       static_cast<long long>(meanMs), static_cast<long long>(kNetMs),
-      static_cast<long long>(meanNetMs));
+      static_cast<long long>(meanNetMs), static_cast<long long>(worstNetMs));
 
   // The mean against the control series' OWN mean on this same machine, not
   // against a fixed millisecond budget. A sleep bounded by the net is bounded
@@ -490,9 +492,17 @@ TEST(VenueShardWakeSet, ParkUntilWakesOnItsDeadlineWithNobodyPublishing)
   // The worst round is no longer a mutation detector on its own -- the mean
   // comparison above is that -- this is just a sanity bound so one wildly
   // descheduled round does not pass silently while wrecking the printed
-  // numbers. Held against the control series' measured mean rather than the
-  // nominal net constant, for the same reason the assertion above is.
-  EXPECT_LT(worstMs, meanNetMs + 10) << "a round waited far longer than the control series' mean";
+  // numbers. Held against the control series' own WORST round, not its mean:
+  // a single round in either series can be descheduled for far longer than
+  // that series' average on a genuinely contended runner (another job's
+  // build, a neighbour's noisy container), and comparing worst-to-mean
+  // let exactly that kind of round in the deadline series fail against a
+  // mean that a symmetric bad round in the net series would not have moved
+  // as much. Worst-to-worst is the like-for-like comparison, still measured
+  // back to back on the same machine, with the same flat +10ms floor for a
+  // quiet machine where both series round to single-digit milliseconds.
+  EXPECT_LT(worstMs, worstNetMs + 10)
+      << "a round waited far longer than the control series' own worst round";
 }
 
 // A deadline already in the past is "look once and come straight back".

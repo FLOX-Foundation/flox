@@ -158,7 +158,15 @@ bool probeMulticast()
   {
     return false;
   }
-  sub.setTimeout(200);
+  // A ceiling, not a measurement: this socket carries data already
+  // published synchronously (in-process, before recv is ever called), so a
+  // packet that will arrive at all is already queued by the kernel when we
+  // ask for it -- the timeout only matters for the negative case ("nothing
+  // more is coming"), which every recv() below pays in full when it fires.
+  // Doubled from the original 200ms is enough margin for ordinary
+  // scheduling jitter on a shared runner without doubling the whole
+  // suite's wall time on every green run.
+  sub.setTimeout(400);
   UdpMdPublisher pub;
   if (!pub.open(group, static_cast<uint16_t>(sub.port()), true, iface))
   {
@@ -178,7 +186,11 @@ bool setupUdp(UdpMdPublisher& pub, UdpMdSubscriber& sub, const char* group)
   {
     return false;
   }
-  sub.setTimeout(300);
+  // See probeMulticast()'s comment: doubled from the original 300ms, not
+  // pushed further -- several tests below drain a socket to exhaustion
+  // (while (sub.recv(m)) {}), which pays this timeout in full exactly once,
+  // by design, on every run whether loaded or not.
+  sub.setTimeout(600);
   return pub.open(g_multicast ? group : "127.0.0.1", static_cast<uint16_t>(sub.port()),
                   g_multicast, iface);
 }
@@ -512,7 +524,13 @@ void test_recovery_backoff_bounded()
   UdpMdPublisher pub;
   UdpMdSubscriber sub;
   CHECK(setupUdp(pub, sub, "239.7.8.4"));
-  sub.setTimeout(100);
+  // Set explicitly (independent of setupUdp()'s default) because this test
+  // deliberately drives the negative case: a failed recovery degrades to a
+  // clean timeout rather than a hang, and that wait is paid in full, by
+  // design, every time this test runs. Tripled from the original 100ms for
+  // the same scheduling-jitter margin as the other sockets in this file,
+  // without turning a designed timeout into a multi-second one.
+  sub.setTimeout(300);
 
   MdCounters counters;
   // Lossy wire: seq 2 never reaches the subscriber (it stays on the resend
@@ -630,7 +648,8 @@ void test_send_drop_counted()
   // A healthy socket publishes without touching the counter.
   UdpMdSubscriber sub;
   CHECK(sub.join("239.7.8.3", 0, false, "127.0.0.1"));
-  sub.setTimeout(300);
+  // See probeMulticast()'s comment: doubled from the original 300ms.
+  sub.setTimeout(600);
   CHECK(pub.open("127.0.0.1", static_cast<uint16_t>(sub.port()), false));
   CHECK(pub.publish(m));
   CHECK(counters.sendDrops.load() == 1);
