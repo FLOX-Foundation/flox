@@ -18,9 +18,17 @@
  * docs/explanation/javascript-value-boundary.md says every nanosecond
  * argument accepts -- is rejected outright with "A number was expected".
  *
+ * The same defect sits in node/src/hooks.h, which builds every hook
+ * payload: orderToJs and tradeToJs still hand `createdAtNs` and
+ * `exchangeTsNs` over as Napi::Number, so every execution-listener
+ * event, every Executor.submit and every market-data recorder trade
+ * carries a quantised reading -- while the trade a strategy is handed,
+ * built 400 lines away in strategy.h, has been a BigInt all along.
+ *
  * Durations are a separate matter and stay Numbers: a staleness, a
  * confidence half-life and a timeout are differences, exact in a double
- * below 104 days. Only clock readings are pinned to BigInt here.
+ * below 104 days. So are prices and sizes. Only clock readings are
+ * pinned to BigInt here.
  *
  * Run from repo root:
  *   cd node && node test/test_ns_timestamp_round_trip.js
@@ -227,6 +235,141 @@ console.log('\n=== A Number ts still ticks the clock ===');
         `a Number ts under 2^53 survives (got ${exact(snap.lastTsNs[BTC])})`);
 }
 
+// ── Order and trade events ────────────────────────────────────────────
+//
+// node/src/hooks.h builds the JS objects every hook payload is made of.
+// The bar and context builders in strategy.h were moved onto BigInt;
+// orderToJs (:112-113) and tradeToJs (:124) were not, and still emit
+// `createdAtNs` / `exchangeTsNs` through
+// Napi::Number::New(env, static_cast<double>(...)). Those are absolute
+// clock readings, which the boundary doc puts on the BigInt side -- "on
+// an order event: exchangeTsNs, submittedAtNs, ..." -- and which the
+// trade handed to a strategy already honours (strategy.h sets
+// TradeData.timestampNs with Napi::BigInt). Every execution-listener
+// event, every Executor.submit, and every market-data recorder trade
+// goes through these two functions, so the whole hook payload surface
+// still quantises its timestamps to 256 ns.
+
+const BAR_STARTS = [NS, NS + SECOND_NS];
+const BAR_ENDS = [NS + SECOND_NS - 1n, NS + 2n * SECOND_NS - 1n];
+
+// The clock the runner stamps an order with is the bar boundary it was
+// submitted on, so the exact reading is one of the ends fed in -- and
+// they are a second apart, four million times the 256 ns a double can
+// resolve here, so no double image of one can be mistaken for another.
+function isOneOfTheBarEnds(v) {
+  return BAR_ENDS.some(e => e === exact(v));
+}
+
+console.log('\n=== An order reaching an execution listener carries BigInt readings ===');
+{
+  const reg = new flox.SymbolRegistry();
+  const sym = reg.addSymbol('test', 'BTC', 0.01);
+  const runner = new flox.BacktestRunner(reg, 0.0, 10000.0);
+  const orders = [];
+  runner.addExecutionListener({
+    onSubmitted(o) { orders.push(['onSubmitted', o]); },
+    onAccepted(o) { orders.push(['onAccepted', o]); },
+    onFilled(o) { orders.push(['onFilled', o]); },
+  });
+  let bar = 0;
+  runner.setStrategy({
+    symbols: [sym],
+    onBar(_ctx, _b, emit) { bar++; if (bar === 1) { emit.marketBuy(1.0, Number(sym)); } },
+  });
+  runner.runBars(
+    new BigInt64Array(BAR_STARTS), new BigInt64Array(BAR_ENDS),
+    new Float64Array([100.0, 100.5]), new Float64Array([101.0, 101.5]),
+    new Float64Array([99.0, 99.5]), new Float64Array([100.5, 101.0]),
+    new Float64Array([10.0, 10.0]), 'BTC');
+
+  check(orders.length >= 1, `the listener saw at least one order event (got ${orders.length})`);
+  for (const [event, order] of orders) {
+    check(typeof order.createdAtNs === 'bigint',
+          `${event} order.createdAtNs is a bigint (got ${typeof order.createdAtNs})`);
+    check(isOneOfTheBarEnds(order.createdAtNs),
+          `${event} order.createdAtNs is one of the bar ends fed in ` +
+          `(got ${exact(order.createdAtNs)}, want ${BAR_ENDS.join(' or ')})`);
+    check(typeof order.exchangeTsNs === 'bigint',
+          `${event} order.exchangeTsNs is a bigint (got ${typeof order.exchangeTsNs})`);
+    // Prices and sizes are not clock readings and stay Numbers.
+    check(typeof order.price === 'number' && typeof order.quantity === 'number',
+          `${event} order keeps price and quantity as numbers`);
+  }
+}
+
+console.log('\n=== An order reaching a binding-supplied executor carries the same types ===');
+{
+  // Executor.submit goes through the same orderToJs. The live runner
+  // does not stamp created_at_ns, so only the type is pinned here; the
+  // value is pinned on the listener path above.
+  const reg = new flox.SymbolRegistry();
+  const sym = reg.addSymbol('test', 'BTC', 0.01);
+  const runner = new flox.Runner(reg, () => {}, false);
+  const submitted = [];
+  runner.setExecutor({
+    submit(order) { submitted.push(order); },
+    cancel() {},
+    capabilities() { return {}; },
+  });
+  let fired = false;
+  runner.addStrategy({
+    symbols: [sym],
+    onTrade(_ctx, _t, emit) {
+      if (fired) { return; }
+      fired = true;
+      emit.marketBuy(Number(sym), 1.0);
+    },
+  });
+  runner.start();
+  runner.onTrade(Number(sym), 100, 1, true, NS);
+  runner.stop();
+
+  check(submitted.length === 1, `the executor saw one order (got ${submitted.length})`);
+  if (submitted.length === 1) {
+    check(typeof submitted[0].createdAtNs === 'bigint',
+          `Executor.submit order.createdAtNs is a bigint (got ${typeof submitted[0].createdAtNs})`);
+    check(typeof submitted[0].exchangeTsNs === 'bigint',
+          `Executor.submit order.exchangeTsNs is a bigint (got ${typeof submitted[0].exchangeTsNs})`);
+  }
+}
+
+console.log('\n=== A trade reaching a market-data recorder keeps its reading ===');
+{
+  const reg = new flox.SymbolRegistry();
+  const sym = reg.addSymbol('test', 'BTC', 0.01);
+  const runner = new flox.Runner(reg, () => {}, false);
+  const trades = [];
+  runner.setMarketDataRecorder({
+    onStart() {}, onStop() {},
+    onTrade(trade) { trades.push(trade); },
+    onBookUpdate() {},
+  });
+  runner.addStrategy({ symbols: [sym], onTrade() {} });
+  runner.start();
+  runner.onTrade(Number(sym), 100, 1, true, NS);
+  runner.stop();
+
+  check(trades.length === 1, `the recorder saw one trade (got ${trades.length})`);
+  if (trades.length === 1) {
+    // tradeToJs calls the field exchangeTsNs; index.d.ts's TradeData
+    // calls it timestampNs. Accept whichever the addon delivers -- what
+    // is pinned here is the type and the value, not the spelling.
+    const field = ['timestampNs', 'exchangeTsNs'].find(k => trades[0][k] !== undefined);
+    check(field !== undefined,
+          `the trade carries a nanosecond field (keys were ${Object.keys(trades[0]).join(', ')})`);
+    if (field !== undefined) {
+      check(typeof trades[0][field] === 'bigint',
+            `recorder trade.${field} is a bigint (got ${typeof trades[0][field]})`);
+      check(exact(trades[0][field]) === NS,
+            `recorder trade.${field} round-trips exactly ` +
+            `(got ${exact(trades[0][field])}, want ${NS})`);
+    }
+    check(typeof trades[0].price === 'number',
+          `recorder trade keeps price as a number (got ${typeof trades[0].price})`);
+  }
+}
+
 // ── index.d.ts agrees with what the addon accepts and returns ─────────
 
 console.log('\n=== index.d.ts types the readings bigint on both sides ===');
@@ -269,6 +412,34 @@ console.log('\n=== index.d.ts types the readings bigint on both sides ===');
     for (const param of tsParams) {
       check(/bigint/.test(param),
             `LiveQueuePositionEstimator "${param.trim()}" admits bigint`);
+    }
+  }
+
+  // The hook payload surface: node/src/hooks.h's orderToJs and
+  // tradeToJs feed these two.
+  const orderBody = block('export interface Order');
+  check(orderBody !== null, 'index.d.ts declares interface Order');
+  if (orderBody !== null) {
+    for (const field of ['createdAtNs', 'exchangeTsNs']) {
+      const declared = orderBody.match(new RegExp(`^\\s*${field}:\\s*([^;]+);`, 'm'));
+      check(declared !== null, `Order.${field} is declared`);
+      if (declared) {
+        check(declared[1].trim() === 'bigint',
+              `Order.${field} is typed bigint (declared "${declared[1].trim()}")`);
+      }
+    }
+    check(/^\s*price:\s*number;/m.test(orderBody),
+          'Order.price stays a number -- a price is not a clock reading');
+  }
+
+  const tradeBody = block('export interface TradeData');
+  check(tradeBody !== null, 'index.d.ts declares interface TradeData');
+  if (tradeBody !== null) {
+    const declared = tradeBody.match(/^\s*timestampNs:\s*([^;]+);/m);
+    check(declared !== null, 'TradeData.timestampNs is declared');
+    if (declared) {
+      check(declared[1].trim() === 'bigint',
+            `TradeData.timestampNs is typed bigint (declared "${declared[1].trim()}")`);
     }
   }
 
