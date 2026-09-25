@@ -230,6 +230,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_replace_in_flight)
   add_flox_test(test_backtest_metrics)
   add_flox_test(test_backtest_fee_attribution)
+  add_flox_test(test_backtest_economics)
   add_flox_test(test_backtest_ctx_position)
   add_flox_test(test_backtest_run_tape)
   # Needs the backtest runner's tape path alongside the replay writer/reader,

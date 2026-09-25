@@ -33,7 +33,8 @@ latency, venue availability and rate limits.
 Two things it does not change, so read the result as "this venue's fill
 mechanics" and not "this venue's full economics":
 
-- Fees still come from `BacktestConfig`, not from the stack's `FeeSchedule`.
+- Fees come from the stack's `FeeSchedule`: each fill is billed at the tier
+  the account's 30-day notional resolves to, not at the flat `fee_rate`.
   Fills carry `is_maker`, so `maker_fee_rate` / `taker_fee_rate` charge the
   real spread between posting and taking; what the stack still knows and the
   result does not is 30-day volume tiering.

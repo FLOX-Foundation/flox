@@ -288,7 +288,7 @@ class BacktestRunner:
         ...
     def set_venue_stack(self, stack: VenueStack) -> None:
         """
-        Run against a VenueStack: the runner feeds the stack executor market data and harvests its fills, so the run uses the venue's fill mechanics (queue model, iceberg latency, venue availability, rate limits). Fees still come from BacktestConfig, and funding and liquidation are driven by explicit calls rather than the replay loop. Pass None to revert to the built-in executor.
+        Run against a VenueStack: the runner feeds the stack executor market data and harvests its fills, so the run uses the venue's fill mechanics (queue model, iceberg latency, venue availability, rate limits) and its fee ladder -- each fill is billed at the tier the stack's 30-day notional resolves to instead of the flat fee_rate. Funding and liquidation are still driven by explicit calls rather than the replay loop. Pass None to revert to the built-in executor.
         """
     def trades(self) -> typing.Any:
         """

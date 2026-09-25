@@ -14037,6 +14037,11 @@
         },
         {
           "kind": "method",
+          "name": "setFeeSchedule",
+          "parent": "BacktestResult"
+        },
+        {
+          "kind": "method",
           "name": "totalPnl",
           "parent": "BacktestResult"
         },
@@ -14078,6 +14083,11 @@
         {
           "kind": "method",
           "name": "advanceClocks",
+          "parent": "BacktestRunner"
+        },
+        {
+          "kind": "method",
+          "name": "attachFeeSchedule",
           "parent": "BacktestRunner"
         },
         {
@@ -23652,6 +23662,11 @@
         },
         {
           "kind": "method",
+          "name": "feeSchedule",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "fills",
           "parent": "SimulatedExecutor"
         },
@@ -23757,6 +23772,11 @@
         },
         {
           "kind": "method",
+          "name": "latencyModel",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "maybeEmitMarketPositionChanges",
           "parent": "SimulatedExecutor"
         },
@@ -23857,6 +23877,11 @@
         },
         {
           "kind": "method",
+          "name": "sampleOrderLatency",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "sampleReplaceAckLatency",
           "parent": "SimulatedExecutor"
         },
@@ -23892,6 +23917,11 @@
         },
         {
           "kind": "method",
+          "name": "setFeeSchedule",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "setFokMode",
           "parent": "SimulatedExecutor"
         },
@@ -23923,6 +23953,11 @@
         {
           "kind": "method",
           "name": "setIcebergSizeRandomisationPct",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "setLatencyModel",
           "parent": "SimulatedExecutor"
         },
         {
@@ -25952,7 +25987,22 @@
         },
         {
           "kind": "method",
+          "name": "gridPoints",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
+          "name": "parameterGrid",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
           "name": "run",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
+          "name": "setParameterGrid",
           "parent": "WalkForwardRunner"
         },
         {
