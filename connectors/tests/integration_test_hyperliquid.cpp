@@ -93,7 +93,6 @@ TEST(HyperliquidExchangeConnectorIntegrationTest, ReceivesDataFromHyperliquid)
 
   HyperliquidConfig cfg;
   cfg.wsEndpoint = "wss://api.hyperliquid.xyz/ws";
-  cfg.restEndpoint = "https://api.hyperliquid.xyz";
   cfg.symbols = {"BTC", "ETH"};
   cfg.reconnectDelayMs = 2000;
 

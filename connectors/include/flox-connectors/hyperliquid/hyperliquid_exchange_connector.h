@@ -28,14 +28,13 @@ namespace flox
 
 struct HyperliquidConfig
 {
-  // The connector is WS-only; it never reads restEndpoint, so validity gates
-  // on the WS endpoint alone. Order signing credentials live on the executor
-  // (passed to its ctor), not here -- the config no longer carries a dead
-  // privateKey field.
+  // The connector is WS-only, so validity gates on the WS endpoint alone.
+  // Order signing credentials live on the executor (passed to its ctor), not
+  // here, and the REST endpoint the executor posts to is likewise its own
+  // constructor argument -- neither has ever been read off this struct.
   bool isValid() const { return !wsEndpoint.empty(); }
 
   std::string wsEndpoint{"wss://api.hyperliquid.xyz/ws"};
-  std::string restEndpoint{"https://api.hyperliquid.xyz/exchange"};
   std::vector<std::string> symbols;
   int reconnectDelayMs{2000};
   // Window after which a symbol that stopped ticking is reported through
