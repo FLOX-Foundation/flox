@@ -276,6 +276,9 @@ jobs:
           ccache-${{ runner.os }}-gcc14-linux-gcc-
 
     - name: Install Python packages
+      # pybind11-stubgen pinned below 3.0: 3.0.0 reorders the generated
+      # stubs, so an unpinned install drifts against the committed .pyi the
+      # moment a new release lands, with no change in the repository.
       # pybind11 pinned below 3.1.0: 3.1.0 changed the signatures stubgen
       # renders, so the committed .pyi (generated with 3.0.x) drifts against
       # an unpinned install. Bump this pin together with a stub regeneration.
@@ -284,7 +287,7 @@ jobs:
       # here test_fit_scipy_matches_or_beats_grid_rmse always skips while
       # its mirror (missing-dependency error message) always passes, so the
       # suite summary reads clean either way.
-      run: python3 -m pip install --break-system-packages "pybind11<3.1.0" numpy scipy pybind11-stubgen mypy pyright pytest
+      run: python3 -m pip install --break-system-packages "pybind11<3.1.0" numpy scipy "pybind11-stubgen<3" mypy pyright pytest
 
     - name: Install Codon
       env:
