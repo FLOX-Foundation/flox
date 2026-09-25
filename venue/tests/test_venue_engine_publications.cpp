@@ -389,3 +389,61 @@ TEST(VenuePublications, HaltAndCancelAllSweepsEveryAccountInIdOrder)
                 OrderCanceled{30, SYM, CancelReason::VenueHalt, 200, 9003});
   EXPECT_EQ(eng.restingOrderCount(), 0U);
 }
+
+// ---- the index a snapshot clone is handed --------------------------------
+
+// A checkpoint clones the engine on the consumer thread and serializes the
+// clone in the background (MatchingEngine::cloneForSnapshot), and the clone
+// receives the whole resting-order index through Publications::copyStateFrom.
+//
+// The gauge is deliberately NOT read off that index -- it is published to an
+// atomic, because the reader is the /metrics thread -- which is exactly why an
+// index that arrives without its count arrives silently: nothing in the clone
+// disagrees with anything, the book is full and the number is zero. That is
+// the number an operator scrapes for as long as the background write lasts.
+TEST(VenuePublications, ACloneReportsTheRestingOrdersItWasHandedNotZero)
+{
+  Fake f;
+  Engine eng(cfg(), f.sink());
+
+  constexpr int kResting = 6;
+  const auto ownerOf = [](int i)
+  { return static_cast<uint64_t>(100 + (i % 3)); };
+  for (int i = 0; i < kResting; ++i)
+  {
+    eng.submit(InboundCommand{limitOrder(static_cast<OrderId>(10 + i), Side::BUY,
+                                         10.0 + 0.01 * i, 1.0, ownerOf(i))},
+               int64_t{1000} + i);
+  }
+  ASSERT_EQ(eng.restingOrderCount(), static_cast<uint64_t>(kResting));
+
+  const auto clone = eng.cloneForSnapshot();
+  ASSERT_NE(clone.engine, nullptr);
+
+  // What the copy holds, counted off the clone's own book rather than off the
+  // gauge that is under test.
+  uint64_t inBook = 0;
+  clone.engine->book().forEachOrder([&inBook](const auto&)
+                                    { ++inBook; });
+  ASSERT_EQ(inBook, static_cast<uint64_t>(kResting));
+
+  EXPECT_EQ(clone.engine->restingOrderCount(), inBook)
+      << "the clone was handed the resting-order index without the count that reports it";
+  EXPECT_EQ(clone.engine->restingOrderCount(), eng.restingOrderCount());
+
+  // And the index it was handed really holds those ids: cancelling them on the
+  // clone takes its count down by exactly one each time, and the clone knows
+  // who owns each one.
+  for (int i = 0; i < kResting; ++i)
+  {
+    CancelOrder c;
+    c.id = static_cast<OrderId>(10 + i);
+    c.symbol = SYM;
+    c.accountId = ownerOf(i);
+    clone.engine->submit(InboundCommand{c}, int64_t{5000} + i);
+    EXPECT_EQ(clone.engine->restingOrderCount(), static_cast<uint64_t>(kResting - 1 - i));
+  }
+
+  // None of which the live engine felt.
+  EXPECT_EQ(eng.restingOrderCount(), static_cast<uint64_t>(kResting));
+}

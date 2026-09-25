@@ -75,14 +75,14 @@ void writeAll(const std::string& path, const std::vector<uint8_t>& bytes)
             static_cast<std::streamsize>(bytes.size()));
 }
 
-// A journal of kGood well-formed records, written by this build.
-std::string goodJournal(const std::string& stem)
+// A journal of `n` well-formed records, written by this build.
+std::string journalOf(const std::string& stem, size_t n)
 {
   const std::string path = tmpPath(stem, ".bin");
   std::remove(path.c_str());
   {
     Journal j(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
-    for (size_t i = 0; i < kGood; ++i)
+    for (size_t i = 0; i < n; ++i)
     {
       j.append(tick(), static_cast<int64_t>(i) + 1);
     }
@@ -90,6 +90,9 @@ std::string goodJournal(const std::string& stem)
   }
   return path;
 }
+
+// A journal of kGood well-formed records, written by this build.
+std::string goodJournal(const std::string& stem) { return journalOf(stem, kGood); }
 
 // Damage one byte of record `idx`, `at` bytes into it. Nothing else is
 // touched, so the record's crc no longer covers the bytes on disk -- which is
@@ -132,17 +135,7 @@ std::string truncatedCopy(const std::string& stem, const std::vector<uint8_t>& s
 
 // A journal of exactly one record: the file that has no prefix to fall back
 // on, where "return what was read" and "refuse the file" are different answers.
-std::string oneRecordJournal(const std::string& stem)
-{
-  const std::string path = tmpPath(stem, ".bin");
-  std::remove(path.c_str());
-  {
-    Journal j(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
-    j.append(tick(), 1);
-    j.flush();
-  }
-  return path;
-}
+std::string oneRecordJournal(const std::string& stem) { return journalOf(stem, 1); }
 
 // The largest body any command in this build occupies on disk, derived the way
 // the loader derives its own bound -- from the tag table, not from a number
@@ -186,6 +179,45 @@ void appendOversizedHeader(const std::string& path, size_t filler)
   std::fwrite(rec.data(), 1, rec.size(), f);
   std::fclose(f);
 }
+
+// A record whose crc VERIFIES over the bytes on disk and whose length is not a
+// length its tag can have. Nothing about it was damaged in transit -- the crc
+// says so -- and nothing about it is a format this build could have written
+// either: every command but the ladder occupies exactly one size, so a
+// TimeTick claiming one byte more than a TimeTick is a record no version of
+// this writer ever produced.
+void appendMisSizedRecord(const std::string& path)
+{
+  std::vector<uint8_t> rec;
+  const auto put = [&rec](const void* p, size_t n)
+  {
+    const auto* b = static_cast<const uint8_t*>(p);
+    rec.insert(rec.end(), b, b + n);
+  };
+  const int64_t ts = 5555;
+  const uint8_t stamp = kRecordStamp;
+  const uint8_t tag = wireTagOf(tick());
+  const uint32_t len = static_cast<uint32_t>(sizeof(TimeTick)) + 1;
+  const TimeTick body{SYM};
+  put(&ts, sizeof ts);
+  put(&stamp, sizeof stamp);
+  put(&tag, sizeof tag);
+  put(&len, sizeof len);
+  put(&body, sizeof body);
+  const uint8_t oneMore = 0;
+  put(&oneMore, sizeof oneMore);
+  const uint32_t crc = flox::util::Crc32::compute(rec.data(), rec.size());
+  put(&crc, sizeof crc);
+
+  std::FILE* f = std::fopen(path.c_str(), "ab");
+  ASSERT_NE(f, nullptr);
+  std::fwrite(rec.data(), 1, rec.size(), f);
+  std::fclose(f);
+}
+
+// How many bytes appendMisSizedRecord writes.
+constexpr size_t kMisSizedRecordSize =
+    Journal::kHeaderSize + sizeof(TimeTick) + 1 + sizeof(uint32_t);
 
 // A record this build cannot read because it was written by a build that
 // numbered the format differently -- and whose crc PASSES, so nothing about it
@@ -713,4 +745,113 @@ TEST(VenueJournalTornTail, AHeaderLengthPastTheLargestBodyIsNotBelieved)
 
   std::remove(alone.c_str());
   std::remove(after.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// (9) One record is a prefix too.
+//
+// "A stop that recovers nothing is a file this build cannot read" is the rule;
+// a stop that recovers ONE record is not that. The file said something this
+// build understood before the damage began, so the damage is damage and the
+// record ahead of it is history -- the same answer a nine-record prefix gets,
+// and for the same reason. A loader that refused here would throw away a
+// shard's first command because its second one rotted.
+
+TEST(VenueJournalTornTail, AFileWhoseSecondRecordIsDamagedKeepsTheFirst)
+{
+  const std::string src = journalOf("venue_one_then_bad_src", 2);
+  const auto bytes = readAll(src);
+  ASSERT_EQ(bytes.size(), kRecordSize * 2);
+  const std::string path = damagedCopy("venue_one_then_bad", bytes, 1, Journal::kHeaderSize + 1);
+
+  std::vector<std::pair<int64_t, InboundCommand>> records;
+  EXPECT_NO_THROW({ records = Journal::loadTimed(path); })
+      << "one recovered record is a prefix, not an unreadable file";
+  EXPECT_EQ(records.size(), 1u);
+  expectTornTailReport<Journal>(path, 1u, kRecordSize);
+
+  std::remove(src.c_str());
+  std::remove(path.c_str());
+}
+
+// The same file with a good record behind the damage: still one record back,
+// and the damage named as the rot it is rather than as a crash tail.
+TEST(VenueJournalTornTail, AFileWhoseSecondOfThreeRecordsIsDamagedKeepsTheFirst)
+{
+  const std::string src = journalOf("venue_one_then_bad3_src", 3);
+  const auto bytes = readAll(src);
+  const std::string path = damagedCopy("venue_one_then_bad3", bytes, 1, Journal::kHeaderSize + 1);
+
+  std::vector<std::pair<int64_t, InboundCommand>> records;
+  EXPECT_NO_THROW({ records = Journal::loadTimed(path); });
+  EXPECT_EQ(records.size(), 1u);
+  expectCorruptReport<Journal>(path, 1u, kRecordSize);
+
+  std::remove(src.c_str());
+  std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// (10) A length its own tag cannot have, on a record whose crc verifies.
+//
+// The crc rules out damage in transit: these bytes are exactly the bytes
+// somebody wrote. What they are not is a record this build could have written
+// -- every command but the ladder occupies the one size its type has, so a
+// length that disagrees with the tag is a frame laid out by other rules. It
+// must never be decoded: the decoder would read the fields of one command out
+// of a body that is not that command's, and hand the engine a command nobody
+// sent.
+
+TEST(VenueJournalTornTail, AMisSizedRecordAtOffsetZeroIsRefusedByName)
+{
+  const std::string path = tmpPath("venue_missized_alone", ".bin");
+  std::remove(path.c_str());
+  writeAll(path, {});
+  appendMisSizedRecord(path);
+
+  EXPECT_THROW(
+      {
+        try
+        {
+          Journal::loadTimed(path);
+        }
+        catch (const JournalFormatError& e)
+        {
+          const std::string what = e.what();
+          EXPECT_NE(what.find(path), std::string::npos) << what;
+          EXPECT_NE(what.find("record 0"), std::string::npos) << what;
+          throw;
+        }
+      },
+      JournalFormatError)
+      << "a body the wrong size for its tag was decoded as though it were the right one";
+
+  std::remove(path.c_str());
+}
+
+TEST(VenueJournalTornTail, AMisSizedRecordBehindAGoodPrefixIsDamageAtItsOffset)
+{
+  // With a good record behind it: whole bytes follow, so the file rotted
+  // rather than ended.
+  const std::string mid = goodJournal("venue_missized_mid");
+  appendMisSizedRecord(mid);
+  {
+    Journal j(mid, Journal::Sync::Off, Journal::OpenMode::Append);
+    j.append(tick(), 9999);
+    j.flush();
+  }
+  EXPECT_EQ(Journal::loadTimed(mid).size(), kGood)
+      << "a body the wrong size for its tag was decoded as though it were the right one";
+  expectCorruptReport<Journal>(mid, kGood, kGood * kRecordSize);
+
+  // As the last record in the file: the same refusal to decode, reported as a
+  // tail rather than as rot.
+  const std::string tail = goodJournal("venue_missized_tail");
+  appendMisSizedRecord(tail);
+  ASSERT_EQ(std::filesystem::file_size(tail), kGood * kRecordSize + kMisSizedRecordSize);
+  EXPECT_EQ(Journal::loadTimed(tail).size(), kGood);
+  expectTornTailReport<Journal>(tail, kGood, kGood * kRecordSize);
+
+  std::remove(mid.c_str());
+  std::remove(tail.c_str());
 }
