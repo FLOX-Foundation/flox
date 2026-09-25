@@ -10,6 +10,7 @@
 #include "flox/engine/engine.h"
 
 #include "flox/log/log.h"
+#include "flox/util/base/time.h"
 #include "flox/util/memory/counting_resource.h"
 #include "flox/util/memory/large_arena.h"
 #include "flox/util/performance/memory_profile.h"
@@ -27,6 +28,14 @@ Engine::Engine(const EngineConfig& config, std::vector<std::unique_ptr<ISubsyste
 
 void Engine::start()
 {
+  // First, before anything the engine owns runs. Every connector, aggregator
+  // and bar policy that turns a venue's wall-clock stamp into a FloxClock
+  // TimePoint reads the process-global offset this establishes, and a
+  // component started before it would convert its first messages through a
+  // zero offset and the rest through the anchored one. Idempotent, so a
+  // second engine in the same process keeps the mapping the first one set.
+  init_timebase_mapping();
+
   auto memReport = performance::applyMemoryProfile(
       performance::memoryProfileFromString(_config.memoryProfile));
   memReport.hugeArenaBytes = memory::LargeArena::totalBytesAll();

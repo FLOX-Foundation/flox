@@ -24,8 +24,18 @@ struct ILogger {
   virtual void info(std::string_view msg) = 0;
   virtual void warn(std::string_view msg) = 0;
   virtual void error(std::string_view msg) = 0;
+
+  virtual LogLevel minLevel() const noexcept { return LogLevel::Info; }
 };
 ```
+
+`minLevel()` is the lowest level the sink accepts. `setGlobalLogger()` reads it
+once and publishes it, and `FLOX_LOG_*` checks it *before* building the
+`LogStream`, so a line the sink would throw away costs neither the
+`std::ostringstream` nor the evaluation of its arguments. Override it in any
+sink that filters — `ConsoleLogger` and `AtomicLogger` both return the
+threshold they were constructed with. The default, `Info`, means "accept
+everything", which is what a sink written against the older interface did.
 
 ## Usage
 

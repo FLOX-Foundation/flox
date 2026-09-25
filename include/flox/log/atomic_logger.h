@@ -25,13 +25,24 @@
 namespace flox
 {
 
+// Where a logger writes when the caller has not said. Resolved once for the
+// host, in this order: /dev/shm when it exists -- a tmpfs, so logging costs no
+// disk I/O -- otherwise the system temp directory.
+//
+// The default used to be the literal "/dev/shm", which exists on Linux and on
+// neither of the other two platforms the build matrix covers. There
+// create_directories failed, the file pointer stayed null, and every line was
+// dropped for the life of the process after one line on stderr: a default
+// that discards the log on two platforms is not a default.
+const std::string& defaultLogDirectory();
+
 struct AtomicLoggerOptions
 {
   OverflowPolicy overflow = OverflowPolicy::Drop;
   LogLevel levelThreshold = LogLevel::Info;
 
   std::string basename = "flox.log";
-  std::string directory = "/dev/shm";
+  std::string directory = defaultLogDirectory();
   size_t maxFileSize = 100 * 1024 * 1024;
   std::chrono::minutes rotateInterval = std::chrono::minutes(60);
 
@@ -47,6 +58,10 @@ class AtomicLogger final : public ILogger
   void info(std::string_view msg) override;
   void warn(std::string_view msg) override;
   void error(std::string_view msg) override;
+
+  // The threshold this logger was built with. FLOX_LOG_* reads it through the
+  // installed sink and does not build the stream for a line below it.
+  LogLevel minLevel() const noexcept override { return _opts.levelThreshold; }
 
   void flush();
 

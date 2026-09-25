@@ -11709,11 +11709,6 @@
           "name": "ExchangeClockSync"
         },
         {
-          "header": "include/flox/engine/engine_config.h",
-          "kind": "type",
-          "name": "ExchangeConfig"
-        },
-        {
           "header": "include/flox/exchange/exchange_info.h",
           "kind": "type",
           "name": "ExchangeInfo"
@@ -12729,6 +12724,11 @@
           "name": "PositionReconciler"
         },
         {
+          "header": "include/flox/position/abstract_position_manager.h",
+          "kind": "type",
+          "name": "PositionSnapshot"
+        },
+        {
           "header": "include/flox/position/position_tracker.h",
           "kind": "type",
           "name": "PositionState"
@@ -13142,11 +13142,6 @@
           "header": "include/flox/indicator/streaming.h",
           "kind": "type",
           "name": "StreamingSingle"
-        },
-        {
-          "header": "include/flox/engine/engine_config.h",
-          "kind": "type",
-          "name": "SymbolConfig"
         },
         {
           "header": "include/flox/strategy/symbol_context.h",
@@ -13836,6 +13831,11 @@
         {
           "kind": "method",
           "name": "log",
+          "parent": "AtomicLogger"
+        },
+        {
+          "kind": "method",
+          "name": "minLevel",
           "parent": "AtomicLogger"
         },
         {
@@ -15676,6 +15676,11 @@
         {
           "kind": "method",
           "name": "log",
+          "parent": "ConsoleLogger"
+        },
+        {
+          "kind": "method",
+          "name": "minLevel",
           "parent": "ConsoleLogger"
         },
         {
@@ -17830,6 +17835,11 @@
         },
         {
           "kind": "method",
+          "name": "minLevel",
+          "parent": "ILogger"
+        },
+        {
+          "kind": "method",
           "name": "warn",
           "parent": "ILogger"
         },
@@ -18111,6 +18121,11 @@
         {
           "kind": "method",
           "name": "getPosition",
+          "parent": "IPositionManager"
+        },
+        {
+          "kind": "method",
+          "name": "positionSnapshot",
           "parent": "IPositionManager"
         },
         {
@@ -20260,6 +20275,11 @@
         },
         {
           "kind": "method",
+          "name": "blendedEntry",
+          "parent": "MultiModePositionTracker"
+        },
+        {
+          "kind": "method",
           "name": "closeAcrossSymbol",
           "parent": "MultiModePositionTracker"
         },
@@ -20391,6 +20411,11 @@
         {
           "kind": "method",
           "name": "openShort",
+          "parent": "MultiModePositionTracker"
+        },
+        {
+          "kind": "method",
+          "name": "positionSnapshot",
           "parent": "MultiModePositionTracker"
         },
         {
@@ -21825,6 +21850,11 @@
         },
         {
           "kind": "method",
+          "name": "invalidReleaseCount",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
           "name": "popSlot",
           "parent": "Pool"
         },
@@ -22220,6 +22250,11 @@
         },
         {
           "kind": "method",
+          "name": "snapshot",
+          "parent": "PositionState"
+        },
+        {
+          "kind": "method",
           "name": "addLot",
           "parent": "PositionTracker"
         },
@@ -22266,6 +22301,11 @@
         {
           "kind": "method",
           "name": "onOrderPartiallyFilled",
+          "parent": "PositionTracker"
+        },
+        {
+          "kind": "method",
+          "name": "positionSnapshot",
           "parent": "PositionTracker"
         },
         {

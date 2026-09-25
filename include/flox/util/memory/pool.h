@@ -17,6 +17,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <memory_resource>
 #include <new>
 #include <optional>
@@ -177,9 +178,22 @@ class Pool final : public PoolReleaser
     }
   }
 
-  // Nothing to unwind: the owner pointer each object carries dies with the
-  // slot it points into, so destroying one pool cannot disturb another.
-  ~Pool() = default;
+  // Every slot was placement-newed in the constructor, so every slot is
+  // unwound here. A defaulted destructor over raw Storage destroyed none of
+  // them, and the pmr arena underneath only gives back what a pooled object
+  // allocated through it: a std::string's heap buffer, a shared_ptr's
+  // control block, a descriptor -- anything held outside the arena -- leaked
+  // one per slot, per pool, for the life of the process.
+  //
+  // The arena and the counters are declared after _slots, so they are still
+  // alive while these destructors run.
+  ~Pool()
+  {
+    for (size_t i = 0; i < Capacity; ++i)
+    {
+      std::launder(reinterpret_cast<T*>(&_slots[i]))->~T();
+    }
+  }
 
   void releaseErased(void* obj) override { release(static_cast<T*>(obj)); }
 
@@ -231,6 +245,7 @@ class Pool final : public PoolReleaser
       ++got;
     }
     _acquired.fetch_add(got, std::memory_order_relaxed);
+    _inUse.fetch_add(got, std::memory_order_relaxed);
     if (got < count)
     {
       _exhaustionCount.fetch_add(1, std::memory_order_relaxed);
@@ -247,6 +262,7 @@ class Pool final : public PoolReleaser
     if (T* obj = popSlot())
     {
       _acquired.fetch_add(1, std::memory_order_relaxed);
+      _inUse.fetch_add(1, std::memory_order_relaxed);
       return Handle<T>(obj);
     }
 
@@ -264,28 +280,77 @@ class Pool final : public PoolReleaser
   // by the publisher that overwrites it, so with several connectors on one bus
   // an event returns to its pool from a foreign thread. The freelist and these
   // counters are therefore all multi-producer safe.
+  //
+  // A release of an object that is not currently acquired is refused. It used
+  // to be taken: the slot index went on the freelist a second time, so two
+  // acquirers were handed the same object and wrote the same event, and the
+  // release counter overtook the acquire counter. The claim flag is the
+  // single point that decides it, and the exchange that clears it is what
+  // makes the refusal safe between threads. Refusals are counted rather than
+  // asserted, because the callers are the ones that got it wrong and a
+  // trading process must not abort over it.
   void release(T* obj)
   {
+    if (obj == nullptr)
+    {
+      _invalidReleases.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
+
+    const uint32_t index = indexOf(obj);
+    if (index >= Capacity)
+    {
+      // Not one of this pool's slots at all.
+      _invalidReleases.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
+
+    bool claimed = true;
+    if (!_claimed[index].compare_exchange_strong(claimed, false, std::memory_order_acq_rel,
+                                                 std::memory_order_relaxed))
+    {
+      _invalidReleases.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
+
     obj->clear();
-    _freelist.push(indexOf(obj));
+    _inUse.fetch_sub(1, std::memory_order_relaxed);
+    _freelist.push(index);
     _released.fetch_add(1, std::memory_order_relaxed);
   }
 
-  size_t inUse() const
-  {
-    const size_t acquired = _acquired.load(std::memory_order_relaxed);
-    const size_t released = _released.load(std::memory_order_relaxed);
-    return acquired - released;
-  }
+  // One counter rather than the difference of two. Sampling _acquired and
+  // then _released let a concurrent release land between the two loads, and
+  // the subtraction then underflowed to a number near 2^64 -- which is the
+  // value the exhaustion callback was handed at the one moment it is read.
+  size_t inUse() const { return _inUse.load(std::memory_order_relaxed); }
+
+  // Releases the pool refused: a foreign or null pointer, or an object that
+  // was not acquired. Nonzero means a caller is releasing twice.
+  size_t invalidReleaseCount() const { return _invalidReleases.load(std::memory_order_relaxed); }
   size_t capacity() const { return Capacity; }
   size_t exhaustionCount() const { return _exhaustionCount.load(std::memory_order_relaxed); }
   size_t acquireCount() const { return _acquired.load(std::memory_order_relaxed); }
   size_t releaseCount() const { return _released.load(std::memory_order_relaxed); }
 
  private:
+  // Capacity means "not a slot of this pool". Computed on integers rather
+  // than by subtracting pointers into unrelated objects, so that a pointer
+  // that does not belong here is an answer instead of undefined behaviour.
   uint32_t indexOf(const T* obj) const noexcept
   {
-    return static_cast<uint32_t>(reinterpret_cast<const Storage*>(obj) - &_slots[0]);
+    const auto base = reinterpret_cast<uintptr_t>(&_slots[0]);
+    const auto addr = reinterpret_cast<uintptr_t>(obj);
+    if (addr < base)
+    {
+      return static_cast<uint32_t>(Capacity);
+    }
+    const uintptr_t offset = addr - base;
+    if (offset % sizeof(Storage) != 0 || offset / sizeof(Storage) >= Capacity)
+    {
+      return static_cast<uint32_t>(Capacity);
+    }
+    return static_cast<uint32_t>(offset / sizeof(Storage));
   }
 
   T* popSlot() noexcept
@@ -295,6 +360,7 @@ class Pool final : public PoolReleaser
     {
       return nullptr;
     }
+    _claimed[index].store(true, std::memory_order_release);
     T* obj = std::launder(reinterpret_cast<T*>(&_slots[index]));
     obj->resetRefCount();
     obj->setPool(this);
@@ -322,8 +388,15 @@ class Pool final : public PoolReleaser
 
   memory::IndexFreelist<Capacity> _freelist;
 
+  // Whether each slot is currently handed out. The freelist alone cannot
+  // answer that: pushing an index it already holds is a legal freelist
+  // operation, and the damage only shows up two acquisitions later.
+  std::array<std::atomic<bool>, Capacity> _claimed{};
+
   std::atomic<size_t> _acquired{0};
   std::atomic<size_t> _released{0};
+  std::atomic<size_t> _inUse{0};
+  std::atomic<size_t> _invalidReleases{0};
   std::atomic<size_t> _exhaustionCount{0};
   ExhaustionCallback _exhaustionCb = nullptr;
 };

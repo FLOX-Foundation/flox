@@ -22,7 +22,6 @@
 #include <chrono>
 #include <iomanip>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -37,27 +36,6 @@ static constexpr auto BYBIT_ORIGIN = "https://www.bybit.com";
 
 namespace
 {
-// fromUnixMs()/fromUnixNs() (time.h) convert a wall-clock epoch into
-// FloxClock (steady_clock) via unix_to_flox_offset_ns(), which defaults to
-// zero until init_timebase_mapping() runs once. Nothing in the live C++
-// engine startup path calls it (only a Python aggregator binding does), so
-// without this, the conversion below would be numerically identical to the
-// direct duration_cast bug it replaces -- same huge raw value, just
-// re-labelled, still decades off FloxClock::now(). Establishing the offset
-// here, once, lazily, on first use is self-contained: the offset is a
-// fixed constant for the life of the process (both clocks tick in lockstep
-// once anchored at any single instant), so it does not matter that this
-// runs on first option-symbol parse rather than at process start.
-void ensureTimebaseMapped()
-{
-  static std::once_flag flag;
-  std::call_once(flag,
-                 []
-                 {
-                   init_timebase_mapping();
-                 });
-}
-
 // orderLinkId is Bybit's client order id: the engine's own OrderId, sent on
 // submit and echoed back on every private frame for that order. Absent (or
 // non-numeric) on orders this engine did not place, which is the only case
@@ -150,8 +128,10 @@ std::optional<SymbolInfo> parseOptionSymbol(std::string_view fullSymbol,
   // expiry_tp is a system_clock (wall/unix) time_point; TimePoint is
   // FloxClock (steady_clock). A duration_cast between them silently
   // reinterprets a unix epoch as a steady-clock reading -- fromUnixMs is the
-  // documented conversion (time.h) for exactly this crossing.
-  ensureTimebaseMapped();
+  // documented conversion (time.h) for exactly this crossing. The mapping it
+  // reads is anchored by Engine::start(), before any connector runs; this
+  // used to anchor it here in a call_once of its own because nothing on the
+  // startup path did.
   info.expiry = fromUnixMs(
       std::chrono::duration_cast<std::chrono::milliseconds>(expiry_tp.time_since_epoch()).count());
   info.optionType = optType;

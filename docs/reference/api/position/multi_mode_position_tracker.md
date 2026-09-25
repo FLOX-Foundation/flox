@@ -54,12 +54,19 @@ snap.unrealizedPnl(currentPrice);  // mark-to-market
 
 ```cpp
 std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override;
+flox::PositionSnapshot positionSnapshot(SymbolId symbol) const override;
 ```
 
-The `IPositionManager` override the strategy context reads. Empty when the
+The `IPositionManager` overrides the strategy context reads. Empty when the
 symbol is flat. In PER_SIDE mode a book that is long and short at once has no
 single entry price, so the two sides are blended by quantity the same way the
 net position is.
+
+`positionSnapshot()` returns the net position and that blended entry price
+under one acquisition of the mutex; it is what `Strategy::refreshPosition()`
+calls on every tick. Note the two snapshots are different things:
+`snapshot()` above is this tracker's own per-side breakdown, while
+`flox::PositionSnapshot` is the interface's `{position, avgEntryPrice}` pair.
 
 ## Position Change Callback
 

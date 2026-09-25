@@ -144,6 +144,32 @@ struct PositionState
     }
     return sum.average();
   }
+
+  // The two answers above from one pass over the lots. position() sums every
+  // lot and avgEntryPrice() walks them all again, so a caller that wants both
+  // -- which is every caller on the market-data path -- paid the traversal
+  // twice. Same arithmetic as the separate getters, WeightedPriceSum included,
+  // so the numbers are the same to the last raw unit.
+  PositionSnapshot snapshot() const
+  {
+    int64_t totalRaw = 0;
+    detail::WeightedPriceSum sum;
+    for (const auto& lot : lots)
+    {
+      totalRaw = checkedAddI64(totalRaw, lot.quantity.raw());
+      sum.add(lot.quantity, lot.price);
+    }
+
+    PositionSnapshot snap;
+    snap.position = Quantity::fromRaw(totalRaw);
+    // Nothing when flat, for the same reason getAverageEntryPrice() reports
+    // nothing: there is no entry price to report and zero would read as one.
+    if (totalRaw != 0 && !sum.empty())
+    {
+      snap.avgEntryPrice = sum.average();
+    }
+    return snap;
+  }
 };
 
 class PositionTracker : public IPositionManager
@@ -182,6 +208,13 @@ class PositionTracker : public IPositionManager
       return std::nullopt;
     }
     return state.avgEntryPrice();
+  }
+
+  // One lock, one traversal, both answers.
+  PositionSnapshot positionSnapshot(SymbolId symbol) const override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _states[symbol].snapshot();
   }
 
   // Money, not a price: a quantity times a price difference is a notional, and

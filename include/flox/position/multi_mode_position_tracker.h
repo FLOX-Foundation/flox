@@ -220,26 +220,18 @@ class MultiModePositionTracker : public IPositionManager
   std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override
   {
     std::lock_guard<std::mutex> lock(_mutex);
+    return blendedEntry(snapshotUnlocked(symbol));
+  }
+
+  // The net position and that entry price under one acquisition of the
+  // mutex, which is what a market-data tick asks for. flox::PositionSnapshot,
+  // not the per-side PositionSnapshot nested above: that one is this
+  // tracker's own long/short breakdown and predates the interface.
+  flox::PositionSnapshot positionSnapshot(SymbolId symbol) const override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
     const auto snap = snapshotUnlocked(symbol);
-    const int64_t longRaw = snap.longQty.raw();
-    const int64_t shortRaw = snap.shortQty.raw();
-    const int64_t totalRaw = longRaw + shortRaw;
-    if (totalRaw == 0)
-    {
-      return std::nullopt;
-    }
-    if (shortRaw == 0)
-    {
-      return snap.longAvgEntry;
-    }
-    if (longRaw == 0)
-    {
-      return snap.shortAvgEntry;
-    }
-    const Volume blended =
-        Volume::fromRaw((snap.longQty * snap.longAvgEntry).raw() +
-                        (snap.shortQty * snap.shortAvgEntry).raw());
-    return blended / Quantity::fromRaw(totalRaw);
+    return flox::PositionSnapshot{getPositionUnlocked(symbol), blendedEntry(snap)};
   }
 
   Quantity getLongPosition(SymbolId symbol) const
@@ -464,6 +456,31 @@ class MultiModePositionTracker : public IPositionManager
 
     std::lock_guard<std::mutex> lock(_mutex);
     applyFillInternal(order, qty, pc);
+  }
+
+  // Blend the two sides into one entry price. Shared by
+  // getAverageEntryPrice() and positionSnapshot() so there is one answer
+  // rather than two that can drift apart.
+  static std::optional<Price> blendedEntry(const PositionSnapshot& snap)
+  {
+    const int64_t longRaw = snap.longQty.raw();
+    const int64_t shortRaw = snap.shortQty.raw();
+    const int64_t totalRaw = longRaw + shortRaw;
+    if (totalRaw == 0)
+    {
+      return std::nullopt;
+    }
+    if (shortRaw == 0)
+    {
+      return snap.longAvgEntry;
+    }
+    if (longRaw == 0)
+    {
+      return snap.shortAvgEntry;
+    }
+    const Volume blended = Volume::fromRaw((snap.longQty * snap.longAvgEntry).raw() +
+                                           (snap.shortQty * snap.shortAvgEntry).raw());
+    return blended / Quantity::fromRaw(totalRaw);
   }
 
   PositionSnapshot snapshotUnlocked(SymbolId symbol) const

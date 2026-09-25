@@ -22,9 +22,13 @@ class ConsoleLogger final : public ILogger
   explicit ConsoleLogger(LogLevel minLevel = LogLevel::Info);
 
   void log(LogLevel level, std::string_view msg);
-  void info(std::string_view msg);
-  void warn(std::string_view msg);
-  void error(std::string_view msg);
+  void info(std::string_view msg) override;
+  void warn(std::string_view msg) override;
+  void error(std::string_view msg) override;
+
+  // The threshold the logger was constructed with, which is also what
+  // FLOX_LOG_* checks before formatting anything.
+  LogLevel minLevel() const noexcept override { return _minLevel; }
 
  private:
   LogLevel _minLevel;

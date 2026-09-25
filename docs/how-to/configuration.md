@@ -1,180 +1,93 @@
 # Configuration
 
 !!! info "C++ engine setup"
-    `EngineConfig` is how the **C++ engine** wires up exchanges, symbols, and the kill switch on startup. Python, Node.js, and Codon users build the equivalent imperatively (`flox.SymbolRegistry`, `flox.Runner`, etc.) — see the [Bindings](../bindings/README.md) page. This guide is for the C++ entrypoint.
+    `EngineConfig` is what the **C++ engine** itself reads at startup. Everything else — which venues to connect, which symbols to subscribe to, the kill switch, the logger — is wired up by constructing the components and handing them to the engine. Python, Node.js, and Codon users build the same thing imperatively (`flox.SymbolRegistry`, `flox.Runner`, etc.) — see the [Bindings](../bindings/README.md) page. This guide is for the C++ entrypoint.
 
-FLOX is configured via the `EngineConfig` structure, typically loaded from a JSON file or embedded configuration source.
+`EngineConfig` is a plain struct with two fields. It is not loaded from JSON by
+the engine and there is no serializer for it in the tree; fill it in yourself.
 
-## Example Configuration
+```cpp
+#include "flox/engine/engine_config.h"
 
-```json
-{
-  "logLevel": "debug",
-  "exchanges": [
-    {
-      "name": "bybit",
-      "type": "mock",
-      "symbols": [
-        { "symbol": "DOTUSDT", "tickSize": 0.001, "expectedDeviation": 0.5 }
-      ]
-    }
-  ],
-  "killSwitchConfig": {
-    "maxOrderQty": 10000,
-    "maxLoss": -5000,
-    "maxOrdersPerSecond": 100
-  }
-}
+EngineConfig config;
+config.drainTimeoutMs = 5000;
+config.memoryProfile = "default";
+
+Engine engine(config, std::move(subsystems), std::move(connectors));
+engine.start();
 ```
 
 ## Configuration Fields
 
-### `logLevel`
+| Field            | Type       | Default     | Description                                                                             |
+| ---------------- | ---------- | ----------- | --------------------------------------------------------------------------------------- |
+| `drainTimeoutMs` | `uint32_t` | 5000        | How long `Engine::stop()` waits for each connector to drain its in-flight orders.        |
+| `memoryProfile`  | `string`   | `"default"` | `"default"` leaves pages evictable; `"colo"` calls `mlockall` at start and warns if the privilege is missing. |
 
-Controls runtime logging verbosity.
+## Exchanges and symbols
 
-| Value | Description |
-|-------|-------------|
-| `debug` | All messages including debug info |
-| `info` | Informational messages and above |
-| `warn` | Warnings and errors only |
-| `error` | Errors only |
+They are not declared in `EngineConfig`. The struct used to carry an
+`exchanges` vector of `ExchangeConfig{name, type, symbols}`, each entry of
+`symbols` a `SymbolConfig{symbol, tickSize, expectedDeviation}`, and the engine
+read none of it — a caller who filled it in got no registered symbol, no
+tick size and no error. The three types have been removed rather than left as a
+second, silent way to say the same thing.
 
-### `exchanges[]`
-
-Defines which exchange connectors to start and which symbols to subscribe to.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Display label or unique ID for internal routing |
-| `type` | string | Used by `ConnectorFactory` to instantiate the appropriate connector |
-| `symbols[]` | array | List of symbol configs |
-
-#### Symbol Configuration
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `symbol` | string | Trading pair (e.g., "BTCUSDT") |
-| `tickSize` | number | Minimum price increment |
-| `expectedDeviation` | number | Allowed price deviation for validation |
-
-### `killSwitchConfig`
-
-Defines runtime shutdown thresholds:
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `maxOrderQty` | number | 10000 | Maximum order size allowed per submission |
-| `maxLoss` | number | -1000000 | Hard limit on realized/unrealized loss (negative) |
-| `maxOrdersPerSecond` | number | -1 | Rate limit for outbound orders (`-1` disables) |
-
-### `logFile`
-
-Optional path to log file. If not set, logs go to stdout only.
-
-```json
-{
-  "logFile": "/var/log/flox/engine.log"
-}
-```
-
-### `drainTimeoutMs`
-
-Timeout in milliseconds for draining in-flight orders on shutdown. Default: `5000`.
-
-## Loading Configuration
-
-### From JSON File
+A connector is constructed with the venue and the symbols it serves, and
+registers what it resolves in a `SymbolRegistry`:
 
 ```cpp
-#include "flox/engine/engine_config.h"
-#include <fstream>
+SymbolRegistry registry;
 
-EngineConfig loadConfig(const std::string& path) {
-    std::ifstream file(path);
-    nlohmann::json j;
-    file >> j;
-    return j.get<EngineConfig>();
-}
+SymbolInfo info;
+info.exchange = "bybit";
+info.symbol = "DOTUSDT";
+info.type = InstrumentType::Spot;
+info.tickSize = Price::fromDouble(0.001);
 
-int main() {
-    auto config = loadConfig("config.json");
-    Engine engine(config, subsystems, connectors);
-    engine.start();
-}
+const SymbolId id = registry.registerSymbol(info);
 ```
 
-### Programmatic Configuration
+`SymbolId` is derived from the `(exchange, symbol)` pair, so the same pair
+always maps to the same id within a registry, and `registry.getSymbolId(...)`
+returns it afterwards. `SymbolInfo::tickSize` is the price resolution the order
+book and the validators align to.
+
+## Logging
+
+The logger is an object, not a config field. Build the sink you want and
+install it:
 
 ```cpp
-EngineConfig config;
-config.logLevel = LogLevel::INFO;
-
-ExchangeConfig exchange;
-exchange.name = "binance";
-exchange.type = "binance_futures";
-
-SymbolConfig symbol;
-symbol.symbol = "BTCUSDT";
-symbol.tickSize = 0.1;
-config.exchanges.push_back(exchange);
-
-config.killSwitchConfig.maxOrderQty = 10000;
-config.killSwitchConfig.maxLoss = -5000;
-config.killSwitchConfig.maxOrdersPerSecond = 100;
+AtomicLoggerOptions opts;
+opts.levelThreshold = LogLevel::Warn;
+opts.directory = "/var/log/flox";   // defaults to /dev/shm, or the system temp directory
+AtomicLogger logger(opts);
+setGlobalLogger(&logger);
 ```
 
-## Symbol Registration
+The level the sink was built with is also the level `FLOX_LOG_*` checks before
+it formats anything, so a filtered line costs nothing. See
+[`AtomicLogger`](../reference/api/log/atomic_logger.md) and
+[the logging macros](../reference/api/log/log.md).
 
-`SymbolId` is derived automatically from `(exchange, symbol)` during engine startup:
+## Kill switch
 
-```cpp
-// During startup, the engine registers symbols
-for (const auto& exchange : config.exchanges) {
-    for (const auto& sym : exchange.symbols) {
-        auto symbolId = registry.registerSymbol(exchange.name, sym.symbol);
-        // symbolId is now available for use throughout the system
-    }
-}
-```
+Also an object. Construct the kill switch with its limits and register it with
+the risk path; it is not part of `EngineConfig`.
 
-## Environment Variables
+## Compile-time defaults
 
-Some settings can be overridden via environment variables:
-
-| Variable | Description |
-|----------|-------------|
-| `FLOX_LOG_LEVEL` | Override log level |
-| `FLOX_CONFIG_PATH` | Default config file path |
-
-## Validation
-
-Configuration is validated at startup:
-
-```cpp
-void validateConfig(const EngineConfig& config) {
-    if (config.exchanges.empty()) {
-        throw std::invalid_argument("At least one exchange required");
-    }
-
-    for (const auto& ex : config.exchanges) {
-        if (ex.symbols.empty()) {
-            throw std::invalid_argument("Exchange must have symbols");
-        }
-        for (const auto& sym : ex.symbols) {
-            if (sym.tickSize <= 0) {
-                throw std::invalid_argument("tickSize must be positive");
-            }
-        }
-    }
-}
-```
+`engine_config.h` also defines the constants in `flox::config` — event-bus
+capacity, connector pool capacity, order-tracker capacity, the CPU-affinity
+priorities — each overridable with a preprocessor define. See
+[EngineConfig](../reference/api/engine/engine_config.md) for the full list and
+the pool-vs-bus sizing rule.
 
 ## Notes
 
-- Tick size and deviation are used by validators and order book alignment
-- All configuration is immutable after startup for safety and determinism
-- Use different config files for development, testing, and production
+- Nothing in the tree reads `EngineConfig` except `Engine::start()` (the memory profile) and `Engine::stop()` (the drain timeout).
+- The config is copied into the engine at construction and is not re-read afterwards.
 
 ## See Also
 
