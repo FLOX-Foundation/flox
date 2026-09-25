@@ -7,7 +7,7 @@
  * license information.
  */
 
-// Tests for the post-emission observer hooks (T018 PnLTracker, T019
+// Tests for the post-emission observer hooks (PnLTracker and
 // StorageSink). Both fire after the user on_signal callback, never block.
 
 #include "flox/capi/flox_capi.h"

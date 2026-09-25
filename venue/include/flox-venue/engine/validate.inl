@@ -134,7 +134,7 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
   {
     return RejectReason::OrderTooLarge;  // fat-finger size
   }
-  // The account's own caps (W26-T064), refused the same way the symbol's
+  // The account's own caps, refused the same way the symbol's
   // are: an owner of risk above the venue that tightened one account gets
   // the refusal it asked for, and a replay gets it too.
   const auto* acctLimits = credit_.accountLimits(o.accountId);
@@ -410,7 +410,7 @@ bool MatchingEngine<Book>::clOrdIdDuplicate(uint64_t account, uint64_t clOrdId)
 template <class Book>
 void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
 {
-  // Quotes-only admission (T063): DenyNewOrder refuses a genuine client
+  // Quotes-only admission: DenyNewOrder refuses a genuine client
   // NewOrder while leaving a Quote/QuoteLadder's own legs untouched, even
   // though both arrive here as the same NewOrder struct -- clOrdIdChecked is
   // true ONLY for a quote's legs (see quote_mmp.inl: their dedup was already
@@ -500,7 +500,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     committed = onStop(o);  // parked in the stop book -> committed (keep OCO link)
     return;
   }
-  // The tighter of the symbol's and the account's open-order cap (W26-T064).
+  // The tighter of the symbol's and the account's open-order cap.
   uint32_t openCap = cfg_.maxOpenOrders;
   if (const auto* al = credit_.accountLimits(o.accountId); al != nullptr && al->maxOpenOrders > 0)
   {
@@ -588,7 +588,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     {
       pegs_.set(o.id, PegBook::Peg{o.side, o.peg, o.pegOffsetRaw});
     }
-    // T059: pre-open accumulation never matches, so this order has filled
+    // Pre-open accumulation never matches, so this order has filled
     // nothing yet -- cumQty is always 0.
     sink_(OrderAccepted{o.id, o.symbol, o.side, restPx, o.quantity, true, ro.leaves, o.accountId,
                         o.clientOrderId, Quantity{}});
@@ -635,7 +635,7 @@ void MatchingEngine<Book>::onNew(NewOrder o, bool clOrdIdChecked)
     ro.lastLook = o.lastLook && cfg_.lastLookWindowNs.count() > 0;  // window 0 = feature off
     ro.reduceOnly = o.reduceOnly;                                   // carried so a later modify preserves it
     ro.postOnly = o.postOnly;                                       // same reason
-    // T059: this order may have partially filled itself (as aggressor)
+    // This order may have partially filled itself (as aggressor)
     // before its residual rests -- out.filled is that fill. Stamped onto the
     // RestingOrder now so a later report (cancel, exec, modify) on this
     // order carries the real running total instead of starting over at 0.

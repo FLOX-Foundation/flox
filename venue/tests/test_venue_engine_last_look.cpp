@@ -264,7 +264,7 @@ TEST(VenueEngineLastLook, AcceptPrintsTradeAndBothExecutions)
   EXPECT_EQ(ll.stats().at(1).rejected, 0U);
 }
 
-// T062: a taker whose entire order went into one hold gets a terminal report
+// A taker whose entire order went into one hold gets a terminal report
 // when it resolves. Before the fix this leg was hardcoded leavesQty=0,
 // complete=false -- truthfully zero leaves, but never marked complete, so the
 // order's own terminal event never fired.
@@ -289,7 +289,7 @@ TEST(VenueEngineLastLook, TakerFullyHeldInOneHoldGetsATerminalExecution)
   EXPECT_EQ(tx->displayLeaves.raw(), qty(0.0).raw());
 }
 
-// T062: an IOC taker whose residual never rests (already canceled by the
+// An IOC taker whose residual never rests (already canceled by the
 // matcher before the hold could ever open) is just as terminal once its one
 // hold accepts -- IOC vs GTC/GTD makes no difference here because a residual
 // that never rests looks identical to one that has already been fully spent.
@@ -311,7 +311,7 @@ TEST(VenueEngineLastLook, TakerIocResidualAlreadyGoneIsStillTerminalOnAccept)
   EXPECT_TRUE(tx->complete);
 }
 
-// T062: a GTC taker that already rests on a residual (the part of its order
+// A GTC taker that already rests on a residual (the part of its order
 // that did not cross anything) is NOT done when an unrelated hold on the rest
 // of its size accepts -- the resting quantity is untouched by this
 // resolution, and the report has to say so honestly rather than claim zero
@@ -340,7 +340,7 @@ TEST(VenueEngineLastLook, TakerWithARestingResidualIsNotTerminalOnAccept)
   EXPECT_EQ(b.at(20)->leaves.raw(), qty(1.5).raw());
 }
 
-// T062: one sweep can hold the same taker against more than one last-look
+// One sweep can hold the same taker against more than one last-look
 // maker. Accepting the first must not claim the order complete while the
 // second hold -- on a different maker's clock -- is still open.
 TEST(VenueEngineLastLook, TakerWithASiblingHoldStillOpenIsNotTerminalOnAccept)

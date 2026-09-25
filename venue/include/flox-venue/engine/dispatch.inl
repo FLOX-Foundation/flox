@@ -269,7 +269,7 @@ void MatchingEngine<Book>::submit(const InboundCommand& cmd, SeqNanos tsNs)
   {
     if (al->symbol == cfg_.id)
     {
-      credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed (W26-T064)
+      credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed
     }
   }
   else if (const auto* sg = std::get_if<SetStpGroup>(&cmd))

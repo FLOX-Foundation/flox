@@ -521,7 +521,7 @@ TEST(EngineCredit, ReduceOnlyMayOnlyCloseWhatIsOpenOnTheOtherSide)
             Quantity::fromDouble(2.0).raw());
 }
 
-// W26-T064: the account's own position cap, where it is tighter than the
+// The account's own position cap, where it is tighter than the
 // symbol's, is the one a leg is measured against; an account with no entry
 // keeps the symbol's; the symbol's binds where it is the tighter one.
 TEST(EngineCredit, AnAccountsOwnPositionCapBindsWhereItIsTheTighterOne)

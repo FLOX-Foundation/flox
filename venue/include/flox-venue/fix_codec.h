@@ -93,7 +93,7 @@ class FixCodec
   }
 
   // Deterministic per-(account, symbol) resting order-id block for a FIX
-  // quoting session's ladder (T063). MassQuote carries no venue order id of
+  // quoting session's ladder. MassQuote carries no venue order id of
   // its own -- 117 QuoteID is the LADDER's own name (QuoteLadder::
   // clientOrderId), not an id base -- and QuoteCancel names no ids at all.
   // A pure function of (account, symbol) is what lets both answer from the
@@ -715,7 +715,7 @@ class FixCodec
       return frame(b);
     }
 
-    // A Quote/QuoteLadder admission refusal (T063: AdmissionDeny::DenyQuote)
+    // A Quote/QuoteLadder admission refusal (AdmissionDeny::DenyQuote)
     // is QuoteStatusReport-shaped, not exec-report-shaped, the same reasoning
     // as CancelRejected above: FIX has no honest ExecType for "your ladder
     // never reached the book", and this venue's own MassQuote/QuoteCancel
@@ -766,7 +766,7 @@ class FixCodec
       add(39, "0");   // OrdStatus New
       add(151, qn(a->leavesQty));
       add(44, px(a->price));
-      add(14, qn(a->cumQty));  // T059: what this order filled of itself before this accept
+      add(14, qn(a->cumQty));  // what this order filled of itself before this accept
     }
     else if (const auto* x = std::get_if<OrderExecuted>(&ev))
     {
@@ -779,7 +779,7 @@ class FixCodec
       add(31, px(x->lastPx));            // LastPx -- price of this fill
       add(6, px(x->lastPx));             // AvgPx (single-fill report)
       add(151, qn(x->leavesQty));        // LeavesQty
-      add(14, qn(x->cumQty));            // T059: CumQty -- total filled as of this fill
+      add(14, qn(x->cumQty));            // CumQty -- total filled as of this fill
     }
     else if (const auto* c = std::get_if<OrderCanceled>(&ev))
     {
@@ -787,7 +787,7 @@ class FixCodec
       clOrd(c->clientOrderId);
       add(150, "4");  // Canceled
       add(39, "4");
-      // T058: the residual this cancel actually killed, and what the order
+      // The residual this cancel actually killed, and what the order
       // filled before it. Without 151 a counterparty that reads LeavesQty
       // off terminal reports (routine for an IOC/FOK residual) has no way to
       // tell "filled completely" from "the remainder was silently canceled".
@@ -801,7 +801,7 @@ class FixCodec
       add(150, "8");  // Rejected
       add(39, "8");
       add(58, text.empty() ? std::string(toString(j->reason)) : std::string(text));
-      // T058: a rejected order is never left resting (151 is always 0), but
+      // A rejected order is never left resting (151 is always 0), but
       // CumQty is not always 0 -- a fill-time risk re-check or an STP block
       // can reject an order's residual after matcher_.cross() already
       // printed part of it (see OrderRejected::cumQty).
@@ -816,7 +816,7 @@ class FixCodec
       add(39, "5");
       add(151, qn(m->leavesQty));
       add(44, px(m->price));
-      add(14, qn(m->cumQty));  // T059: running total, unaffected by a reprice/resize
+      add(14, qn(m->cumQty));  // running total, unaffected by a reprice/resize
     }
     else if (const auto* fh = std::get_if<FillHeld>(&ev))
     {
@@ -834,7 +834,7 @@ class FixCodec
       add(31, px(fh->price));
       add(20001, std::to_string(fh->heldId));
       add(20002, std::to_string(fh->makerId));
-      add(14, qn(fh->cumQty));  // T059: taker's confirmed total as of hold creation
+      add(14, qn(fh->cumQty));  // taker's confirmed total as of hold creation
     }
     else if (const auto* fr = std::get_if<FillRejected>(&ev))
     {
@@ -851,7 +851,7 @@ class FixCodec
       add(20001, std::to_string(fr->heldId));
       add(20002, std::to_string(fr->makerId));
       add(58, "LastLookRejected");
-      add(14, qn(fr->cumQty));  // T059: same value FillHeld reported when this hold opened
+      add(14, qn(fr->cumQty));  // same value FillHeld reported when this hold opened
     }
     else
     {

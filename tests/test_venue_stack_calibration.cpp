@@ -7,9 +7,10 @@
  * license information.
  */
 
-// T064: real-event replay calibration harness.
+// Real-event replay calibration harness.
 //
-// Structural tests (T056 + T065) confirm the engine produces
+// Structural tests (the realism-integration and reproducibility-audit
+// suites) confirm the engine produces
 // internally-consistent and deterministic numbers. This test goes
 // one layer up: it asserts the engine's quantitative output on
 // well-known scenarios falls within tolerance of the baseline
@@ -61,7 +62,7 @@ bool withinRelativeTolerance(double actual, double expected, double tol)
 // price should reflect the engine's slippage model. Insurance fund
 // should absorb most of the residual deficit since equity is wiped.
 
-TEST(W15Calibration, BtcDrop15PctLiquidatesLeveragedLong)
+TEST(VenueStackCalibration, BtcDrop15PctLiquidatesLeveragedLong)
 {
   // 20x leverage: 1 BTC at 50k, equity 2500 (5% margin).
   auto stack = VenueStack::binance_um_futures(/*account_id=*/1,
@@ -101,7 +102,7 @@ TEST(W15Calibration, BtcDrop15PctLiquidatesLeveragedLong)
 // = ceil(period_ns / interval_ns). Each amount has correct sign
 // and magnitude within 5% of the analytical calculation.
 
-TEST(W15Calibration, EightHourFundingSettlementMatchesAnalytical)
+TEST(VenueStackCalibration, EightHourFundingSettlementMatchesAnalytical)
 {
   auto stack = VenueStack::binance_um_futures(1, 10'000.0);
   auto& funding = stack.funding();
@@ -146,7 +147,7 @@ TEST(W15Calibration, EightHourFundingSettlementMatchesAnalytical)
 // Baseline: same scenario produces different liquidation counts
 // across the two modes.
 
-TEST(W15Calibration, CrossMarginNettingPreventsLiquidation)
+TEST(VenueStackCalibration, CrossMarginNettingPreventsLiquidation)
 {
   // Scenario A: cross-margin.
   auto stack_cross = VenueStack::binance_um_futures(1, 5'000.0);
@@ -198,7 +199,7 @@ TEST(W15Calibration, CrossMarginNettingPreventsLiquidation)
 // Binance UM: VIP 1 at 250k 30d notional. Each fill of 50k → tier
 // increments when crossing the threshold.
 
-TEST(W15Calibration, FeeTierTransitionsCrossPublishedThresholds)
+TEST(VenueStackCalibration, FeeTierTransitionsCrossPublishedThresholds)
 {
   auto stack = VenueStack::binance_um_futures(1, 100'000.0);
   auto& fees = stack.fees();

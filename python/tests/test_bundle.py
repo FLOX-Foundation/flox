@@ -1,4 +1,4 @@
-"""Tests for the reproducibility bundle (W6.T015)."""
+"""Tests for the reproducibility bundle."""
 from __future__ import annotations
 
 import io

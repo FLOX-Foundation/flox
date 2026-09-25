@@ -31,7 +31,7 @@ namespace flox
 //
 // Models the standard fee-on-input pool. The fee-on-output path (used for
 // transfer-fee mints) and Token-2022 transfer fees are a separate boundary
-// concern (W21.T010), not part of this curve.
+// concern, not part of this curve.
 class RaydiumClmmCurve : public ConcentratedLiquidityCurve
 {
  public:

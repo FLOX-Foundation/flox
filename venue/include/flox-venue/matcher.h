@@ -123,7 +123,7 @@ class Matcher
 
   MatchPolicy policy() const noexcept { return policy_; }
 
-  // takerCumSoFar (T059): the taker's own CONFIRMED fill total within this
+  // takerCumSoFar: the taker's own CONFIRMED fill total within this
   // cross, as of the moment this hold opens -- prior real (non-held) fills
   // earlier in the same sweep, never including this held qty itself (not
   // yet confirmed). Lets the hold's FillHeld/FillRejected report FIX 14
@@ -206,7 +206,7 @@ class Matcher
   uint64_t fillOrKillRiskConstrained() const noexcept { return fokRiskConstrained_; }
   uint64_t fillOrKillRejected() const noexcept { return fokRejected_; }
 
-  // priorCumQty (T059, default 0): the taker's own life-to-date cumulative
+  // priorCumQty (default 0): the taker's own life-to-date cumulative
   // fill BEFORE this call -- nonzero only when the caller re-enters matching
   // for an order that already traded in an earlier life (onModify's
   // re-enter-at-the-tail path). Every taker-leg OrderExecuted/OrderAccepted/
@@ -278,7 +278,7 @@ class Matcher
       {
         // A maker with nothing left, still at the top of the book, is a book
         // that failed to take a filled order down. Filling zero from it,
-        // forever, is the hang W26-T065 found under a broken LadderBook:
+        // forever, is the hang found under a broken LadderBook:
         // every pass printed a zero-size trade and the taker's remainder
         // never moved. Stop the sweep; the remainder rests or is refused by
         // its own type, and the golden driver's event budget names the run.
@@ -349,7 +349,7 @@ class Matcher
       // be read before fillBest, which refills/re-queues and may invalidate `m`.
       const Quantity makerDisplayAfter =
           (fill < m->leaves) ? (m->leaves - fill) : qmin(m->peak, m->hidden);
-      // T059: maker's running cumQty after this fill. Read before fillBest,
+      // Maker's running cumQty after this fill. Read before fillBest,
       // same invalidation reason as makerDisplayAfter above.
       const Quantity makerCumAfter = m->cumQty + fill;
 
@@ -885,7 +885,7 @@ class Matcher
             Quantity::fromRaw(level[i].leaves.raw() + level[i].hidden.raw() - alloc[i]);
         const Quantity makerDisplayAfter =
             (fill < level[i].leaves) ? (level[i].leaves - fill) : qmin(level[i].peak, level[i].hidden);
-        // T059: maker's running cumQty after this fill, read before consumeById
+        // Maker's running cumQty after this fill, read before consumeById
         // for the same invalidation reason as makerDisplayAfter above.
         const Quantity makerCumAfter = level[i].cumQty + fill;
         sink(Trade{nextTradeId(), order.symbol, levelPrice, fill, makerId, order.id, order.side,

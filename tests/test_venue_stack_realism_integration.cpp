@@ -7,9 +7,9 @@
  * license information.
  */
 
-// T056: multi-day multi-symbol end-to-end realism integration test.
+// Multi-day multi-symbol end-to-end realism integration test.
 //
-// Drives the assembled W15 backtest stack across a synthetic
+// Drives the assembled venue-stack backtest across a synthetic
 // 2-day, 4-symbol tape and asserts ~10 invariants that catch silent
 // composition bugs the per-subsystem unit tests miss:
 //
@@ -47,7 +47,7 @@ constexpr SymbolId SOL = 3;
 constexpr SymbolId XRP = 4;
 }  // namespace
 
-TEST(W15Realism, MultiDayMultiSymbolBacktestSanityInvariants)
+TEST(VenueStackRealism, MultiDayMultiSymbolBacktestSanityInvariants)
 {
   // Build the venue-realistic stack.
   auto stack = VenueStack::binance_um_futures(/*accountId=*/42,
@@ -205,7 +205,7 @@ TEST(W15Realism, MultiDayMultiSymbolBacktestSanityInvariants)
   EXPECT_EQ(stack.venueName(), "binance_um_futures");
 }
 
-TEST(W15Realism, CrossMarginUnderwaterScenarioBalancesBooks)
+TEST(VenueStackRealism, CrossMarginUnderwaterScenarioBalancesBooks)
 {
   // Drive the stack into an underwater scenario and verify the
   // liquidation + insurance + ADL bookkeeping balances.
@@ -219,7 +219,7 @@ TEST(W15Realism, CrossMarginUnderwaterScenarioBalancesBooks)
   std::vector<std::pair<SymbolId, double>> marks = {
       {BTC, 45'000.0}, {ETH, 2'850.0}};
 
-  // The executor has no book fed; T037 cross walk falls back to
+  // The executor has no book fed; the cross-margin walk falls back to
   // flat-bps slippage close via the engine path. Liquidation
   // should fire; verify the books balance.
   const auto out = stack.liquidation().onMarks(marks, /*tsNs=*/1'000);
@@ -239,7 +239,7 @@ TEST(W15Realism, CrossMarginUnderwaterScenarioBalancesBooks)
             stack.liquidation().liquidationsCount());
 }
 
-TEST(W15Realism, MultiVenueStacksDoNotShareState)
+TEST(VenueStackRealism, MultiVenueStacksDoNotShareState)
 {
   // Two VenueStacks side by side — common pitfall is sharing
   // statics or singletons. Verify they're independent.

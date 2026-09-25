@@ -226,7 +226,7 @@ void test_spot_conservation()
 // lastLook makers, and holds resolve through every path -- explicit accepts,
 // explicit rejects, wrong-owner decision attempts, timeout (acceptOnTimeout
 // exercises the timeout-accept settle), cancel-while-held during the drain, and
-// SELF-TRADE PREVENTION removing a maker that has a hold open (T028: the one
+// SELF-TRADE PREVENTION removing a maker that has a hold open (the one
 // removal path that lives inside the matcher, where a cancel that ignored the
 // hold used to free the collateral the later accept had to settle from). Money
 // must never be created or destroyed, and after the drain every reservation
@@ -256,7 +256,7 @@ void test_spot_conservation_lastlook()
   std::vector<std::pair<uint64_t, uint64_t>> pendingHolds;  // (heldId, makerAccount)
   uint64_t totalHolds = 0;
   uint64_t stpCancels = 0;
-  uint64_t stpCancelsOnHeldMaker = 0;  // T028 coverage: STP pulled a maker mid-hold
+  uint64_t stpCancelsOnHeldMaker = 0;  // coverage: STP pulled a maker mid-hold
   OrderId lastRejectedMaker = 0;
   MatchingEngine<MatchingBook> eng(
       c,
@@ -408,7 +408,7 @@ void test_spot_conservation_lastlook()
   CHECK(eng.unsettledTrades() == 0);  // no fill ever reached clearing unbacked
   CHECK(totalHolds > 1000);           // coverage guard: the scenario really exercised holds
   CHECK(stpCancels > 100);            // ... and that STP really fired alongside them
-  CHECK(stpCancelsOnHeldMaker > 0);   // ... including on makers with a live hold (T028)
+  CHECK(stpCancelsOnHeldMaker > 0);   // ... including on makers with a live hold
   std::printf(
       "  100000 ops, %llu holds (accept/reject/wrong-owner/timeout-accept/cancel-while-held), "
       "%llu STP cancels (%llu on a held maker), base/quote conserved (%d breaches); reserved "
@@ -445,7 +445,7 @@ void test_perp_conservation(bool adl)
   c.initialMarginBps = 1000;
   c.maintenanceMarginBps = 500;
   c.autoDeleverage = adl;
-  c.maxPositionQty = qty(20);  // the cap must bind the RESULTING position (T030)
+  c.maxPositionQty = qty(20);  // the cap must bind the RESULTING position
   MatchingEngine<MatchingBook> eng(c, [](const OutboundEvent&) {});
   eng.setLedger(&led, VENUE);
 
@@ -492,7 +492,7 @@ void test_perp_conservation(bool adl)
       o.quantity = qty(1.0 + static_cast<double>((r >> 20) % 5));
       // Unpriced flow: a perp market/stop order is margined against the price
       // BAND, not its own price, and the band bound must be the same on both
-      // sides (T029) -- a LIMIT-only fuzz never touches that arithmetic.
+      // sides -- a LIMIT-only fuzz never touches that arithmetic.
       const uint32_t t = static_cast<uint32_t>((r >> 32) % 100);
       if (t < 15)
       {
@@ -512,7 +512,7 @@ void test_perp_conservation(bool adl)
       }
       // Reduce-only flow: capped at admission, re-measured at fill time. It
       // reserves no margin, so a slice of it that opened a position would open
-      // one with none (T030).
+      // one with none.
       o.reduceOnly = ((r >> 48) % 100) < 20;
       eng.submit(InboundCommand{o}, i);
     }

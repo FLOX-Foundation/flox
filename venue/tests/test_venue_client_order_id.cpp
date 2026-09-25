@@ -56,7 +56,7 @@ SymbolConfig cfg()
 }
 
 // Same as cfg(), plus last look armed -- needed for the FillHeld/FillRejected
-// (T050) cases below, which do not exist without a hold.
+// cases below, which do not exist without a hold.
 SymbolConfig cfgWithLastLook()
 {
   SymbolConfig c = cfg();
@@ -348,7 +348,7 @@ TEST(ClientOrderId, TheBinaryReportCarriesItWithoutDisplacingTheSequence)
   EXPECT_EQ(SbeOrderEntryCodec::seqOf(buf.data(), buf.size()), 42u)
       << "the sequence number is still where a reader looks for it";
 
-  // T059: cumQty (i64) now trails clOrdId on Accepted, so clOrdId is the
+  // cumQty (i64) now trails clOrdId on Accepted, so clOrdId is the
   // second-to-last field, not the last.
   const size_t clOrdAt = buf.size() - 16;
   uint64_t got = 0;
@@ -356,7 +356,7 @@ TEST(ClientOrderId, TheBinaryReportCarriesItWithoutDisplacingTheSequence)
   EXPECT_EQ(got, kClientId) << "and the submitter's name is the trailing field";
 }
 
-// T050: a last-look hold and its reject name the TAKER's order, not the
+// A last-look hold and its reject name the TAKER's order, not the
 // maker's and not the venue's own heldId. The maker and taker are given
 // DIFFERENT client ids on purpose (same reasoning as the file header): a
 // report that echoed the maker's name, or 37/heldId, or nothing at all
@@ -386,7 +386,7 @@ TEST(ClientOrderId, AHeldFillAndItsRejectCarryTheTakersName)
   std::vector<uint8_t> heldBuf;
   SbeOrderEntryCodec::encode(OutboundEvent{*heldPtr}, heldBuf, /*seq=*/1);
   EXPECT_EQ(heldBuf.size(), sbe::kHeaderSize + SbeOrderEntryCodec::kBlockFillHeld);
-  // T059: cumQty (i64) now trails clOrdId on FillHeld.
+  // cumQty (i64) now trails clOrdId on FillHeld.
   uint64_t heldClOrd = 0;
   std::memcpy(&heldClOrd, heldBuf.data() + heldBuf.size() - 16, sizeof heldClOrd);
   EXPECT_EQ(heldClOrd, kClientId) << "second-to-last field of the FillHeld root block";
@@ -411,7 +411,7 @@ TEST(ClientOrderId, AHeldFillAndItsRejectCarryTheTakersName)
   std::vector<uint8_t> rejBuf;
   SbeOrderEntryCodec::encode(OutboundEvent{*rejected}, rejBuf, /*seq=*/2);
   EXPECT_EQ(rejBuf.size(), sbe::kHeaderSize + SbeOrderEntryCodec::kBlockFillRejected);
-  // T059: cumQty (i64) now trails clOrdId on FillRejected.
+  // cumQty (i64) now trails clOrdId on FillRejected.
   uint64_t rejClOrd = 0;
   std::memcpy(&rejClOrd, rejBuf.data() + rejBuf.size() - 16, sizeof rejClOrd);
   EXPECT_EQ(rejClOrd, kClientId) << "second-to-last field of the FillRejected root block";

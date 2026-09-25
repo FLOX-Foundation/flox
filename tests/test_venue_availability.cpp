@@ -214,7 +214,7 @@ TEST(VenueAvailability, EmptyConfigStaysUpForever)
   EXPECT_TRUE(va.outages().empty());
 }
 
-// === T046: richer downtime pathology ===
+// === Richer downtime pathology ===
 
 TEST(VenueAvailability, OutageTypeTotalKeepsLegacySemantics)
 {

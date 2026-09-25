@@ -437,7 +437,7 @@ void test_perp_modify_preserves_reduce_only()
   CHECK(eng.positionQty(1) == 0);  // reduced to flat -- bug flips it to -5 (opened a short)
 }
 
-// T029: an unpriced (market / stop) perp order is bounded by the price band for
+// An unpriced (market / stop) perp order is bounded by the price band for
 // margin purposes, and on a linear perp that bound is the band's TOP on BOTH
 // sides -- nothing is delivered, so notional and initial margin grow with price
 // whether the account ends long or short. Bounding a SELL at minPrice (correct
@@ -511,7 +511,7 @@ void test_perp_unpriced_sell_margin_matches_buy()
   CHECK(!rejectsAtDeposit(Side::BUY, imAtBand));
 }
 
-// T030: reduce-only and maxPositionQty are gated when an order is ADMITTED, but
+// Reduce-only and maxPositionQty are gated when an order is ADMITTED, but
 // a resting order fills later -- against a position that has moved since. A
 // reduce-only order reserves no initial margin, so any part of it that opens or
 // flips the position opens it with ZERO margin; the flags must therefore be
@@ -624,7 +624,7 @@ void test_auction_uncross_respects_reduce_only()
         init);
 }
 
-// T030: maxPositionQty is checked against the INCOMING order at admission, so
+// maxPositionQty is checked against the INCOMING order at admission, so
 // two orders that each pass individually can settle into a position past the
 // cap. The cap must bind the RESULTING position, at fill time.
 void test_position_cap_not_circumvented_by_several_orders()
@@ -760,7 +760,7 @@ void test_position_limit()
 
 }  // namespace
 
-// ---- T031: a ledgerless perp still tracks exposure --------------------------
+// ---- A ledgerless perp still tracks exposure --------------------------
 //
 // Positions are exposure, not cash. With no ledger bound the engine skips
 // settlement, and it used to skip position tracking with it -- which made every

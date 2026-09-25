@@ -117,7 +117,7 @@ jobs:
     - name: Verify every test file is reachable by the suite runners
       run: python3 scripts/check_suite_discovery.py
 
-    # T050, T056 and T057 were the same defect three times: a Codon example
+    # The same defect recurred three times: a Codon example
     # counted as coverage while CI never ran it. This is a static check (no
     # Codon compiler needed) so it belongs here rather than in the build
     # jobs -- every codon/examples/*.codon file must be named by the smoke
@@ -241,8 +241,8 @@ jobs:
     needs: [format-check]
     runs-on: ubuntu-24.04
     # Observed: ~15-20 min normally; this is the job that hung for hours on
-    # PR #470 (T030 -- one step never released a threaded Runner's
-    # ThreadSafeFunction, keeping the process alive with nothing left to do).
+    # PR #470 (one step never released a threaded Runner's ThreadSafeFunction,
+    # keeping the process alive with nothing left to do).
     # Observed: about 30 min since the test suite grew past 320 binaries plus
     # the Python and Node steps, so 30 cut the demo step off; 45 leaves the
     # hang guard in place with a margin.
@@ -1539,7 +1539,9 @@ jobs:
     runs-on: ubuntu-24.04
     # Observed: ~4 min (without-venue) + ~5 min (engine-only) run
     # sequentially now; was two ~4 min / ~5 min jobs on separate runners.
-    timeout-minutes: 20
+    # Since then about 20 min on a cold cache as the test suite grew, and
+    # the 20-minute cap cancelled the job on main; 30 leaves a margin.
+    timeout-minutes: 30
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # ccache defaults to comparing the compiler binary's mtime, and
@@ -1813,9 +1815,8 @@ jobs:
   # configures, builds and tests nothing but the venue. It does not prove
   # the venue is *separable* -- that a tree containing only
   # scripts/mirror_paths.py's file list is a tree at all. That question is
-  # T013 step 3's rehearsal before the venue core is cut into its own
-  # repository (.notes/tracks/W9-build-and-repo-hygiene/T013-venue-lite-profile.md):
-  # a first attempt at the cut (git filter-repo into a local copy) found two
+  # this job's rehearsal before the venue core is cut into its own
+  # repository: a first attempt at the cut (git filter-repo into a local copy) found two
   # things a header-only closure had not accounted for -- venue/src missing
   # entirely, and venue's own test suite needing headers no downstream
   # consumer's contract mentions (flox-venue/control_server.h, reached only

@@ -7,7 +7,7 @@ events. This recipe shows how to drive that scenario against the venue
 stack and inspect the resulting fills.
 
 Demonstrates:
-- VenueStack ships a venue-realistic RateLimitPolicy (T022/T049)
+- VenueStack ships a venue-realistic RateLimitPolicy
 - Per-endpoint budgets (Trading / MarketData / Account family)
 - The VenueExecutor surface returned by stack.executor()
 """

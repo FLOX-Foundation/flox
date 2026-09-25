@@ -31,7 +31,7 @@ TEST(OptionQuoteRecord, IvScaleRoundTrip)
 // hand-built buffer: an OptionQuote frame followed by a Trade frame. A consumer
 // that only understands Trade must skip the OptionQuote via FrameHeader.size and
 // still land on the Trade. This validates the additive/backward-compatible
-// design before the real writer/reader path is wired (W16.T012).
+// design before the real writer/reader path is wired.
 TEST(OptionQuoteRecord, UnknownFrameSkippedByTradeOnlyConsumer)
 {
   std::vector<std::byte> buf;

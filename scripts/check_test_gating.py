@@ -11,8 +11,8 @@ Examples of gated headers:
 - `flox/capi/...`       → requires FLOX_BUILD_CAPI
 
 The check is conservative — only direct `#include` lines are inspected,
-so transitive includes through engine headers are not chased. T020
-caught one case (`test_live_queue_position`); this script automates the
+so transitive includes through engine headers are not chased. A past
+manual audit caught one case (`test_live_queue_position`); this script automates the
 audit for every future PR.
 
 This also runs the reverse pass: every `tests/*.cpp` file must be named

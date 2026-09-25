@@ -92,7 +92,7 @@ VenueStack VenueStack::assemble(AssembleArgs&& args)
 VenueStack VenueStack::binance_um_futures(uint64_t accountId, double equity)
 {
   // Binance USDT-margined linear futures defaults:
-  // - FULL queue model with depth 8 (most realistic, enables T020
+  // - FULL queue model with depth 8 (most realistic, enables
   //   live-queue calibration + iceberg refresh).
   // - 50 ms iceberg refresh latency (Binance typical).
   return wireStack(accountId, equity,

@@ -113,7 +113,7 @@ TEST(ExtendedTIF, FOK_FillsAtomicallyWhenEnoughLiquidity)
   EXPECT_FALSE(cap.hasStatus(OrderEventStatus::REJECTED));
 }
 
-// === T042: FOK fill semantics variants ===
+// === FOK fill semantics variants ===
 
 TEST(ExtendedTIF, FOK_DefaultModeIsAnyPrice)
 {
@@ -200,7 +200,7 @@ TEST(ExtendedTIF, FOK_SinglePriceRejectsWhenLevelSizeInsufficient)
 
 TEST(ExtendedTIF, FOK_AnyPriceParityWithDefaultBehaviour)
 {
-  // Sanity: explicitly setting AnyPrice keeps the existing T028
+  // Sanity: explicitly setting AnyPrice keeps the existing default FOK
   // semantics from the first two FOK tests above.
   SimulatedClock clock;
   SimulatedExecutor exec(clock);

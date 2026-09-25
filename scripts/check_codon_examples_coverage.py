@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Audit codon/examples/*.codon against what CI actually executes.
 
-T050, T056 and T057 were the same defect three times: a file counted as
+The same defect recurred three times: a file counted as
 coverage (backtest dispatch, a smoke run, a graph example) while nothing
 in CI ever executed it, because the "list of examples" and the "list CI
 runs" were two lists maintained by hand in two different places with no

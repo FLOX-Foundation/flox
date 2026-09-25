@@ -255,7 +255,7 @@ were healthy at the tape input. The engine models this via
 
 | Model           | Formula                                          | Notes                                         |
 | --------------- | ------------------------------------------------ | --------------------------------------------- |
-| `none`          | mark = tape input                                | Default. No feedback, T036 behaviour.         |
+| `none`          | mark = tape input                                | Default. No feedback.         |
 | `book_anchored` | mark = (1 − w) · tape + w · book_mid             | Matches Binance's index/mark blend.           |
 | `book_only`     | mark = book_mid                                  | Worst-case cascade test; falls back to tape when the book mid is unavailable. |
 

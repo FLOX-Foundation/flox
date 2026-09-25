@@ -71,8 +71,8 @@ SessionVerbHandler makeSbeSessionVerbs(Engine& engine)
       uint32_t count = 0;
       for (const auto& o : snap.openOrders)
       {
-        // T059: o.cumQty is the resting order's real running total -- honest
-        // the same way T058 made the rest of this snapshot honest.
+        // o.cumQty is the resting order's real running total -- honest
+        // the same way the earlier leavesQty/cumQty fix made the rest of this snapshot honest.
         SbeOrderEntryCodec::encode(
             OutboundEvent{OrderAccepted{o.id, sym, o.side, o.price, o.leaves, true, Quantity{},
                                         account, 0, o.cumQty}},

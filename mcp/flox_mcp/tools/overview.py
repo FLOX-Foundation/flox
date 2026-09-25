@@ -162,8 +162,8 @@ Mutating tools:
 - `flox bundle pack` — deterministic archive of (tape + run + code
   + config + dep hashes). `flox bundle replay` reruns it
   byte-identically. `flox bundle validate` checks the archive.
-- The W15 venue stack is bit-deterministic across runs (verified
-  via `test_w15_reproducibility.cpp`): identical inputs → identical
+- The venue-stack is bit-deterministic across runs (verified
+  via `test_venue_stack_reproducibility.cpp`): identical inputs → identical
   engine state.
 
 ## Calibration + analysis
@@ -183,10 +183,10 @@ Mutating tools:
 - `replay_window(from_ts_ns, to_ts_ns)` — re-run a slice for debugging.
 - `record_data(...)` — capture market data into `.floxlog`.
 
-## Recent additions (W15 round 4 + 5)
+## Recent additions (venue-stack round 4 + 5)
 
 - VenueStack single-call factory + `assemble_custom_venue` helper
-- Cross-margin Account shared across W15 subsystems
+- Cross-margin Account shared across venue-stack subsystems
 - `LiquidationEngine.on_marks(...)` atomic multi-symbol update + walk
 - Stale-mark guard (`Account.has_stale_marks`)
 - Cross-account ADL routing across attached accounts

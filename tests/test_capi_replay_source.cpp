@@ -7,7 +7,7 @@
  * license information.
  */
 
-// Tests for the ReplaySource hook (T021). A binding-supplied replay
+// Tests for the ReplaySource hook. A binding-supplied replay
 // source is pulled by the BacktestRunner via the IMultiSegmentReader
 // adapter; this verifies trade events flow into the runner and that
 // lifecycle / seek_to callbacks fire as expected.

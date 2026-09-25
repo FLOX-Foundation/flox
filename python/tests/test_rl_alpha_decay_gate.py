@@ -1,4 +1,4 @@
-"""T038: smoke test for the RL alpha-decay gate.
+"""Smoke test for the RL alpha-decay gate.
 
 Invokes scripts/rl_alpha_decay_gate.py as a subprocess and asserts it
 exits cleanly under the default cap. The gate generates a synthetic

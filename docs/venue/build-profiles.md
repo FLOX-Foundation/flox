@@ -122,7 +122,7 @@ distinguishable.
 
 The venue core used to be its own repository, merged into this one so
 changes across its boundary could land atomically. Splitting it back out
-loses that; instead, T013 step 3 makes the venue module a *derived*,
+loses that; the plan instead makes the venue module a *derived*,
 read-only mirror -- CI cuts a fixed list of paths out of this repository on
 every merge to main and publishes them, with history, to a separate
 repository the consumer pins as a submodule. Before that repository exists,

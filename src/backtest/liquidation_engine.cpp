@@ -172,7 +172,7 @@ LiquidationOutcome LiquidationEngine::onMarks(
     const std::vector<std::pair<SymbolId, double>>& marks, int64_t tsNs)
 {
   // Phase 1: atomically update every attached account's mark for
-  // every (symbol, price) pair. This is the headline T053 fix —
+  // every (symbol, price) pair. This is the headline fix —
   // cross-margin walks below see ALL fresh marks instead of being
   // run with one fresh symbol and the rest stale.
   for (Account* acct : _accounts)
@@ -443,7 +443,7 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
   }
   _cascadeSizesPerTick.push_back(static_cast<uint32_t>(out.liquidationsCount));
 
-  // Unified deficit covers orphan + account walks. T055 lifted ADL
+  // Unified deficit covers orphan + account walks. This lifted ADL
   // routing to scan the combined candidate pool.
   totalDeficit += accountDeficit;
   if (totalDeficit <= 0.0)

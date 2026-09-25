@@ -129,8 +129,8 @@ def test_lookup_symbol_finds_polyglot_classes(klass: str):
         f"polyglot class {klass!r} unresolved; lookup_symbol returned:\n{out}"
     )
     assert "python" in out
-    # napi should also list it (every polyglot class registered in
-    # T037/T052 lives in both pybind11 and napi manifests).
+    # napi should also list it (every polyglot class lives in both
+    # pybind11 and napi manifests).
     assert "node" in out
 
 
@@ -381,11 +381,11 @@ def test_docs_search_clamps_k():
     assert "docs_search" in out or "## " in out
 
 
-# ── flox_overview (T066) ──────────────────────────────────────────────
+# ── flox_overview ────────────────────────────────────────────────────
 
 
 def test_flox_overview_returns_markdown_catalogue():
-    """T066: overview is the 'what can you do?' tool. Must be a
+    """overview is the 'what can you do?' tool. Must be a
     standalone markdown narrative covering every tool category and
     the canonical workflows."""
     out = overview.flox_overview()
@@ -412,7 +412,7 @@ def test_flox_overview_returns_markdown_catalogue():
         assert tool_name in out, f"flox_overview missing tool reference: {tool_name}"
 
 
-def test_flox_overview_lists_recent_w15_additions():
+def test_flox_overview_lists_recent_venue_stack_additions():
     """The recent-additions section keeps the toolkit's most-recent
     surface visible without forcing the agent to crawl every
     individual tool description."""
@@ -423,7 +423,7 @@ def test_flox_overview_lists_recent_w15_additions():
 
 
 def test_flox_overview_covers_paper_and_live_trading():
-    """T068: overview must cover the full toolkit — not just MCP
+    """overview must cover the full toolkit — not just MCP
     tools. Paper trading (PaperBroker) and live trading (CcxtBroker)
     are first-class paths an AI agent should know about when the
     user moves beyond pure backtest."""

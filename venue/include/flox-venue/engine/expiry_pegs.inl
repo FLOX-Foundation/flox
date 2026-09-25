@@ -36,7 +36,7 @@ void MatchingEngine<Book>::expireOrders()
     expiry_.erase(id);
     rejectHoldsFor(id);  // expiry removes the order: resolve holds first
     const uint64_t stopClOrd = stops_.clientOrderIdOf(id);
-    // Captured before stops_.cancel() below erases the entry (T058): see
+    // Captured before stops_.cancel() below erases the entry: see
     // onCancel's identical reasoning.
     const Quantity stopQty = stops_.quantityOf(id);
     if (auto ro = book_.cancel(id))  // still resting -> expire it
@@ -166,7 +166,7 @@ void MatchingEngine<Book>::repeg()
                           nr.leaves + nr.hidden, nr.cumQty});
       continue;
     }
-    // T059: nr is a copy of the canceled resting order (*ro), so nr.cumQty is
+    // nr is a copy of the canceled resting order (*ro), so nr.cumQty is
     // already its real running total -- a reprice never trades.
     sink_(OrderModified{id, cfg_.id, Price::fromRaw(target), nr.leaves, false, nr.accountId,
                         nr.clientOrderId, nr.cumQty});
@@ -200,7 +200,7 @@ void MatchingEngine<Book>::cancelOcoSibling(OrderId id)
   const uint64_t restingAcct = ownerOf(id);
   const uint64_t stopAcct = stops_.accountOf(id);
   const uint64_t stopClOrd = stops_.clientOrderIdOf(id);
-  // Captured before stops_.cancel() below erases the entry (T058).
+  // Captured before stops_.cancel() below erases the entry.
   const Quantity stopQty = stops_.quantityOf(id);
   if (auto ro = book_.cancel(id))
   {

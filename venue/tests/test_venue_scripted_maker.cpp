@@ -17,7 +17,7 @@
  *
  * The fourth of those is the point. A maker refusing only the fills that
  * moved its way is taking a free option, and its REJECT TOTAL is identical to
- * an honest maker's -- so this file is also where the metric from W29-T005
+ * an honest maker's -- so this file is also where the metric
  * gets its own verification: a scripted picker must be visible in
  * fme_last_look_rejects_favourable_total and invisible in the total.
  */

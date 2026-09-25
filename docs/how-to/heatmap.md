@@ -84,7 +84,7 @@ Each cell shows the numeric value on top of the colour and a `<title>` tooltip o
 ## What the renderer does not do
 
 - No interactive zoom or filtering. The output is a static SVG; if you need interactivity, render the data with Plotly / D3 instead.
-- No PDF export. T014 covers PDF later.
+- No PDF export yet — planned for a later release.
 - No multi-panel grids. One heatmap per file.
 
 ## See also

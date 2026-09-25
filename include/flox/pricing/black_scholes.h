@@ -81,7 +81,7 @@ inline double bsPrice(OptionType type, double spot, double strike, double t, dou
 }
 
 // Vega (per 1.0 = 100 vol points) of the generalized BSM. Shared with the IV
-// solver and the greeks module (W16.T003). Returns 0 for degenerate inputs.
+// solver and the greeks module. Returns 0 for degenerate inputs.
 inline double bsVega(double spot, double strike, double t, double rate, double carry,
                      double vol) noexcept
 {

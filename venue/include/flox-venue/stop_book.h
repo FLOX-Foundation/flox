@@ -67,7 +67,7 @@ class StopBook
 
   // The full submitted quantity of a pending conditional order (0 if unknown)
   // -- FIX LeavesQty when it is canceled or expires: a stop parked here has
-  // never partially filled (T058).
+  // never partially filled.
   Quantity quantityOf(OrderId id) const noexcept
   {
     auto it = loc_.find(id);
@@ -340,7 +340,7 @@ class StopBook
     Price trigger{};
     uint64_t account{};
     uint64_t clientOrderId{};
-    // T058: the order's full submitted quantity, duplicated here the same
+    // The order's full submitted quantity, duplicated here the same
     // way account/clientOrderId already are -- a pending conditional never
     // partially fills (it is not on the book), so this IS its FIX LeavesQty
     // when the stop is later canceled or expires unfired.

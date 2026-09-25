@@ -145,7 +145,7 @@ class Mutation:
 
 
 MUTATIONS: list[Mutation] = [
-    # ------------------------------------------------------- T015: timebase
+    # ------------------------------------------------------------- timebase
     Mutation(
         name="anchor-after-subsystems-start",
         why="init_timebase_mapping() moves from the top of Engine::start() to "
@@ -333,7 +333,7 @@ struct EngineConfig
         gtest_filter="EngineTimebase.StartAnchorsTheUnixToFloxMapping"
                      ":EngineTimebase.AnchoredMappingCarriesAKnownInstantBothWays",
     ),
-    # ----------------------------------------------------------- T017: pool
+    # ----------------------------------------------------------------- pool
     Mutation(
         name="pool-destructor-does-not-run-dtor",
         why="~Pool() goes back to =default over the raw Storage array, so "
@@ -489,7 +489,7 @@ struct EngineConfig
         targets=POOL,
         gtest_filter="PoolObjectLifetime.ADoubleReleaseIsRefusedAndInUseNeverGoesNegative",
     ),
-    # --------------------------------------------------------- T017: socket
+    # --------------------------------------------------------------- socket
     Mutation(
         name="pollnval-mapped-to-timedout-not-error",
         why="POLLNVAL sets r.timedOut instead of r.error, so a closed "
@@ -513,7 +513,7 @@ struct EngineConfig
         targets=SOCKET,
         gtest_filter="SocketPoll.AClosedDescriptorIsReportedAsAnErrorAndNotAsNothing",
     ),
-    # ------------------------------------------------------------ T017: log
+    # ------------------------------------------------------------------ log
     Mutation(
         name="default-log-directory-hardcoded-to-dev-shm",
         why="defaultLogDirectory() goes back to the literal \"/dev/shm\" with "
@@ -671,7 +671,7 @@ struct EngineConfig
         targets=LOG,
         gtest_filter="LogCost.*",
     ),
-    # ------------------------------------------------------- T017: position
+    # ------------------------------------------------------------- position
     Mutation(
         name="positionsnapshot-default-composes-both-getters",
         why="IPositionManager::positionSnapshot()'s default goes back to "

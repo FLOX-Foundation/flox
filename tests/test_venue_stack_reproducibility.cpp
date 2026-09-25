@@ -7,7 +7,7 @@
  * license information.
  */
 
-// T065: W15 venue-stack reproducibility audit.
+// Venue-stack reproducibility audit.
 //
 // 28 PRs across round 4 + 5 introduced potential non-determinism
 // sources: iceberg refresh jitter, cross-margin candidate gathering,
@@ -145,7 +145,7 @@ void driveSyntheticTape(VenueStack& stack, int ticks, bool cascade_scenario)
 }
 }  // namespace
 
-TEST(W15Reproducibility, HealthyWalkBitIdenticalAcrossRuns)
+TEST(VenueStackReproducibility, HealthyWalkBitIdenticalAcrossRuns)
 {
   auto stack_a = VenueStack::binance_um_futures(42, 10'000.0);
   auto stack_b = VenueStack::binance_um_futures(42, 10'000.0);
@@ -158,7 +158,7 @@ TEST(W15Reproducibility, HealthyWalkBitIdenticalAcrossRuns)
       << "venue stack produced divergent state across identical runs";
 }
 
-TEST(W15Reproducibility, CascadeScenarioBitIdenticalAcrossRuns)
+TEST(VenueStackReproducibility, CascadeScenarioBitIdenticalAcrossRuns)
 {
   auto stack_a = VenueStack::binance_um_futures(7, 1'000.0);
   auto stack_b = VenueStack::binance_um_futures(7, 1'000.0);
@@ -174,7 +174,7 @@ TEST(W15Reproducibility, CascadeScenarioBitIdenticalAcrossRuns)
   EXPECT_GT(sa.liquidations_count, 0u);
 }
 
-TEST(W15Reproducibility, MultipleVenuesEachReproducible)
+TEST(VenueStackReproducibility, MultipleVenuesEachReproducible)
 {
   // Repeat the bit-identical check across every venue factory.
   auto runOnce = [](VenueStack stack)

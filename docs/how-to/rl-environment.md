@@ -334,7 +334,7 @@ decay=4.15% (cap=30.00%)
 PASS: decay within cap
 ```
 
-The gate is wired into the Linux CI job alongside the Python example runs. A failure means some change inside the W15 stack or the RL adapter pipeline shifted the env's physics away from PaperBroker's, even though both nominally share the same simulated executor configuration.
+The gate is wired into the Linux CI job alongside the Python example runs. A failure means some change inside the venue-stack or the RL adapter pipeline shifted the env's physics away from PaperBroker's, even though both nominally share the same simulated executor configuration.
 
 All inputs are synthetic to keep the repo free of redistributable market data. The optional `--tape /path/to/real.floxlog` flag exists for local sanity checks against private data; when set, the gate refuses to write CI artifacts so private market data can not leak into public logs.
 

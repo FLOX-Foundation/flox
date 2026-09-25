@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/publish_mirror.sh -- cut the venue core out of this repository, with
-# its history, and publish it to the read-only mirror (T013 step 3).
+# its history, and publish it to the read-only mirror.
 #
 # What it does, in order:
 #

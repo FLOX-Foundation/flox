@@ -16,8 +16,8 @@
 // VenueStack hands out a reference to its internal one, which without
 // this binding has no Python-visible methods.
 //
-// Initial method surface is the slim subset needed by W6.T032 (RL env
-// venue-stack backing), W15 broker plumbing (PaperBroker / CcxtBroker),
+// Initial method surface is the slim subset needed by RL env
+// venue-stack backing, venue-stack broker plumbing (PaperBroker / CcxtBroker),
 // and docs/examples/python_rate_limit_aware_market_maker.py:
 // submit / cancel / book-and-trade updates / fills inspection / rate
 // limit + venue availability setters. Iceberg, brackets, slippage, and

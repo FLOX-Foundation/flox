@@ -37,7 +37,7 @@ class RateLimitPolicy
   // Endpoint families that real venues budget separately. A bucket
   // belongs to exactly one family; tryConsume only charges buckets
   // whose family matches the action's family. Default everywhere is
-  // Trading, so a single-bucket policy keeps T022 semantics.
+  // Trading, so a single-bucket policy keeps its original, family-agnostic semantics.
   enum class EndpointFamily : uint8_t
   {
     Trading = 0,
@@ -56,7 +56,7 @@ class RateLimitPolicy
 
   // Add a sliding-window bucket. Per-action weight defaults are 1
   // for submit / cancel, 2 for replace (the typical venue weight).
-  // Bucket defaults to the Trading family (matches T022 semantics).
+  // Bucket defaults to the Trading family (matches the original, family-agnostic semantics).
   void addBucket(std::string name, int64_t windowNs, uint32_t capacity,
                  uint32_t submitWeight = 1, uint32_t cancelWeight = 1,
                  uint32_t replaceWeight = 2,

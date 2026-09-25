@@ -42,7 +42,7 @@ def test_set_trace_feed_ts_ns_accepts_int() -> None:
 
 
 def test_trace_order_event_and_fill_round_trip() -> None:
-    """T013 — `Runner.trace_order_event` and `trace_fill` write into the
+    """`Runner.trace_order_event` and `trace_fill` write into the
     attached recorder so a round-trip read sees the records back."""
     with tempfile.TemporaryDirectory() as d:
         runner_path = Path(d) / "run.floxrun"

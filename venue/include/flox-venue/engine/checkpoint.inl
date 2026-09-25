@@ -187,7 +187,7 @@ uint64_t MatchingEngine<Book>::hashBookAndStops(uint64_t h) const
         }
         if (!o.cumQty.isZero())
         {
-          // T058: only when a fill has actually landed against this resting
+          // Only when a fill has actually landed against this resting
           // order -- an order that has never traded (the overwhelming common
           // case) hashes exactly as it did before cumQty existed.
           h = mix(h, static_cast<uint64_t>(o.cumQty.raw()));
@@ -297,7 +297,7 @@ void MatchingEngine<Book>::writeConfigSection(Journal& out, int64_t ts) const
   stp_.writeGroups(matcher_.stpGroups(), cfg_.id, out, ts);
   credit_.writeAdmission(out, cfg_.id, ts);
   // Per-account limits ride the config section for the same reason the
-  // symbol's do (W26-T064): a recovered engine without them admits what the
+  // symbol's do: a recovered engine without them admits what the
   // live one refused.
   credit_.writeAccountLimits(out, cfg_.id, ts);
   // The halt, the auction phase, the session boundary and delisting all ride
@@ -338,7 +338,7 @@ void MatchingEngine<Book>::writeBookAndStops(Journal& out, int64_t ts) const
         RestoreOrder r{o.id, o.accountId, o.price, o.leaves, o.side, {}, o.hidden, o.peak, o.lastLook, o.reduceOnly, o.postOnly, {}, o.clientOrderId};
         r.expiryNs = expiryOf(o.id);
         r.ocoGroup = oco_.groupOf(o.id);
-        r.cumQty = o.cumQty;  // T058
+        r.cumQty = o.cumQty;  // carries the real cumulative fill across a checkpoint restore
         out.append(InboundCommand{r}, ts);
       });
 

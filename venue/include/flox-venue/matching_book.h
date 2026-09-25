@@ -114,7 +114,7 @@ class MatchingBook
     const Loc loc = iit->second;
     RestingOrder& order = *loc.pos;
     order.leaves -= by;
-    order.cumQty += by;  // T058: real fill -- track the running total
+    order.cumQty += by;  // real fill -- track the running total
     if (!order.leaves.isZero())
     {
       return;
@@ -386,7 +386,7 @@ class MatchingBook
     auto& lst = lvl->second;
     auto& head = lst.front();
     head.leaves -= by;
-    head.cumQty += by;  // T058: real fill -- track the running total
+    head.cumQty += by;  // real fill -- track the running total
     if (head.leaves.isZero())
     {
       if (!head.hidden.isZero())

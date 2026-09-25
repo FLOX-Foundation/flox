@@ -17,8 +17,8 @@ Each mutation also runs against whichever regression suites its area's call
 sites reach, per the task note's own account of what it touched:
 
     test_account, test_liquidation_engine, test_cross_cascade,
-    test_venue_stack, test_w15_composition, test_w15_realism_integration,
-    test_w15_reproducibility, test_w15_calibration
+    test_venue_stack, test_venue_stack_composition, test_venue_stack_realism_integration,
+    test_venue_stack_reproducibility, test_venue_stack_calibration
 
 A mutation is killed if ANY target binary goes red. Where a mutation maps to
 one or two specific acceptance tests, that narrow gtest_filter runs first
@@ -87,10 +87,10 @@ CLEARING_REGRESSION = [
     "test_liquidation_engine",
     "test_cross_cascade",
     "test_venue_stack",
-    "test_w15_composition",
-    "test_w15_realism_integration",
-    "test_w15_reproducibility",
-    "test_w15_calibration",
+    "test_venue_stack_composition",
+    "test_venue_stack_realism_integration",
+    "test_venue_stack_reproducibility",
+    "test_venue_stack_calibration",
 ]
 
 NLEVEL_TARGETS = [NLEVEL]

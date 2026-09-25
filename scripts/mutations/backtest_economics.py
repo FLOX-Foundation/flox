@@ -88,7 +88,7 @@ SWEEP = [
     "test_backtest",
     "test_backtest_fill_realism",
     "test_backtest_metrics",
-    "test_w15_calibration",
+    "test_venue_stack_calibration",
     "test_backtest_runner_venue_stack",
 ]
 

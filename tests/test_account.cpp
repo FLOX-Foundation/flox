@@ -232,7 +232,7 @@ TEST(Account, IsolatedModeNettingDoesNotShelter)
   EXPECT_EQ(a.positions().front().symbol, ETH);
 }
 
-// === T060: 30-day rolling-window eviction ===
+// === 30-day rolling-window eviction ===
 
 namespace
 {
@@ -387,7 +387,7 @@ TEST(Account, BoundAccountEvictionVisibleViaFeeSchedule)
   EXPECT_EQ(s.currentTierIndex(), 0u);
 }
 
-// === T055: cross-account ADL routing ===
+// === Cross-account ADL routing ===
 
 TEST(Account, CrossAccountDeficitDepletesInsuranceFund)
 {
@@ -524,7 +524,7 @@ TEST(Account, FeeScheduleCrossSymbolNotionalTriggersTier)
   EXPECT_GE(ethSched.currentTierIndex(), 1u);
 }
 
-// === T059: per-symbol record_fill breakdown ===
+// === Per-symbol record_fill breakdown ===
 
 TEST(Account, RecordFillDefaultsToZeroSymbol)
 {
@@ -584,7 +584,7 @@ TEST(Account, FeeScheduleUnboundCounterUnaffectedByAccount)
   EXPECT_EQ(s.currentTierIndex(), 0u);
 }
 
-// === T053: multi-symbol marks auto-sync + stale-mark guard ===
+// === Multi-symbol marks auto-sync + stale-mark guard ===
 
 TEST(Account, MarkTsRecordedOnSetMark)
 {

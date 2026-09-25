@@ -7,10 +7,10 @@
  * license information.
  */
 
-// T061: cross-margin (T037) × mark-impact cascade (T038) interaction.
+// Cross-margin liquidation × mark-impact cascade interaction.
 //
-// T038 runs the liquidation engine for `_maxCascadeDepth + 1` rounds
-// with a recomputed mark per round (book_anchored / book_only). T037
+// The mark-impact cascade runs the liquidation engine for `_maxCascadeDepth + 1` rounds
+// with a recomputed mark per round (book_anchored / book_only). The cross-margin walk
 // adds attached-account walks to each round. The interaction is
 // subtle: the cascade only updates one symbol's mark (the one passed
 // to on_mark); other symbols' marks stay at whatever the caller set
@@ -89,7 +89,7 @@ TEST(CrossCascade, CascadeMarksAreSymbolLocal)
 TEST(CrossCascade, CascadeRunsAfterCrossMarginLiquidationFires)
 {
   // When the cross-margin walk fires a liquidation in round 1, the
-  // T038 cascade loop re-runs onMarkOnce with a fresh mark for the
+  // mark-impact cascade loop re-runs onMarkOnce with a fresh mark for the
   // called symbol. This pins that the cascade runs at least one
   // round AFTER the initial cross-margin liquidation pass.
   SimulatedClock clock;
@@ -141,8 +141,8 @@ TEST(CrossCascade, MultipleCrossAccountsBothAffectedByCascade)
   e.setMaxCascadeDepth(3);
 
   // Book mid 30k → cascade drops the BTC mark. aLong liquidates
-  // immediately; aShort may get ADL'd to cover the deficit (T055
-  // unified ADL path scans both accounts).
+  // immediately; aShort may get ADL'd to cover the deficit (the
+  // cross-account ADL path scans both accounts).
   feedBook(ex, BTC, {{29'500.0, 100.0}}, {{30'500.0, 100.0}});
 
   const auto out = e.onMark(BTC, 45'000.0);
@@ -164,7 +164,7 @@ TEST(CrossCascade, MaxCascadeDepthZeroSkipsRecursion)
 {
   // With depth = 0, the engine performs exactly one liquidation
   // pass even if the book mid would have flipped more positions
-  // underwater. T037 cross walk + T038 cascade both honor the
+  // underwater. The cross-margin walk and the mark-impact cascade both honor the
   // depth gate.
   SimulatedClock clock;
   SimulatedExecutor ex(clock);

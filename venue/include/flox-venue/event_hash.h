@@ -47,7 +47,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     }
     if (!x->cumQty.isZero())
     {
-      // T059: only when the accept follows a fill (a triggered stop or a
+      // Only when the accept follows a fill (a triggered stop or a
       // crossing new order that partially filled itself before resting) --
       // the common accept-with-nothing-filled-yet case hashes as before.
       h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
@@ -66,7 +66,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     }
     if (!x->cumQty.isZero())
     {
-      // T058: only when the rejected order actually printed a fill first
+      // Only when the rejected order actually printed a fill first
       // (a post-cross reject) -- the overwhelming common case, a pre-trade
       // reject, hashes exactly as it did before cumQty existed.
       h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
@@ -112,7 +112,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     }
     if (!x->cumQty.isZero())
     {
-      // T059: an execution report always follows a real fill, so cumQty is
+      // An execution report always follows a real fill, so cumQty is
       // near-never actually 0 here -- guarded anyway, same convention as
       // every other appended field on this digest.
       h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
@@ -131,7 +131,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     }
     if (!x->leavesQty.isZero())
     {
-      // T058: guarded the same way every other appended field on this
+      // Guarded the same way every other appended field on this
       // digest is, but not actually a no-op case here -- a cancel always
       // kills a positive residual (an order already at 0 has nothing left
       // to cancel; it would have gone out as a completing OrderExecuted
@@ -163,7 +163,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     }
     if (!x->cumQty.isZero())
     {
-      // T059: 0 whenever the order has never filled -- most reprices/resizes.
+      // 0 whenever the order has never filled -- most reprices/resizes.
       h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
     }
   }
@@ -194,7 +194,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     }
     if (!x->cumQty.isZero())
     {
-      // T059: 0 unless the taker already had a confirmed fill earlier in the
+      // 0 unless the taker already had a confirmed fill earlier in the
       // same sweep before this hold opened.
       h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
     }
@@ -216,7 +216,7 @@ inline uint64_t hashEvent(uint64_t h, const OutboundEvent& e) noexcept
     }
     if (!x->cumQty.isZero())
     {
-      // T059: same value FillHeld reported when this hold opened.
+      // Same value FillHeld reported when this hold opened.
       h = mix(h, static_cast<uint64_t>(x->cumQty.raw()));
     }
   }

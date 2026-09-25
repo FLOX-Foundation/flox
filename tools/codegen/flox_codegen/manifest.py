@@ -463,7 +463,7 @@ _LANG_BY_EXT = {
 
 def _topic_for(name: str) -> str:
     """Heuristic topic inference from filename. The taxonomy mirrors the
-    ``get_example`` tool's accepted topics in T014. Order matters —
+    ``get_example`` tool's accepted topics. Order matters —
     ``backtest`` wins over ``connector`` for files like
     ``*_backtest_vs_live.*`` where both keywords appear.
     """

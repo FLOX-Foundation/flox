@@ -36,7 +36,7 @@
  *    being silently consumed. Application messages still flow through the
  *    normal decoder path -- a decode failure there answers with an
  *    exec-report reject, not 35=3.
- *  - MassQuote (35=i) / QuoteCancel (35=Z) (T063): a maker's whole ladder on
+ *  - MassQuote (35=i) / QuoteCancel (35=Z): a maker's whole ladder on
  *    one symbol, decoded to the SAME QuoteLadder command a non-FIX caller
  *    would build (see flox-venue/fix_codec.h and flox-venue/messages.h).
  *    Answered immediately with QuoteStatusReport (35=AI, 297 QuoteStatus)
@@ -441,7 +441,7 @@ class FixConnection
     }
     if (type == "i" || type == "Z")
     {
-      // MassQuote / QuoteCancel (T063): handled here, at the session layer,
+      // MassQuote / QuoteCancel: handled here, at the session layer,
       // the same way Logon/Heartbeat/Reject already are -- not because the
       // resulting command skips admission or matching (it does not:
       // Verdict::App below still hands a syntactically valid frame to the

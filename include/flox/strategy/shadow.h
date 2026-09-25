@@ -17,8 +17,8 @@
 // serialization/export/binding, and ShadowSignalHandler::onSignal /
 // records() are NOT synchronized -- a monitoring thread reading records()
 // while signals arrive on the feed thread is a data race. Use it single-
-// threaded for now; live-feed threading and a readable export are tracked in
-// W25.
+// threaded for now; live-feed threading and a readable export are future
+// work.
 //
 // Wiring: instead of strategy -> execution signal handler, wire
 // strategy -> ShadowSignalHandler (records, forwards nowhere by default).

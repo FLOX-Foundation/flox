@@ -136,10 +136,10 @@ class LiquidationEngine
   }
   SimulatedExecutor* executor() const noexcept { return _executor; }
 
-  // T038: mark-impact feedback. After liquidation fills, real venues
+  // Mark-impact feedback. After liquidation fills, real venues
   // recompute the mark from the post-cascade book and may trigger
   // second-order liquidations within the same tick.
-  //   None          — mark stays at the tape input (T036 behaviour).
+  //   None          — mark stays at the tape input.
   //   BookAnchored  — mark = (1 - weight) * tape_mark + weight * book_mid.
   //                   weight in [0, 1]; matches Binance's blend.
   //   BookOnly      — mark = book_mid post-liquidation (when book mid
@@ -260,7 +260,7 @@ class LiquidationEngine
 
   SimulatedExecutor* _executor{nullptr};
 
-  // Distribution-level cascade stats (T039).
+  // Distribution-level cascade stats.
   std::vector<double> _deficitsPaidByFund;
   std::vector<double> _deficitsPaidByAdl;
   std::vector<uint32_t> _cascadeSizesPerTick;
@@ -316,7 +316,7 @@ class LiquidationEngine
   AccountWalkOutcome walkIsolatedAccount(Account& account, SymbolId symbol,
                                          double markPrice);
 
-  // T055: unified insurance + ADL phase. Called after orphan +
+  // Unified insurance + ADL phase. Called after orphan +
   // attached-account walks; `totalDeficit` aggregates per-position
   // residuals across both pools. Insurance covers first, then ADL
   // scans profitable opposite-side positions across the orphan book

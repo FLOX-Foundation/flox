@@ -6,7 +6,7 @@ safety treatment than the read-only IR / docs tools:
 
 * :func:`run_backtest` runs **arbitrary user-supplied strategy code**
   in a subprocess with rlimits and a wall-clock timeout. The sandbox
-  is the MVP described in T012 — subprocess + ``resource.setrlimit``
+  is a minimal first cut — subprocess + ``resource.setrlimit``
   on POSIX, plus ``subprocess.run(..., timeout=...)``. Production
   hardening (filesystem isolation, network namespaces) is out of
   scope here; the docstring + README point users at nsjail / firejail

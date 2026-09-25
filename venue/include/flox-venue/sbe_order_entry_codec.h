@@ -85,7 +85,7 @@ class SbeOrderEntryCodec
   //    var-length support and one message is not a reason to invent it. Slots
   //    past the count are zero-sized rungs, which is how a shorter ladder
   //    takes down the levels it stopped naming.
-  // Schema version 9 (T058):
+  // Schema version 9:
   //  - Canceled gained trailing `leavesQty` and `cumQty` (i64 each,
   //    sinceVersion=9): the residual this cancel actually killed, and what
   //    the order filled before it. A reader that took LeavesQty off a
@@ -103,7 +103,7 @@ class SbeOrderEntryCodec
   //    takerSide) was already the last field, Canceled/Rejected keep
   //    growing past it -- seqOffsetIn has its own version>=9 branch for
   //    these two templates so it keeps subtracting the right trailing width.
-  // Schema version 10 (T059): the five remaining templates that report on an
+  // Schema version 10: the five remaining templates that report on an
   // order but still lacked FIX 14 (CumQty) each gained a trailing `cumQty`
   // (i64, sinceVersion=10), appended after each template's existing last
   // field (`clOrdId` on Accepted/Executed/Replaced/FillHeld/FillRejected):
@@ -492,7 +492,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, a->restingOnBook ? 1 : 0);
       sbe::putU64(out, seq);
       sbe::putU64(out, a->clientOrderId);
-      sbe::putI64(out, a->cumQty.raw());  // v10 (T059): filled before this accept
+      sbe::putI64(out, a->cumQty.raw());  // v10: filled before this accept
     }
     else if (const auto* x = std::get_if<OrderExecuted>(&ev))
     {
@@ -506,7 +506,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, x->complete ? 1 : 0);
       sbe::putU64(out, seq);
       sbe::putU64(out, x->clientOrderId);
-      sbe::putI64(out, x->cumQty.raw());  // v10 (T059): running total as of this fill
+      sbe::putI64(out, x->cumQty.raw());  // v10: running total as of this fill
     }
     else if (const auto* t = std::get_if<Trade>(&ev))
     {
@@ -553,8 +553,8 @@ class SbeOrderEntryCodec
       sbe::putU8(out, static_cast<uint8_t>(c->reason));
       sbe::putU64(out, seq);
       sbe::putU64(out, c->clientOrderId);
-      sbe::putI64(out, c->leavesQty.raw());  // v9 (T058): residual this cancel killed
-      sbe::putI64(out, c->cumQty.raw());     // v9 (T058): total filled before this cancel
+      sbe::putI64(out, c->leavesQty.raw());  // v9: residual this cancel killed
+      sbe::putI64(out, c->cumQty.raw());     // v9: total filled before this cancel
     }
     else if (const auto* j = std::get_if<OrderRejected>(&ev))
     {
@@ -564,7 +564,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, static_cast<uint8_t>(j->reason));
       sbe::putU64(out, seq);
       sbe::putU64(out, j->clientOrderId);
-      // v9 (T058): total filled before this reject. No leavesQty field: a
+      // v9: total filled before this reject. No leavesQty field: a
       // rejected order is never left resting, so it is always 0 (see
       // OrderRejected::cumQty).
       sbe::putI64(out, j->cumQty.raw());
@@ -579,7 +579,7 @@ class SbeOrderEntryCodec
       sbe::putU8(out, m->priorityKept ? 1 : 0);
       sbe::putU64(out, seq);
       sbe::putU64(out, m->clientOrderId);
-      sbe::putI64(out, m->cumQty.raw());  // v10 (T059): running total, unaffected by this modify
+      sbe::putI64(out, m->cumQty.raw());  // v10: running total, unaffected by this modify
     }
     else if (const auto* g = std::get_if<OrderTriggered>(&ev))
     {
@@ -602,7 +602,7 @@ class SbeOrderEntryCodec
       sbe::putU64(out, seq);
       sbe::putU8(out, static_cast<uint8_t>(fh->takerSide));
       sbe::putU64(out, fh->clientOrderId);
-      sbe::putI64(out, fh->cumQty.raw());  // v10 (T059): taker's confirmed total as of hold creation
+      sbe::putI64(out, fh->cumQty.raw());  // v10: taker's confirmed total as of hold creation
     }
     else if (const auto* fr = std::get_if<FillRejected>(&ev))
     {
@@ -615,7 +615,7 @@ class SbeOrderEntryCodec
       sbe::putI64(out, fr->qty.raw());
       sbe::putU64(out, seq);
       sbe::putU64(out, fr->clientOrderId);
-      sbe::putI64(out, fr->cumQty.raw());  // v10 (T059): same value FillHeld reported at hold creation
+      sbe::putI64(out, fr->cumQty.raw());  // v10: same value FillHeld reported at hold creation
     }
     else if (const auto* bu = std::get_if<venue::BalanceUpdate>(&ev))
     {
@@ -694,7 +694,7 @@ class SbeOrderEntryCodec
     {
       trailing = 9;
     }
-    // T058 (v9): Canceled gained trailing leavesQty+cumQty (16 bytes, after
+    // Version 9: Canceled gained trailing leavesQty+cumQty (16 bytes, after
     // clOrdId); Rejected gained trailing cumQty (8 bytes, after clOrdId).
     // Both push `seq` further from the end of the block -- gated by version,
     // exactly like every earlier addition here, so a v8 frame (still 16
@@ -710,7 +710,7 @@ class SbeOrderEntryCodec
         trailing += 8;
       }
     }
-    // T059 (v10): Accepted, Executed and Replaced each gained a trailing
+    // Version 10: Accepted, Executed and Replaced each gained a trailing
     // cumQty (8 bytes, after clOrdId); FillHeld and FillRejected too (8
     // bytes, after clOrdId -- their own trailing width above already
     // accounts for clOrdId at version>=7). Every one of them pushes `seq`

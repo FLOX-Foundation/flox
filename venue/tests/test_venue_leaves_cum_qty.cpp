@@ -6,7 +6,7 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * T058: FixCodec encoded OrderCanceled without tag 151 (LeavesQty). A
+ * FixCodec encoded OrderCanceled without tag 151 (LeavesQty). A
  * counterparty that reads LeavesQty off a terminal report (routine practice
  * for an IOC/FOK residual) saw an order it never fully filled as fully
  * filled -- the unfilled remainder vanished from its own accounting.
@@ -211,7 +211,7 @@ TEST(LeavesCumQty, SbeCodecWritesBothQuantitiesOnOrderCanceledAfterClOrdId)
   EXPECT_EQ(static_cast<int64_t>(rootU64(f, 37)), qty(2).raw()) << "cumQty, appended after leavesQty";
 
   // seqOf must still find `seq` correctly now that two more fields trail it
-  // (T058 grew the trailing width seqOffsetIn subtracts for this template).
+  // (the leavesQty/cumQty fix grew the trailing width seqOffsetIn subtracts for this template).
   EXPECT_EQ(SbeOrderEntryCodec::seqOf(f.data(), f.size()), 5u);
 }
 
@@ -240,11 +240,11 @@ TEST(LeavesCumQty, SbeCodecWritesCumQtyOnOrderRejectedAfterClOrdId)
       << "Rejected's trailing width grew by 8 (cumQty only, not 16 like Canceled)";
 }
 
-// A v8 frame (pre-T058) has neither field, and a version-gated reader must
+// A v8 frame (before this fix) has neither field, and a version-gated reader must
 // still find `seq` at its old offset -- the backward-compatibility half of
 // appending at the end of the block. Synthesized by hand: kVersion is now 9,
 // so there is no live encoder for a v8 frame to reuse.
-TEST(LeavesCumQty, SeqOffsetInStillDecodesAPreT058VersionEightFrame)
+TEST(LeavesCumQty, SeqOffsetInStillDecodesAVersionEightFrame)
 {
   std::vector<uint8_t> f;
   sbe::putHeader(f, /*blockLength=*/29,
@@ -322,7 +322,7 @@ TEST(LeavesCumQty, PlainCancelOfAPartiallyFilledRestingOrderReportsTheRunningCum
 }
 
 // A resting order canceled having never traded: 151 is its full size, 14 is
-// 0 -- the pre-T058 behaviour for a never-touched order, still correct now
+// 0 -- the original behaviour for a never-touched order, still correct now
 // that both tags are explicit.
 TEST(LeavesCumQty, PlainCancelOfAnUntouchedRestingOrderReportsFullLeavesAndZeroCum)
 {
@@ -492,9 +492,9 @@ TEST(LeavesCumQty, LadderBookProRataPartialFillThenCancelReportsRunningCumQty)
   EXPECT_EQ(canceled->cumQty, qty(4)) << "4 filled via LadderBook::consumeById (crossProRata)";
 }
 
-// ---- T059: FIX 14 (CumQty) on OrderAccepted / OrderExecuted / OrderModified
-// / FillHeld / FillRejected -- the five reports T058 left without it. See
-// the note's audit table (T058) for what was already covered.
+// ---- FIX 14 (CumQty) on OrderAccepted / OrderExecuted / OrderModified
+// / FillHeld / FillRejected -- the five reports the leavesQty/cumQty fix
+// above left without it.
 //
 // A lastLook-enabled config for the FillHeld/FillRejected tests below.
 venue::SymbolConfig cfgLastLook()
@@ -725,7 +725,7 @@ TEST(LeavesCumQty, OrderAcceptedAfterAPartialFillOnEntryCarriesCumQty)
       << "RestingOrder::cumQty must be seeded from the entry fill, not left at 0";
 }
 
-// T059 acceptance criteria: a triggered stop that partially fills before its
+// Acceptance criteria: a triggered stop that partially fills before its
 // residual rests (orders.inl's processTriggers residualRests branch) reports
 // FIX 14 > 0 on the accept.
 TEST(LeavesCumQty, OrderAcceptedAfterATriggeredStopPartiallyFillsCarriesCumQty)
@@ -760,7 +760,7 @@ TEST(LeavesCumQty, OrderAcceptedAfterATriggeredStopPartiallyFillsCarriesCumQty)
       { return x.id == 300 && x.restingOnBook; });
   ASSERT_NE(accepted, nullptr) << "the triggered stop's residual accept";
   EXPECT_EQ(accepted->leavesQty, qty(3)) << "5 - 2 filled against order 100";
-  EXPECT_GT(accepted->cumQty.raw(), 0) << "T059 acceptance criteria: 14 > 0";
+  EXPECT_GT(accepted->cumQty.raw(), 0) << "acceptance criteria: 14 > 0";
   EXPECT_EQ(accepted->cumQty, qty(2));
 
   const std::string wire = FixCodec::encode(OutboundEvent{*accepted});
@@ -927,7 +927,7 @@ TEST(LeavesCumQty, FillHeldCarriesTheTakersConfirmedCumQtyFromEarlierInTheSweep)
 
 // Same setup, but the taker is IOC: a rejected hold's residual never rests,
 // so it cancels instead -- and that cancel's CumQty must be the same
-// hold-time snapshot, not 0 (the pre-T059 behaviour).
+// hold-time snapshot, not 0 (the original behaviour).
 TEST(LeavesCumQty, FillRejectedIocResidualCancelCarriesTheTakersCumQty)
 {
   Capture cap;
@@ -954,7 +954,7 @@ TEST(LeavesCumQty, FillRejectedIocResidualCancelCarriesTheTakersCumQty)
       { return x.id == 200; });
   ASSERT_NE(canceled, nullptr);
   EXPECT_EQ(canceled->leavesQty, qty(4)) << "the held residual, now killed (IOC never rests)";
-  EXPECT_EQ(canceled->cumQty, qty(2)) << "T058 left this at 0; T059 threads the hold-time snapshot";
+  EXPECT_EQ(canceled->cumQty, qty(2)) << "this used to be left at 0; now it threads the hold-time snapshot";
   EXPECT_EQ(tag(FixCodec::encode(OutboundEvent{*canceled}), 14), "2");
 }
 

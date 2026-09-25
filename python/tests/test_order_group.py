@@ -61,7 +61,7 @@ def test_all_or_nothing_reverts_filled_legs_on_failure() -> None:
 
 
 def test_auto_dispatch_fires_actions_through_strategy() -> None:
-    """T005 — `auto_dispatch(strategy)` walks the recommended actions
+    """`auto_dispatch(strategy)` walks the recommended actions
     and emits the matching cancel / revert calls through the strategy.
     A second call is a no-op because each action is marked
     dispatched."""

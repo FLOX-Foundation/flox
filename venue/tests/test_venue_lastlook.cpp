@@ -6,8 +6,8 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * Last-look lifecycle (T016), clientOrderId dedup (T020), and open-hold
- * enumeration (T044).
+ * Last-look lifecycle, clientOrderId dedup, and open-hold
+ * enumeration.
  *
  * Last look: a reject/timeout must RESTORE liquidity -- the maker's displayed
  * qty back onto its price level (tail, as-if re-entered), the taker residual
@@ -205,7 +205,7 @@ void test_prorata_lastlook_rejected()
   CHECK(bookAt(ptEng.book(), Side::SELL, 100) == qty(5));
 }
 
-// ---- T043: the hold names the aggressor's side -----------------------------
+// ---- The hold names the aggressor's side -----------------------------
 
 // The engine knows which side hit the quote -- it is the taker's own side,
 // and the hold record has carried it since holds existed. The report did not,
@@ -237,8 +237,8 @@ void test_held_fill_names_the_taker_side()
 
   // And it reaches a client: appended to the FillHeld root block, after the
   // sequence number, which a reader must still find where the frame's own
-  // version says it is. clientOrderId (T050) trails takerSide, and cumQty
-  // (T059) trails clientOrderId, so the side byte is no longer the last byte
+  // version says it is. clientOrderId trails takerSide, and cumQty
+  // trails clientOrderId, so the side byte is no longer the last byte
   // of the frame -- it sits 16 bytes (two u64) before the end.
   for (Side taker : {Side::BUY, Side::SELL})
   {
@@ -259,7 +259,7 @@ void test_held_fill_names_the_taker_side()
   }
 }
 
-// ---- T016: reject restores the book ----------------------------------------
+// ---- Reject restores the book ----------------------------------------
 
 void test_reject_restores_book()
 {
@@ -584,7 +584,7 @@ void test_partial_hold_reject()
   CHECK(bookAt(eng.book(), Side::BUY, 100) == qty(4));   // held taker slice rests
 }
 
-// ---- T016: taker residual per TIF -------------------------------------------
+// ---- Taker residual per TIF -------------------------------------------
 
 void test_taker_residual_tifs()
 {
@@ -636,7 +636,7 @@ void test_taker_residual_tifs()
   }
 }
 
-// ---- T016: public feed == matching book -------------------------------------
+// ---- Public feed == matching book -------------------------------------
 
 void test_md_equals_book()
 {
@@ -706,7 +706,7 @@ void test_md_equals_book()
   CHECK(feedMatchesBook(prices));
 }
 
-// ---- T016: ownership --------------------------------------------------------
+// ---- Ownership --------------------------------------------------------
 
 void test_ownership()
 {
@@ -729,7 +729,7 @@ void test_ownership()
   CHECK(cap.trades() == 1);
 }
 
-// ---- T016: timeout accept, idle expiry, window=0 ----------------------------
+// ---- Timeout accept, idle expiry, window=0 ----------------------------
 
 void test_timeout_accept()
 {
@@ -768,7 +768,7 @@ void test_idle_expiry_via_tick()
   CHECK(cap.count<FillRejected>() == 1);
 }
 
-// ---- T044: engine enumerates open holds --------------------------------------
+// ---- Engine enumerates open holds --------------------------------------
 
 void test_engine_enumerates_open_holds()
 {
@@ -832,7 +832,7 @@ void test_window_zero_disables()
   CHECK(cap.trades() == 1);  // fills like a normal maker
 }
 
-// ---- T016: cancel-while-held + conservation ---------------------------------
+// ---- Cancel-while-held + conservation ---------------------------------
 
 void test_cancel_while_held_conservation()
 {
@@ -881,7 +881,7 @@ void test_cancel_while_held_conservation()
   CHECK(led.available(2, QUOTE) == usd300 && led.reserved(2, QUOTE) == 0);
 }
 
-// ---- T028: STP-cancel of a held maker ---------------------------------------
+// ---- STP-cancel of a held maker ---------------------------------------
 
 // Self-trade prevention removes a resting maker from INSIDE the matcher, which
 // is the one cancel path that never went through the engine's hold discipline.
@@ -961,7 +961,7 @@ void test_stp_cancel_while_held_conservation()
   CHECK(led.reserved(1, QUOTE) == 0 && led.available(1, QUOTE) == usd300);
 }
 
-// ---- T016: FOK vs last-look -------------------------------------------------
+// ---- FOK vs last-look -------------------------------------------------
 
 void test_fok_vs_lastlook()
 {
@@ -1007,7 +1007,7 @@ void test_fok_vs_lastlook()
   }
 }
 
-// ---- T016: idle sweeper on the sequenced shard (journaled TimeTick) ---------
+// ---- Idle sweeper on the sequenced shard (journaled TimeTick) ---------
 
 void test_shard_idle_sweeper()
 {
@@ -1092,9 +1092,9 @@ void test_shard_idle_sweeper()
   std::remove(path.c_str());
 }
 
-// ---- T020: clientOrderId dedup ----------------------------------------------
+// ---- ClientOrderId dedup ----------------------------------------------
 
-// ---- T041: the sweep is a call; the thread is only one way to make it ------
+// ---- The sweep is a call; the thread is only one way to make it ------
 
 void test_shard_sweep_without_a_sweeper_thread()
 {

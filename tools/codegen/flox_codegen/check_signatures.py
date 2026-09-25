@@ -2,7 +2,7 @@
 two C headers.
 
 Used by CI to confirm that codegen output is signature-equivalent to the
-hand-written flox_capi.h (or, after T014, that the live flox_capi.h matches
+hand-written flox_capi.h (or, once codegen is authoritative, that the live flox_capi.h matches
 what codegen would produce).
 
 Three kinds of declaration are compared, each structurally:
@@ -28,7 +28,7 @@ and Linux x86_64 resolves it to `long`, but both just say `int64_t` when
 we read the spelling without forcing canonical resolution.
 
 Declarations present in `expected` but missing from `actual` are reported
-as errors when `require_full_coverage` is set (T014 mode), informational
+as errors when `require_full_coverage` is set (full-coverage mode), informational
 otherwise. Declarations in `actual` but not `expected` are always
 informational — the codegen output may legitimately cover a subset of the
 live header during the prototype phase. Field/value mismatches on a
@@ -364,7 +364,7 @@ def check(
     Returns (mismatches, missing_from_actual, extra_in_actual), pooled across
     all three declaration kinds. `mismatches` is always blocking.
     `missing_from_actual` is blocking only when `require_full_coverage` is
-    True (i.e. T014 mode).
+    True (i.e. full-coverage mode).
     """
     expected_funcs = _index_header(expected_header, include_dirs=include_dirs)
     actual_funcs = _index_header(actual_header, include_dirs=include_dirs)

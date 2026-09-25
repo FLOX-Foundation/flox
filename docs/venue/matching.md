@@ -802,7 +802,7 @@ Before the first trade there is no reference price, so no band exists yet.
 
   (bytes on disk per update, framing and crc included, `bench_venue_quote_ladder`.)
 
-  An earlier measurement (W29-T002) rejected a bulk command on the grounds
+  An earlier measurement rejected a bulk command on the grounds
   that "by bytes a bulk command is a wash": one 20-level fixed-width ladder of
   ~320 bytes against 180-300 for the 3-5 single commands that actually
   changed. That held for a FIXED-width command, which pays for slots nobody
@@ -816,7 +816,7 @@ any other maker). When an aggressor hits a resting `lastLook` maker, the hit
 size is reserved OUT of the book, `FillHeld` is emitted (with `heldId`, the
 maker's `makerDisplayAfter` for the public feed, `takerSide` -- the
 aggressor's side, the maker's being the opposite one -- the taker's own
-`clientOrderId`, 0 if it gave none, and `cumQty` (T059): the taker's
+`clientOrderId`, 0 if it gave none, and `cumQty`: the taker's
 CONFIRMED fill total as of the moment this hold opened, from any real,
 non-held fill earlier in the same crossing sweep -- never the held quantity
 itself, which is still pending), and the maker has the window to answer
@@ -840,8 +840,7 @@ with `LastLookDecision{heldId, accept}`.
   and layout fingerprint), an SBE schema version, decode on two more wires,
   and a second restore path through code where a hold must resolve exactly
   once. That is a lot of format churn, paid for by everyone with an existing
-  journal, for a behaviour nothing has asked for. See W29-T004 for what would
-  change the answer.
+  journal, for a behaviour nothing has asked for.
 - **Reject / timeout** (`lastLookAcceptOnTimeout=false`) destroys no
   liquidity:
   - The maker's held quantity returns to its price level **at the tail**
@@ -858,7 +857,7 @@ with `LastLookDecision{heldId, accept}`.
     rejecting maker until new flow arrives.
   - `FillRejected{heldId, takerId, makerId, price, qty, clientOrderId,
     cumQty}` reports what did not happen; `clientOrderId` is the taker's own,
-    same rule as `FillHeld`, and `cumQty` (T059) is the same value `FillHeld`
+    same rule as `FillHeld`, and `cumQty` is the same value `FillHeld`
     reported when this hold opened -- a reject settles no trade, so it does
     not move.
 - **Timeout on a quiet symbol.** Hold expiry runs on every submit AND on
@@ -889,7 +888,7 @@ with `LastLookDecision{heldId, accept}`.
   `FillHeld`'s `takerSide` is appended after `seq` at schema version 6, both
   templates gained a trailing `clOrdId` at version 7 (after `takerSide` on
   `FillHeld`, after `seq` on `FillRejected`), and both gained a further
-  trailing `cumQty` at version 10 (T059, after `clOrdId` on both) -- so a
+  trailing `cumQty` at version 10 (after `clOrdId` on both) -- so a
   version-6 reader skips the later fields via `blockLength` and a reader
   looking for `seq` goes by the frame's own version rather than by a fixed
   byte offset.
@@ -898,7 +897,7 @@ with `LastLookDecision{heldId, accept}`.
   Cancel), both with custom tags `20001=heldId`, `20002=makerId`, tag `11`
   (`ClOrdID`) carrying the taker's name whenever it gave one -- same rule as
   every other execution report (see "Client order id dedup" below) -- and tag
-  `14` (`CumQty`, T059) carrying the taker's confirmed total as of hold
+  `14` (`CumQty`) carrying the taker's confirmed total as of hold
   creation.
 - Pro-rata instruments do not honour last look (documented matcher scope
   limitation), and admission refuses the combination. If one appears anyway

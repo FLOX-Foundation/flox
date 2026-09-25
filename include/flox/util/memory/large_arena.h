@@ -28,7 +28,7 @@ namespace flox::memory
 // option or config knob, so nothing in flox currently allocates over a
 // LargeArena and a real deployment always reports huge-arena=n/a. The arena
 // itself is real (MAP_HUGETLB on Linux); wiring the rings/pools onto it is
-// tracked in W25.
+// future work.
 //
 // Intended backing store for large, long-lived, hot allocations (event-bus
 // rings, object pools). 4K pages burn TLB coverage: ~1500 dTLB entries * 4K is

@@ -26,8 +26,8 @@ enum class OnOutage : uint8_t
   EXPIRE_GTC_AFTER = 2,  // drop orders past their venue TTL during outage
 };
 
-// Outage pathology. The default `Total` matches the T023 behaviour
-// (everything is dropped/buffered). Real venues exhibit finer modes:
+// Outage pathology. The default `Total` mode is everything
+// dropped/buffered. Real venues exhibit finer modes:
 //
 //   SubmitOnlyDown    — cancels still work, submits buffered. Common
 //                       during venue-side rolling restarts.

@@ -251,7 +251,7 @@ nav:
       - Bar-close ordering on tied timestamps: explanation/bar-close-ordering.md
       - Threaded Runner lifetime in Node: explanation/node-threaded-runner-lifetime.md
       - The JavaScript value boundary: explanation/javascript-value-boundary.md
-      - Venue-stack reproducibility: explanation/w15-reproducibility.md
+      - Venue-stack reproducibility: explanation/venue-stack-reproducibility.md
       - Build feature flags: build/feature-flags.md
       - Contributing:
           - contributors/index.md

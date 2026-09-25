@@ -1,15 +1,15 @@
 """Multi-symbol cross-margin backtest with on_marks + stale-mark guard.
 
 A profitable BTC short backs a losing ETH long via shared account
-equity. Demonstrates the atomic multi-symbol mark update path (T053)
+equity. Demonstrates the atomic multi-symbol mark update path
 and the stale-mark guard that catches silent footguns where the
 caller forgets to refresh one symbol's mark before walking
 liquidations.
 
 Exercises:
-- VenueStack factory (T052)
-- Cross-margin Account (T037)
-- on_marks atomic multi-symbol update (T053)
+- VenueStack factory
+- Cross-margin Account
+- on_marks atomic multi-symbol update
 - Stale-mark guard for liquidation safety
 """
 

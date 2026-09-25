@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# scripts/lite_standalone_check.sh — the rehearsal for T013 step 3.
+# scripts/lite_standalone_check.sh — the rehearsal for cutting the venue core
+# into its own repository.
 #
 # Before the venue core is ever cut into its own repository, this answers
 # the question that matters: does a tree made of *only*

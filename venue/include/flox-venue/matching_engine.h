@@ -133,7 +133,7 @@ class MatchingEngine
     Side side{};
     Price price{};
     Quantity leaves{};  // total remaining (displayed + hidden)
-    // T059: RestingOrder::cumQty as it stands now, so a reconnect resync's
+    // RestingOrder::cumQty as it stands now, so a reconnect resync's
     // synthesized OrderAccepted (session_verbs.h) reports the real running
     // total instead of always 0.
     Quantity cumQty{};
@@ -190,7 +190,7 @@ class MatchingEngine
   // engine/validate.inl
   void setAdmissionProfile(uint64_t account, const AdmissionProfile& p);
   // Pre-start wiring only; on a running engine submit the SetAccountRiskLimits
-  // command, which is sequenced, journaled and replayed (W26-T064).
+  // command, which is sequenced, journaled and replayed.
   void setAccountRiskLimits(const SetAccountRiskLimits& r) { credit_.setAccountLimits(r); }
   const engine::Credit::AccountLimits* accountRiskLimits(uint64_t account) const noexcept
   {

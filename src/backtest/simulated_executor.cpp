@@ -483,7 +483,7 @@ void SimulatedExecutor::submitOrder(const Order& order)
       // Multi-account STP scope: STP only fires when the two orders
       // share an STP scope (same accountId, or both accounts in the
       // same explicit STP group). Default accountId=0 keeps the
-      // single-account semantics from T025.
+      // original single-account self-trade-prevention semantics.
       if (!sameStpScope(existing.accountId, accepted.accountId))
       {
         continue;
@@ -1200,7 +1200,7 @@ void SimulatedExecutor::onBracketFillEvent(const Order& filledOrder)
       return;
     }
 
-    // T040 OnPartialFill mode: arm / resize children incrementally
+    // OnPartialFill mode: arm / resize children incrementally
     // on every partial fill.
     if (st.state == BracketState::PENDING_ENTRY)
     {
@@ -2058,7 +2058,7 @@ void SimulatedExecutor::maybeRefreshIceberg(Order& order)
     return;
   }
   int64_t slice = std::min<int64_t>(st.visibleRaw, st.hiddenRaw);
-  // T041 size randomisation: jitter the visible-slice size by a
+  // Size randomisation: jitter the visible-slice size by a
   // uniform fraction in [-pct, +pct] of st.visibleRaw, then clamp to
   // [1, hiddenRaw]. Mean is preserved so a long sample sequence
   // averages back to st.visibleRaw.
@@ -2082,7 +2082,7 @@ void SimulatedExecutor::maybeRefreshIceberg(Order& order)
   st.hiddenRaw -= slice;
   st.refreshDueNs = 0;
   order.quantity = Quantity::fromRaw(order.quantity.raw() + slice);
-  // T041 priority mode. Back (the default) queues the refreshed tranche behind
+  // Priority mode. Back (the default) queues the refreshed tranche behind
   // whatever is still resting at the level, the way most crypto venues treat a
   // refreshed slice. Retain keeps the queue position the consumed tranche held.
   // Either way the tranche has to go back into the tracker: the consumed entry

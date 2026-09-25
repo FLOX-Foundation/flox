@@ -156,7 +156,7 @@ TEST(RateLimitPolicy, AtomicityAcrossBucketsOnReject)
   EXPECT_EQ(states[1].used, 1u);  // B: full
 }
 
-// === T049: per-endpoint-family pools ===
+// === Per-endpoint-family pools ===
 
 using Family = RateLimitPolicy::EndpointFamily;
 

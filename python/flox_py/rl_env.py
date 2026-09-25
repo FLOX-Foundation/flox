@@ -455,7 +455,7 @@ class FloxTradingEnv:
         Every order the agent submits goes through ``stack.executor()``,
         so fills, fees, funding, liquidation walks, rate-limit policy,
         and venue availability are the same simulated subsystems the
-        rest of the W15 stack uses. Reward is the change in account
+        rest of the venue-stack uses. Reward is the change in account
         equity at mark, with taker (or maker, if ``is_maker=True``)
         fees deducted on each fill via the stack's fee schedule.
 
@@ -756,7 +756,7 @@ class FloxTradingEnv:
             )
         # Limit order at mid ± offset_ticks * tick_size. Mid is
         # approximated by the most recent trade price; once the env
-        # tracks best bid / best ask explicitly (T034) this becomes
+        # tracks best bid / best ask explicitly this becomes
         # exact.
         mid = float(self.trades[self._idx][1])
         side_sign = 1.0 if delta > 0 else -1.0

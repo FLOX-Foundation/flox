@@ -7,7 +7,7 @@
  * license information.
  */
 
-// Tests for the ExecutionListener hook (T023). A binding-supplied
+// Tests for the ExecutionListener hook. A binding-supplied
 // listener observes order lifecycle events from BacktestRunner's
 // SimulatedExecutor — fills, cancels, rejects, etc.
 

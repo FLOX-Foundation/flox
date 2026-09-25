@@ -16,7 +16,7 @@ Bundle layout:
     ├── config/
     │   └── params.json        runtime params (slippage, queue model,
     │                          initial capital, ...)
-    ├── tape/                  the W14 tape this run drove against
+    ├── tape/                  the tape this run drove against
     │   ├── manifest.json
     │   └── trades-*.bin
     └── expected_output.json   PnL, fill sequence, final positions

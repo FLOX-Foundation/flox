@@ -80,7 +80,7 @@ enum class RejectReason : uint8_t
   // which is worse than refusing to do it.
   AdjustmentEmpty,       // neither a size delta nor an entry was given
   AdjustmentNeedsEntry,  // no position to adjust, and no entry to open one at
-  // T063: a quotes-only counterparty (AdmissionDeny::DenyNewOrder) sent a
+  // A quotes-only counterparty (AdmissionDeny::DenyNewOrder) sent a
   // plain order. Appended -- the wire enum is append-only.
   NewOrderNotPermitted,  // the profile forbids NewOrder
   // An order type outside the values OrderType names. Distinct from

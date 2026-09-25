@@ -106,7 +106,7 @@ inline SymbolId symbolOf(const InboundCommand& c) noexcept
   }
   if (const auto* al = std::get_if<SetAccountRiskLimits>(&c))
   {
-    return al->symbol;  // W26-T064: routed like SetAdmissionProfile, to the instrument it names
+    return al->symbol;  // routed like SetAdmissionProfile, to the instrument it names
   }
   // A live command missing from the chain above routes to symbol 0 and is
   // silently dropped by submit(). The count is pinned so a new alternative

@@ -1700,7 +1700,7 @@ TEST_F(AggregatorFrameworkTest, MergedReorderBufferDeliversCrossBlockInOrder)
   // single-tape fixture. Without per-tape reorder, MergedTapeReader's
   // N-way heap would see out-of-order events from each tape and the
   // merged stream would have monotonicity gaps. With ReorderingWalker
-  // (T021 fix) each per-tape input is monotonic before merging.
+  // (the reordering fix), each per-tape input is monotonic before merging.
   auto dir_a = _test_dir / "tape_a";
   auto dir_b = _test_dir / "tape_b";
   std::filesystem::create_directories(dir_a);

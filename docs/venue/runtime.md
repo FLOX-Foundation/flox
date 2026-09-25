@@ -334,7 +334,7 @@ hold and its reject now name the taker), so the generation number moves
 anyway, the same reasoning as 7/8 and 9/10.
 
 Versions 15 and 16 were the pair before `OrderCanceled` and `OrderRejected`
-carried the FIX `LeavesQty`/`CumQty` (151/14) a terminal report needs (T058):
+carried the FIX `LeavesQty`/`CumQty` (151/14) a terminal report needs:
 a counterparty that read `LeavesQty` off a cancel of an IOC/FOK residual --
 routine practice -- had no way to tell a full fill from a silently-canceled
 remainder, because the tag was never written. Closing that gap needed
@@ -352,8 +352,8 @@ written by a build without the field holds resting orders whose replayed
 counterparty this fix protects -- so it is refused rather than read that way.
 
 Versions 17 and 18 were the pair before `OrderAccepted`, `OrderExecuted`,
-`OrderModified`, `FillHeld` and `FillRejected` carried FIX `CumQty` (14)
-(T059): the five order/last-look reports T058 left without it. Closing the
+`OrderModified`, `FillHeld` and `FillRejected` carried FIX `CumQty` (14):
+the five order/last-look reports the previous fix left without it. Closing the
 last-look half of that gap needed `Held` (the engine's in-memory record of an
 open hold) to remember each leg's confirmed cumulative fill as of the moment
 the hold opened -- `makerCumQtyAtHold`/`takerCumQtyAtHold` -- so a hold that

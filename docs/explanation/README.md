@@ -24,7 +24,7 @@ Understand concepts and design decisions behind FLOX. These pages are language-a
 | [Bar-close ordering](bar-close-ordering.md) | Which aggregator fires first when several bars close on the same instant |
 | [Connectors](connectors.md) | The native exchange connectors module and the interfaces it implements |
 | [MCP control plane](mcp-control-plane.md) | Why the AI-agent control surface is shaped the way it is |
-| [Venue-stack reproducibility](w15-reproducibility.md) | What makes a backtest result reproducible across machines |
+| [Venue-stack reproducibility](venue-stack-reproducibility.md) | What makes a backtest result reproducible across machines |
 | [Build feature flags](../build/feature-flags.md) | Every CMake option, what it costs, and what it depends on |
 
 ## When to read these

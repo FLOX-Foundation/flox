@@ -12,7 +12,7 @@
 // checks the emitted signals, so it runs as a real smoke test.
 //
 // The driver below is the same one added to codon/examples/pairs_strategy.codon
-// (see that file and the T058 PR that added it): leg2's book is set once and
+// (see that file): leg2's book is set once and
 // never moves again, so every later book update -- fired for leg1 alone --
 // reads a spread controlled directly by leg1's mid. A 10-tick warmup around
 // spread 5, then a jump to 22, then one tick back down: entry_z=1.5 clears

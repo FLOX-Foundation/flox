@@ -7,7 +7,7 @@
  * license information.
  */
 
-// Tests for the Executor hook (T023). A binding-supplied executor
+// Tests for the Executor hook. A binding-supplied executor
 // receives signals (submit / cancel / replace / cancel_all / submit_oco)
 // instead of the built-in SimulatedExecutor. Lifecycle (on_start /
 // on_stop) is balanced against runner / live engine / backtest start.
