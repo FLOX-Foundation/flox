@@ -72,6 +72,7 @@ WM = "unit_test_fill_watermark"
 BYGAP = "unit_test_bybit_gap"
 BYOLD = "unit_test_bybit_private_stream_fills"
 POLYTS = "unit_test_polymarket_timestamps"
+UNPRICED = "unit_test_unpriced_fill"
 
 # Every offline connector test in the tree. A mutation that survives its own
 # target is run against all of these before it is called green.
@@ -92,6 +93,7 @@ SWEEP = [
     "unit_test_order_serialization_hyperliquid",
     "unit_test_polymarket_delta",
     POLYTS,
+    UNPRICED,
 ]
 
 # Which library objects a mutated file feeds. A header is listed against every
@@ -176,6 +178,74 @@ MUTATIONS: list[Mutation] = [
         target=WM,
         test=None,
         extra_targets=[BG],
+    ),
+    Mutation(
+        name="bybit-order-topic-fill-published-without-a-price",
+        why=("the order topic publishes a fill for an increment the venue has not priced yet "
+             "(avgPrice \"0\"), so a position tracker builds the cost basis at zero -- and the "
+             "increment is consumed by the watermark, so the execution topic's priced report of "
+             "the same execution adds nothing and the real price never arrives"),
+        file=BYBIT_CONN,
+        old="""        if (isFillStatus && advancesFill && !avgPriceReported)""",
+        new="""        if (false)""",
+        target=BY,
+        test="BybitFillContract.OrderTopicFillBeforeAnyAveragePriceIsNeverPricedAtZero",
+    ),
+    Mutation(
+        name="bybit-order-topic-unpriced-increment-consumed",
+        why=("the guard still withholds the unpriced fill but lets the watermark swallow the "
+             "increment, so the execution topic's priced report of that execution computes a "
+             "zero increment and the held quantity is lost instead of published later"),
+        file=BYBIT_CONN,
+        old="""          ev.fillQty = Quantity{};
+          ev.publishNs = nowMonoNanos();
+          _orderBus->publish(std::move(ev));
+          continue;
+        }
+
+        // cumExecQty is cumulative,""",
+        new="""          ev.fillQty = Quantity{};
+          ev.publishNs = nowMonoNanos();
+          (void)_reportedFill.advance(ev.order.id, ev.order.filledQuantity);
+          _orderBus->publish(std::move(ev));
+          continue;
+        }
+
+        // cumExecQty is cumulative,""",
+        target=BY,
+        test="BybitFillContract.OrderTopicFillBeforeAnyAveragePriceIsNeverPricedAtZero",
+    ),
+    Mutation(
+        name="bitget-fill-published-without-a-price",
+        why=("Bitget publishes a fill for an increment whose fillPrice the venue has not "
+             "reported, booking the position at price 0 instead of holding the quantity for "
+             "the next push that carries one"),
+        file=BITGET_CONN,
+        old="""        if (isFill && advancesFill && !fillPriceReported)""",
+        new="""        if (false)""",
+        target=UNPRICED,
+        test="UnpricedFill.BitgetHoldsAnUnpricedIncrementUntilAPriceArrives",
+    ),
+    Mutation(
+        name="hyperliquid-fill-published-without-a-price",
+        why=("the inline fill is published even when the venue's response carries no usable "
+             "avgPx, so the position's cost basis is built at zero"),
+        file=HL_EXEC,
+        old="""  if (fillPrice.raw() <= 0)""",
+        new="""  if (false)""",
+        target=UNPRICED,
+        test="UnpricedFill.HyperliquidDoesNotPublishAnInlineFillWithoutAnAveragePrice",
+    ),
+    Mutation(
+        name="bybit-execution-topic-fill-published-without-a-price",
+        why=("the execution topic publishes a fill whose execPrice the venue reported as 0, so "
+             "a malformed frame books the position at price zero instead of holding the "
+             "increment for a well-formed one"),
+        file=BYBIT_CONN,
+        old="""        if (isTrade && priceOpt->raw() <= 0)""",
+        new="""        if (false)""",
+        target=UNPRICED,
+        test="UnpricedFill.BybitExecutionTopicHoldsAFillWithNoExecPrice",
     ),
     Mutation(
         name="bybit-order-topic-fillprice-dropped",
@@ -314,9 +384,10 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="bitget-watermark-fillqty-fallback-removed",
         why=("the watermark increment no longer fills in for a missing baseVolume, so a fill "
-             "push without it publishes quantity 0"),
+             "push without it publishes quantity 0 -- and a quantity held back by an unpriced "
+             "push is dropped rather than carried into the next priced one"),
         file=BITGET_CONN,
-        old="""          if (ev.fillQty.isZero())
+        old="""          if (ev.fillQty.raw() < newlyFilled.raw())
           {
             ev.fillQty = newlyFilled;
           }""",
@@ -329,9 +400,7 @@ MUTATIONS: list[Mutation] = [
         why=("the cumulative de-duplication is removed, so the order state the venue re-pushes "
              "after a private resubscribe books the same fill a second time"),
         file=BITGET_CONN,
-        old="""        const bool isFill = (ev.status == OrderEventStatus::FILLED ||
-                             ev.status == OrderEventStatus::PARTIALLY_FILLED);
-        if (isFill && haveCumulative)
+        old="""        if (isFill && haveCumulative)
         {
           // A push that carries no new cumulative quantity is the venue
           // repeating itself, not a second execution.
@@ -339,13 +408,10 @@ MUTATIONS: list[Mutation] = [
           if (newlyFilled.isZero())
           {
             continue;
-          }
-          if (ev.fillQty.isZero())
-          {
-            ev.fillQty = newlyFilled;
-          }
-        }""",
-        new="""        (void)haveCumulative;""",
+          }""",
+        new="""        if (false)
+        {
+          const Quantity newlyFilled{};""",
         target=WM,
         test="BitgetFillContractExtra.RepushedOrderStateDoesNotBookASecondFill",
         extra_targets=[BG],

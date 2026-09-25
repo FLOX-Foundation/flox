@@ -753,11 +753,20 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         // the only price the order topic reports for a fill. Without it every
         // live fill reached PositionTracker at price 0 and built the cost
         // basis there. It reads "0" before anything has traded, which is not a
-        // price -- leave fillPrice unset in that case.
+        // price but the venue saying it has none yet.
+        //
+        // The condition is read twice on purpose. The assignment guard states
+        // the intent -- a parsed zero never becomes a fill price -- and is a
+        // no-op on the bits today, because Price has no unset state and its
+        // default and a parsed "0" are the same 64 bits. The flag is the
+        // load-bearing half: it is what decides, below, whether this frame may
+        // be published as a fill at all.
+        bool avgPriceReported = false;
         if (auto avg = d["avgPrice"]; !avg.error())
         {
           if (auto avgOpt = util::parsePrice(avg.get_string().value()))
           {
+            avgPriceReported = avgOpt->raw() > 0;
             if (avgOpt->raw() > 0)
             {
               ev.fillPrice = *avgOpt;
@@ -805,6 +814,28 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         else
         {
           ev.status = OrderEventStatus::SUBMITTED;
+        }
+
+        // An increment the venue has not priced must not be published as a
+        // fill. Price has no unset state, so a listener cannot tell "no price
+        // reported" from "traded at zero" and builds the position's cost basis
+        // at zero -- which is not a small error but a position whose entry
+        // price is wrong by its whole value. The watermark is deliberately
+        // left alone as well, so the increment is held rather than dropped:
+        // the execution topic, which always carries execPrice, publishes it.
+        // The order's own status and cumulative quantity still go out, demoted
+        // to ACCEPTED so nothing moves a position.
+        const bool isFillStatus = (ev.status == OrderEventStatus::PARTIALLY_FILLED ||
+                                   ev.status == OrderEventStatus::FILLED);
+        const bool advancesFill =
+            ev.order.filledQuantity.raw() > _reportedFill.reported(ev.order.id).raw();
+        if (isFillStatus && advancesFill && !avgPriceReported)
+        {
+          ev.status = OrderEventStatus::ACCEPTED;
+          ev.fillQty = Quantity{};
+          ev.publishNs = nowMonoNanos();
+          _orderBus->publish(std::move(ev));
+          continue;
         }
 
         // cumExecQty is cumulative, so the increment (and whether this frame
@@ -906,6 +937,22 @@ void BybitExchangeConnector::handlePrivateMessage(std::string_view payload)
         ev.status = !isTrade      ? OrderEventStatus::SUBMITTED
                     : fullyFilled ? OrderEventStatus::FILLED
                                   : OrderEventStatus::PARTIALLY_FILLED;
+
+        // Same rule as the order topic: a fill with no usable price is held,
+        // not published. execPrice is the execution topic's only price source
+        // and the venue always sends it, so a zero here is a malformed frame
+        // rather than "not priced yet" -- and there is no third channel to
+        // hold the increment for, so it stays held until a well-formed frame
+        // reports the same cumulative total.
+        if (isTrade && priceOpt->raw() <= 0)
+        {
+          _logger->warn("[Bybit] Execution without a usable execPrice; not published as a fill");
+          ev.status = OrderEventStatus::ACCEPTED;
+          ev.fillQty = Quantity{};
+          ev.publishNs = nowMonoNanos();
+          _orderBus->publish(std::move(ev));
+          continue;
+        }
 
         // The watermark is cumulative, so an execution frame has to be
         // expressed as a cumulative total too. orderQty - leavesQty is that

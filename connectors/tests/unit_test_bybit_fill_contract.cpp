@@ -626,15 +626,15 @@ TEST(BybitFillContract, OrderTopicFillBeforeAnyAveragePriceIsNeverPricedAtZero)
                                        {
                                          return ev.fillQtyRaw > 0 && ev.fillPriceRaw == 0;
                                        });
-  if (zeroPriced != events.end())
-  {
-    // The connector chose "leave fillPrice unset". Then unset must be exactly
-    // the default -- indistinguishable from "no price reported" and never a
-    // value the venue supplied.
-    EXPECT_EQ(zeroPriced->fillPriceRaw, Price{}.raw())
-        << "a fill whose price the venue has not reported yet must carry the unset default, "
-           "not a parsed zero";
-  }
+  // The connector chose the other option the comment above allows: not to
+  // treat an unpriced frame as a fill at all. That is the only one of the two
+  // that a listener can act on, because "leave fillPrice unset" is not
+  // expressible -- see AnUnsetFillPriceIsIndistinguishableFromAParsedZero
+  // below -- so an unpriced increment must produce no fill event whatsoever.
+  EXPECT_EQ(zeroPriced, events.end())
+      << "an increment the venue has not priced yet must not be published carrying fill "
+         "quantity: at fillPrice 0 a position tracker cannot tell it from a fill that traded "
+         "at zero, and builds the cost basis there";
 
   // Whatever happened above, the frame that does carry a real avgPrice must
   // deliver it.
@@ -646,7 +646,9 @@ TEST(BybitFillContract, OrderTopicFillBeforeAnyAveragePriceIsNeverPricedAtZero)
                                    });
   ASSERT_NE(priced, fills.end()) << "the frame with avgPrice=60000 must reach the listener priced";
   EXPECT_DOUBLE_EQ(priced->fillPrice, 60000.0);
-  EXPECT_DOUBLE_EQ(priced->fillQty, 1.0) << "cumExecQty went 1 -> 2, so one unit traded";
+  EXPECT_DOUBLE_EQ(priced->fillQty, 2.0)
+      << "the unpriced increment was held, not consumed, so the first priced frame carries the "
+         "whole 0 -> 2 the venue has reported";
 
   // And no fill may be delivered at a price of exactly zero while a real price
   // exists for the same order: a listener summing cost basis over these events

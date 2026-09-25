@@ -617,10 +617,12 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
         // traded, baseVolume how much of it traded, accBaseVolume the order's
         // cumulative filled quantity. All three are absent (or empty) on a
         // push that reports no new execution, such as the first "live" one.
+        bool fillPriceReported = false;
         if (auto fp = d["fillPrice"]; !fp.error())
         {
           if (auto fillPriceOpt = util::parsePrice(fp.get_string().value()))
           {
+            fillPriceReported = fillPriceOpt->raw() > 0;
             ev.fillPrice = *fillPriceOpt;
           }
         }
@@ -664,6 +666,26 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
 
         const bool isFill = (ev.status == OrderEventStatus::FILLED ||
                              ev.status == OrderEventStatus::PARTIALLY_FILLED);
+
+        // The same rule the Bybit order topic follows: an increment the venue
+        // has not priced is held, not published as a fill. Price has no unset
+        // state, so a zero fillPrice is indistinguishable from a fill that
+        // traded at zero and a position tracker builds the cost basis there.
+        // The watermark is left alone so the quantity is not lost -- the next
+        // push that does carry a fillPrice reports the same accBaseVolume and
+        // publishes the whole held increment. The order's status and
+        // cumulative quantity still go out, demoted to ACCEPTED.
+        const bool advancesFill = !haveCumulative || ev.order.filledQuantity.raw() >
+                                                         _reportedFill.reported(ev.order.id).raw();
+        if (isFill && advancesFill && !fillPriceReported)
+        {
+          ev.status = OrderEventStatus::ACCEPTED;
+          ev.fillQty = Quantity{};
+          ev.publishNs = nowMonoNanos();
+          _orderBus->publish(std::move(ev));
+          continue;
+        }
+
         if (isFill && haveCumulative)
         {
           // A push that carries no new cumulative quantity is the venue
@@ -673,7 +695,13 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
           {
             continue;
           }
-          if (ev.fillQty.isZero())
+          // baseVolume is the venue's view of the execution it is reporting
+          // right now; the increment is everything not yet published, which is
+          // larger whenever an earlier push was held for want of a price.
+          // Publishing the larger of the two carries a held quantity forward
+          // instead of dropping it, and still lets either field stand in when
+          // the other is missing.
+          if (ev.fillQty.raw() < newlyFilled.raw())
           {
             ev.fillQty = newlyFilled;
           }

@@ -15,6 +15,7 @@ Every connector here reports fills under the same rules; see [docs/explanation/c
 
 - `OrderEvent::fillQty` is the size that just traded, `order.filledQuantity` the cumulative one.
 - `OrderEvent::fillPrice` is the price it traded at. Unset means the position is booked at zero.
+- A fill is published only when the venue reported the price it traded at. An unpriced increment is held for the next priced report, not published at zero and not dropped.
 - One event per execution, even when the venue announces it on two channels.
 - `order.id` is the id the engine issued (sent as the venue's client order id and read back), never the venue's own order id.
 - A venue rejection publishes `REJECTED` with the venue's reason text and leaves no live order behind.

@@ -193,25 +193,32 @@ TEST(BybitPrivateStreamFills, ExecutionTopicReportsRealFillQtyAndOrderSize)
 // Same 3.0-quantity order, this time reported purely via the "order" topic
 // (which carries cumulative filledQuantity, not a delta): New, then two
 // PartiallyFilled steps, then Filled.
+//
+// avgPrice rides on every frame because Bybit V5 sends it on every frame, and
+// because the connector will not publish a fill it has no price for -- an
+// unpriced increment is held for the execution topic instead (see
+// BybitFillContract.OrderTopicFillBeforeAnyAveragePriceIsNeverPricedAtZero).
+// What this test is about is unchanged: the increments below are derived from
+// the cumulative total, not read off the frame.
 TEST(BybitPrivateStreamFills, OrderTopicDerivesIncrementalFillQtyFromCumulative)
 {
   Fixture f("bybit_order_fills.log");
 
   f.connector->handlePrivateMessage(
       R"({"topic":"order","data":[{"symbol":"BTCUSDT","orderId":"5002","side":"Buy",)"
-      R"("price":"60000","qty":"3","cumExecQty":"0","updatedTime":1000,)"
+      R"("price":"60000","qty":"3","avgPrice":"0","cumExecQty":"0","updatedTime":1000,)"
       R"("orderStatus":"New"}]})");
   f.connector->handlePrivateMessage(
       R"({"topic":"order","data":[{"symbol":"BTCUSDT","orderId":"5002","side":"Buy",)"
-      R"("price":"60000","qty":"3","cumExecQty":"1","updatedTime":1001,)"
+      R"("price":"60000","qty":"3","avgPrice":"60000","cumExecQty":"1","updatedTime":1001,)"
       R"("orderStatus":"PartiallyFilled"}]})");
   f.connector->handlePrivateMessage(
       R"({"topic":"order","data":[{"symbol":"BTCUSDT","orderId":"5002","side":"Buy",)"
-      R"("price":"60000","qty":"3","cumExecQty":"2","updatedTime":1002,)"
+      R"("price":"60000","qty":"3","avgPrice":"60000","cumExecQty":"2","updatedTime":1002,)"
       R"("orderStatus":"PartiallyFilled"}]})");
   f.connector->handlePrivateMessage(
       R"({"topic":"order","data":[{"symbol":"BTCUSDT","orderId":"5002","side":"Buy",)"
-      R"("price":"60000","qty":"3","cumExecQty":"3","updatedTime":1003,)"
+      R"("price":"60000","qty":"3","avgPrice":"60000","cumExecQty":"3","updatedTime":1003,)"
       R"("orderStatus":"Filled"}]})");
 
   f.orderBus.flush();

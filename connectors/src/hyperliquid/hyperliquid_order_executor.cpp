@@ -323,6 +323,31 @@ template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::publishFill(const Order& order, Quantity fillQty,
                                                       Price fillPrice)
 {
+  // The same rule the Bybit and Bitget connectors follow: a fill the venue has
+  // not priced is never published as a fill. Price has no unset state, so a
+  // zero fillPrice is indistinguishable from a fill that traded at zero and a
+  // position tracker builds the cost basis there. avgPx is a required field of
+  // a "filled" status, so a missing one is a malformed response and is logged
+  // as such; unlike Bybit and Bitget there is no later report to hold the
+  // increment for, so the quantity still goes out -- on the order, not as a
+  // position-moving fill.
+  if (fillPrice.raw() <= 0)
+  {
+    _logger->error(
+        "[HL] venue reported a fill with no usable avgPx; publishing the order state without a "
+        "fill rather than booking a position at price 0");
+    if (_orderBus)
+    {
+      OrderEvent held;
+      held.status = OrderEventStatus::ACCEPTED;
+      held.order = order;
+      held.order.filledQuantity = fillQty;
+      held.publishNs = nowMonoNanos();
+      _orderBus->publish(std::move(held));
+    }
+    return;
+  }
+
   if (!_orderBus)
   {
     return;

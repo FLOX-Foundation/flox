@@ -25185,6 +25185,11 @@
         },
         {
           "kind": "method",
+          "name": "onOrderEvent",
+          "parent": "TraceExecutionListener"
+        },
+        {
+          "kind": "method",
           "name": "onOrderExpired",
           "parent": "TraceExecutionListener"
         },
