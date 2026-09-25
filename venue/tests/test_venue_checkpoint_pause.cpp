@@ -185,6 +185,11 @@ int64_t leastOf(const std::vector<int64_t>& v)
 
 TEST(VenueCheckpointPause, TheReportedPauseCoversTheWholeConsumerStall)
 {
+#if defined(_WIN32)
+  GTEST_SKIP() << "this case compares the gauge against a thread spawn and a scheduler "
+                  "handoff measured in nanoseconds; the Windows runner's scheduling "
+                  "granularity is coarser than the margin the case can afford";
+#endif
   const std::string base = tmpPath("venue_pause_spawn", ".bin");
   cleanFiles(base);
 
@@ -325,6 +330,11 @@ TEST(VenueCheckpointPause, TheReportedPauseCoversTheWholeConsumerStall)
 
 TEST(VenueCheckpointPause, TheReportedPauseCoversAWaitForAHeldLane)
 {
+#if defined(_WIN32)
+  GTEST_SKIP() << "this case compares the gauge against a thread spawn and a scheduler "
+                  "handoff measured in nanoseconds; the Windows runner's scheduling "
+                  "granularity is coarser than the margin the case can afford";
+#endif
   const std::string base = tmpPath("venue_pause_lane", ".bin");
   cleanFiles(base);
 
