@@ -21,6 +21,24 @@
 namespace flox::venue::engine
 {
 
+// Fee rates travel as raws at this scale, the same power of ten money and
+// funding use: one raw is 1e-8 of the notional, i.e. 1e-4 of a basis point.
+// 2.5 bps is 25'000 raw. Anything a published fee ladder expresses -- tenths
+// of a bp on the deepest VIP tier, a maker rebate -- is an exact integer here.
+inline constexpr int64_t kFeeRateScale = kMoneyScale;
+
+// The schedule is configuration, and configuration is written in basis points
+// by a human, so it arrives as a double. It becomes a raw exactly ONCE, here,
+// on the way out of the schedule; every fee after that is integer arithmetic.
+// Round to nearest, because 2.5 bps is not the same double as 2.5.
+inline int64_t feeRateRawOf(double bps)
+{
+  // (bps / 10'000) * kFeeRateScale as one multiply: the factor is a ratio of
+  // two exactly representable powers of ten, so it introduces no error of its
+  // own and the only rounding is the one below.
+  return roundDoubleToI64(bps * (static_cast<double>(kFeeRateScale) / 10'000.0));
+}
+
 // What a print costs its two sides, and where that money goes.
 //
 // The schedule is configuration the embedder installs (setFeeSchedule); it is
@@ -39,6 +57,12 @@ namespace flox::venue::engine
 // reservations and margin use -- and getting that wrong on one of the three
 // was a bug waiting for the symbol that declared its own scales. It is written
 // once here.
+//
+// The money is fixed point from end to end: the notional stays the raw the
+// reservations use, the tier's rate becomes a raw once, and the fee is their
+// integer mulDiv. The schedule's own feeFor() is not on this path -- it
+// divides the notional down into a double to price it, and a double stops
+// carrying a notional at 2^53 raw, which is about 9e7 quote units.
 //
 // The book is not here and neither is the ledger's ownership: the component is
 // handed the ledger for the one call that moves money and keeps no pointer to
@@ -63,11 +87,11 @@ class Fees
     {
       return;
     }
-    const double notional = notionalOf(t, cfg);
-    sink(FeeCharged{t.makerId, cfg.id, Volume::fromDouble(schedule_.feeFor(nowRaw, notional, true)),
-                    true, t.makerAccount});
-    sink(FeeCharged{t.takerId, cfg.id,
-                    Volume::fromDouble(schedule_.feeFor(nowRaw, notional, false)), false,
+    const Amount notional = notionalOf(t, cfg);
+    const auto [makerRateRaw, takerRateRaw] = ratesAt(nowRaw);
+    sink(FeeCharged{t.makerId, cfg.id, Volume::fromRaw(feeRawOf(notional, makerRateRaw)), true,
+                    t.makerAccount});
+    sink(FeeCharged{t.takerId, cfg.id, Volume::fromRaw(feeRawOf(notional, takerRateRaw)), false,
                     t.takerAccount});
   }
 
@@ -81,31 +105,48 @@ class Fees
     {
       return;
     }
-    const double notional = notionalOf(t, cfg);
-    charge(t.makerId, t.makerAccount, schedule_.feeFor(nowRaw, notional, true), true, cfg, ledger,
+    const Amount notional = notionalOf(t, cfg);
+    const auto [makerRateRaw, takerRateRaw] = ratesAt(nowRaw);
+    charge(t.makerId, t.makerAccount, feeRawOf(notional, makerRateRaw), true, cfg, ledger,
            venueAccount, sink);
-    charge(t.takerId, t.takerAccount, schedule_.feeFor(nowRaw, notional, false), false, cfg, ledger,
+    charge(t.takerId, t.takerAccount, feeRawOf(notional, takerRateRaw), false, cfg, ledger,
            venueAccount, sink);
   }
 
  private:
-  // The print's notional at the symbol's own scales, as a double, because that
-  // is the shape flox::FeeSchedule prices in.
-  static double notionalOf(const Trade& t, const SymbolConfig& cfg)
+  // The print's notional at the symbol's own scales -- the same raw the
+  // reservations and the margin are computed from, kept as a raw. The
+  // schedule's own feeFor() divides it down into a double to price it, which
+  // is where the last raw of a large print used to go.
+  static Amount notionalOf(const Trade& t, const SymbolConfig& cfg)
   {
-    return static_cast<double>(
-               notionalRaw(t.price.raw(), t.quantity.raw(), cfg.priceScale, cfg.qtyScale)) /
-           kMoneyScale;
+    return notionalRaw(t.price.raw(), t.quantity.raw(), cfg.priceScale, cfg.qtyScale);
+  }
+
+  // The active tier's two rates as raws. Resolving the tier is what advances
+  // the schedule's rolling window, so both sides of a print are priced off one
+  // lookup rather than two -- the maker and the taker of the same trade cannot
+  // land in different tiers.
+  std::pair<int64_t, int64_t> ratesAt(int64_t nowRaw)
+  {
+    const auto [makerBps, takerBps] = schedule_.currentBps(nowRaw);
+    return {feeRateRawOf(makerBps), feeRateRawOf(takerBps)};
+  }
+
+  // What the print costs at `rateRaw`, in money raws.
+  static int64_t feeRawOf(Amount notional, int64_t rateRaw)
+  {
+    return checkedNarrowI64(rateOnNotional(notional, rateRaw, kFeeRateScale));
   }
 
   // Signed move: participant -fee, venue +fee (conserves value; fee<0 = rebate).
-  static void charge(OrderId id, uint64_t acct, double feeD, bool maker, const SymbolConfig& cfg,
+  static void charge(OrderId id, uint64_t acct, int64_t feeRaw, bool maker, const SymbolConfig& cfg,
                      Ledger& ledger, uint64_t venueAccount, const EventSink& sink)
   {
-    const Amount fee = static_cast<Amount>(Volume::fromDouble(feeD).raw());
+    const Amount fee = static_cast<Amount>(feeRaw);
     ledger.credit(acct, cfg.quoteAsset, -fee);
     ledger.credit(venueAccount, cfg.quoteAsset, fee);
-    sink(FeeCharged{id, cfg.id, Volume::fromDouble(feeD), maker, acct});
+    sink(FeeCharged{id, cfg.id, Volume::fromRaw(feeRaw), maker, acct});
   }
 
   flox::FeeSchedule schedule_{};
