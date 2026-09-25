@@ -372,8 +372,11 @@ way: `ControlApi` applies a successful mutation to the registry and forwards
 the equivalent command (`ListInstrument`, `SetBands`, `SetTriggerRef`,
 `AdminCmd` halt/resume)
 to its command sink, which the deployment wires into the journaled stream --
-on restart, `InstrumentRegistry::apply` replays those records. There is no
-separate configuration store. See [Runtime and recovery](runtime.md).
+on restart, `InstrumentRegistry::apply` replays those records, driven by
+`SequencedShard::setRegistry(&reg)` (set before `start()`). There is no
+separate configuration store. The shard writes the registry on its consumer
+thread, so serve this api from that thread. See
+[Runtime and recovery](runtime.md).
 
 Three of the verbs act on an ACCOUNT rather than on the instrument, and each
 forwards a record that was already journaled, snapshotted and replayed and had
