@@ -227,12 +227,91 @@ struct StorageSinkHost
   }
 };
 
+// ── Hook failure reporting ──────────────────────────────────────────────
+//
+// A gate runs inline while a signal is in flight, so it has no caller to
+// throw back at: the frame underneath it is a C function pointer the engine
+// called, and the frame under that is whatever JS happened to emit the
+// signal. It leaves a record instead, which the owning Runner hands back
+// through hookErrors().
+
+struct HookErrorRecord
+{
+  std::string hook;
+  std::string method;
+  std::string message;
+};
+
+struct HookErrorSink
+{
+  std::vector<HookErrorRecord> records;
+
+  void record(const char* hook, const char* method, std::string message)
+  {
+    records.push_back(HookErrorRecord{hook, method, std::move(message)});
+  }
+};
+
+inline void reportHookError(HookErrorSink* sink, const char* hook, const char* method,
+                            std::string message)
+{
+  if (sink)
+  {
+    sink->record(hook, method, std::move(message));
+  }
+}
+
 // ── RiskManager / KillSwitch / OrderValidator (gate hooks) ──────────────
 //
 // These are pre-trade gates: return false → drop the signal. We must
 // block on the JS callback for the result, which is incompatible with
 // LiveEngine's async consumer thread (would deadlock). Document this
 // limitation: gate hooks only work with the synchronous Runner.
+//
+// The policy, one for every binding: a host-language throw and a non-boolean
+// return both DENY the order, and both are reported. Neither ever lets the
+// order through, and neither escapes through the C boundary. A gate that
+// plainly returns false is a decision, not a failure, and is not reported.
+//
+// The throw half matters here in particular: under
+// NODE_ADDON_API_CPP_EXCEPTIONS_ALL (node/CMakeLists.txt)
+// Napi::FunctionReference::Call turns a pending JS exception into a C++ one,
+// which then unwinds out of a bridge declared to C, through the engine frames
+// that were mid-signal, and surfaces at whatever JS frame was on the stack --
+// the strategy's own emit.marketBuy() call. It is caught here instead.
+
+inline uint8_t callGate(Napi::FunctionReference& fn, Napi::Env env, const FloxSignal* sig,
+                        HookErrorSink* sink, const char* hook, const char* method)
+{
+  if (fn.IsEmpty())
+  {
+    return 1;
+  }
+  Napi::Value result;
+  try
+  {
+    result = fn.Call({signalToJs(env, sig)});
+  }
+  catch (const Napi::Error& e)
+  {
+    // node-addon-api cleared the pending JS exception when it built this.
+    reportHookError(sink, hook, method, e.Message());
+    return 0;
+  }
+  catch (const std::exception& e)
+  {
+    reportHookError(sink, hook, method, e.what());
+    return 0;
+  }
+  if (!result.IsBoolean())
+  {
+    reportHookError(sink, hook, method,
+                    std::string("returned a non-boolean (") + result.ToString().Utf8Value() +
+                        "); a gate must return a boolean");
+    return 0;
+  }
+  return result.As<Napi::Boolean>().Value() ? 1u : 0u;
+}
 
 struct RiskManagerHost
 {
@@ -240,8 +319,10 @@ struct RiskManagerHost
   Napi::Env env;
   FloxRiskManagerHandle handle{nullptr};
 
-  RiskManagerHost(Napi::Env env_, Napi::Object obj)
-      : allow_fn(takeFn(obj, "allow")), env(env_)
+  HookErrorSink* errors{nullptr};
+
+  RiskManagerHost(Napi::Env env_, Napi::Object obj, HookErrorSink* sink = nullptr)
+      : allow_fn(takeFn(obj, "allow")), env(env_), errors(sink)
   {
     FloxRiskManagerCallbacks cb{};
     cb.allow = &RiskManagerHost::allowBridge;
@@ -261,13 +342,8 @@ struct RiskManagerHost
   static uint8_t allowBridge(void* ud, const FloxSignal* sig)
   {
     auto* self = static_cast<RiskManagerHost*>(ud);
-    if (self->allow_fn.IsEmpty())
-    {
-      return 1;
-    }
     // Synchronous — only safe to call from the JS thread (sync Runner).
-    auto result = self->allow_fn.Call({signalToJs(self->env, sig)});
-    return (result.IsBoolean() && result.As<Napi::Boolean>().Value()) ? 1u : 0u;
+    return callGate(self->allow_fn, self->env, sig, self->errors, "riskManager", "allow");
   }
 };
 
@@ -277,8 +353,10 @@ struct KillSwitchHost
   Napi::Env env;
   FloxKillSwitchHandle handle{nullptr};
 
-  KillSwitchHost(Napi::Env env_, Napi::Object obj)
-      : check_fn(takeFn(obj, "check")), env(env_)
+  HookErrorSink* errors{nullptr};
+
+  KillSwitchHost(Napi::Env env_, Napi::Object obj, HookErrorSink* sink = nullptr)
+      : check_fn(takeFn(obj, "check")), env(env_), errors(sink)
   {
     FloxKillSwitchCallbacks cb{};
     cb.check = &KillSwitchHost::checkBridge;
@@ -298,12 +376,7 @@ struct KillSwitchHost
   static uint8_t checkBridge(void* ud, const FloxSignal* sig)
   {
     auto* self = static_cast<KillSwitchHost*>(ud);
-    if (self->check_fn.IsEmpty())
-    {
-      return 1;
-    }
-    auto result = self->check_fn.Call({signalToJs(self->env, sig)});
-    return (result.IsBoolean() && result.As<Napi::Boolean>().Value()) ? 1u : 0u;
+    return callGate(self->check_fn, self->env, sig, self->errors, "killSwitch", "check");
   }
 };
 
@@ -313,8 +386,10 @@ struct OrderValidatorHost
   Napi::Env env;
   FloxOrderValidatorHandle handle{nullptr};
 
-  OrderValidatorHost(Napi::Env env_, Napi::Object obj)
-      : validate_fn(takeFn(obj, "validate")), env(env_)
+  HookErrorSink* errors{nullptr};
+
+  OrderValidatorHost(Napi::Env env_, Napi::Object obj, HookErrorSink* sink = nullptr)
+      : validate_fn(takeFn(obj, "validate")), env(env_), errors(sink)
   {
     FloxOrderValidatorCallbacks cb{};
     cb.validate = &OrderValidatorHost::validateBridge;
@@ -334,12 +409,8 @@ struct OrderValidatorHost
   static uint8_t validateBridge(void* ud, const FloxSignal* sig)
   {
     auto* self = static_cast<OrderValidatorHost*>(ud);
-    if (self->validate_fn.IsEmpty())
-    {
-      return 1;
-    }
-    auto result = self->validate_fn.Call({signalToJs(self->env, sig)});
-    return (result.IsBoolean() && result.As<Napi::Boolean>().Value()) ? 1u : 0u;
+    return callGate(self->validate_fn, self->env, sig, self->errors, "orderValidator",
+                    "validate");
   }
 };
 
@@ -440,8 +511,9 @@ struct ExecutorHost
   Napi::FunctionReference on_stop_fn;
   Napi::Env env;
   FloxExecutorHandle handle{nullptr};
+  HookErrorSink* errors{nullptr};
 
-  ExecutorHost(Napi::Env env_, Napi::Object obj)
+  ExecutorHost(Napi::Env env_, Napi::Object obj, HookErrorSink* sink = nullptr)
       : submit_fn(takeFn(obj, "submit")),
         cancel_fn(takeFn(obj, "cancel")),
         cancel_all_fn(takeFn(obj, "cancelAll")),
@@ -450,7 +522,8 @@ struct ExecutorHost
         capabilities_fn(takeFn(obj, "capabilities")),
         on_start_fn(takeFn(obj, "onStart")),
         on_stop_fn(takeFn(obj, "onStop")),
-        env(env_)
+        env(env_),
+        errors(sink)
   {
     FloxExecutorCallbacks cb{};
     cb.submit = &ExecutorHost::submitBridge;
@@ -534,7 +607,24 @@ struct ExecutorHost
     {
       return;
     }
-    auto result = self->capabilities_fn.Call({});
+    // Same boundary as the gates: this is called through a C function
+    // pointer, so a throw out of it is reported rather than unwound. An
+    // executor that cannot say what it supports supports nothing.
+    Napi::Value result;
+    try
+    {
+      result = self->capabilities_fn.Call({});
+    }
+    catch (const Napi::Error& e)
+    {
+      reportHookError(self->errors, "executor", "capabilities", e.Message());
+      return;
+    }
+    catch (const std::exception& e)
+    {
+      reportHookError(self->errors, "executor", "capabilities", e.what());
+      return;
+    }
     if (!result.IsObject())
     {
       return;

@@ -1350,6 +1350,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
             InstanceMethod("setOrderValidator", &RunnerNode::setOrderValidator),
             InstanceMethod("setMarketDataRecorder", &RunnerNode::setMarketDataRecorder),
             InstanceMethod("setExecutor", &RunnerNode::setExecutor),
+            InstanceMethod("hookErrors", &RunnerNode::hookErrors),
             InstanceMethod("attachTraceRecorder", &RunnerNode::attachTraceRecorder),
             InstanceMethod("setTraceFeedTsNs", &RunnerNode::setTraceFeedTsNs),
             InstanceMethod("traceOrderEvent", &RunnerNode::traceOrderEvent),
@@ -1654,6 +1655,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
   // detach / runner destruction so the C ABI handle is always valid
   // while the engine holds a reference.
 
+  // Declared ahead of every host that points at it: members are destroyed in
+  // reverse declaration order, so the sink outlives the hosts writing to it.
+  flox_node::HookErrorSink _hook_errors;
+
   std::unique_ptr<flox_node::PnLTrackerHost> _pnl_host;
   std::unique_ptr<flox_node::StorageSinkHost> _storage_host;
   std::unique_ptr<flox_node::RiskManagerHost> _risk_host;
@@ -1769,7 +1774,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
     {
       return env.Undefined();
     }
-    _risk_host = std::make_unique<flox_node::RiskManagerHost>(env, info[0].As<Napi::Object>());
+    _risk_host = std::make_unique<flox_node::RiskManagerHost>(env, info[0].As<Napi::Object>(), &_hook_errors);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_risk_manager(_runner, _risk_host->handle);
@@ -1801,7 +1806,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
     {
       return env.Undefined();
     }
-    _kill_host = std::make_unique<flox_node::KillSwitchHost>(env, info[0].As<Napi::Object>());
+    _kill_host = std::make_unique<flox_node::KillSwitchHost>(env, info[0].As<Napi::Object>(), &_hook_errors);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_kill_switch(_runner, _kill_host->handle);
@@ -1834,7 +1839,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       return env.Undefined();
     }
     _validator_host =
-        std::make_unique<flox_node::OrderValidatorHost>(env, info[0].As<Napi::Object>());
+        std::make_unique<flox_node::OrderValidatorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_order_validator(_runner, _validator_host->handle);
@@ -1929,7 +1934,8 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
     {
       return env.Undefined();
     }
-    _executor_host = std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>());
+    _executor_host =
+        std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_executor(_runner, _executor_host->handle);
@@ -1939,6 +1945,26 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       flox_live_engine_set_executor(_engine, _executor_host->handle);
     }
     return env.Undefined();
+  }
+
+  // Every hook failure this runner has seen, oldest first. A gate runs inline
+  // while a signal is in flight and has no caller to throw back at, and the
+  // process-wide log callback is asynchronous and shared, so it cannot say
+  // which runner denied what. Records accumulate for the life of the runner.
+  Napi::Value hookErrors(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    const auto& records = _hook_errors.records;
+    auto arr = Napi::Array::New(env, records.size());
+    for (size_t i = 0; i < records.size(); ++i)
+    {
+      auto obj = Napi::Object::New(env);
+      obj.Set("hook", Napi::String::New(env, records[i].hook));
+      obj.Set("method", Napi::String::New(env, records[i].method));
+      obj.Set("message", Napi::String::New(env, records[i].message));
+      arr.Set(static_cast<uint32_t>(i), obj);
+    }
+    return arr;
   }
 
   Napi::Value attachTraceRecorder(const Napi::CallbackInfo& info)

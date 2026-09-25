@@ -499,6 +499,16 @@ export class SymbolRegistry {
 
 // ── Runner ────────────────────────────────────────────────────────────
 
+/** One entry of `Runner.hookErrors()`. */
+export interface HookErrorRecord {
+  /** `"riskManager"` | `"killSwitch"` | `"orderValidator"` | `"executor"`. */
+  hook: string;
+  /** The method on the hook object that failed, e.g. `"allow"`. */
+  method: string;
+  /** The thrown message, or what was returned instead of a boolean. */
+  message: string;
+}
+
 export class Runner {
   /** `threaded=true` runs callbacks on a background C++ Disruptor thread. */
   constructor(
@@ -562,6 +572,19 @@ export class Runner {
   setMarketDataRecorder(recorder: MarketDataRecorderHook | BinaryLogRecorderHook | null): void;
   /** Sync only — Executor.capabilities() is read inline. Throws if `threaded`. */
   setExecutor(executor: Executor | null): void;
+
+  /** Every hook failure this Runner has seen, oldest first.
+   *
+   *  A pre-trade gate (`RiskManager.allow`, `KillSwitch.check`,
+   *  `OrderValidator.validate`) that throws, or hands back anything other
+   *  than a boolean, denies the order and lands here; so does a throw out
+   *  of `Executor.capabilities()`. A gate that returns `false` is a
+   *  decision, not a failure, and is not recorded.
+   *
+   *  Readable synchronously after the call that failed. The process-wide
+   *  log callback is asynchronous and shared, so it cannot say which
+   *  Runner denied what. */
+  hookErrors(): HookErrorRecord[];
 
   /** Auto-capture every signal into the given `.floxrun` recorder.
    *  Pass `null` to detach. Sync mode only; throws otherwise.
