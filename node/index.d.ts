@@ -657,8 +657,10 @@ export class Engine {
   /** `symbol` defaults to the first loaded symbol in every accessor
    *  below; an unknown name throws. */
   barCount(symbol?: string): number;
-  /** Bar open times in nanoseconds. */
-  ts(symbol?: string): Float64Array;
+  /** Bar open times in nanoseconds. A `BigInt64Array`: the readings are
+   *  exact int64 in the store, and a double steps 256 ns at present-day
+   *  magnitudes. The price and volume accessors below stay `Float64Array`. */
+  ts(symbol?: string): BigInt64Array;
   open(symbol?: string): Float64Array;
   high(symbol?: string): Float64Array;
   low(symbol?: string): Float64Array;
@@ -669,12 +671,14 @@ export class Engine {
 
 export class SignalBuilder {
   constructor();
-  /** `ts` auto-scales from s / ms / us to ns. `symbol` defaults to the
-   *  engine's first loaded symbol at `run()` time. Returns `this`. */
-  buy(ts: number, qty: number, symbol?: string): this;
-  sell(ts: number, qty: number, symbol?: string): this;
-  limitBuy(ts: number, price: number, qty: number, symbol?: string): this;
-  limitSell(ts: number, price: number, qty: number, symbol?: string): this;
+  /** `ts` auto-scales from s / ms / us to ns and takes a `Number` or a
+   *  `BigInt`, so an `Engine.ts()` element goes straight in. `symbol`
+   *  defaults to the engine's first loaded symbol at `run()` time.
+   *  Returns `this`. */
+  buy(ts: number | bigint, qty: number, symbol?: string): this;
+  sell(ts: number | bigint, qty: number, symbol?: string): this;
+  limitBuy(ts: number | bigint, price: number, qty: number, symbol?: string): this;
+  limitSell(ts: number | bigint, price: number, qty: number, symbol?: string): this;
   clear(): void;
   readonly length: number;
 }

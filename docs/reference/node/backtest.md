@@ -127,7 +127,7 @@ const stats = engine.run(signals);
 | `resample(src, dst, interval)` | `void` | Three strings, e.g. `('BTCUSDT', 'BTCUSDT_1h', '1h')`. Interval is `<count><s\|m\|h\|d>`. Throws `E_SYM_001` if `src` is not loaded |
 | `run(signals)` | `BacktestStats` | Takes a `SignalBuilder` only. Passing a Strategy aborts |
 | `barCount(symbol?)` | `number` | Bars loaded; defaults to the first loaded symbol |
-| `ts(symbol?)` | `Float64Array` | Timestamps |
+| `ts(symbol?)` | `BigInt64Array` | Bar open times in nanoseconds. Exact int64 — a double steps 256 ns at present-day magnitudes |
 | `open(symbol?)` | `Float64Array` | Open prices |
 | `high(symbol?)` | `Float64Array` | High prices |
 | `low(symbol?)` | `Float64Array` | Low prices |
@@ -163,6 +163,6 @@ const stats = engine.run(signals);
 | `clear()` | Clear all signals |
 | `length` | Signal count (read-only property) |
 
-Timestamps are read as a JS `number`, not a `bigint`; values in s / ms / us
-are auto-scaled to ns.
+`tsNs` takes a JS `number` or a `bigint`, so an `Engine.ts()` element goes
+straight in; values in s / ms / us are auto-scaled to ns.
 | `length` | Number of signals (property) |
