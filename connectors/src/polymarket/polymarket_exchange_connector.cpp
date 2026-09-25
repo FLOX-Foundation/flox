@@ -407,6 +407,12 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
   ev->recvNs = MonoNanos::fromRaw(recvNs);
   ev->sourceExchange = _exchangeId;
   ev->update.symbol = sym;
+  // A "book" frame is the whole book. The type has to be written on every
+  // event, not just the first: BookUpdateEvent::clear() resets the levels
+  // only, so a pooled slot last used by a price_change still carries DELTA
+  // and the consumer would merge this snapshot into the book it is meant to
+  // replace.
+  ev->update.type = BookUpdateType::SNAPSHOT;
   ev->update.bids.clear();
   ev->update.asks.clear();
 
