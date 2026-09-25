@@ -418,6 +418,19 @@ inline PollResult pollRead(Handle h, int timeoutMs) noexcept
   r.readable = (p.revents & POLLIN) != 0;
   r.hangup = (p.revents & POLLHUP) != 0;
   r.error = (p.revents & POLLERR) != 0;
+  // POLLNVAL is what poll reports for a descriptor that is closed or was
+  // never one -- a reconnect that closed its socket while the read loop still
+  // holds the number. Left out of the translation it came back as n == 1 with
+  // every field of the result false: not readable, not hung up, not an error,
+  // not a timeout. The wait does not block either, so the "wait, then read"
+  // loop every caller of this layer writes spins at the speed of the syscall
+  // with nothing to break on and nothing to log.
+#if defined(POLLNVAL)
+  if ((p.revents & POLLNVAL) != 0)
+  {
+    r.error = true;
+  }
+#endif
   return r;
 }
 
