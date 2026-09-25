@@ -139,9 +139,11 @@ declare class Strategy {
 
     position(symbol?: string): number;
     lastPrice(symbol?: string): number;
-    bestBid(symbol?: string): number;
-    bestAsk(symbol?: string): number;
-    midPrice(symbol?: string): number;
+    /** null when the side is empty; a price below zero, and a price of
+     *  exactly 0, are quotes like any other. */
+    bestBid(symbol?: string): number | null;
+    bestAsk(symbol?: string): number | null;
+    midPrice(symbol?: string): number | null;
     orderStatus(orderId: number): OrderStatus | -1;
 
     readonly primarySymbol: string;
