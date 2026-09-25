@@ -345,6 +345,76 @@ if (missing.length === 0) {
   }
 }
 
+// ── closeReason carries a value, not just a key ────────────────────────────
+//
+// A batch run whose every bar closed on its own threshold reports 0 for all of
+// them, and 0 is also what a field wired to the constant 0 reports -- so the
+// check above passes either way. The only assertion that separates the two
+// needs a bar the engine closed for a different reason.
+//
+// Renko has one: a trade that jumps more brick widths than the walk will
+// materialize (RenkoBarPolicy::kMaxGapBricks, 1024) stops the walk and lets
+// the last brick absorb the rest of the move, marked BarCloseReason::Gap.
+
+const GAP = 1;
+const THRESHOLD = 0;
+const MAX_GAP_BRICKS = 1024;
+
+function renko(jumpTo, brick) {
+  return flox.aggregateRenkoBars(
+    Float64Array.from([0, 1e9]),
+    Float64Array.from([100.0, jumpTo]),
+    Float64Array.from([1, 1]),
+    Uint8Array.from([1, 1]),
+    brick === undefined ? 1.0 : brick,
+  );
+}
+
+{
+  // 100 -> 1200 at a brick of 1.0 spans 1100 bricks, past the 1024 the walk
+  // will publish, so the last one is a Gap.
+  const bars = renko(1200.0);
+  check(
+    'the renko walk stops at the gap-brick budget',
+    bars.length === MAX_GAP_BRICKS,
+    'bars=' + bars.length,
+  );
+
+  const reasons = bars.map((b) => b.closeReason);
+  const gaps = reasons.filter((r) => r === GAP).length;
+  check(
+    'the brick that absorbed the jump reports the gap reason',
+    reasons[reasons.length - 1] === GAP,
+    'last closeReason=' + reasons[reasons.length - 1] +
+      '; closeReason is not carrying flox::Bar::reason',
+  );
+  // Exactly one, and it is the last: a field wired to a constant would report
+  // that constant for all 1024.
+  check('exactly one bar claims to be a gap bar', gaps === 1, 'gaps=' + gaps);
+  check(
+    'every brick the walk materialised closed on its threshold',
+    reasons.slice(0, -1).every((r) => r === THRESHOLD),
+    JSON.stringify([...new Set(reasons.slice(0, -1))]),
+  );
+  check(
+    'the gap brick closes on the far boundary',
+    bars[bars.length - 1].close === 1200.0,
+    'close=' + bars[bars.length - 1].close,
+  );
+}
+
+{
+  // The control: the same aggregator, a jump inside the budget.
+  const bars = renko(105.0);
+  const reasons = bars.map((b) => b.closeReason);
+  check('a jump the walk can cover produces bricks', bars.length > 0);
+  check(
+    'a jump the walk can cover reports no gap',
+    reasons.every((r) => r === THRESHOLD),
+    JSON.stringify([...new Set(reasons)]),
+  );
+}
+
 if (failures.length > 0) {
   console.error('\n' + failures.length + ' check(s) failed');
   process.exit(1);

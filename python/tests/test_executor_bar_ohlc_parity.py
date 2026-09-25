@@ -335,3 +335,64 @@ def test_the_walk_reaches_the_low_before_the_high() -> None:
     )
     # The entry is the part the runner can be asked about, and it has to agree.
     assert rows[0] == _runner_entry_fill()
+
+
+# ── close_reason carries a value, not just a column ────────────────────────
+#
+# A batch run whose every bar closed on its own threshold reports 0 for all of
+# them, and 0 is also what a field nobody wrote reports -- so asserting the
+# column exists and holds zeros passes just as well when `close_reason` is
+# wired to the constant 0 as when it is wired to `flox::Bar::reason`. The only
+# assertion that separates the two needs a bar the engine closed for a
+# different reason.
+#
+# Renko has one: a trade that jumps more brick widths than the walk will
+# materialize (RenkoBarPolicy::kMaxGapBricks, 1024) stops the walk and lets
+# the last brick absorb the rest of the move, marked BarCloseReason::Gap.
+
+GAP = 1  # BarCloseReason::Gap
+THRESHOLD = 0  # BarCloseReason::Threshold
+MAX_GAP_BRICKS = 1024  # RenkoBarPolicy::kMaxGapBricks
+
+
+def _renko(jump_to: float, brick: float = 1.0):
+    ts = np.array([0, 1_000_000_000], dtype=np.int64)
+    prices = np.array([100.0, jump_to], dtype=np.float64)
+    quantities = np.ones(2, dtype=np.float64)
+    is_buy = np.ones(2, dtype=np.uint8)
+    return flox.aggregate_renko_bars(ts, prices, quantities, is_buy, brick)
+
+
+def test_a_gap_closed_bar_reports_the_gap_reason() -> None:
+    # 100 -> 1200 at a brick of 1.0 spans 1100 bricks, past the 1024 the walk
+    # will publish, so the last one is a Gap.
+    bars = _renko(1200.0)
+    assert len(bars) == MAX_GAP_BRICKS, (
+        f"expected the walk to stop at {MAX_GAP_BRICKS} bricks, got {len(bars)}"
+    )
+
+    reasons = [int(b["close_reason"]) for b in bars]
+    assert reasons[-1] == GAP, (
+        "the brick that absorbed the rest of the jump reports "
+        f"{reasons[-1]}, not BarCloseReason::Gap ({GAP}); close_reason is not "
+        "carrying flox::Bar::reason"
+    )
+    # Exactly one, and it is the last: a field wired to a constant would report
+    # that constant for all 1024.
+    assert reasons.count(GAP) == 1, f"{reasons.count(GAP)} bars claim to be gap bars"
+    assert set(reasons[:-1]) == {THRESHOLD}, (
+        "the bricks the walk did materialize did not close on their own threshold"
+    )
+    # The gap brick closes on the far boundary, so the grid stays aligned.
+    assert bars[-1]["close_raw"] == int(round(1200.0 * 1e8))
+
+
+def test_a_jump_the_walk_can_cover_reports_no_gap() -> None:
+    """The control for the case above: the same aggregator, a jump inside the
+    budget, and every brick closes on its threshold."""
+    bars = _renko(105.0)
+    reasons = [int(b["close_reason"]) for b in bars]
+    assert reasons, "the jump produced no bricks"
+    assert set(reasons) == {THRESHOLD}, (
+        f"a five-brick jump reported {sorted(set(reasons))}, not only threshold closes"
+    )
