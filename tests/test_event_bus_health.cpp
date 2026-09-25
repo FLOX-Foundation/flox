@@ -431,32 +431,26 @@ TEST(EventBusMonitor, ADefaultStallThresholdLeavesTheMonitorThreadIdle)
       << " ms window";
 }
 
-// The same floor stated directly, so the fix is a rule rather than a number
-// that happens to keep one measurement under a budget.
-// needs: static std::chrono::milliseconds monitorPeriod(std::chrono::milliseconds stallThreshold)
+// The same floor stated directly, value by value, so the fix is a rule rather
+// than a number that happens to keep one measurement under a budget. Both
+// halves are pinned: the floor, which is what a 1 ms threshold needs, and the
+// halving, which is what everything above it needs. A floor set one
+// millisecond too high would sleep through half the stall it was configured to
+// notice, and reads as "a floor" just as well.
 TEST(EventBusMonitor, TheMonitorPeriodIsHalfTheThresholdWithAFloor)
 {
-  const auto check = [](auto& bus)
-  {
-    using Bus = std::decay_t<decltype(bus)>;
-    using Ms = std::chrono::milliseconds;
-    if constexpr (requires { Bus::monitorPeriod(Ms(1)); })
-    {
-      EXPECT_GE(Bus::monitorPeriod(Ms(0)), Ms(1));
-      EXPECT_GE(Bus::monitorPeriod(Ms(1)), Ms(1));
-      EXPECT_GE(Bus::monitorPeriod(Ms(2)), Ms(1));
-      EXPECT_GE(Bus::monitorPeriod(Ms(3)), Ms(1));
-      EXPECT_EQ(Bus::monitorPeriod(Ms(100)), Ms(50));
-    }
-    else
-    {
-      FAIL() << "needs: static std::chrono::milliseconds "
-                "monitorPeriod(std::chrono::milliseconds stallThreshold), the period the "
-                "monitor loop sleeps, floored at 1 ms";
-    }
-  };
-  SmallBus bus;
-  check(bus);
+  using Ms = std::chrono::milliseconds;
+  const auto periodMs = [](int64_t threshold)
+  { return SmallBus::monitorPeriod(Ms(threshold)).count(); };
+
+  EXPECT_EQ(periodMs(0), 1) << "a zero threshold must still not mean a zero sleep";
+  EXPECT_EQ(periodMs(1), 1) << "the floor, which is the whole point of it";
+  EXPECT_EQ(periodMs(2), 1);
+  EXPECT_EQ(periodMs(3), 1);
+  EXPECT_EQ(periodMs(4), 2) << "above the floor the period is the halving again";
+  EXPECT_EQ(periodMs(10), 5);
+  EXPECT_EQ(periodMs(100), 50);
+  EXPECT_EQ(periodMs(101), 50) << "integer milliseconds, rounded down";
 }
 
 // ---------------------------------------------------------------------------

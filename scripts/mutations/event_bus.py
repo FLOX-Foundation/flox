@@ -187,6 +187,18 @@ MUTATIONS: list[Mutation] = [
         checks=MONITOR_CHECKS,
     ),
     Mutation(
+        name="monitor-period-floor-at-two",
+        why="the floor is one millisecond too high. A 1 ms threshold then sleeps through half "
+            "the stall it was configured to notice, and an off-by-one floor still reads as a "
+            "floor: the CPU measurement beside it cannot tell 1 ms from 2 ms, so only the "
+            "value itself can",
+        edits=[Edit(
+            old="    constexpr auto floor = std::chrono::milliseconds{1};",
+            new="    constexpr auto floor = std::chrono::milliseconds{2};",
+        )],
+        checks=MONITOR_CHECKS,
+    ),
+    Mutation(
         name="monitor-period-equals-the-threshold",
         why="the period is the whole threshold instead of half of it: the floor still holds, "
             "but a stall is now noticed a whole threshold late in the worst case",
@@ -288,6 +300,14 @@ MUTATIONS: list[Mutation] = [
             ),
         ],
         checks=HEALTH_CHECKS,
+        equivalent="the state is one atomic, and what orders it against the sequence and the "
+                   "instant beside it is the seqlock, not this load. The only reading that "
+                   "could tell acquire from relaxed -- the state through consumerHealth(), "
+                   "the pair through consumerHealthReport() -- is unsound on the unmutated "
+                   "tree too: the consumer can resume between the two calls, and a fresh "
+                   "lastChange beside a STALLED read is then the right answer. TSan does not "
+                   "model atomic reordering and neither x86 nor arm64 shows it; on a weakly "
+                   "ordered machine it would be a real weakening",
         expect_survive=True,
     ),
     Mutation(
@@ -664,6 +684,15 @@ MUTATIONS: list[Mutation] = [
             ),
         ],
         checks=STOP_CHECKS + [Check("build-tsan", BATCH, "EventBusBatch.*", repeats=3)],
+        equivalent="not reachable from a test on this interface. Holding a publisher inside "
+                   "wakeWaiters() means holding the only object in that path a test owns, the "
+                   "shared WakeSet -- its parkUnless() predicate runs under the set's mutex -- "
+                   "and doStop() calls wake() on that same set before it waits, so the hold "
+                   "takes stop() with it and the two orders become indistinguishable. The "
+                   "bus's own park mutex is private. Deleting the bus the moment stop() "
+                   "returns and letting TSan find the use-after-free is not sound either: a "
+                   "test that deletes a bus while any publisher may still enter publish() has "
+                   "a use-after-free of its own, mutation or no mutation",
         expect_survive=True,
     ),
     Mutation(
@@ -684,6 +713,25 @@ MUTATIONS: list[Mutation] = [
     }""",
         )],
         checks=STOP_CHECKS,
+    ),
+    Mutation(
+        name="seal-exchange-relaxed",
+        why="the exchange that closes the sequence line drops from acq_rel to relaxed",
+        edits=[Edit(
+            old="    const int64_t lastClaim = _next.exchange(kSequenceLineClosed, "
+                "std::memory_order_acq_rel);",
+            new="    const int64_t lastClaim = _next.exchange(kSequenceLineClosed, "
+                "std::memory_order_relaxed);",
+        )],
+        checks=STOP_CHECKS,
+        equivalent="what the seal needs from this line is that it is one read-modify-write on "
+                   "_next, and atomicity is not something a memory order can take away: the "
+                   "modification order of _next is what splits the publishers into the ones "
+                   "already holding a claim and the ones that never will. What the seal "
+                   "publishes -- _runLastClaim -- is carried by the release store on _sealed "
+                   "that follows it, and nothing acquires _next here. Three TSan runs come "
+                   "back clean and no construction on x86 or arm64 sees the difference",
+        expect_survive=True,
     ),
     Mutation(
         name="seal-flag-published-relaxed",
@@ -1014,21 +1062,32 @@ def main() -> int:
     print("\nsummary")
     label = {"killed": "RED  ", "alive": "ALIVE", "no-compile": "NOBLD"}
     for m, verdict, killer in results:
+        shown = "EQUIV" if verdict == "alive" and m.equivalent else label[verdict]
         as_predicted = (verdict == "alive") == m.expect_survive
         note = "" if as_predicted or verdict == "no-compile" else "  (against prediction)"
         where = killer if killer else ", ".join(sorted({f"{c.build}/{c.target}" for c in m.checks}))
-        print(f"  {label[verdict]}  {m.name:<52} {where}{note}")
+        print(f"  {shown}  {m.name:<52} {where}{note}")
 
     survived = [m for m, v, _ in results if v == "alive" and not m.equivalent]
     equivalent = [m for m, v, _ in results if v == "alive" and m.equivalent]
+    # An equivalent mutant that dies is the interesting one: either the argument
+    # in `equivalent` was wrong, or the code moved out from under it and the two
+    # are no longer the same program. Either way it is a finding, not a pass.
+    killed_equivalent = [m for m, v, _ in results if v == "killed" and m.equivalent]
     nobuild = [m.name for m, v, _ in results if v == "no-compile"]
     if survived:
         print(f"\n{len(survived)} mutation(s) survived -- each one is a hole in the tests:")
         for m in survived:
             print(f"  {m.name}")
     if equivalent:
-        print(f"\n{len(equivalent)} equivalent mutation(s), survival expected:")
+        print(f"\n{len(equivalent)} mutation(s) survived because they are equivalent, which is "
+              f"the expected outcome:")
         for m in equivalent:
+            print(f"  {m.name}: {m.equivalent}")
+    if killed_equivalent:
+        print(f"\n{len(killed_equivalent)} mutation(s) marked equivalent were killed -- the code "
+              f"no longer matches the argument:")
+        for m in killed_equivalent:
             print(f"  {m.name}: {m.equivalent}")
     flaky = [m for m, _, _ in results if m.flaky]
     if flaky:
@@ -1039,7 +1098,7 @@ def main() -> int:
         print(f"\n{len(nobuild)} mutation(s) did not compile: {', '.join(nobuild)}")
     if not restored:
         print("\nthe tree did not come back green after the run")
-    return 0 if not survived and restored else 1
+    return 0 if not survived and not killed_equivalent and restored else 1
 
 
 if __name__ == "__main__":
