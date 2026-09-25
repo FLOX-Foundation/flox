@@ -570,9 +570,15 @@ TEST(CapiStreamingGraphTest, Reset)
 // whatever the number says. Anchoring it to a shape the header itself declares
 // makes the number falsifiable: FloxBar gained close_reason at 3, so a header
 // that has the field and calls itself 2 is describing a struct it does not
-// have.
+// have. FloxBookSnapshot gained has_bid and has_ask at 4, by the same rule.
 template <typename T>
 concept FloxBarCarriesCloseReason = requires(T bar) { bar.close_reason; };
+
+template <typename T>
+concept FloxBookSnapshotCarriesPresence = requires(T snap) {
+  snap.has_bid;
+  snap.has_ask;
+};
 
 TEST(CapiAbiVersion, TheNumberMovedWithTheStructShape)
 {
@@ -591,5 +597,19 @@ TEST(CapiAbiVersion, TheNumberMovedWithTheStructShape)
   {
     EXPECT_LT(flox_capi_abi_version(), 3u)
         << "the header claims ABI 3 or later but FloxBar has no close_reason";
+  }
+
+  if constexpr (FloxBookSnapshotCarriesPresence<FloxBookSnapshot>)
+  {
+    EXPECT_GE(flox_capi_abi_version(), 4u)
+        << "FloxBookSnapshot carries has_bid and has_ask, which is the change ABI 4 "
+           "names; a library reporting "
+        << flox_capi_abi_version()
+        << " tells a consumer to read the struct it had before the flags existed";
+  }
+  else
+  {
+    EXPECT_LT(flox_capi_abi_version(), 4u)
+        << "the header claims ABI 4 or later but FloxBookSnapshot has no presence flags";
   }
 }

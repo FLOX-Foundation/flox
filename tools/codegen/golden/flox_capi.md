@@ -94,7 +94,7 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 
 ### abi_version
 
-- `FLOX_CAPI_ABI_VERSION` = `3`
+- `FLOX_CAPI_ABI_VERSION` = `4`
 
 ### feature_flags
 
@@ -192,6 +192,8 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 | `ask_qty_raw` | `int64_t` |
 | `mid_raw` | `int64_t` |
 | `spread_raw` | `int64_t` |
+| `has_bid` | `uint8_t` |
+| `has_ask` | `uint8_t` |
 
 ### `FloxBookData`
 

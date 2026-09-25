@@ -68,6 +68,8 @@ const std::vector<Field>& expectedFields()
       FLOX_FIELD(FloxBookSnapshot, ask_qty_raw),
       FLOX_FIELD(FloxBookSnapshot, mid_raw),
       FLOX_FIELD(FloxBookSnapshot, spread_raw),
+      FLOX_FIELD(FloxBookSnapshot, has_bid),
+      FLOX_FIELD(FloxBookSnapshot, has_ask),
 
       FLOX_FIELD(FloxSymbolContext, symbol_id),
       FLOX_FIELD(FloxSymbolContext, has_avg_entry_price),

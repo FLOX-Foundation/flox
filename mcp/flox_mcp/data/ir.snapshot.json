@@ -14576,7 +14576,7 @@
     {
       "group": "abi_version",
       "name": "FLOX_CAPI_ABI_VERSION",
-      "value": "3"
+      "value": "4"
     },
     {
       "group": "feature_flags",
@@ -15040,6 +15040,14 @@
         {
           "name": "spread_raw",
           "type": "int64_t"
+        },
+        {
+          "name": "has_bid",
+          "type": "uint8_t"
+        },
+        {
+          "name": "has_ask",
+          "type": "uint8_t"
         }
       ],
       "name": "FloxBookSnapshot"

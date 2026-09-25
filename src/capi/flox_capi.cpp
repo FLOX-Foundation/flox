@@ -813,6 +813,10 @@ void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolCo
 
   auto bid = c.book.bestBid();
   auto ask = c.book.bestAsk();
+  // The flags say whether a side has a best level; the price fields cannot,
+  // since a book may be quoted at exactly zero.
+  out->book.has_bid = bid ? 1u : 0u;
+  out->book.has_ask = ask ? 1u : 0u;
   out->book.bid_price_raw = bid ? bid->raw() : 0;
   // See BridgeStrategy::toBookSnapshot: the size at the best level comes
   // from bidAtPrice()/askAtPrice(), and 0 is reserved for an empty side.

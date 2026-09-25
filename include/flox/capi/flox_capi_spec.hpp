@@ -24,8 +24,9 @@
 // whenever a struct on this boundary changes shape, a function changes
 // signature, or an existing code space gains a meaning. 2: FloxSignal grew
 // range_lower / range_upper / liquidity. 3: FloxBar grew close_reason.
+// 4: FloxBookSnapshot grew has_bid / has_ask.
 // flox::export_macro(group="abi_version")
-#define FLOX_CAPI_ABI_VERSION 3
+#define FLOX_CAPI_ABI_VERSION 4
 
 #ifdef __cplusplus
 extern "C"
@@ -73,12 +74,14 @@ extern "C"
 
   typedef struct
   {
-    int64_t bid_price_raw;  // best bid, or 0 if absent
+    int64_t bid_price_raw;  // best bid; a price only when has_bid is 1, else 0
     int64_t bid_qty_raw;    // size resting at the best bid, 0 when the book cannot say
-    int64_t ask_price_raw;  // best ask, or 0 if absent
+    int64_t ask_price_raw;  // best ask; a price only when has_ask is 1, else 0
     int64_t ask_qty_raw;    // size resting at the best ask, 0 when the book cannot say
-    int64_t mid_raw;        // mid price, or 0
-    int64_t spread_raw;     // spread, or 0
+    int64_t mid_raw;        // mid price; a price only when both flags are 1, else 0
+    int64_t spread_raw;     // spread; a price only when both flags are 1, else 0
+    uint8_t has_bid;        // 1 when the bid side has a best level, at any price, 0 included
+    uint8_t has_ask;        // 1 when the ask side has a best level, at any price, 0 included
   } FloxBookSnapshot;
 
   typedef struct

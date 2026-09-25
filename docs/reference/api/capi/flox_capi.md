@@ -113,12 +113,18 @@ typedef void* FloxVenueStackHandle;
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `bid_price_raw` | `int64_t` | Best bid price × 1e8 (0 if absent) |
+| `bid_price_raw` | `int64_t` | Best bid price × 1e8; a price only when `has_bid` is 1, else 0 |
 | `bid_qty_raw` | `int64_t` | Size resting at the best bid × 1e8 (0 when the book cannot say) |
-| `ask_price_raw` | `int64_t` | Best ask price × 1e8 (0 if absent) |
+| `ask_price_raw` | `int64_t` | Best ask price × 1e8; a price only when `has_ask` is 1, else 0 |
 | `ask_qty_raw` | `int64_t` | Size resting at the best ask × 1e8 (0 when the book cannot say) |
-| `mid_raw` | `int64_t` | Mid price × 1e8 (0 if absent) |
-| `spread_raw` | `int64_t` | Spread × 1e8 (0 if absent) |
+| `mid_raw` | `int64_t` | Mid price × 1e8; a price only when both flags are 1, else 0 |
+| `spread_raw` | `int64_t` | Spread × 1e8; a price only when both flags are 1, else 0 |
+| `has_bid` | `uint8_t` | 1 when the bid side has a best level, at any price, 0 included |
+| `has_ask` | `uint8_t` | 1 when the ask side has a best level, at any price, 0 included |
+
+A price field of 0 is not "no quote": a book can be quoted at or below zero
+(see `flox_best_bid_raw_opt`). Read the flag before the price. The flags
+arrived with ABI version 4.
 
 ### `FloxBookData`
 

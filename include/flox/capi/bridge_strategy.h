@@ -317,6 +317,9 @@ class BridgeStrategy : public Strategy
     auto ask = c.book.bestAsk();
     if (bid)
     {
+      // The flag is what says a quote exists; the price field alone cannot,
+      // since a book may be quoted at exactly zero.
+      snap.has_bid = 1;
       snap.bid_price_raw = bid->raw();
       // The size at the best level, not 0: bestBid() answers the price and
       // bidAtPrice() the quantity resting at it. Hardcoding 0 here left a
@@ -325,6 +328,7 @@ class BridgeStrategy : public Strategy
     }
     if (ask)
     {
+      snap.has_ask = 1;
       snap.ask_price_raw = ask->raw();
       snap.ask_qty_raw = c.book.askAtPrice(*ask).raw();
     }

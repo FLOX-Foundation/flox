@@ -89,7 +89,7 @@ extern "C"
   // ============================================================
 
   // ABI version
-#define FLOX_CAPI_ABI_VERSION 3
+#define FLOX_CAPI_ABI_VERSION 4
 
   // Feature Flags
 #define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1
@@ -165,6 +165,8 @@ extern "C"
     int64_t ask_qty_raw;
     int64_t mid_raw;
     int64_t spread_raw;
+    uint8_t has_bid;
+    uint8_t has_ask;
   } FloxBookSnapshot;
 
   typedef struct
