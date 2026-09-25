@@ -21,11 +21,20 @@
 const path = require('path');
 const flox = require(path.join(__dirname, '..'));
 
-// Node warns once per dispatch that the strategy's exception was
+// Node warns once per dispatch (DEP0168) that the strategy's exception was
 // swallowed (a separate, documented asymmetry with sync mode -- see
-// docs/reference/node/strategy.md). That is expected and orthogonal to
-// what this test measures; silence it so CI output stays readable.
-process.on('warning', () => {});
+// docs/reference/node/strategy.md). That is expected and orthogonal to what
+// this test measures, but at N = 500,000 it is also 500,000 lines in a CI
+// log. A process.on('warning', ...) listener does NOT suppress it -- Node's
+// own default warning printer is a separate, always-installed listener on
+// the same event, so a user listener only adds a second one instead of
+// replacing it. process.noDeprecation is what --no-deprecation sets under
+// the hood; setting it here has the same effect without touching how CI
+// invokes this file. --force-node-api-uncaught-exceptions-policy=true was
+// considered instead, but it changes the very behaviour this test exists to
+// exercise: it turns each swallowed exception into an actually-uncaught one,
+// which crashes the process on the first of the 500,000 throws.
+process.noDeprecation = true;
 
 // See test_tsfn_backpressure.js -- ASan/UBSan/TSan redzones and shadow
 // memory make RSS not comparable to a plain build.
