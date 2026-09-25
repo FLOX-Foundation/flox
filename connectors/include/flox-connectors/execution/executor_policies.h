@@ -14,6 +14,7 @@
 
 #include <flox/common.h>
 #include <flox/log/log.h>
+#include <flox/util/concurrency/thread_body.h>
 #include <flox/util/rate_limiter.h>
 
 #include <algorithm>
@@ -178,11 +179,11 @@ class ActiveRateLimitPolicy
       {
         // Started on the first deferral: a WAIT-configured executor that never
         // hits its budget pays for no thread.
-        _sender = std::thread(
-            [this]
-            {
-              senderLoop();
-            });
+        _sender = flox::makeThread("rate-limit-sender",
+                                   [this]
+                                   {
+                                     senderLoop();
+                                   });
       }
       _deferred.push_back(Deferred{orderId, std::move(action), std::move(onRejected)});
     }
