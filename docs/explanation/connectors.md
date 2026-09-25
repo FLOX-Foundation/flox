@@ -23,9 +23,29 @@ The "Orders" column above means "submit/cancel/replace exists," not "every `Orde
 
 - `TimeInForce` and reduce-only are serialized on all four venues. Post-only maps to the venue's maker-only token (Bybit `PostOnly`, Bitget `post_only`, Hyperliquid `Alo`); `GTD` has no native equivalent on any of the four and is rejected rather than silently downgraded to `GTC`.
 - Stop-market, stop-limit, take-profit-market and take-profit-limit route through Bitget's plan-order endpoint and Bybit's conditional-order fields on the regular order endpoint. Hyperliquid has no trigger-order implementation in this connector and rejects them.
+- A conditional order carries its execution price. Bitget's plan-order endpoint takes an order type of its own, so `STOP_LIMIT` and `TAKE_PROFIT_LIMIT` are sent as plan orders of type `limit` with the `price` field the strategy asked for; the market variants are sent as `market` with no price at all. A limit-typed conditional order with no limit price is rejected rather than downgraded to a stop-market, which would silently remove the bound on what it may fill at.
+- Prices are formatted at the instrument's own precision, taken from `SymbolInfo::tickSize` in the registry the executor already holds. Venues validate a price against the symbol's precision and reject one with more digits than the instrument quotes, and rounding to a fixed digit count instead moves a protective trigger — on a symbol priced below the rounding granularity, to zero.
 - `TRAILING_STOP` and `ICEBERG` are not implemented on any of the three CEX connectors (Polymarket has no order-side concept of either) and are rejected at submit time. Bybit's trailing stop in particular lives on a different endpoint (`/v5/position/trading-stop`) than the rest of order submission, which this connector does not call.
 
 A rejected order publishes `OrderEventStatus::REJECTED` on the venue's `OrderExecutionBus` with a reason string identifying the unsupported type or flag — it never reaches the exchange as a same-looking order with the unsupported part silently dropped.
+
+## Threading: the transport and the rate-limit gate
+
+Order submission is called from the strategy / event-bus consumer thread. Nothing on that path may wait for a venue, because a venue that accepts the connection and then says nothing is indistinguishable from a healthy one until a timeout fires — and while the thread waits, the engine processes no events at all, market data included.
+
+Two components own that rule.
+
+**`CurlTransport` is asynchronous.** `post()` copies the request, hands it to a sender thread and returns; `curl_easy_perform` and both completion callbacks run on that thread. The outcome reaches the strategy the way it always did — as an `OrderEvent` on the `OrderExecutionBus`, published from the callback — so a submit that fails on the wire still produces a `REJECTED` with the transport's reason, and nothing is dropped quietly. The defaults in `CurlDispatchConfig` are one sender thread, so requests leave in the order they were handed over (a cancel submitted after a place is sent after it), and a bounded queue: a full queue answers `onError` instead of growing, because a venue that has stopped draining is a condition the caller has to hear about rather than a buffer to absorb.
+
+Timeouts are milliseconds throughout — `CurlTimeoutConfig` and `postWithTimeout()` map onto `CURLOPT_TIMEOUT_MS` / `CURLOPT_CONNECTTIMEOUT_MS`, so 1500 ms is 1500 ms and 250 ms is 250 ms. Second-resolution options truncated both to one second, which is the whole resolution an order path needs.
+
+**The rate-limit policy is a gate, not a check.** Every send path of every executor — submit, cancel, replace, and on Bitget also `setLeverage`, `submitOrderWithLeverage`, `placePosTpsl` and `modifyPosTpsl` — hands its request to `ActiveRateLimitPolicy::gate()`, which decides whether it may leave and when. A path that consults nothing is a path the venue budget does not cover, and the trailing stop walks `modifyPosTpsl` on every bar.
+
+- A request that takes a token is sent inline on the calling thread: unchanged ordering, unchanged latency, nothing queued.
+- `RateLimitPolicy::REJECT` and `CALLBACK` refuse it and publish `REJECTED_RATE_LIMIT` on the bus, so a cancel that never left the process cannot leave the tracker reporting the order live.
+- `RateLimitPolicy::WAIT` defers: the request is queued on the policy's own sender thread, `gate()` returns immediately, and the sender sends it once the bucket really has a token — re-checking the budget after every sleep, since several deferred requests wake into the same refill and only the one that takes the token may send. The deferral queue is bounded; past its depth the request is refused through the same `REJECTED_RATE_LIMIT` path as `REJECT`.
+
+Because a deferred request runs after its entry point returned, each send path owns what it needs — it copies the order, or re-reads the tracker — instead of borrowing from the caller's frame.
 
 ## The live fill contract
 
