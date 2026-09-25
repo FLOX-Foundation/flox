@@ -40,6 +40,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 using namespace flox;
@@ -139,8 +140,12 @@ TEST(RenkoSemanticsTest, UpBrickClosesAtTheBrickBoundary)
   EXPECT_GT(result[0].close.raw(), result[0].open.raw()) << "the move was up";
   EXPECT_EQ(result[0].close.raw() - result[0].open.raw(), Price::fromDouble(10.0).raw())
       << "a brick is exactly one brick tall";
-  EXPECT_GE(result[0].high.raw(), result[0].close.raw());
-  EXPECT_LE(result[0].low.raw(), result[0].open.raw());
+  // The extreme on the side of the move is the boundary, not the crossing
+  // trade's overshoot: the 111 the trade printed is carried by the grid the
+  // bricks after this one walk, so reporting it here would report the same
+  // point twice. The opposite side keeps the real retracement (95).
+  EXPECT_EQ(result[0].high, Price::fromDouble(110.0)) << "the high is the boundary, not 111";
+  EXPECT_EQ(result[0].low, Price::fromDouble(95.0)) << "the retracement actually traded";
 }
 
 // The crossing trade completes the brick, so it belongs to the brick it
@@ -224,10 +229,15 @@ TEST(RenkoSemanticsTest, DownBrickClosesAtTheBoundaryAndTheReversalOpensThere)
   EXPECT_EQ(result[0].open, Price::fromDouble(100.0));
   EXPECT_EQ(result[0].close, Price::fromDouble(90.0));
   EXPECT_LT(result[0].close.raw(), result[0].open.raw()) << "the move was down";
+  // Mirror of the up case: the low is the boundary the brick closed on, not
+  // the 89 the crossing trade printed; the high is the real 105 retracement.
+  EXPECT_EQ(result[0].low, Price::fromDouble(90.0)) << "the low is the boundary, not 89";
+  EXPECT_EQ(result[0].high, Price::fromDouble(105.0));
 
   EXPECT_EQ(result[1].open, Price::fromDouble(90.0));
   EXPECT_EQ(result[1].close, Price::fromDouble(100.0));
   EXPECT_GT(result[1].close.raw(), result[1].open.raw()) << "reversal: the next brick is up";
+  EXPECT_EQ(result[1].high, Price::fromDouble(100.0)) << "the up brick's high is its boundary";
 }
 
 // A gap leaves the next brick on the grid too. 100 -> 155 at brick size 10
@@ -264,6 +274,62 @@ TEST(RenkoSemanticsTest, GapLeavesTheNextBrickOpenAtTheBoundary)
     EXPECT_EQ(std::abs(result[i].close.raw() - result[i].open.raw()), Price::fromDouble(10.0).raw())
         << "brick " << i << " must be exactly one brick tall";
   }
+
+  // Nothing here was truncated -- the whole move was walked brick by brick --
+  // so every bar closes for the ordinary reason. Gap is reserved for the one
+  // bar that absorbs what a capped walk could not cover.
+  for (std::size_t i = 0; i < result.size(); ++i)
+  {
+    EXPECT_EQ(result[i].reason, BarCloseReason::Threshold) << "brick " << i;
+  }
+
+  // The synthesized bricks stand for a price path, not for activity: no trade
+  // happened at those prices.
+  for (std::size_t i = 1; i < 5; ++i)
+  {
+    EXPECT_EQ(result[i].tradeCount.raw(), 0) << "synthesized brick " << i;
+    EXPECT_EQ(result[i].volume, Volume{}) << "synthesized brick " << i;
+    EXPECT_EQ(result[i].buyVolume, Volume{}) << "synthesized brick " << i;
+  }
+
+  // The brick opened at 150 by the gapping trade starts empty -- that trade
+  // was counted in the brick it completed -- so the only trade it ever holds
+  // is the 161 that closed it.
+  EXPECT_EQ(result[5].tradeCount.raw(), 1);
+  EXPECT_EQ(result[5].volume, Volume::fromDouble(161.0));
+}
+
+// The brick that opens after a close starts empty. It carries no part of the
+// brick before it: not its trade count, not its notional, not its buy
+// notional. Brick 1 holds 100 and 111 (211 notional, both buys); brick 2 then
+// holds only 112 x 3 (a sell) and 121 x 5 (a buy).
+TEST(RenkoSemanticsTest, ReopenedBrickStartsEmpty)
+{
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);
+  Collector strat(result);
+  bus.subscribe(&strat);
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(100.0, 1.0, 0));
+  aggregator.onTrade(makeTrade(111.0, 1.0, 1));         // closes 100 -> 110
+  aggregator.onTrade(makeTrade(112.0, 3.0, 2, false));  // inside 110 -> 120
+  aggregator.onTrade(makeTrade(121.0, 5.0, 3));         // closes 110 -> 120
+
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 2u);
+  EXPECT_EQ(result[0].tradeCount.raw(), 2);
+  EXPECT_EQ(result[0].volume, Volume::fromDouble(100.0 + 111.0));
+  EXPECT_EQ(result[0].buyVolume, Volume::fromDouble(100.0 + 111.0));
+
+  EXPECT_EQ(result[1].open, Price::fromDouble(110.0));
+  EXPECT_EQ(result[1].tradeCount.raw(), 2) << "only the two trades that happened inside it";
+  EXPECT_EQ(result[1].volume, Volume::fromDouble(112.0 * 3.0 + 121.0 * 5.0));
+  EXPECT_EQ(result[1].buyVolume, Volume::fromDouble(121.0 * 5.0)) << "the 112 was a sell";
 }
 
 // Control: trades that stay inside the brick emit nothing, and stop() flushes
@@ -373,9 +439,42 @@ TEST(RenkoGapBoundTest, TheCapIsDocumentedAndTheRemainderIsMarked)
   ASSERT_LE(result.size(), RenkoBarPolicy::kMaxGapBricks);
   EXPECT_EQ(result.back().reason, BarCloseReason::Gap)
       << "the bar that absorbs the un-walked remainder must say so";
+  EXPECT_EQ(static_cast<std::uint8_t>(result.back().reason), 1)
+      << "the byte MmapBarWriter writes and the C ABI documents for Gap";
   EXPECT_EQ(result.back().close, Price::fromDouble(1000.0));
+
+  // Exactly one bar carries it, and it is the last: the bricks the walk did
+  // cover are ordinary closes, and marking them all Gap would leave a
+  // consumer unable to tell which bar actually lost the intermediate path.
+  std::size_t gapBars = 0;
+  std::size_t thresholdBars = 0;
+  for (const Bar& bar : result)
+  {
+    gapBars += bar.reason == BarCloseReason::Gap ? 1 : 0;
+    thresholdBars += bar.reason == BarCloseReason::Threshold ? 1 : 0;
+  }
+  EXPECT_EQ(gapBars, 1u) << "only the bar that absorbs the remainder carries Gap";
+  EXPECT_EQ(thresholdBars, result.size() - 1) << "every walked brick is an ordinary close";
 }
 #endif
+
+// The reason byte is ABI and on-disk format at once: MmapBarWriter writes Bar
+// as a raw struct, and the C header documents the same four values for
+// FloxBarData::close_reason (capi/flox_capi.h). Every other test in this file
+// compares the symbolic enumerator, which stays true under any renumbering --
+// so the numbers themselves are pinned here. Gap sits on 1, the value left
+// free for it, and cannot slide onto Forced.
+TEST(BarCloseReasonAbiTest, EnumeratorsKeepTheirDocumentedByteValues)
+{
+  EXPECT_EQ(static_cast<std::uint8_t>(BarCloseReason::Threshold), 0);
+  EXPECT_EQ(static_cast<std::uint8_t>(BarCloseReason::Gap), 1);
+  EXPECT_EQ(static_cast<std::uint8_t>(BarCloseReason::Forced), 2);
+  EXPECT_EQ(static_cast<std::uint8_t>(BarCloseReason::Warmup), 3);
+
+  EXPECT_NE(static_cast<std::uint8_t>(BarCloseReason::Gap),
+            static_cast<std::uint8_t>(BarCloseReason::Forced))
+      << "a bar closed for a gap and one flushed by stop() must stay distinguishable";
+}
 
 // ============================================================================
 // Time bars: a trade from an earlier bucket

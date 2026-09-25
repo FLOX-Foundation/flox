@@ -1,5 +1,11 @@
 """python/tests/test_renko_gap_bricks.py
 
+Close semantics of the numpy batch-aggregation path -- doAggregate in
+python/aggregator_bindings.h, the fourth copy of the close path and the only
+one no C++ binary compiles. Renko gap synthesis first (the case this module
+was written for), then the late-trade rule for time bars, which reaches this
+code through the same template and is otherwise untested from Python.
+
 `flox.aggregate_renko_bars` used to collapse a price gap spanning several
 brick sizes into a single zero-range bar, silently dropping every brick in
 between. This exercises the numpy batch-aggregation path (the one this
@@ -77,6 +83,58 @@ class RenkoGapBricksTest(unittest.TestCase):
         self.assertEqual(len(bars), 1)
         np.testing.assert_allclose(bars["open_raw"] / PRICE_SCALE, [100.0])
         np.testing.assert_allclose(bars["close_raw"] / PRICE_SCALE, [110.0])
+
+
+class TimeBarLateTradeTest(unittest.TestCase):
+    """A trade whose interval precedes the live bar's is dropped, not folded in.
+
+    Timestamps are chosen so the result cannot depend on where the interval
+    boundaries happen to fall: the two trades that belong to the live bar
+    carry the *same* timestamp (so they are in the same bucket whatever the
+    alignment), the late one sits 5 whole intervals behind it and the closing
+    one 5 intervals ahead. Anything finer would be a coin flip -- flox_py maps
+    unix nanoseconds onto an internal timebase whose origin is taken at import,
+    so a bucket edge lands at an arbitrary offset inside the minute.
+    """
+
+    INTERVAL_S = 60.0
+    LIVE_NS = 600_000_000_000     # the live bar's bucket
+    LATE_NS = 300_000_000_000     # 5 intervals earlier: closed and gone
+    NEXT_NS = 900_000_000_000     # 5 intervals later: closes the live bar
+
+    def test_trade_from_a_closed_bucket_is_dropped(self) -> None:
+        ts = np.array([self.LIVE_NS, self.LIVE_NS, self.LATE_NS, self.NEXT_NS], dtype=np.int64)
+        px = np.array([100.0, 105.0, 90.0, 106.0], dtype=np.float64)
+        qty = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64)
+        is_buy = np.array([1, 1, 1, 1], dtype=np.uint8)
+
+        bars = flox.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=self.INTERVAL_S)
+
+        # One closed bar; the trailing one opened by the 900s trade is never
+        # flushed, as for every other policy on this path.
+        self.assertEqual(len(bars), 1)
+        self.assertAlmostEqual(bars["close_raw"][0] / PRICE_SCALE, 105.0,
+                               msg="the late 90 must not become the close")
+        self.assertAlmostEqual(bars["high_raw"][0] / PRICE_SCALE, 105.0)
+        self.assertAlmostEqual(bars["low_raw"][0] / PRICE_SCALE, 100.0,
+                               msg="the late 90 must not become the low either")
+        self.assertEqual(bars["trade_count"][0], 2)
+        self.assertAlmostEqual(bars["volume_raw"][0] / PRICE_SCALE, 205.0)
+
+    def test_trade_from_the_live_bucket_is_folded(self) -> None:
+        # The limit of the rule: only an *earlier* bucket is late. A trade
+        # landing in the live bucket is ordinary data, whatever its arrival
+        # order, and dropping it would cost the bar a real trade.
+        ts = np.array([self.LIVE_NS, self.LIVE_NS, self.LIVE_NS, self.NEXT_NS], dtype=np.int64)
+        px = np.array([100.0, 105.0, 103.0, 106.0], dtype=np.float64)
+        qty = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float64)
+        is_buy = np.array([1, 1, 1, 1], dtype=np.uint8)
+
+        bars = flox.aggregate_time_bars(ts, px, qty, is_buy, interval_seconds=self.INTERVAL_S)
+
+        self.assertEqual(len(bars), 1)
+        self.assertAlmostEqual(bars["close_raw"][0] / PRICE_SCALE, 103.0)
+        self.assertEqual(bars["trade_count"][0], 3)
 
 
 if __name__ == "__main__":
