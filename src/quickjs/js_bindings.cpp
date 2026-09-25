@@ -6933,17 +6933,19 @@ static JSValue js_load_csv(JSContext* c, JSValueConst, int, JSValueConst* a)
     }
     try
     {
-      // Store ts in milliseconds — safe JS integer range (13 digits < 2^53).
-      // Nanoseconds (19 digits) would lose precision as float64.
+      // Store ts in nanoseconds, as a BigInt. Every other bar source here
+      // (the aggregators, the live onBar path) reports a nanosecond
+      // BigInt, and a millisecond Number both truncated everything below
+      // the millisecond and threw a TypeError the moment a script
+      // subtracted a CSV bar's ts from an aggregator bar's ts.
       int64_t ts_ns = detectTimestampNs(std::stoll(parts[0]));
-      int64_t ts_ms = ts_ns / 1'000'000LL;
       double o = std::stod(parts[1]);
       double h = std::stod(parts[2]);
       double l = std::stod(parts[3]);
       double cl = std::stod(parts[4]);
       double v = std::stod(parts[5]);
       JSValue o2 = JS_NewObject(c);
-      JS_SetPropertyStr(c, o2, "ts", JS_NewInt64(c, ts_ms));
+      JS_SetPropertyStr(c, o2, "ts", JS_NewBigInt64(c, ts_ns));
       JS_SetPropertyStr(c, o2, "open", JS_NewFloat64(c, o));
       JS_SetPropertyStr(c, o2, "high", JS_NewFloat64(c, h));
       JS_SetPropertyStr(c, o2, "low", JS_NewFloat64(c, l));

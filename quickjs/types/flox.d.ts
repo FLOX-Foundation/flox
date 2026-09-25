@@ -309,6 +309,20 @@ declare class CVD {
     static compute(open: number[], high: number[], low: number[], close: number[], volume: number[]): number[];
 }
 
+/**
+ * One OHLCV bar, as produced by `flox.loadCsv` and by the `flox.*Bars`
+ * aggregators. `ts` is the bar's start in nanoseconds, a BigInt on every
+ * path -- a Number cannot hold one exactly.
+ */
+interface Bar {
+    readonly ts: bigint;
+    readonly open: number;
+    readonly high: number;
+    readonly low: number;
+    readonly close: number;
+    readonly volume: number;
+}
+
 declare const flox: {
     register(strategy: Strategy): void;
     correlation(x: number[], y: number[]): number;
@@ -318,6 +332,8 @@ declare const flox: {
     permutationTest(group1: number[], group2: number[], numPermutations?: number): number;
     validateSegment(path: string): boolean;
     mergeSegments(inputDir: string, outputPath: string): boolean;
+    /** Read an OHLCV CSV. A ts column in s / ms / us / ns is scaled to ns. */
+    loadCsv(path: string): Bar[];
 };
 
 // ============================================================
