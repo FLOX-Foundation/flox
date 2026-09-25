@@ -5,6 +5,11 @@
 # buffer. Codon uses int sentinels for side/type to keep the FFI
 # call sites simple (0 = buy / market, 1 = sell / limit).
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_exec_twap_create(f64, u8, u32, u8, f64, int, u32, int) -> cobj
 from C import flox_exec_iceberg_create(f64, u8, u32, u8, f64, f64) -> cobj
 from C import flox_exec_pov_create(f64, u8, u32, u8, f64, f64, f64) -> cobj

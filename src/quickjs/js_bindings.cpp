@@ -1,4 +1,5 @@
 #include "js_bindings.h"
+#include "flox/capi/abi_check.hpp"
 #include "flox/capi/flox_capi.h"
 #include "js_cstring.h"
 
@@ -7034,8 +7035,26 @@ static JSValue js_load_csv(JSContext* c, JSValueConst, int, JSValueConst* a)
   return arr;
 }
 
-void registerFloxBindings(JSContext* ctx)
+static JSValue js_capi_abi_version(JSContext* c, JSValueConst, int, JSValueConst*)
 {
+  return JS_NewUint32(c, flox_capi_abi_version());
+}
+
+bool registerFloxBindings(JSContext* ctx)
+{
+  // Before anything else: an engine that loaded against the wrong
+  // library must not get a surface that reads wrong numbers. Registering
+  // nothing leaves every __flox_* global undefined, so a script that
+  // runs anyway fails on its first call rather than on a wrong price.
+  {
+    std::string abiMessage;
+    if (!capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &abiMessage))
+    {
+      JS_ThrowInternalError(ctx, "%s", abiMessage.c_str());
+      return false;
+    }
+  }
+
   // Register handle class. The id is process-global and allocated once
   // (see ensureHandleClassId); registering it against this engine's
   // runtime class table happens every time, as before.
@@ -7892,6 +7911,18 @@ void registerFloxBindings(JSContext* ctx)
 
   // CSV loader
   addGlobalFunc(ctx, "__flox_load_csv", js_load_csv, 1);
+
+  // The ABI pair the handshake above compared, so a script can report
+  // what the engine it is running inside was built against.
+  addGlobalFunc(ctx, "__flox_capi_abi_version", js_capi_abi_version, 0);
+  {
+    JSValue g = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, g, "__FLOX_CAPI_ABI_VERSION",
+                      JS_NewUint32(ctx, FLOX_CAPI_ABI_VERSION));
+    JS_FreeValue(ctx, g);
+  }
+
+  return true;
 }
 
 }  // namespace flox

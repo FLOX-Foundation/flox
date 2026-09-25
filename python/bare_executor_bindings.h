@@ -34,6 +34,7 @@
 #include "flox/backtest/venue_availability.h"
 #include "flox/common.h"
 #include "flox/execution/order.h"
+#include "order_type_bindings.h"
 
 #include <cstdint>
 #include <string>
@@ -50,34 +51,11 @@ inline void bindBareExecutor(py::module_& m)
   auto parseSide = [](const std::string& s) -> Side
   { return s == "buy" ? Side::BUY : Side::SELL; };
 
+  // The canonical table, not a copy of it: see
+  // python/order_type_bindings.h. An unrecognised name raises instead of
+  // quietly becoming a market order.
   auto parseOrderType = [](const std::string& s) -> OrderType
-  {
-    if (s == "limit")
-    {
-      return OrderType::LIMIT;
-    }
-    if (s == "stop_market")
-    {
-      return OrderType::STOP_MARKET;
-    }
-    if (s == "stop_limit")
-    {
-      return OrderType::STOP_LIMIT;
-    }
-    if (s == "take_profit_market")
-    {
-      return OrderType::TAKE_PROFIT_MARKET;
-    }
-    if (s == "take_profit_limit")
-    {
-      return OrderType::TAKE_PROFIT_LIMIT;
-    }
-    if (s == "trailing_stop")
-    {
-      return OrderType::TRAILING_STOP;
-    }
-    return OrderType::MARKET;
-  };
+  { return flox_py::parseOrderTypeStrict(s); };
 
   auto parseTif = [](const std::string& s) -> TimeInForce
   {
@@ -115,7 +93,7 @@ inline void bindBareExecutor(py::module_& m)
               const std::string& side, double price, double qty,
               const std::string& type, uint32_t symbol,
               const std::string& tif, bool reduce_only,
-              int64_t expires_at_ns, uint64_t account_id)
+              int64_t expires_at_ns, uint64_t account_id, double trigger)
           {
             Order order;
             order.id = id;
@@ -132,15 +110,35 @@ inline void bindBareExecutor(py::module_& m)
               order.expiresAfter = TimePoint(
                   std::chrono::nanoseconds(expires_at_ns));
             }
+
+            // The simulator arms a conditional order off
+            // Order::triggerPrice, which this binding never set: every
+            // stop and take-profit submitted here carried a zero trigger
+            // and fired on the first print. Same rule as the standalone
+            // SimulatedExecutor binding -- `price` doubles as the trigger
+            // for the market-style conditionals when the caller left
+            // `trigger` unset, and the limit-style pair needs both.
+            const bool isConditional = order.type == OrderType::STOP_MARKET ||
+                                       order.type == OrderType::STOP_LIMIT ||
+                                       order.type == OrderType::TAKE_PROFIT_MARKET ||
+                                       order.type == OrderType::TAKE_PROFIT_LIMIT;
+            if (isConditional)
+            {
+              order.triggerPrice =
+                  Price::fromDouble(trigger > 0.0 ? trigger : price);
+            }
             self.submitOrder(order);
           },
-          "Submit an order. side: buy|sell. type: market|limit|stop_market|"
-          "stop_limit|take_profit_market|take_profit_limit|trailing_stop. "
-          "tif: gtc|ioc|fok|gtd|post_only.",
+          "Submit an order. side: buy|sell. type: one of "
+          "flox_py.ORDER_TYPE_NAMES (market|limit|stop_market|stop_limit|"
+          "tp_market|tp_limit|trailing_stop|iceberg); anything else raises "
+          "ValueError. tif: gtc|ioc|fok|gtd|post_only. trigger: arming "
+          "price for the conditional types, defaulting to `price`.",
           py::arg("id"), py::arg("side"), py::arg("price"), py::arg("quantity"),
           py::arg("type") = "market", py::arg("symbol") = 1,
           py::arg("tif") = "gtc", py::arg("reduce_only") = false,
-          py::arg("expires_at_ns") = 0, py::arg("account_id") = 0)
+          py::arg("expires_at_ns") = 0, py::arg("account_id") = 0,
+          py::arg("trigger") = 0.0)
       .def(
           "cancel_order",
           [](flox::SimulatedExecutor& self, uint64_t order_id)

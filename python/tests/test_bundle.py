@@ -67,6 +67,68 @@ def _write_tape(dir_: Path) -> Path:
     return out
 
 
+_TAKE_PROFIT_STRATEGY_SOURCE = '''
+"""Hangs one take-profit above the market on the first trade."""
+import flox_py as flox
+
+
+class TakeProfitOnFirstTrade(flox.Strategy):
+    def __init__(self, symbols, qty=1.0):
+        super().__init__(symbols)
+        self.qty = qty
+        self._fired = False
+
+    def on_trade(self, ctx, trade):
+        if self._fired:
+            return
+        self._fired = True
+        self.take_profit_market(side="sell", trigger=100.75, qty=self.qty)
+'''
+
+
+class BundleConditionalOrderTests(unittest.TestCase):
+    """A bundled strategy's conditional-order signals have to reach the book.
+
+    The replay path turns each Signal into a SimulatedExecutor.submit_order
+    call, and both sides now spell the order types the same way. A
+    translation layer between them -- the one this fix removed -- is
+    invisible to every other bundle test, because every other bundled
+    strategy only ever calls market_buy(): the names it would rewrite
+    never appear. submit_order refuses an unknown name outright now, so a
+    reintroduced translation does not mis-route the order, it loses it.
+    """
+
+    def setUp(self) -> None:
+        self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-tp-test-"))
+        self.strat = self.work / "strategy.py"
+        self.strat.write_text(_TAKE_PROFIT_STRATEGY_SOURCE)
+        self.tape_dir = _write_tape(self.work)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.work, ignore_errors=True)
+
+    def test_a_take_profit_signal_reaches_the_executor(self) -> None:
+        res = bundle._run_strategy_against_tape(self.strat, self.tape_dir)
+
+        self.assertEqual(res["trade_count"], 3)
+        # The tape prints 100.00, 100.50, 101.00; the take-profit arms at
+        # 100.75 on the first of them and fires on the last, booking its
+        # own trigger rather than the print that crossed it.
+        self.assertEqual(res["fill_count"], 1, res)
+        fill = res["fills"][0]
+        self.assertEqual(fill["side"], "sell")
+        self.assertEqual(fill["price"], 100.75)
+        self.assertEqual(fill["quantity"], 1.0)
+
+    def test_the_same_signal_survives_a_pack_and_replay(self) -> None:
+        out = self.work / "bundle.tar"
+        bundle.pack_bundle(strategy=self.strat, tape=self.tape_dir, output=out)
+        res = bundle.replay_bundle(out)
+
+        self.assertEqual(res.actual["fill_count"], 1, res.actual)
+        self.assertEqual(res.actual["fills"], res.expected["fills"])
+
+
 class BundlePackTests(unittest.TestCase):
     def setUp(self) -> None:
         self.work = Path(tempfile.mkdtemp(prefix="flox-bundle-test-"))

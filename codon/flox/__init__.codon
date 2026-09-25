@@ -7,6 +7,11 @@
 #   from flox.indicators import ema, sma
 #   from flox.targets import future_return  # research-only labels
 
+# The C ABI handshake: importing flox.abi runs it, and a binding that
+# loaded against the wrong library exits before it can hand a strategy a
+# wrong number. Every module below that declares a `from C import` pulls
+# it in too, so importing a submodule directly runs it as well.
+from flox.abi import check_abi_version
 from flox.types import *
 from flox.context import *
 from flox.strategy import *

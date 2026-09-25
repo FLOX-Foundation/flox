@@ -102,7 +102,7 @@ Not routed (yet). These signal types fall through to the user's optional `on_sig
 - `CLOSE_POSITION`
 - `MODIFY`
 
-The gap is in the broker, not the simulator. `SimulatedExecutor.submit_order` already accepts `stop_market`, `stop_limit`, `take_profit_market`, `take_profit_limit`, and `trailing_stop` with `trigger` / `trailing_offset` / `trailing_bps` kwargs — `PaperBroker._route_signal` just does not map those signal types onto it yet. `flox_py.bundle` shows the full mapping if you want to route them yourself; otherwise keep paper-mode strategies on market and limit.
+The gap is in the broker, not the simulator. `SimulatedExecutor.submit_order` already accepts `stop_market`, `stop_limit`, `tp_market`, `tp_limit`, and `trailing_stop` with `trigger` / `trailing_offset` / `trailing_bps` kwargs — `PaperBroker._route_signal` just does not map those signal types onto it yet. `flox_py.bundle` shows the full mapping if you want to route them yourself; otherwise keep paper-mode strategies on market and limit.
 
 ## Hooking in ccxt for a live feed
 

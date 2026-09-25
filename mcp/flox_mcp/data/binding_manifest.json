@@ -4822,6 +4822,10 @@
         },
         {
           "kind": "function",
+          "name": "check_abi_version"
+        },
+        {
+          "kind": "function",
           "name": "chop"
         },
         {
@@ -26995,6 +26999,10 @@
         },
         {
           "kind": "function",
+          "name": "capiAbiVersion"
+        },
+        {
+          "kind": "function",
           "name": "cci"
         },
         {
@@ -33645,6 +33653,10 @@
         },
         {
           "kind": "function",
+          "name": "capi_abi_version"
+        },
+        {
+          "kind": "function",
           "name": "cci"
         },
         {
@@ -33738,6 +33750,14 @@
         {
           "kind": "function",
           "name": "obv"
+        },
+        {
+          "kind": "function",
+          "name": "order_type_code"
+        },
+        {
+          "kind": "function",
+          "name": "order_type_name"
         },
         {
           "kind": "function",
@@ -38880,6 +38900,10 @@
         {
           "kind": "global",
           "name": "__flox_book_spread"
+        },
+        {
+          "kind": "global",
+          "name": "__flox_capi_abi_version"
         },
         {
           "kind": "global",

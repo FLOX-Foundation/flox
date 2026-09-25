@@ -1,0 +1,41 @@
+# flox/abi.codon -- the C ABI version handshake, run once when the module
+# is imported.
+#
+# include/flox/capi/flox_capi.h asks every caller to "compare
+# FLOX_CAPI_ABI_VERSION against flox_capi_abi_version() once at startup
+# and refuse the mismatch". This binding is where that matters most: it
+# links a prebuilt libflox_capi against declarations transcribed from a
+# header that may not be the one that library was built from, and the
+# structs on that boundary carry no reserved tail -- the skew reads as
+# wrong numbers rather than a failed load.
+#
+# FLOX_CAPI_ABI_VERSION below mirrors the macro in flox_capi.h and moves
+# with it; tools/codegen emits the same constant into
+# tools/codegen/golden/flox_capi.codon from the same spec.
+
+from sys import exit
+
+from C import flox_capi_abi_version() -> u32
+
+FLOX_CAPI_ABI_VERSION: int = 3
+
+
+def check_abi_version():
+    """Exits the process when the header and the library disagree."""
+    runtime = int(flox_capi_abi_version())
+    if runtime != FLOX_CAPI_ABI_VERSION:
+        print(
+            "flox C ABI version mismatch: this binding was built against "
+            + "version "
+            + str(FLOX_CAPI_ABI_VERSION)
+            + ", the loaded flox library reports version "
+            + str(runtime)
+            + ". The structs on that boundary have no reserved tail, so "
+            + "continuing would read wrong numbers rather than fail. "
+            + "Rebuild the binding against the library it loads, or "
+            + "install the library the binding was built for."
+        )
+        exit(1)
+
+
+check_abi_version()

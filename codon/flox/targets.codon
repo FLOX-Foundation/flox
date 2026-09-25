@@ -4,6 +4,11 @@
 # visible at the call site. Feeding them into a live update loop is a
 # look-ahead-bias bug.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_target_future_return(Ptr[f64], int, int, Ptr[f64])
 from C import flox_target_future_ctc_volatility(Ptr[f64], int, int, Ptr[f64])
 from C import flox_target_future_linear_slope(Ptr[f64], int, int, Ptr[f64])

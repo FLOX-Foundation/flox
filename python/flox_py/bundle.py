@@ -188,28 +188,28 @@ def _run_strategy_against_tape(
             print(f"flox bundle: TraceRecorder unavailable: {e!r}", file=_sys.stderr)
             rec = None
 
-    # Signal.order_type strings follow the C-ABI signal enum
-    # ("tp_market" / "tp_limit"); SimulatedExecutor.submit_order parses
-    # the long names. Keys double as the accepted-signal filter; the
-    # index in this dict is also the bundle-local trace code (0=market,
-    # 1=limit predate the conditional types; the rest extend that
-    # convention in enum order).
-    _SIGNAL_TO_EXEC_TYPE = {
-        "market": "market",
-        "limit": "limit",
-        "stop_market": "stop_market",
-        "stop_limit": "stop_limit",
-        "tp_market": "take_profit_market",
-        "tp_limit": "take_profit_limit",
-        "trailing_stop": "trailing_stop",
-    }
+    # Signal.order_type and SimulatedExecutor.submit_order now spell the
+    # order types the same way, so this is the accepted-signal filter
+    # rather than a translation table. The index is also the
+    # bundle-local trace code (0=market, 1=limit predate the conditional
+    # types; the rest extend that convention in enum order), so the
+    # order is frozen: appending is safe, reordering is not.
+    _EXEC_ORDER_TYPES = (
+        "market",
+        "limit",
+        "stop_market",
+        "stop_limit",
+        "tp_market",
+        "tp_limit",
+        "trailing_stop",
+    )
     _TRACE_ORDER_TYPE = {
-        name: code for code, name in enumerate(_SIGNAL_TO_EXEC_TYPE)
+        name: code for code, name in enumerate(_EXEC_ORDER_TYPES)
     }
 
     def on_signal(sig: Any) -> None:
         order_type = (getattr(sig, "order_type", "") or "").lower()
-        if order_type not in _SIGNAL_TO_EXEC_TYPE:
+        if order_type not in _TRACE_ORDER_TYPE:
             return
         side = (getattr(sig, "side", "") or "").lower()
         oid = int(getattr(sig, "order_id", 0) or 0)
@@ -220,7 +220,7 @@ def _run_strategy_against_tape(
         qty = float(getattr(sig, "quantity", 0.0))
         sim.submit_order(
             oid, side, price, qty,
-            type=_SIGNAL_TO_EXEC_TYPE[order_type], symbol=int(sym),
+            type=order_type, symbol=int(sym),
             trigger=float(getattr(sig, "trigger_price", 0.0) or 0.0),
             trailing_offset=float(getattr(sig, "trailing_offset", 0.0) or 0.0),
             trailing_bps=int(getattr(sig, "trailing_bps", 0) or 0),

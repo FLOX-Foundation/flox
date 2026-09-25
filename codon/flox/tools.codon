@@ -7,6 +7,11 @@ from flox.layout import _FLOXBAR_OPEN_RAW, _FLOXBAR_HIGH_RAW, _FLOXBAR_LOW_RAW
 from flox.layout import _FLOXBAR_CLOSE_RAW, _FLOXBAR_VOLUME_RAW
 from flox.layout import _FLOXBAR_BUY_VOLUME_RAW, _FLOXBAR_TRADE_COUNT, _FLOXBAR_CLOSE_REASON
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_book_create(f64) -> cobj
 from C import flox_book_destroy(cobj)
 from C import flox_book_apply_snapshot(cobj, Ptr[f64], Ptr[f64], int,

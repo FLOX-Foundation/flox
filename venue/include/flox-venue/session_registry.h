@@ -532,6 +532,13 @@ class SessionRegistry
     {
       return ResendResult::TooOld;  // everything requested was already trimmed
     }
+    // Counted by the decision, before the first frame is queued: the writer
+    // thread delivers as it goes and a requester can have read the whole
+    // replay before a count taken after the loop was visible.
+    if (counters_ != nullptr)
+    {
+      counters_->resendServed.fetch_add(1, std::memory_order_relaxed);
+    }
     for (const auto& logged : stream->log)
     {
       if (logged.seq >= fromSeq)
@@ -542,10 +549,6 @@ class SessionRegistry
           stream->writer->enqueue(std::move(frame));
         }
       }
-    }
-    if (counters_ != nullptr)
-    {
-      counters_->resendServed.fetch_add(1, std::memory_order_relaxed);
     }
     return ResendResult::Served;
   }

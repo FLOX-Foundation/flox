@@ -153,6 +153,16 @@ if (flox_capi_abi_version() != FLOX_CAPI_ABI_VERSION) {
 }
 ```
 
+C++ callers get the same comparison from `flox/capi/abi_check.hpp`:
+`flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &message)` returns
+false on a mismatch and fills `message` with both versions. Every shipped
+binding runs it at load and refuses to come up on a mismatch -- the
+Python extension raises `ImportError`, the Node addon throws from
+`require`, `registerFloxBindings` registers nothing and leaves the
+refusal on the QuickJS context, and the Codon package exits. Each also
+exports the pair it compared (`CAPI_ABI_VERSION` / `capi_abi_version()`,
+`__FLOX_CAPI_ABI_VERSION` / `__flox_capi_abi_version()`).
+
 The shared library also carries a real `SOVERSION` now, so the platform
 loader refuses a mismatched major/minor before any of this runs.
 

@@ -37,6 +37,11 @@
 from flox.types import SCALE, TradeData, BarData, OrderEventData
 from flox.context import SymbolContext
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_strategy_replace_callbacks_p(cobj, cobj)
 from C import fwrite(cobj, int, int, cobj) -> int
 from C import fdopen(int, cobj) -> cobj

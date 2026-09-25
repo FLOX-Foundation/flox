@@ -37,7 +37,7 @@ executor.submit_order(id=1, side="buy", price=0.0, quantity=1.0,
 | `trailing_offset` | `float` | `0.0` | Fixed-price offset for `"trailing_stop"` |
 | `trailing_bps` | `int` | `0` | Bps offset for `"trailing_stop"` — set exactly one of the two |
 
-**Order types:** `"market"`, `"limit"`, `"stop_market"`, `"stop_limit"`, `"take_profit_market"`, `"take_profit_limit"`, `"trailing_stop"`.
+**Order types:** `"limit"`, `"market"`, `"stop_market"`, `"stop_limit"`, `"tp_market"`, `"tp_limit"`, `"trailing_stop"`, `"iceberg"` — the canonical set, also readable as `flox_py.ORDER_TYPE_NAMES`. Anything else raises `ValueError` naming the accepted set; it is never quietly turned into a market order.
 
 #### `cancel_order(order_id)`
 

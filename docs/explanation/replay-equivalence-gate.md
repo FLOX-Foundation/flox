@@ -17,7 +17,7 @@ All scenarios match → exit 0. Any divergence → exit 1, with a per-field diff
 | Scenario | Mechanics pinned |
 |---|---|
 | `market` | market entry on the first trade; the plain strategy → simulator → fill round trip |
-| `stop_loss` | entry + protective SELL `stop_market` armed mid-tape; trigger evaluation (`price <= trigger`) and triggered-market conversion |
+| `stop_loss` | entry + protective SELL `stop_market` armed mid-tape; trigger evaluation (`price <= trigger`) and the market-style fill a triggered stop takes |
 | `take_profit` | entry + SELL `take_profit_market`; the tape prints 101.25 against a 101.30 trigger before firing at 101.50, pinning the trigger boundary |
 | `trailing_stop` | entry + SELL `trailing_stop` with a fixed 0.30 offset; the trigger ratchets behind the rally and fires on the pullback |
 

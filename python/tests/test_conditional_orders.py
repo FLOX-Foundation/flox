@@ -1,7 +1,8 @@
 """Conditional orders through the Python SimulatedExecutor binding.
 
-submit_order accepts stop_market / stop_limit / take_profit_market /
-take_profit_limit / trailing_stop, and the trigger must actually reach
+submit_order accepts stop_market / stop_limit / tp_market / tp_limit /
+trailing_stop -- the names order_type_names.hpp defines -- and the
+trigger must actually reach
 Order::triggerPrice (respectively trailingOffset / trailingCallbackRate)
 on the C++ side. Before the fix the binding dropped the trigger: a BUY
 stop fired on the first trade at any price and a SELL stop never fired.
@@ -96,7 +97,7 @@ class TakeProfitTests(unittest.TestCase):
     def test_sell_tp_fires_at_or_above_trigger(self) -> None:
         d = _Sim()
         d.sim.submit_order(5, "sell", 101.3, 1.0,
-                           type="take_profit_market", symbol=1)
+                           type="tp_market", symbol=1)
         d.trade(101.25)
         self.assertEqual(d.fills(), [], "below trigger must not fire")
         d.trade(101.5)
@@ -108,6 +109,38 @@ class TakeProfitTests(unittest.TestCase):
         self.assertNotEqual(fills[0]["price"], 101.5,
                             "a take-profit collected the favourable print")
         self.assertEqual(fills[0]["price"], 101.3)
+
+
+class TakeProfitLimitTests(unittest.TestCase):
+    def test_trigger_converts_to_resting_limit(self) -> None:
+        # The limit-style half of the pair: firing is not filling. A
+        # take-profit limit that fires posts its own limit and waits for
+        # the book, and a fill that arrives before the book does means
+        # the order took the market-style path instead.
+        d = _Sim()
+        d.sim.submit_order(8, "sell", 101.0, 1.0, type="tp_limit",
+                           trigger=101.3, symbol=1)
+        d.trade(101.25)
+        self.assertEqual(d.fills(), [], "below trigger must not fire")
+        d.trade(101.5)  # trigger fires (101.5 >= 101.3); limit 101.0 goes live
+        self.assertEqual(d.fills(), [], "resting limit needs book liquidity")
+
+        d.sim.on_book_snapshot(1, [(101.2, 5.0)], [(101.4, 5.0)])
+        d.trade(101.2)
+        fills = d.fills()
+        self.assertEqual(len(fills), 1, fills)
+        self.assertGreaterEqual(fills[0]["price"], 101.0)
+        self.assertEqual(fills[0]["side"], "sell")
+
+    def test_it_does_not_fill_at_the_print_that_armed_it(self) -> None:
+        # Same order, book already in place: the print that crosses the
+        # trigger is what fires it, not what it is entitled to.
+        d = _Sim()
+        d.sim.on_book_snapshot(1, [(101.2, 5.0)], [(101.4, 5.0)])
+        d.sim.submit_order(9, "sell", 101.0, 1.0, type="tp_limit",
+                           trigger=101.3, symbol=1)
+        d.trade(101.0)
+        self.assertEqual(d.fills(), [], "fired below its trigger")
 
 
 class TrailingStopTests(unittest.TestCase):

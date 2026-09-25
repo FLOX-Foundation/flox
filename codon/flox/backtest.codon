@@ -7,6 +7,11 @@
 
 from flox.order_type_codes import order_type_code_from_str
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_simulated_executor_create() -> cobj
 from C import flox_simulated_executor_destroy(cobj)
 from C import flox_simulated_executor_submit_order(cobj, u64, u8, float, float, u8, u32)
