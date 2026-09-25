@@ -248,7 +248,9 @@ for b in bars:
 
 `AggBar` mirrors the C `FloxBar` struct: `*_raw` fields are fixed-point
 (divide by `1e8`), plus float accessors `open()`, `high()`, `low()`,
-`close()`, `volume()`, `buy_volume()`, and a plain `trade_count`.
+`close()`, `volume()`, `buy_volume()`, a plain `trade_count`, and
+`close_reason` -- why the bar closed (`0` threshold, `2` forced, `3` warmup;
+every bar this batch path returns closed on its own threshold, so `0` here).
 
 | Function | Threshold argument | Description |
 |----------|--------------------|--------------|

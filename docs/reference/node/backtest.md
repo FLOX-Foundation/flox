@@ -75,6 +75,9 @@ exec.setQueueModel('tob', 1);
 | `cancelOrder(orderId)` | Cancel an order |
 | `cancelAll(symbol)` | Cancel all orders for a symbol |
 | `onBar(symbol, closePrice)` | Feed a bar close |
+| `onBarOhlc(symbol, open, high, low, close)` | Feed a full OHLC bar: the manual bar path (see below) |
+| `beginBarCallbackWindow()` / `endBarCallbackWindow()` | Hold orders submitted between the two calls until the next bar's open |
+| `reset()` | Drop fills and run-scoped state, keeping installed configuration |
 | `onTrade(symbol, price, isBuy)` | Feed a trade |
 | `advanceClock(timestampNs)` | Advance simulated time |
 | `setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff)` | Configure slippage. `model` is one of `"none"`, `"fixed_ticks"`, `"fixed_bps"`, `"volume_impact"` |
@@ -84,6 +87,30 @@ exec.setQueueModel('tob', 1);
 `submitOrder`'s `type` is one of `"market"`, `"limit"`, `"stop_market"`,
 `"stop_limit"`, `"trailing_stop"`. The optional seventh argument carries
 `{ tif?: 'gtc' | 'ioc' | 'fok' | 'gtd' | 'post_only', reduceOnly?: boolean, expiresAtNs?: number }`.
+
+### The manual bar path
+
+`onBar` moves the market straight to a bar's close, so a caller driving
+`SimulatedExecutor` by hand never sees the bar's open or its intrabar
+extremes — a held order would match at a price that only exists because the
+bar has already happened. `onBarOhlc` is what `BacktestRunner.runBars` uses
+internally: it moves the market to the open first (releasing any order held
+from a `beginBarCallbackWindow`/`endBarCallbackWindow` pair at that price),
+then walks `low -> high -> close`.
+
+```javascript
+const exec = new flox.SimulatedExecutor();
+exec.advanceClock(60_000_000_000n);
+exec.onBarOhlc(1, 50000.0, 50500.0, 49800.0, 50200.0);
+
+exec.beginBarCallbackWindow();
+exec.submitOrder(1, 'buy', 0.0, 1.0, 'market', 1);
+exec.endBarCallbackWindow();
+// The order above is held, not matched, and releases at the next
+// onBarOhlc call's open.
+
+exec.reset(); // drop fills before a second hand-driven run
+```
 
 ---
 
