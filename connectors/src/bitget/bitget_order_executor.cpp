@@ -550,6 +550,20 @@ void BitgetOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const SymbolInfo& info)
 {
+  // A STOP_LIMIT is a stop plus the limit price that bounds what it may fill
+  // at; sending it as a plan order of type "market" with no price, which is
+  // what this path used to do for every conditional order, turns it into a
+  // stop-market at the venue and removes that bound with no rejection and no
+  // event. The limit price is what the strategy asked for, so an order that
+  // cannot carry it is rejected instead of approximated.
+  const bool isLimitPlan =
+      (order.type == OrderType::STOP_LIMIT || order.type == OrderType::TAKE_PROFIT_LIMIT);
+  if (isLimitPlan && order.price.raw() <= 0)
+  {
+    publishRejection(order, "conditional limit order without a limit price");
+    return;
+  }
+
   const int decimals = decimalsForTick(info.tickSize);
 
   std::string body;
@@ -580,7 +594,12 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
 
   appendPositionFields(body, order, _params);
 
-  body.append("\"orderType\":\"market\",");
+  body.append("\"orderType\":\"").append(isLimitPlan ? "limit" : "market").append("\",");
+
+  if (isLimitPlan)
+  {
+    body.append("\"price\":\"").append(trimDouble(order.price.toDouble(), decimals)).append("\",");
+  }
 
   body.append("\"clientOid\":\"").append(std::to_string(order.id)).append("\"}");
 
