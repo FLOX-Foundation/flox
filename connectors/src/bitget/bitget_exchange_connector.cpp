@@ -661,19 +661,28 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
 
         // The venue ships the checksum as a signed 32-bit integer; the
         // comparison below is on the unsigned CRC, so the sign is just a
-        // reinterpretation of the same 32 bits.
+        // reinterpretation of the same 32 bits. A checksum of 0 is the
+        // venue saying it computed none for this push (the depth-limited
+        // channels carry the field that way), not a CRC to verify against:
+        // a real CRC32 of a ladder is 0 with probability 2^-32, and that
+        // one push is merely unverified, never wrongly dropped.
         if (auto csEl = d["checksum"]; !csEl.error())
         {
-          if (int64_t v{}; csEl.get(v) == simdjson::SUCCESS)
+          int64_t v{};
+          if (csEl.get(v) != simdjson::SUCCESS)
+          {
+            v = 0;
+            if (std::string_view sv{}; csEl.get(sv) == simdjson::SUCCESS)
+            {
+              if (auto parsed = util::parseInt64(sv))
+              {
+                v = *parsed;
+              }
+            }
+          }
+          if (v != 0)
           {
             venueChecksum = static_cast<uint32_t>(static_cast<int32_t>(v));
-          }
-          else if (std::string_view sv{}; csEl.get(sv) == simdjson::SUCCESS)
-          {
-            if (auto parsed = util::parseInt64(sv))
-            {
-              venueChecksum = static_cast<uint32_t>(static_cast<int32_t>(*parsed));
-            }
           }
         }
       }
