@@ -421,7 +421,15 @@ profile does not allow.
 - **Iceberg.** `visibleQuantity` shows a peak and hides the rest; the hidden
   reserve is real liquidity for matching and stays out of the public feed.
 - **Peg.** `PegRef::{Bid,Ask,Mid}` plus a signed offset; repriced at each
-  submit boundary, tick-aligned, clamped so it never crosses.
+  submit boundary, tick-aligned, clamped so it never crosses. The clamp steps
+  back by one tick, so an instrument that declares **no tick**
+  (`tickSize == 0`) cannot carry a peg at all: it is refused at admission with
+  `PegRequiresTick`. Taking it instead would put the order ON the opposite
+  touch -- the clamp's distance being zero -- and a reprice re-rests through
+  `addResting`, which runs no matching pass, so the instrument would quote
+  bid == ask and nobody could trade out of it. The reason is its own rather
+  than `TickSizeViolation`: no price the client could send would help, because
+  what is missing belongs to the instrument.
 - **OCO.** `ocoGroup`; a fill on one leg cancels its siblings. A leg that
   leaves the venue by any other door -- refused at admission, refused by the
   matcher, canceled as an unfilled residual, expired, pulled -- leaves the

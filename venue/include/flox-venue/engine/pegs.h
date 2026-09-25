@@ -78,15 +78,33 @@ class PegBook
     int64_t target = refRaw + offsetRaw;
     if (m.tickRaw > 0)
     {
-      target = target / m.tickRaw * m.tickRaw;  // align down to tick
+      // Align DOWN, which for a negative target is not what truncation does:
+      // integer division rounds toward zero, so a target below zero aligned
+      // up -- the one direction the never-cross clamp below must not be
+      // handed a value from.
+      int64_t levels = target / m.tickRaw;
+      if (target % m.tickRaw != 0 && target < 0)
+      {
+        --levels;
+      }
+      target = levels * m.tickRaw;
     }
+    // What the clamp steps back by. A declared tick is the instrument's
+    // minimum price increment; with none declared the smallest step that
+    // still leaves the peg strictly inside the touch is one raw unit.
+    // Stepping by zero puts the order ON the opposite touch, and repeg()
+    // re-rests it there through addResting, which runs no matching pass --
+    // bid == ask, a locked book. Admission refuses a peg on a tick-less
+    // instrument (PegRequiresTick), so this is the second line, for a peg
+    // restored from a snapshot an older build wrote.
+    const int64_t stepRaw = m.tickRaw > 0 ? m.tickRaw : 1;
     if (side == Side::BUY && m.hasAsk && target >= m.askRaw)
     {
-      target = m.askRaw - m.tickRaw;  // never cross
+      target = m.askRaw - stepRaw;  // never cross
     }
     if (side == Side::SELL && m.hasBid && target <= m.bidRaw)
     {
-      target = m.bidRaw + m.tickRaw;
+      target = m.bidRaw + stepRaw;
     }
     if (m.minPriceRaw > 0 && target < m.minPriceRaw)
     {
