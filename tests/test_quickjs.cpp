@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <thread>
 #include <vector>
 
@@ -2589,4 +2590,321 @@ TEST(JsBarAggregatorUnits, TimeBarsIntervalIsNanoseconds)
   EXPECT_EQ(globalAsString(jsStrat, "haCount"), "2")
       << "heikinBars buckets on the same nanosecond interval";
   EXPECT_EQ(globalAsString(jsStrat, "haFirstTs"), "0");
+}
+
+// ============================================================
+// Engine.run — the signal timeline, at nanosecond scale
+// ============================================================
+//
+// EngineRunAcceptsSignalsTimestampedFromBars above proves the scale change
+// did not break the Engine, but not that the timeline is right: with two
+// bars and two signals, Engine.run's unconditional trailing flush (the
+// `while (sigIdx < sorted.length)` after the merged-bar loop) submits
+// whatever the main loop failed to reach, and the round trip closes anyway.
+// A merged timeline divided down to milliseconds, a clock fed
+// milliseconds, or a `<` where the boundary needs `<=` all hid behind it.
+//
+// The fixture below makes the timeline observable. Five bars, each with a
+// different close, and a market order fills at the close of the bar it is
+// submitted against -- so the bar a signal lands on is readable straight
+// off the PnL, and stats.startTimeNs / endTimeNs report the executor clock
+// at the first and last fill, which is the bar timestamp in nanoseconds.
+
+namespace
+{
+
+// Five one-minute bars from a nanosecond-precision timestamp far above
+// 2^53. The closes rise by 10, 20, 30, 40, so a signal landing one bar
+// early or one bar late gives a different PnL in either direction.
+constexpr const char* kTimelineTs0 = "1776606960123456789";
+constexpr const char* kTimelineTs1 = "1776607020123456789";
+constexpr const char* kTimelineTs2 = "1776607080123456789";
+constexpr const char* kTimelineTs3 = "1776607140123456789";
+constexpr const char* kTimelineTs4 = "1776607200123456789";
+
+std::string timelineCsvContent()
+{
+  return std::string("timestamp,open,high,low,close,volume\n") +
+         kTimelineTs0 + ",100.0,100.0,100.0,100.0,1.0\n" +
+         kTimelineTs1 + ",110.0,110.0,110.0,110.0,1.0\n" +
+         kTimelineTs2 + ",130.0,130.0,130.0,130.0,1.0\n" +
+         kTimelineTs3 + ",160.0,160.0,160.0,160.0,1.0\n" +
+         kTimelineTs4 + ",200.0,200.0,200.0,200.0,1.0\n";
+}
+
+}  // namespace
+
+// A signal timestamped exactly on a bar is applied on that bar -- the
+// `<=` boundary -- and the executor clock it fills under is that bar's
+// nanosecond timestamp.
+TEST(JsBarTimestampUnits, EngineRunAppliesASignalOnTheBarItIsTimestampedOn)
+{
+  TempCsvFile csv(timelineCsvContent());
+  TempJsFile script(withCsvPath(csv.path(), R"(
+    var engine = new Engine(10000.0, 0.0);
+    engine.loadCsv(CSV_PATH);
+    var bars = engine._symbols["__default__"];
+    var signals = new SignalBuilder();
+    signals.buy(bars[1].ts, 1.0);
+    signals.sell(bars[3].ts, 1.0);
+    var stats = engine.run(signals);
+    var totalTrades = stats.totalTrades;
+    var netPnl = stats.netPnl.toFixed(4);
+    var finalCapital = stats.finalCapital.toFixed(4);
+    var startTimeNs = String(stats.startTimeNs);
+    var endTimeNs = String(stats.endTimeNs);
+  )"));
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "totalTrades"), "1");
+  // Bought at bar 1's close of 110, sold at bar 3's close of 160. One bar
+  // early would be 100 -> 130 (30); one bar late, 130 -> 200 (70).
+  EXPECT_EQ(globalAsString(jsStrat, "netPnl"), "50.0000")
+      << "the fill prices are the closes of bars 1 and 3, not of their neighbours";
+  EXPECT_EQ(globalAsString(jsStrat, "finalCapital"), "10050.0000");
+  EXPECT_EQ(globalAsString(jsStrat, "startTimeNs"), kTimelineTs1)
+      << "the executor clock at the first fill is bar 1's nanosecond timestamp";
+  EXPECT_EQ(globalAsString(jsStrat, "endTimeNs"), kTimelineTs3)
+      << "and at the last fill, bar 3's -- both in nanoseconds, undivided";
+}
+
+// The other side of the same boundary: one nanosecond past a bar is not
+// that bar. The signal waits for the next one, which a millisecond-scaled
+// timeline could never distinguish.
+TEST(JsBarTimestampUnits, EngineRunHoldsASignalOneNanosecondPastABarUntilTheNextBar)
+{
+  TempCsvFile csv(timelineCsvContent());
+  TempJsFile script(withCsvPath(csv.path(), R"(
+    var engine = new Engine(10000.0, 0.0);
+    engine.loadCsv(CSV_PATH);
+    var bars = engine._symbols["__default__"];
+    var signals = new SignalBuilder();
+    signals.buy(bars[1].ts + 1n, 1.0);
+    signals.sell(bars[3].ts, 1.0);
+    var stats = engine.run(signals);
+    var totalTrades = stats.totalTrades;
+    var netPnl = stats.netPnl.toFixed(4);
+    var startTimeNs = String(stats.startTimeNs);
+    var endTimeNs = String(stats.endTimeNs);
+  )"));
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "totalTrades"), "1");
+  // The buy slid to bar 2 and filled at 130; the sell still lands on bar 3
+  // at 160.
+  EXPECT_EQ(globalAsString(jsStrat, "netPnl"), "30.0000");
+  EXPECT_EQ(globalAsString(jsStrat, "startTimeNs"), kTimelineTs2)
+      << "one nanosecond after bar 1 is not bar 1";
+  EXPECT_EQ(globalAsString(jsStrat, "endTimeNs"), kTimelineTs3);
+}
+
+// SignalBuilder is the one place a script hands the Engine a timestamp it
+// did not get from a bar, so it is the one place a Number can still enter
+// the timeline. It normalises whatever it is given to a nanosecond BigInt;
+// without that, a Number and a BigInt sit side by side in the same sorted
+// list and the comparisons downstream are between mixed types.
+TEST(JsBarTimestampUnits, SignalBuilderNormalisesEveryTimestampToNanosecondBigInt)
+{
+  TempJsFile script(R"(
+    var signals = new SignalBuilder();
+    signals.buy(2000000000, 1.0);          // a plain Number
+    signals.sell(1000000000n, 1.0);        // a BigInt
+    signals.limitBuy(1500000000, 99.0, 1.0);
+    var sorted = signals.sorted();
+    var count = sorted.length;
+    var types = sorted.map(function(s) { return typeof s.tsNs; }).join(",");
+    var order = sorted.map(function(s) { return String(s.tsNs); }).join(",");
+    var sides = sorted.map(function(s) { return String(s.side); }).join(",");
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "count"), "3");
+  EXPECT_EQ(globalAsString(jsStrat, "types"), "bigint,bigint,bigint")
+      << "a Number handed to buy/sell/limitBuy becomes a nanosecond BigInt";
+  EXPECT_EQ(globalAsString(jsStrat, "order"), "1000000000,1500000000,2000000000");
+  EXPECT_EQ(globalAsString(jsStrat, "sides"), "1,0,0")
+      << "the BigInt-timestamped sell sorts ahead of both Number-timestamped entries";
+}
+
+// loadCsv's column-unit detection: the same instant written in seconds,
+// milliseconds, microseconds and nanoseconds must all arrive as the same
+// nanosecond BigInt. Every other CSV in this file is already nanoseconds,
+// which is the one branch of the ladder that multiplies by nothing.
+TEST(JsBarTimestampUnits, LoadCsvScalesSecondsMillisecondsAndMicrosecondsToNanoseconds)
+{
+  auto csvWith = [](const char* ts)
+  {
+    return std::string("timestamp,open,high,low,close,volume\n") + ts +
+           ",100.0,101.0,99.0,100.5,3.0\n";
+  };
+  TempCsvFile seconds(csvWith("1776606960"));
+  TempCsvFile millis(csvWith("1776606960000"));
+  TempCsvFile micros(csvWith("1776606960000000"));
+  TempCsvFile nanos(csvWith("1776606960000000000"));
+
+  std::string prologue;
+  auto bind = [&prologue](const char* name, const TempCsvFile& file)
+  { prologue += "var " + std::string(name) + " = \"" + file.path() + "\";\n"; };
+  bind("S", seconds);
+  bind("MS", millis);
+  bind("US", micros);
+  bind("NS", nanos);
+
+  TempJsFile script(prologue + R"(
+    function firstTs(path) { return String(flox.loadCsv(path)[0].ts); }
+    var fromSeconds = firstTs(S);
+    var fromMillis = firstTs(MS);
+    var fromMicros = firstTs(US);
+    var fromNanos = firstTs(NS);
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  const std::string expected = "1776606960000000000";
+  EXPECT_EQ(globalAsString(jsStrat, "fromSeconds"), expected)
+      << "a seconds column is multiplied by 1e9";
+  EXPECT_EQ(globalAsString(jsStrat, "fromMillis"), expected)
+      << "a milliseconds column is multiplied by 1e6";
+  EXPECT_EQ(globalAsString(jsStrat, "fromMicros"), expected)
+      << "a microseconds column is multiplied by 1e3";
+  EXPECT_EQ(globalAsString(jsStrat, "fromNanos"), expected)
+      << "a nanoseconds column is passed through";
+}
+
+// tickBars closes on a trade count, not on an interval, so nothing about
+// its last argument is a nanosecond and nothing may convert it. Counting
+// the bars and the trades inside them is what says the count arrived
+// intact -- a converted count truncates to zero and closes a bar per
+// trade.
+TEST(JsBarAggregatorUnits, TickBarsCloseOnTheTradeCountTheyAreGiven)
+{
+  TempJsFile script(R"(
+    var ts  = [1000000000, 2000000000, 3000000000, 4000000000,
+               5000000000, 6000000000, 7000000000];
+    var px  = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0];
+    var qty = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+    var side = [0, 1, 0, 1, 0, 1, 0];
+    var bars = flox.tickBars(ts, px, qty, side, 3);
+    var count = bars.length;
+    var trades = bars.map(function(b) { return String(b.trades); }).join(",");
+    var starts = bars.map(function(b) { return String(b.ts); }).join(",");
+    var opens = bars.map(function(b) { return String(b.open); }).join(",");
+    var closes = bars.map(function(b) { return String(b.close); }).join(",");
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "count"), "2")
+      << "seven trades, three to a bar: two bars close and the seventh opens a third";
+  EXPECT_EQ(globalAsString(jsStrat, "trades"), "3,3")
+      << "each closed bar holds exactly the requested trade count";
+  EXPECT_EQ(globalAsString(jsStrat, "starts"), "1000000000,4000000000");
+  EXPECT_EQ(globalAsString(jsStrat, "opens"), "10,13");
+  EXPECT_EQ(globalAsString(jsStrat, "closes"), "12,15");
+}
+
+// The nanosecond interval crosses the C ABI as a double of seconds, and
+// the division does not always round back up: 1'000'000'007 ns / 1e9,
+// multiplied out again and truncated, lands on 1'000'000'006. An interval
+// one nanosecond short moves every bucket boundary, so trades placed on
+// either side of the first boundary end up in different bars. An interval
+// of a round minute, which is what every other test here uses, divides
+// exactly and can never show this.
+TEST(JsBarAggregatorUnits, TimeBarsIntervalSurvivesADivisionThatDoesNotRoundBack)
+{
+  TempJsFile script(R"(
+    var I = 1000000007;
+    // One trade before the first boundary, one exactly on it, one on the
+    // second. With the interval one nanosecond short, the trade at I - 1
+    // moves into the second bucket and the bars come back 1,2 instead of
+    // 2,1.
+    var ts  = [0, I - 1, I, 2 * I];
+    var px  = [10.0, 11.0, 12.0, 13.0];
+    var qty = [1.0, 1.0, 1.0, 1.0];
+    var side = [0, 0, 0, 0];
+    var bars = flox.timeBars(ts, px, qty, side, I);
+    var count = bars.length;
+    var starts = bars.map(function(b) { return String(b.ts); }).join(",");
+    var trades = bars.map(function(b) { return String(b.trades); }).join(",");
+    var closes = bars.map(function(b) { return String(b.close); }).join(",");
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "count"), "2");
+  EXPECT_EQ(globalAsString(jsStrat, "starts"), "0,1000000007")
+      << "the second bucket opens at exactly one interval, not one nanosecond early";
+  EXPECT_EQ(globalAsString(jsStrat, "trades"), "2,1")
+      << "the trade at I - 1 belongs to the first bucket";
+  EXPECT_EQ(globalAsString(jsStrat, "closes"), "11,12");
+}
+
+// ============================================================
+// The shipped example, checked on its numbers
+// ============================================================
+//
+// CI runs every quickjs/examples/*.js through flox_js_runner and looks at
+// the exit code. An example that scales a bar timestamp the old way still
+// exits 0 -- it just backtests against the wrong clock, silently, which is
+// precisely the mistake a reader copies out of an example. This runs the
+// example's own source and reads the numbers it arrived at.
+TEST(JsBarTimestampUnits, BacktestSmaExampleComputesItsPublishedNumbers)
+{
+  const std::filesystem::path repoRoot{FLOX_REPO_ROOT};
+  const std::filesystem::path examplePath = repoRoot / "quickjs" / "examples" / "backtest_sma.js";
+  ASSERT_TRUE(std::filesystem::exists(examplePath)) << examplePath;
+
+  std::ifstream in(examplePath);
+  std::stringstream body;
+  body << in.rdbuf();
+
+  // The example prints its report with console.log; silence it for the
+  // duration and read the globals it leaves behind instead.
+  TempJsFile script("var __log = console.log; console.log = function() {};\n" + body.str() +
+                    R"(
+    console.log = __log;
+    var exBars = String(n);
+    var exSignals = String(signals.length);
+    var exTrades = String(stats.totalTrades);
+    var exNetPnl = stats.netPnl.toFixed(4);
+    var exFinalCapital = stats.finalCapital.toFixed(2);
+    var exStartTimeNs = String(stats.startTimeNs);
+    var exEndTimeNs = String(stats.endTimeNs);
+    var exFirstBarTs = String(bars[0].ts);
+  )");
+
+  // The example resolves its CSV relative to the repo root.
+  struct CwdGuard
+  {
+    std::filesystem::path previous;
+    explicit CwdGuard(const std::filesystem::path& next) : previous(std::filesystem::current_path())
+    {
+      std::filesystem::current_path(next);
+    }
+    ~CwdGuard() { std::filesystem::current_path(previous); }
+  } cwd{repoRoot};
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "exBars"), "3000");
+  EXPECT_EQ(globalAsString(jsStrat, "exFirstBarTs"), "1776606960000000000")
+      << "the example reads the CSV's millisecond column as nanoseconds";
+  EXPECT_EQ(globalAsString(jsStrat, "exSignals"), "117");
+  EXPECT_EQ(globalAsString(jsStrat, "exTrades"), "116")
+      << "a rescaled signal timestamp submits every signal against the first bar instead";
+  EXPECT_EQ(globalAsString(jsStrat, "exNetPnl"), "-95.4962");
+  EXPECT_EQ(globalAsString(jsStrat, "exFinalCapital"), "9904.50");
+  EXPECT_EQ(globalAsString(jsStrat, "exStartTimeNs"), "1776608700000000000")
+      << "the first fill happens on the bar the first crossover names, in nanoseconds";
+  EXPECT_EQ(globalAsString(jsStrat, "exEndTimeNs"), "1776786540000000000");
 }

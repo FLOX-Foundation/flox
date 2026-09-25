@@ -174,3 +174,60 @@ TEST(CApiBookSnapshot, BestLevelSizeFollowsTheBookAcrossUpdates)
   EXPECT_EQ(captured.fromEvent.bid_qty_raw, Quantity::fromDouble(7.0).raw())
       << "the size reported is the one at the new best level";
 }
+
+// The same snapshot is reachable a second way: flox_get_symbol_context
+// builds a FloxSymbolContext on demand, for a C consumer that wants the
+// book between events rather than inside a callback. It has its own copy
+// of the best-level lookup, so it needs its own test -- reverting only
+// this half of the fix left every callback-driven test green.
+TEST(CApiBookSnapshot, SymbolContextQueryReportsTheBestLevelSizes)
+{
+  SymbolRegistry registry;
+  SymbolId sym = addSymbol(registry);
+
+  FloxStrategyCallbacks cb{};
+  auto bridge = std::make_unique<BridgeStrategy>(1, std::vector<SymbolId>{sym}, registry, cb);
+  auto handle = static_cast<FloxStrategyHandle>(bridge.get());
+
+  BookUpdatePool pool;
+  auto update = makeSnapshot(pool, sym,
+                             {{Price::fromDouble(100.00), Quantity::fromDouble(2.5)},
+                              {Price::fromDouble(99.99), Quantity::fromDouble(7.0)}},
+                             {{Price::fromDouble(100.05), Quantity::fromDouble(1.25)},
+                              {Price::fromDouble(100.06), Quantity::fromDouble(9.0)}});
+  bridge->onBookUpdate(*update);
+
+  FloxSymbolContext ctx{};
+  flox_get_symbol_context(handle, sym, &ctx);
+
+  EXPECT_EQ(ctx.symbol_id, sym);
+  EXPECT_EQ(ctx.book.bid_price_raw, Price::fromDouble(100.00).raw());
+  EXPECT_EQ(ctx.book.ask_price_raw, Price::fromDouble(100.05).raw());
+  EXPECT_EQ(ctx.book.bid_qty_raw, Quantity::fromDouble(2.5).raw())
+      << "the size resting at the best bid, queried outside a callback";
+  EXPECT_EQ(ctx.book.ask_qty_raw, Quantity::fromDouble(1.25).raw())
+      << "the size resting at the best ask, queried outside a callback";
+}
+
+TEST(CApiBookSnapshot, SymbolContextQueryReportsZeroForAnEmptySide)
+{
+  SymbolRegistry registry;
+  SymbolId sym = addSymbol(registry);
+
+  FloxStrategyCallbacks cb{};
+  auto bridge = std::make_unique<BridgeStrategy>(1, std::vector<SymbolId>{sym}, registry, cb);
+  auto handle = static_cast<FloxStrategyHandle>(bridge.get());
+
+  BookUpdatePool pool;
+  auto update =
+      makeSnapshot(pool, sym, {{Price::fromDouble(100.00), Quantity::fromDouble(3.0)}}, {});
+  bridge->onBookUpdate(*update);
+
+  FloxSymbolContext ctx{};
+  flox_get_symbol_context(handle, sym, &ctx);
+
+  EXPECT_EQ(ctx.book.bid_qty_raw, Quantity::fromDouble(3.0).raw());
+  EXPECT_EQ(ctx.book.ask_price_raw, 0);
+  EXPECT_EQ(ctx.book.ask_qty_raw, 0)
+      << "0 means the book cannot say, which here is the truth";
+}

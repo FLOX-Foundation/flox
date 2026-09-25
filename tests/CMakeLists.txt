@@ -355,6 +355,11 @@ endif()
 if(FLOX_BUILD_QUICKJS)
   add_flox_test(test_quickjs)
   target_link_libraries(test_quickjs PRIVATE flox_quickjs)
+  # One test runs quickjs/examples/backtest_sma.js and checks the numbers it
+  # computes. The example loads its CSV by a path relative to the repo root,
+  # so the test has to know where that is.
+  target_compile_definitions(test_quickjs PRIVATE
+    FLOX_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
 endif()
 
 if(FLOX_ENABLE_CPU_AFFINITY)

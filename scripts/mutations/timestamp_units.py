@@ -233,7 +233,9 @@ MUTATIONS: list[Mutation] = [
         why="the seconds-to-ns and microseconds-to-ns multipliers are swapped (x1000 where the "
             "comment says seconds, x1e9 where it says microseconds) -- a real column-detection "
             "bug, but every CSV timestamp exercised by the suite is a 19-digit already-ns value "
-            "that never reaches either branch, so nothing here can tell",
+            "that never reaches either branch, so nothing here can tell. "
+            "Closed since by LoadCsvScalesSecondsMillisecondsAndMicrosecondsToNanoseconds, which "
+            "loads the same instant written in all four units",
         kind="cpp",
         file=JS_BINDINGS,
         old="""  if (ts < 1'000'000'000'000LL)
@@ -246,7 +248,8 @@ MUTATIONS: list[Mutation] = [
   }""",
         cpp_target="test_quickjs",
         gtest_filter="JsBarTimestampUnits.LoadCsvBarTimestampIsBigIntNanoseconds:"
-                     "JsBarTimestampUnits.CsvAndAggregatorBarsMixWithoutTypeError",
+                     "JsBarTimestampUnits.CsvAndAggregatorBarsMixWithoutTypeError:"
+                     "JsBarTimestampUnits.LoadCsvScalesSecondsMillisecondsAndMicrosecondsToNanoseconds",
     ),
 
     # ── js_strategy.cpp prelude: SignalBuilder / Engine.run ─────────────────
@@ -257,13 +260,16 @@ MUTATIONS: list[Mutation] = [
             "later break the BigInt comparisons downstream. No acceptance test calls buy/sell "
             "with anything but a bar's own .ts, which is already a BigInt by the time it gets "
             "there (loadCsv emits BigInt), so this identity-vs-conversion difference has nothing "
-            "in the suite that can observe it",
+            "in the suite that can observe it. "
+            "Closed since by SignalBuilderNormalisesEveryTimestampToNanosecondBigInt, which hands "
+            "buy/sell/limitBuy plain Numbers and reads the type back off sorted()",
         kind="cpp",
         file=JS_STRATEGY,
         old='this._entries.push({ tsNs: __floxToNs(ts), side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });',
         new='this._entries.push({ tsNs: ts, side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });',
         cpp_target="test_quickjs",
-        gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars",
+        gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars:"
+                     "JsBarTimestampUnits.SignalBuilderNormalisesEveryTimestampToNanosecondBigInt",
     ),
     Mutation(
         name="comparator-returns-bigint",
@@ -292,13 +298,18 @@ MUTATIONS: list[Mutation] = [
             "whatever price/state the executor is in by then. With only two signals against "
             "two bars, the mistimed signal lands there instead and still closes the same round "
             "trip, so totalTrades/finalCapital come back unchanged -- a longer backtest with "
-            "bars after the mistimed signal would show the difference; this one cannot",
+            "bars after the mistimed signal would show the difference; this one cannot. "
+            "Closed since by the five-bar fixture in "
+            "EngineRunAppliesASignalOnTheBarItIsTimestampedOn, which reads the fill prices and "
+            "the executor clock straight off stats",
         kind="cpp",
         file=JS_STRATEGY,
         old="merged.push({ tsNs: __floxToNs(bars[j].ts), key: key, bar: bars[j] });",
         new="merged.push({ tsNs: __floxToNs(bars[j].ts) / 1000000n, key: key, bar: bars[j] });",
         cpp_target="test_quickjs",
-        gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars",
+        gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars:"
+                     "JsBarTimestampUnits.EngineRunAppliesASignalOnTheBarItIsTimestampedOn:"
+                     "JsBarTimestampUnits.EngineRunHoldsASignalOneNanosecondPastABarUntilTheNextBar",
     ),
     Mutation(
         name="advanceclock-fed-ms",
@@ -306,13 +317,18 @@ MUTATIONS: list[Mutation] = [
             "runs three orders of magnitude behind the bars it is filling against. Survives for "
             "the same confirmed reason as merged-timeline-divided-to-ms: the trailing "
             "unconditional flush loop in Engine.run submits whatever this mutation kept out of "
-            "the main loop, so the two-signal/two-bar acceptance case still closes one trade",
+            "the main loop, so the two-signal/two-bar acceptance case still closes one trade. "
+            "Closed since: stats.startTimeNs/endTimeNs report the executor clock at the first and "
+            "last fill, and EngineRunAppliesASignalOnTheBarItIsTimestampedOn pins both to the "
+            "bar's own nanosecond timestamp",
         kind="cpp",
         file=JS_STRATEGY,
         old="executor.advanceClock(ref.tsNs);",
         new="executor.advanceClock(ref.tsNs / 1000000n);",
         cpp_target="test_quickjs",
-        gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars",
+        gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars:"
+                     "JsBarTimestampUnits.EngineRunAppliesASignalOnTheBarItIsTimestampedOn:"
+                     "JsBarTimestampUnits.EngineRunHoldsASignalOneNanosecondPastABarUntilTheNextBar",
     ),
     Mutation(
         name="adv-engine-run-signal-boundary-strict-less-than",
@@ -322,13 +338,19 @@ MUTATIONS: list[Mutation] = [
             "sell signal (timestamped on the last bar) never gets a later bar to submit at in "
             "the main loop -- but Engine.run's trailing unconditional flush "
             "(`while (sigIdx < sorted.length) { ...submitOrder... }`) submits it anyway right "
-            "after, and the round trip still closes",
+            "after, and the round trip still closes. "
+            "Closed since by the pair EngineRunAppliesASignalOnTheBarItIsTimestampedOn (a signal "
+            "exactly on a bar is applied on that bar) and "
+            "EngineRunHoldsASignalOneNanosecondPastABarUntilTheNextBar (one nanosecond later is "
+            "not)",
         kind="cpp",
         file=JS_STRATEGY,
         old="while (sigIdx < sorted.length && sorted[sigIdx].tsNs <= ref.tsNs) {",
         new="while (sigIdx < sorted.length && sorted[sigIdx].tsNs < ref.tsNs) {",
         cpp_target="test_quickjs",
-        gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars",
+        gtest_filter="JsBarTimestampUnits.EngineRunAcceptsSignalsTimestampedFromBars:"
+                     "JsBarTimestampUnits.EngineRunAppliesASignalOnTheBarItIsTimestampedOn:"
+                     "JsBarTimestampUnits.EngineRunHoldsASignalOneNanosecondPastABarUntilTheNextBar",
     ),
 
     # ── flox.timeBars / flox.heikinBars: the ns→s boundary conversion ───────
@@ -363,7 +385,9 @@ MUTATIONS: list[Mutation] = [
             "nanosecond short of the value asked for. The acceptance test's interval, 60 billion "
             "ns (a round minute), divides to exactly 60.0 in double arithmetic with no rounding "
             "error at all, so the nudge loop never actually iterates for it -- nothing in the "
-            "suite uses an interval whose round trip needs the nudge to land correctly",
+            "suite uses an interval whose round trip needs the nudge to land correctly. "
+            "Closed since by TimeBarsIntervalSurvivesADivisionThatDoesNotRoundBack, whose "
+            "interval of 1'000'000'007 ns truncates back to 1'000'000'006 without the nudge",
         kind="cpp",
         file=JS_BINDINGS,
         old="""static double intervalNsToSeconds(int64_t interval_ns)
@@ -382,7 +406,8 @@ MUTATIONS: list[Mutation] = [
   return static_cast<double>(interval_ns) / 1'000'000'000.0;
 }""",
         cpp_target="test_quickjs",
-        gtest_filter="JsBarAggregatorUnits.TimeBarsIntervalIsNanoseconds",
+        gtest_filter="JsBarAggregatorUnits.TimeBarsIntervalIsNanoseconds:"
+                     "JsBarAggregatorUnits.TimeBarsIntervalSurvivesADivisionThatDoesNotRoundBack",
     ),
     Mutation(
         name="heikinbars-left-unconverted",
@@ -401,7 +426,9 @@ MUTATIONS: list[Mutation] = [
         why="js_agg_tick starts running its trade-count argument through intervalNsToSeconds "
             "before truncating back to a uint32 -- tickBars takes a plain trade count, not a "
             "nanosecond interval, so a count of 2 becomes 2/1e9 seconds, truncates to 0, and the "
-            "aggregator closes bars on a zero-trade boundary instead of every 2 trades",
+            "aggregator closes bars on a zero-trade boundary instead of every 2 trades. "
+            "Closed since by TickBarsCloseOnTheTradeCountTheyAreGiven, which asserts the bar "
+            "count and the trades inside each bar, not only the first bar's timestamp type",
         kind="cpp",
         file=JS_BINDINGS,
         old="""  uint32_t got = flox_aggregate_tick_bars(ts.data(), px.data(), qty.data(), side.data(),
@@ -411,7 +438,8 @@ MUTATIONS: list[Mutation] = [
       static_cast<uint32_t>(intervalNsToSeconds(toInt64(c, a[4]))), bars.data(), n);""",
         cpp_target="test_quickjs",
         gtest_filter="JsBarTimestampUnits.AggregatorBarTimestampIsBigIntNanoseconds:"
-                     "JsBarTimestampUnits.CsvAndAggregatorBarsMixWithoutTypeError",
+                     "JsBarTimestampUnits.CsvAndAggregatorBarsMixWithoutTypeError:"
+                     "JsBarAggregatorUnits.TickBarsCloseOnTheTradeCountTheyAreGiven",
     ),
 
     # ── FloxBookSnapshot sizes: bridge_strategy.h / flox_capi.cpp ───────────

@@ -31,7 +31,15 @@ files that carry them.
    change could cross-check the table against the same IDL; that is a
    different gate and it would still not notice the sentence.
 
-2. ``FloxBookSnapshot.bid_qty_raw`` / ``ask_qty_raw`` are filled from the
+2. The nanosecond BigInt / int64 convention has three published faces
+   outside the two files above, and each was reverted on its own without
+   any test noticing: ``python/flox_py/_flox_py/__init__.pyi`` types
+   ``Engine.ts()``, ``quickjs/types/flox.d.ts`` types a bar's ``ts``, and
+   ``docs/reference/quickjs/tools.md`` names the unit of the ``timeBars``
+   / ``heikinBars`` interval. A stub or a reference table that contradicts
+   the binding is what a reader believes, so each gets a check here.
+
+3. ``FloxBookSnapshot.bid_qty_raw`` / ``ask_qty_raw`` are filled from the
    book where the book can answer, and 0 otherwise. The struct in
    ``include/flox/capi/flox_capi_spec.hpp`` documented only the two price
    fields ("or 0 if absent") and left the two size fields bare, so a
@@ -51,6 +59,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BINDINGS_README = REPO_ROOT / "docs" / "bindings" / "README.md"
 CAPI_SPEC = REPO_ROOT / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
+PY_STUB = REPO_ROOT / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
+FLOX_D_TS = REPO_ROOT / "quickjs" / "types" / "flox.d.ts"
+QUICKJS_TOOLS_MD = REPO_ROOT / "docs" / "reference" / "quickjs" / "tools.md"
 
 PRESENT_MARKERS = {"yes", "y"}
 ABSENT_MARKERS = {"no", "n/a", "na", "-", "--", "—", "–", "none", "absent"}
@@ -158,6 +169,62 @@ class BookSnapshotSizeFieldsAreDocumented(unittest.TestCase):
     def test_size_fields_say_what_zero_means(self) -> None:
         self.assertIn("cannot say", self.block.lower(),
                       "the size fields must document 0 as \"0 when the book cannot say\"")
+
+
+
+class PublishedTypesMatchTheBindings(unittest.TestCase):
+    """The stub and the .d.ts are the only description of the surface a
+    Python or TypeScript author ever reads; they have to agree with what
+    the compiled binding actually returns."""
+
+    def test_python_stub_types_engine_ts_as_int64(self) -> None:
+        stub = PY_STUB.read_text(encoding="utf-8")
+        line = next((ln for ln in stub.splitlines() if "def ts(" in ln), None)
+        self.assertIsNotNone(line, "Engine.ts() is missing from the generated stub")
+        self.assertIn("int64", line,
+                      "Engine.ts() returns an int64 array; the stub must say so")
+        self.assertNotIn("float64", line,
+                         "a float64 annotation is the bug this fix removed")
+
+    def test_quickjs_d_ts_types_bar_ts_as_bigint(self) -> None:
+        dts = FLOX_D_TS.read_text(encoding="utf-8")
+        start = dts.find("interface Bar {")
+        self.assertNotEqual(start, -1, "interface Bar is missing from flox.d.ts")
+        end = dts.find("}", start)
+        block = dts[start:end]
+        line = next((ln for ln in block.splitlines() if "ts:" in ln), None)
+        self.assertIsNotNone(line, "interface Bar has no ts field")
+        self.assertIn("bigint", line,
+                      "a bar's ts is a BigInt on every path; the .d.ts must say so")
+        self.assertNotIn("number", line,
+                         "typing ts as number is the claim a Number cannot hold")
+
+
+class QuickJsToolsReferenceNamesTheIntervalUnit(unittest.TestCase):
+    """flox.timeBars/heikinBars take the interval in nanoseconds. The
+    reference table said seconds, which is the misreading the fix exists
+    to end."""
+
+    def setUp(self) -> None:
+        self.rows = [ln for ln in QUICKJS_TOOLS_MD.read_text(encoding="utf-8").splitlines()
+                     if ln.strip().startswith("|")]
+
+    def _row(self, needle: str) -> str:
+        row = next((ln for ln in self.rows if needle in ln), None)
+        self.assertIsNotNone(row, f"{needle} is missing from the QuickJS tools reference")
+        return row
+
+    def test_time_bars_interval_is_documented_in_nanoseconds(self) -> None:
+        row = self._row("flox.timeBars(")
+        self.assertIn("nanosecond", row.lower(),
+                      "the timeBars interval is nanoseconds")
+        self.assertNotIn("in seconds", row.lower())
+
+    def test_heikin_bars_interval_is_documented_in_nanoseconds(self) -> None:
+        row = self._row("flox.heikinBars(")
+        self.assertIn("nanosecond", row.lower(),
+                      "heikinBars takes the same nanosecond interval as timeBars")
+        self.assertNotIn("in seconds", row.lower())
 
 
 if __name__ == "__main__":
