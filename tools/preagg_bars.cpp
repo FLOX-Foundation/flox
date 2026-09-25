@@ -208,7 +208,7 @@ int main(int argc, char** argv)
           trade.trade.price = Price::fromRaw(ev.trade.price_raw);
           trade.trade.quantity = Quantity::fromRaw(ev.trade.qty_raw);
           trade.trade.exchangeTsNs = UnixNanos::fromRaw(ev.trade.exchange_ts_ns);
-          trade.trade.isBuy = (ev.trade.side == 1);
+          trade.trade.isBuy = (ev.trade.side == 0);
           trade.trade.instrument = static_cast<InstrumentType>(ev.trade.instrument);
           trade.exchangeMsgTsNs = UnixNanos::fromRaw(ev.trade.exchange_ts_ns);
 

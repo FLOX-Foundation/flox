@@ -113,7 +113,7 @@ class StrategyPump
             ev.trade.symbol = event.trade.symbol_id;
             ev.trade.price = Price::fromRaw(event.trade.price_raw);
             ev.trade.quantity = Quantity::fromRaw(event.trade.qty_raw);
-            ev.trade.isBuy = (event.trade.side == 1);
+            ev.trade.isBuy = (event.trade.side == 0);
             ev.trade.exchangeTsNs = UnixNanos::fromRaw(event.trade.exchange_ts_ns);
             ev.trade.instrument = static_cast<InstrumentType>(event.trade.instrument);
             ev.exchangeMsgTsNs = UnixNanos::fromRaw(event.trade.exchange_ts_ns);

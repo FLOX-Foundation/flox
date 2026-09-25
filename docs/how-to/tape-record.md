@@ -127,6 +127,8 @@ n = replay_tape("./tapes/bybit-btc-2026-05-07", on_trade=on_trade)
 print(f"replayed {n} trades")
 ```
 
+`side` is the aggressor: `0` buy, `1` sell, the same encoding as `flox::Side` and as the `TradeRecord` row of [the tape-format spec](../spec/floxlog.md). The C++ replay readers used to decode it the other way round and so inverted the aggressor on every tape; results produced by `ReplayConnector`, `BacktestRunner.run_tape`, `StrategyPump` or `preagg_bars` before that fix need recomputing. The tapes on disk were always correct and need no migration.
+
 ## Use it from a strategy
 
 The recorder is a `BinaryLogRecorderHook`. Attach it to any `Runner`, not just the CLI:

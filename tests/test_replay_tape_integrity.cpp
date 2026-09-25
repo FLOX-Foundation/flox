@@ -705,15 +705,44 @@ TEST_F(ReplayTapeIntegrityTest, StrictOrderingStillThrows)
                flox::FloxError);
 }
 
+// The watermark spans the segments of one streaming walk, so an inversion
+// that straddles a segment boundary is seen instead of being reset away.
+//
+// Both segments are written with a one-second step backwards inside them, so
+// neither earns SegmentFlags::Sorted and both go through the reorder buffer --
+// which is the machinery this test is about. That detail used to be free:
+// every uncompressed segment was unflagged by construction, and the original
+// version of this test wrote both segments in order. It is no longer free. A
+// segment written in order now advertises it and streams on its own guarantee,
+// so it is never judged against a watermark left by the segment before, and
+// nothing in it is dropped -- test_replay_sorted_flag.cpp
+// (InOrderSegmentsKeepEveryEventWhenTheirRangesOverlap) pins that. The
+// expectation below survives unchanged because the inversions keep both
+// segments off the sorted path; the step is one second, well inside the ten
+// second window, so it costs nothing on its own.
 TEST_F(ReplayTapeIntegrityTest, WatermarkCarriesAcrossSegments)
 {
   auto dir = sub("xseg");
+  // Ten consecutive seconds with the third and fourth swapped: one step back,
+  // enough to keep the segment off the sorted path and small enough to cost
+  // nothing in the reorder buffer.
+  auto unsortedRun = [](int64_t first_s)
+  {
+    std::vector<int64_t> offsets;
+    for (int64_t i = 0; i < 10; ++i)
+    {
+      offsets.push_back(first_s + i);
+    }
+    std::swap(offsets[2], offsets[3]);
+    return offsets;
+  };
+
   {
     WriterConfig cfg{.output_dir = dir, .output_filename = "a.floxlog", .create_index = false};
     BinaryLogWriter w(cfg);
-    for (int64_t i = 0; i < 10; ++i)
+    for (int64_t s : unsortedRun(1000))
     {
-      ASSERT_TRUE(w.writeTrade(makeTrade((1000 + i) * kSec, 1)));
+      ASSERT_TRUE(w.writeTrade(makeTrade(s * kSec, 1)));
     }
     w.close();
   }
@@ -723,9 +752,9 @@ TEST_F(ReplayTapeIntegrityTest, WatermarkCarriesAcrossSegments)
     // Starts 900s before the first segment ended: invisible while the
     // watermark restarts per segment.
     ASSERT_TRUE(w.writeTrade(makeTrade(109 * kSec, 1)));
-    for (int64_t i = 10; i < 20; ++i)
+    for (int64_t s : unsortedRun(1010))
     {
-      ASSERT_TRUE(w.writeTrade(makeTrade((1000 + i) * kSec, 1)));
+      ASSERT_TRUE(w.writeTrade(makeTrade(s * kSec, 1)));
     }
     w.close();
   }

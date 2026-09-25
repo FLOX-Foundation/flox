@@ -48,6 +48,10 @@ enum class IssueType
 
   FileNotFound,
   FileReadError,
+
+  // Dataset-level, not segment-level: two segments cover intersecting
+  // exchange-timestamp ranges, so the same window was recorded twice.
+  SegmentRangeOverlap,
 };
 
 enum class IssueSeverity
@@ -126,6 +130,12 @@ struct DatasetValidationResult
   bool valid{true};
   std::vector<SegmentValidationResult> segments;
 
+  // Issues about the dataset rather than about any one segment: a caller with
+  // only `valid` and `total_errors` cannot tell a CRC failure from a pair of
+  // segments that overlap in time, and the two call for different repairs.
+  // Per-segment issues stay on their SegmentValidationResult.
+  std::vector<ValidationIssue> issues;
+
   uint32_t total_segments{0};
   uint32_t valid_segments{0};
   uint32_t corrupted_segments{0};
@@ -137,6 +147,18 @@ struct DatasetValidationResult
 
   uint32_t total_errors{0};
   uint32_t total_warnings{0};
+
+  bool hasErrors() const
+  {
+    for (const auto& issue : issues)
+    {
+      if (issue.severity == IssueSeverity::Error || issue.severity == IssueSeverity::Critical)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
 };
 
 struct ValidatorConfig

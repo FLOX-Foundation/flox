@@ -231,7 +231,7 @@ TEST(StrategyPump, ReaderPathConvertsTradesAndSkipsOtherRecords)
           t.trade.symbol = ev.trade.symbol_id;
           t.trade.price = Price::fromRaw(ev.trade.price_raw);
           t.trade.quantity = Quantity::fromRaw(ev.trade.qty_raw);
-          t.trade.isBuy = (ev.trade.side == 1);
+          t.trade.isBuy = (ev.trade.side == 0);
           static_cast<IMarketDataSubscriber&>(reference).onTrade(t);
         }
         return true;

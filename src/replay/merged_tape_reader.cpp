@@ -307,17 +307,22 @@ std::vector<MergedTradeRow> MergedTapeReader::readTrades()
           return true;
         });
   }
-  // Stable sort by (exchange_ts_ns, tape_index) — recv_ts within tape is
-  // already monotonic; tape_index breaks ties across tapes deterministically.
-  std::sort(rows.begin(), rows.end(),
-            [](const MergedTradeRow& a, const MergedTradeRow& b)
-            {
-              if (a.exchange_ts_ns != b.exchange_ts_ns)
-              {
-                return a.exchange_ts_ns < b.exchange_ts_ns;
-              }
-              return a.tape_index < b.tape_index;
-            });
+  // (exchange_ts_ns, tape_index, recorded order). A trade record carries no
+  // sequence number, so the order it was recorded in is the only thing left to
+  // break a tie with -- and rows were collected one tape at a time in read
+  // order, so a stable sort is what preserves it. std::sort does not: it
+  // permutes equal keys once a tie group is wide enough to reach the quicksort
+  // partition, and a batched venue print puts hundreds of trades on one
+  // nanosecond.
+  std::stable_sort(rows.begin(), rows.end(),
+                   [](const MergedTradeRow& a, const MergedTradeRow& b)
+                   {
+                     if (a.exchange_ts_ns != b.exchange_ts_ns)
+                     {
+                       return a.exchange_ts_ns < b.exchange_ts_ns;
+                     }
+                     return a.tape_index < b.tape_index;
+                   });
   return rows;
 }
 
@@ -371,15 +376,26 @@ MergedTapeReader::readBooks()
         });
   }
 
-  std::sort(pending.begin(), pending.end(),
-            [](const Pending& a, const Pending& b)
-            {
-              if (a.row.exchange_ts_ns != b.row.exchange_ts_ns)
-              {
-                return a.row.exchange_ts_ns < b.row.exchange_ts_ns;
-              }
-              return a.row.tape_index < b.row.tape_index;
-            });
+  // (exchange_ts_ns, tape_index, seq). Unlike a trade, a book record carries
+  // the venue's own sequence number, and that is the authority on the order
+  // two updates stamped with the same nanosecond happened in -- a venue that
+  // batches a book update commonly emits them seq-ascending under one
+  // timestamp, and nothing guarantees the recorder wrote them in that order.
+  // The sort stays stable so records that also tie on seq (seq == 0 when the
+  // venue publishes none) keep the order they were recorded in.
+  std::stable_sort(pending.begin(), pending.end(),
+                   [](const Pending& a, const Pending& b)
+                   {
+                     if (a.row.exchange_ts_ns != b.row.exchange_ts_ns)
+                     {
+                       return a.row.exchange_ts_ns < b.row.exchange_ts_ns;
+                     }
+                     if (a.row.tape_index != b.row.tape_index)
+                     {
+                       return a.row.tape_index < b.row.tape_index;
+                     }
+                     return a.row.seq < b.row.seq;
+                   });
 
   std::vector<MergedBookRow> rows;
   std::vector<BookLevel> levels;

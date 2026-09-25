@@ -21,6 +21,8 @@ my-tape.floxlog/
 
 Segment files are named `<created_ns>.floxlog`, where `created_ns` is the wall-clock nanosecond timestamp at which the writer opened the segment. A custom rotation callback can override the naming. There is **no** per-type split: trades, book snapshots, book deltas and the side-channel record types all live interleaved in the same frame stream, ordered by timestamp.
 
+A writer rotates when the segment reaches its size bound, measured on the bytes written to the file. An uncompressed segment rotates between frames; a compressed one rotates between blocks, since a block is the unit the reader decompresses. A segment may therefore overshoot the bound by at most one block plus the index appended when it closes.
+
 Segments are independently parseable; both sidecars are conveniences, not requirements.
 
 `.manifest` is a **binary** file — see [Manifest](#manifest) — not JSON. It can be rebuilt from the segments at any time.
@@ -71,6 +73,8 @@ A segment is a `SegmentHeader` followed by a stream of frames. If `Compressed` i
 
 A reader that sees an unknown flag set must reject the segment with a clear error. New flags need a new minor version of the format.
 
+`Sorted` is set at close on any segment -- compressed or not -- whose events all reached the writer in non-decreasing `exchange_ts_ns` order. It is a per-segment promise and says nothing about the segments around it: a reader may stream a `Sorted` segment as it stands, and must not drop its leading events because an earlier segment of the same dataset ended later in time. Segments whose time ranges overlap are a recording fault the validator reports; they are not licence to discard recorded frames.
+
 ### Frame stream
 
 A frame is a `FrameHeader` followed by `size` bytes of payload. Payload meaning depends on `type`:
@@ -110,6 +114,12 @@ A reader that sees an unknown `rec_version` must reject the frame.
 | 44 | 1 | `side` | `0` buy, `1` sell. |
 | 45 | 1 | `instrument` | `0` spot, `1` perp, etc. (see Instrument codes). |
 | 46 | 2 | `exchange_id` | Numeric exchange tag. |
+
+#### Side byte
+
+`side` is the aggressor of the trade, never the resting maker, and it is encoded as `flox::Side`: **`0` = buy, `1` = sell**. Every writer of the format has always used that encoding -- the C++ recorder hook, `flox_data_writer_write_trade`, the Node and Python `DataWriter`s and all the exchange-archive importers -- so the bytes on disk are what this table says and no tape needs migrating.
+
+What was wrong was the read side. Until this was fixed, `ReplayConnector`, `BacktestRunner::runTape`, `StrategyPump` and `preagg_bars` decoded `side == 1` as the buy and so **inverted** the aggressor of every tape they replayed, while the aggregators (`BinCountAggregator`, `VolumeBinAggregator`) and the Node and QuickJS readers decoded the same byte correctly. Anything derived from the aggressor through one of those four readers -- queue position, maker/taker classification, buy/sell-driven strategy logic, signed volume -- is inverted in results produced before the fix and has to be recomputed. The tapes themselves are unaffected, which is why the format carries no marker for this: a marker would say something about the writer, and the writer was never the side that was wrong.
 
 ### `BookRecordHeader` (40 bytes, 8-byte aligned)
 

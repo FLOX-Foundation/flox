@@ -14830,6 +14830,11 @@
         },
         {
           "kind": "method",
+          "name": "noteUncompressedEventOrder",
+          "parent": "BinaryLogWriter"
+        },
+        {
+          "kind": "method",
           "name": "setHasBookDeltas",
           "parent": "BinaryLogWriter"
         },
@@ -16132,6 +16137,11 @@
           "kind": "method",
           "name": "fullyIndexed",
           "parent": "DatasetSummary"
+        },
+        {
+          "kind": "method",
+          "name": "hasErrors",
+          "parent": "DatasetValidationResult"
         },
         {
           "kind": "method",

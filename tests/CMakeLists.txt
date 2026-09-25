@@ -114,6 +114,11 @@ add_flox_test(test_event_bus)
 # Replay tests
 add_flox_test(test_binary_log)
 add_flox_test(test_replay_tape_integrity)
+add_flox_test(test_replay_writer_rotation)
+add_flox_test(test_replay_sorted_flag)
+add_flox_test(test_replay_side_channel_frames)
+add_flox_test(test_replay_merge_stability)
+add_flox_test(test_replay_validator_overlap)
 add_flox_test(test_delta_book)
 add_flox_test(test_replay_connector)
 add_flox_test(test_aggregator_framework)
@@ -210,6 +215,12 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_backtest_fee_attribution)
   add_flox_test(test_backtest_ctx_position)
   add_flox_test(test_backtest_run_tape)
+  # Needs the backtest runner's tape path alongside the replay writer/reader,
+  # and reads docs/spec/floxlog.md to check the recorded side-convention
+  # decision.
+  add_flox_test(test_replay_trade_side)
+  target_compile_definitions(test_replay_trade_side PRIVATE
+    FLOX_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
   add_flox_test(test_backtest_runner_hooks)
   add_flox_test(test_backtest_runner_venue_stack)
   add_flox_test(test_backtest_fill_realism)
