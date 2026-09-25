@@ -102,6 +102,8 @@ class BitgetExchangeConnector : public IExchangeConnector
 
   // Same rationale: public so the private "orders" channel handling is
   // testable offline, without a live authenticated socket.
+  void handlePrivateMessage(std::string_view payload);
+
   // Book frames whose "seq" broke continuity (delta dropped, resync forced).
   uint64_t bookGapCount() const noexcept { return _bookGapCount.load(std::memory_order_relaxed); }
 
@@ -122,10 +124,6 @@ class BitgetExchangeConnector : public IExchangeConnector
                            int64_t seq, std::optional<uint32_t> venueChecksum,
                            const std::vector<std::pair<std::string_view, std::string_view>>& bids,
                            const std::vector<std::pair<std::string_view, std::string_view>>& asks);
-
-  void handlePrivateMessage(std::string_view payload);
-
- private:
   void subscribePrivateOrders();
   void pingLoop();
 
