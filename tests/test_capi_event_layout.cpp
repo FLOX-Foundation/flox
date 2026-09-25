@@ -123,6 +123,7 @@ const std::vector<Field>& expectedFields()
       FLOX_FIELD(FloxBar, volume_raw),
       FLOX_FIELD(FloxBar, buy_volume_raw),
       FLOX_FIELD(FloxBar, trade_count),
+      FLOX_FIELD(FloxBar, close_reason),
   };
   return kFields;
 }

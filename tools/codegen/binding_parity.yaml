@@ -354,6 +354,10 @@ groups:
         flox_simulated_executor_submit_iceberg: __flox_simulated_executor_submit_iceberg
         flox_simulated_executor_submit_order: __flox_simulated_executor_submit
         flox_simulated_executor_submit_order_ex: __flox_simulated_executor_submit_ex
+        flox_simulated_executor_on_bar_ohlc: __flox_simulated_executor_on_bar_ohlc
+        flox_simulated_executor_begin_bar_callback_window: __flox_simulated_executor_begin_bar_callback_window
+        flox_simulated_executor_end_bar_callback_window: __flox_simulated_executor_end_bar_callback_window
+        flox_simulated_executor_reset: __flox_simulated_executor_reset
 
   order_book:
     pybind11: { status: required, classes: [OrderBook] }
@@ -1291,6 +1295,10 @@ allowlist_reasons:
 
 allowlist_functions:
   pybind11:
+    flox_simulated_executor_begin_bar_callback_window: *cpp_direct
+    flox_simulated_executor_end_bar_callback_window: *cpp_direct
+    flox_simulated_executor_on_bar_ohlc: *cpp_direct
+    flox_simulated_executor_reset: *cpp_direct
     flox_account_add_equity: *cpp_direct
     flox_account_close_position: *cpp_direct
     flox_account_create: *cpp_direct

@@ -78,6 +78,9 @@ SimulatedExecutor()
 | `cancel_order(order_id)` | Cancel an order |
 | `cancel_all(symbol)` | Cancel all orders for a symbol |
 | `on_bar(symbol, close_price)` | Feed a bar close |
+| `on_bar_ohlc(symbol, open, high, low, close)` | Feed a full OHLC bar: the manual bar path (see below) |
+| `begin_bar_callback_window()` / `end_bar_callback_window()` | Hold orders submitted between the two calls until the next bar's open |
+| `reset()` | Drop fills and run-scoped state, keeping installed configuration |
 | `on_trade(symbol, price, is_buy)` | Feed a trade |
 | `on_trade_qty(symbol, price, qty, is_buy)` | Feed a trade with quantity (enables queue-fill simulation) |
 | `on_best_levels(symbol, bid_price, bid_qty, ask_price, ask_qty)` | Feed top-of-book snapshot |
@@ -92,6 +95,27 @@ SimulatedExecutor()
 | Property | Type | Description |
 |----------|------|-------------|
 | `fill_count` | `int` | Number of fills generated |
+
+### The manual bar path
+
+`on_bar` moves the market straight to a bar's close, so driving the executor
+by hand with it never shows a held order the bar's open or its intrabar
+extremes. `on_bar_ohlc` is what `BacktestRunner` uses internally: it moves
+the market to the open first (releasing any order held from a
+`begin_bar_callback_window`/`end_bar_callback_window` pair at that price),
+then walks `low -> high -> close`.
+
+```codon
+exec.advance_clock(60_000_000_000)
+exec.on_bar_ohlc(symbol, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+
+exec.begin_bar_callback_window()
+exec.submit_order(order_id, "buy", 0.0, 1.0)
+exec.end_bar_callback_window()
+# Held, not matched -- releases at the next on_bar_ohlc call's open.
+
+exec.reset()  # drop fills before a second hand-driven run
+```
 
 ### Slippage models
 

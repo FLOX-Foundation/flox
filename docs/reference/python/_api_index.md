@@ -1837,20 +1837,24 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 
 - `advance_clock(self, timestamp_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `apply_latency_profile(self, name: str) -> None`
+- `begin_bar_callback_window(self) -> None`
 - `bracket_state(self, bracket_id: typing.SupportsInt | typing.SupportsIndex) -> str`
 - `cancel_all(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `cancel_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `clear_rate_limit_policy(self) -> None`
+- `end_bar_callback_window(self) -> None`
 - `fills(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `fills_list(self) -> list`
 - `fok_mode(self) -> str`
 - `iceberg_hidden_remaining_raw(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `on_bar(self, symbol: typing.SupportsInt | typing.SupportsIndex, close_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
+- `on_bar_ohlc(self, symbol: typing.SupportsInt | typing.SupportsIndex, open: typing.SupportsFloat | typing.SupportsIndex, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_best_levels(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_price: typing.SupportsFloat | typing.SupportsIndex, bid_qty: typing.SupportsFloat | typing.SupportsIndex, ask_price: typing.SupportsFloat | typing.SupportsIndex, ask_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_book_snapshot(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_levels: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]], ask_levels: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]]) -> None`
 - `on_trade(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool) -> None`
 - `on_trade_qty(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool) -> None`
+- `reset(self) -> None`
 - `set_bracket_child_arm_mode(self, mode: str) -> None`
 - `set_cancel_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_cancel_ack_latency_distribution(self, dist: LatencyDistribution) -> None`

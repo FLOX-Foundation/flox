@@ -104,6 +104,7 @@ extern "C"
       {"FloxBar", "volume_raw", 48, 8},
       {"FloxBar", "buy_volume_raw", 56, 8},
       {"FloxBar", "trade_count", 64, 4},
+      {"FloxBar", "close_reason", 68, 1},
   };
 
   static const FloxStructLayout kFloxEventStructLayout[] = {

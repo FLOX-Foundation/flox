@@ -143,6 +143,24 @@ void FloxJsStrategy::loadStdlib()
         __flox_simulated_executor_submit(this._h, id, side === "buy" ? 0 : 1, price, qty, cType, symbol || 1);
       }
       onBar(symbol, closePrice) { __flox_simulated_executor_on_bar(this._h, symbol, closePrice); }
+      // Open-aware form: moves the market to the open (releasing any order
+      // held from the previous bar's callback there), then walks
+      // low -> high -> close so resting stops/targets match the intrabar
+      // extremes. Use this, not onBar, to drive the executor by hand to the
+      // same fills BacktestRunner produces on the same bars.
+      onBarOhlc(symbol, open, high, low, close) {
+        __flox_simulated_executor_on_bar_ohlc(this._h, symbol, open, high, low, close);
+      }
+      // Open the bar-callback window: every order submitted while it is
+      // open is held instead of matched immediately, and released at the
+      // next onBarOhlc call's open. Call before invoking a hand-driven bar
+      // callback; always pair with endBarCallbackWindow.
+      beginBarCallbackWindow() { __flox_simulated_executor_begin_bar_callback_window(this._h); }
+      endBarCallbackWindow() { __flox_simulated_executor_end_bar_callback_window(this._h); }
+      // Drops fills and run-scoped state while keeping installed
+      // configuration (slippage, queue model, latency, ...), so a second
+      // hand-driven run reports that run and not the sum of every run.
+      reset() { __flox_simulated_executor_reset(this._h); }
       onTrade(symbol, price, isBuy) { __flox_simulated_executor_on_trade(this._h, symbol, price, isBuy ? 1 : 0); }
       onTradeQty(symbol, price, quantity, isBuy) {
         __flox_simulated_executor_on_trade_qty(this._h, symbol, price, quantity, isBuy ? 1 : 0);

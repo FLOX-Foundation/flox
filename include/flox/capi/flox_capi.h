@@ -22,8 +22,9 @@
  * structs here are solid, with no reserved tail, so a header from one
  * version used against a library from another produces wrong numbers
  * rather than a failed load -- compare FLOX_CAPI_ABI_VERSION against
- * flox_capi_abi_version() once at startup and refuse the mismatch. */
-#define FLOX_CAPI_ABI_VERSION 2
+ * flox_capi_abi_version() once at startup and refuse the mismatch.
+ * 3: FloxBar grew close_reason. */
+#define FLOX_CAPI_ABI_VERSION 3
 
 /* Declared by a header that carries flox_best_bid_raw_opt and its two
  * siblings, so a binding can compile against a header with or without them.
@@ -269,6 +270,9 @@ extern "C"
     uint8_t _pad2[2];
   } FloxOrderEventData;
 
+  /* close_reason: 0=Threshold, 1=Gap, 2=Forced, 3=Warmup (mirrors
+   * flox::BarCloseReason, and FloxBarData::close_reason above). Added in
+   * ABI version 3. */
   typedef struct
   {
     int64_t start_time_ns;
@@ -280,6 +284,7 @@ extern "C"
     int64_t volume_raw;
     int64_t buy_volume_raw;
     uint32_t trade_count;
+    uint8_t close_reason;
   } FloxBar;
 
   typedef struct
@@ -2334,6 +2339,25 @@ extern "C"
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                       double close_price);
+  /* Open-aware form: moves the market to the open (releasing any order held
+   * from a bar-callback window at the previous bar's open), then walks
+   * low -> high -> close so resting stops/targets match the intrabar
+   * extremes, not just the close. Use this, not the close-only
+   * flox_simulated_executor_on_bar, to drive the executor by hand to the
+   * same fills BacktestRunner::runBars produces. */
+  void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                           double open_price, double high_price,
+                                           double low_price, double close_price);
+  /* Bar-callback window: while open, every arriving order is held instead of
+   * matched, released at the next flox_simulated_executor_on_bar_ohlc call's
+   * open. Depth-counted; call begin before a hand-driven bar callback and
+   * end right after. */
+  void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  /* Drops fills and run-scoped state while keeping installed configuration,
+   * so a second hand-driven run reports that run and not the sum of every
+   * run. */
+  void flox_simulated_executor_reset(FloxSimulatedExecutorHandle executor);
   void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                         double price, uint8_t is_buy);
   void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle executor,

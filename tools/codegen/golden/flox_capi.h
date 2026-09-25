@@ -89,7 +89,7 @@ extern "C"
   // ============================================================
 
   // ABI version
-#define FLOX_CAPI_ABI_VERSION 2
+#define FLOX_CAPI_ABI_VERSION 3
 
   // Feature Flags
 #define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1
@@ -242,6 +242,7 @@ extern "C"
     int64_t volume_raw;
     int64_t buy_volume_raw;
     uint32_t trade_count;
+    uint8_t close_reason;
   } FloxBar;
 
   typedef struct
@@ -2227,6 +2228,12 @@ extern "C"
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                       double close_price);
+  void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                           double open_price, double high_price, double low_price,
+                                           double close_price);
+  void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_reset(FloxSimulatedExecutorHandle executor);
   void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                         double price, uint8_t is_buy);
   void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle executor,

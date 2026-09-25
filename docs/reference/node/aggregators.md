@@ -32,6 +32,7 @@ Each returned bar object:
 | `volume` | `number` | Total volume |
 | `buyVolume` | `number` | Buy-side volume |
 | `tradeCount` | `number` | Number of trades |
+| `closeReason` | `number` | Why the bar closed: `0` threshold, `2` forced, `3` warmup. Every bar this batch path returns closed on its own threshold, so `0` here. |
 
 Only fully closed bars are returned -- a trailing bar still open when the
 trade array ends is dropped, so the bar count depends only on the input.

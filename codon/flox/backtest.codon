@@ -14,6 +14,10 @@ from C import flox_simulated_executor_submit_order_ex(cobj, u64, u8, float, floa
 from C import flox_simulated_executor_cancel_order(cobj, u64)
 from C import flox_simulated_executor_cancel_all(cobj, u32)
 from C import flox_simulated_executor_on_bar(cobj, u32, float)
+from C import flox_simulated_executor_on_bar_ohlc(cobj, u32, float, float, float, float)
+from C import flox_simulated_executor_begin_bar_callback_window(cobj)
+from C import flox_simulated_executor_end_bar_callback_window(cobj)
+from C import flox_simulated_executor_reset(cobj)
 from C import flox_simulated_executor_on_trade(cobj, u32, float, u8)
 from C import flox_simulated_executor_on_trade_qty(cobj, u32, float, float, u8)
 from C import flox_simulated_executor_on_best_levels(cobj, u32, float, float, float, float)
@@ -370,6 +374,30 @@ class SimulatedExecutor:
 
     def on_bar(self, symbol: int, close_price: float):
         flox_simulated_executor_on_bar(self._handle, u32(symbol), close_price)
+
+    def on_bar_ohlc(self, symbol: int, open: float, high: float, low: float, close: float):
+        """Open-aware form: moves the market to the open (releasing any order
+        held from the previous bar's callback there), then walks
+        low -> high -> close so resting stops/targets match the intrabar
+        extremes. Use this, not on_bar, to drive the executor by hand to the
+        same fills BacktestRunner produces on the same bars."""
+        flox_simulated_executor_on_bar_ohlc(self._handle, u32(symbol), open, high, low, close)
+
+    def begin_bar_callback_window(self):
+        """Open the bar-callback window: every order submitted while it is
+        open is held instead of matched immediately, and released at the
+        next on_bar_ohlc call's open. Call before invoking a hand-driven bar
+        callback; always pair with end_bar_callback_window."""
+        flox_simulated_executor_begin_bar_callback_window(self._handle)
+
+    def end_bar_callback_window(self):
+        flox_simulated_executor_end_bar_callback_window(self._handle)
+
+    def reset(self):
+        """Drop fills and run-scoped state while keeping installed
+        configuration (slippage, queue model, latency, ...), so a second
+        hand-driven run reports that run and not the sum of every run."""
+        flox_simulated_executor_reset(self._handle)
 
     def on_trade(self, symbol: int, price: float, is_buy: bool):
         flox_simulated_executor_on_trade(self._handle, u32(symbol), price,

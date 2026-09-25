@@ -1913,6 +1913,37 @@ static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueCons
                                  toUint32(ctx, argv[1]), toDouble(ctx, argv[2]));
   return JS_UNDEFINED;
 }
+// Open-aware form: moves the market to the open (releasing any order held
+// from the previous bar's callback there), then walks low -> high -> close.
+// Use this, not on_bar, to drive the executor by hand to the same fills
+// BacktestRunner produces on the same bars.
+static JSValue js_executor_on_bar_ohlc(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_simulated_executor_on_bar_ohlc(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      toUint32(ctx, argv[1]), toDouble(ctx, argv[2]), toDouble(ctx, argv[3]),
+      toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_begin_bar_callback_window(JSContext* ctx, JSValueConst, int,
+                                                     JSValueConst* argv)
+{
+  flox_simulated_executor_begin_bar_callback_window(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_end_bar_callback_window(JSContext* ctx, JSValueConst, int,
+                                                   JSValueConst* argv)
+{
+  flox_simulated_executor_end_bar_callback_window(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_reset(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_simulated_executor_reset(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
 static JSValue js_executor_on_trade(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   flox_simulated_executor_on_trade(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
@@ -6634,6 +6665,9 @@ static JSValue barsToJsArray(JSContext* ctx, const std::vector<FloxBar>& bars)
     JS_SetPropertyStr(ctx, o, "volume", JS_NewFloat64(ctx, b.volume_raw / kScale));
     JS_SetPropertyStr(ctx, o, "buyVolume", JS_NewFloat64(ctx, b.buy_volume_raw / kScale));
     JS_SetPropertyStr(ctx, o, "trades", JS_NewUint32(ctx, b.trade_count));
+    // flox::Bar::reason, carried through so a batch-aggregated bar says why
+    // it closed the same way the live callback path's bar object does.
+    JS_SetPropertyStr(ctx, o, "closeReason", JS_NewUint32(ctx, b.close_reason));
     JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), o);
   }
   return arr;
@@ -7163,6 +7197,12 @@ void registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_jitter_seed",
                 js_executor_set_iceberg_jitter_seed, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_bar", js_executor_on_bar, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_on_bar_ohlc", js_executor_on_bar_ohlc, 6);
+  addGlobalFunc(ctx, "__flox_simulated_executor_begin_bar_callback_window",
+                js_executor_begin_bar_callback_window, 1);
+  addGlobalFunc(ctx, "__flox_simulated_executor_end_bar_callback_window",
+                js_executor_end_bar_callback_window, 1);
+  addGlobalFunc(ctx, "__flox_simulated_executor_reset", js_executor_reset, 1);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade", js_executor_on_trade, 4);
   addGlobalFunc(ctx, "__flox_simulated_executor_advance_clock", js_executor_advance, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_fill_count", js_executor_fill_count, 1);
