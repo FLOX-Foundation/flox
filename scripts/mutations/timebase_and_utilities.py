@@ -126,8 +126,8 @@ class Mutation:
     occurrence: int = 1
     expected_occurrences: int = 1
     # A reason a mutation cannot be killed by any test, ever -- e.g. a change
-    # with no observable effect on any input a test could construct. None of
-    # the mutations below claim this; it exists so a genuine case does not
+    # with no observable effect on any input a test could construct. One of
+    # the mutations below claims this; it exists so a genuine case does not
     # have to be silently dropped from the table.
     equivalent: str | None = None
 
@@ -660,6 +660,14 @@ struct EngineConfig
 {
   return globalMinLogLevel.load(std::memory_order_relaxed);
 }""",
+        equivalent="both sides are atomics, so there is no data race on the "
+                   "level itself; the level is a self-contained enum with no "
+                   "non-atomic data behind it, so an acquire on this load "
+                   "publishes nothing. The ordering that matters, with the "
+                   "sink object's construction, comes from the acquire load "
+                   "of g_logger, which this mutation leaves alone. No input "
+                   "distinguishes the two versions; a concurrent test under "
+                   "ThreadSanitizer stays clean under the mutation too",
         targets=LOG,
         gtest_filter="LogCost.*",
     ),
