@@ -57,6 +57,12 @@ function exact(v) {
   return typeof v === 'bigint' ? v : BigInt(v);
 }
 
+// JSON.stringify refuses a BigInt, and every object printed in this file
+// may carry one.
+function describe(v) {
+  return JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? `${x}n` : x));
+}
+
 function checkNsField(label, value, expected) {
   check(typeof value === 'bigint', `${label} is a bigint (got ${typeof value})`);
   check(exact(value) === expected,
@@ -244,6 +250,98 @@ console.log('\n=== Runner.onBar still takes Number bar timestamps ===');
     check(exact(seen[0].endTimeNs) === 119999999999n,
           `a Number endTimeNs under 2^53 survives (got ${exact(seen[0].endTimeNs)})`);
   }
+}
+
+console.log('\n=== The multi-timeframe bar ring hands back BigInt readings ===');
+{
+  // emit.lastClosedBar() / emit.lastNClosedBars() read the per-(symbol,
+  // timeframe) ring the strategy base class fills on every closed bar.
+  // They build their own bar object -- a different builder from the one
+  // feeding onBar -- and nothing drove either accessor at runtime, so
+  // only the ClosedBar text in index.d.ts stood behind them.
+  const reg = new flox.SymbolRegistry();
+  const sym = reg.addSymbol('test', 'BTC', 0.01);
+  const runner = new flox.Runner(reg, () => {}, false);
+
+  const TF_NS = 1000000000;  // a one-second time bar
+  const BAR_TYPE = 0;        // BarData.barType 0 = Time
+  const seen = [];
+  runner.addStrategy({
+    symbols: [sym],
+    onBar(_ctx, _bar, emit) {
+      seen.push({
+        last: emit.lastClosedBar(Number(sym), BAR_TYPE, TF_NS),
+        all: emit.lastNClosedBars(Number(sym), BAR_TYPE, TF_NS, 8),
+      });
+    },
+  });
+  runner.start();
+  const firstStart = NS;
+  const secondStart = NS + SECOND_NS;
+  for (const startNs of [firstStart, secondStart]) {
+    runner.onBar(Number(sym), {
+      open: 100, high: 101, low: 99, close: 100.5, volume: 1,
+      barType: BAR_TYPE, barTypeParam: TF_NS,
+      startTimeNs: startNs, endTimeNs: startNs + SECOND_NS - 1n,
+    });
+  }
+  runner.stop();
+
+  check(seen.length === 2, `both bars reached the strategy (got ${seen.length})`);
+  if (seen.length === 2) {
+    const last = seen[1].last;
+    check(last !== null && typeof last === 'object',
+          `lastClosedBar() returned a bar (got ${describe(last)})`);
+    if (last) {
+      checkNsField('lastClosedBar().startNs', last.startNs, secondStart);
+      checkNsField('lastClosedBar().endNs', last.endNs, secondStart + SECOND_NS - 1n);
+      check(typeof last.close === 'number',
+            `lastClosedBar().close stays a number (got ${typeof last.close})`);
+    }
+
+    const all = seen[1].all;
+    check(Array.isArray(all) && all.length === 2,
+          `lastNClosedBars() returned both bars oldest first (got ${all && all.length})`);
+    if (Array.isArray(all) && all.length === 2) {
+      checkNsField('lastNClosedBars()[0].startNs', all[0].startNs, firstStart);
+      checkNsField('lastNClosedBars()[0].endNs', all[0].endNs, firstStart + SECOND_NS - 1n);
+      checkNsField('lastNClosedBars()[1].startNs', all[1].startNs, secondStart);
+      checkNsField('lastNClosedBars()[1].endNs', all[1].endNs, secondStart + SECOND_NS - 1n);
+    }
+
+    // The first callback saw only its own bar.
+    check(Array.isArray(seen[0].all) && seen[0].all.length === 1,
+          `the first callback saw one bar in the ring (got ${seen[0].all && seen[0].all.length})`);
+  }
+}
+
+console.log('\n=== An empty ring reads back as null, not as a zeroed bar ===');
+{
+  const reg = new flox.SymbolRegistry();
+  const sym = reg.addSymbol('test', 'BTC', 0.01);
+  const runner = new flox.Runner(reg, () => {}, false);
+  const seen = [];
+  runner.addStrategy({
+    symbols: [sym],
+    onBar(_ctx, _bar, emit) {
+      // A timeframe nothing has closed into.
+      seen.push({
+        last: emit.lastClosedBar(Number(sym), 0, 60000000000),
+        all: emit.lastNClosedBars(Number(sym), 0, 60000000000, 4),
+      });
+    },
+  });
+  runner.start();
+  runner.onBar(Number(sym), {
+    open: 100, high: 101, low: 99, close: 100.5, volume: 1,
+    barType: 0, barTypeParam: 1000000000,
+    startTimeNs: NS, endTimeNs: NS + SECOND_NS - 1n,
+  });
+  runner.stop();
+  check(seen.length === 1 && seen[0].last === null,
+        `an unfilled timeframe reads back null (got ${describe(seen[0] && seen[0].last)})`);
+  check(seen.length === 1 && Array.isArray(seen[0].all) && seen[0].all.length === 0,
+        `an unfilled timeframe yields no bars (got ${seen[0] && seen[0].all && seen[0].all.length})`);
 }
 
 // ── index.d.ts agrees with what the addon emits ───────────────────────

@@ -15,14 +15,16 @@
  * the threaded path was never taken.
  *
  * So the mode goes, and the invariant it pretended to uphold is enforced
- * where it is observable instead. index.d.ts already documents the four
- * hooks the engine reads inline -- setRiskManager, setKillSwitch,
- * setOrderValidator and setExecutor -- as "Sync only", and says of the
- * first "Throws if `threaded`". It did not throw: a threaded Runner
- * accepted all four and wired them into the LiveEngine, where a C++
- * consumer thread would call straight into V8. Refusing them at the
- * setter is what makes "only from the JS thread" a property of the code
- * rather than of the call sites nobody has written yet.
+ * where it is observable instead. index.d.ts documents every one of the
+ * seven hook setters -- setPnlTracker, setStorageSink, setRiskManager,
+ * setKillSwitch, setOrderValidator, setMarketDataRecorder and
+ * setExecutor -- as "Sync only ... Throws if `threaded`". None of them
+ * threw: a threaded Runner accepted all seven and wired them into the
+ * LiveEngine, where a C++ consumer thread would call straight into V8.
+ * Refusing them at the setter is what makes "only from the JS thread" a
+ * property of the code rather than of the call sites nobody has written
+ * yet, and the check has to cover all seven -- a guard is only as good
+ * as its least-covered setter.
  *
  * Run from repo root:
  *   cd node && node test/test_single_hook_mode.js
@@ -39,12 +41,19 @@ function check(cond, msg) {
   else { failed++; console.error(`  FAIL  ${msg}`); }
 }
 
-// The four hooks index.d.ts marks "Sync only", with an object carrying
-// the methods each one reads.
+// Every hook setter index.d.ts marks "Sync only", with an object
+// carrying the methods each one reads. All seven, not the three gates
+// plus the executor: a PnL tracker, a storage sink and a market-data
+// recorder run their JS on the dispatching thread exactly like the other
+// four, so the rule is the same for every one of them and the list has
+// to be the whole list.
 const INLINE_HOOKS = [
+  ['setPnlTracker', { onSignal() {} }],
+  ['setStorageSink', { store() {} }],
   ['setRiskManager', { allow() { return true; } }],
   ['setKillSwitch', { check() { return true; } }],
   ['setOrderValidator', { validate() { return true; } }],
+  ['setMarketDataRecorder', { onStart() {}, onStop() {}, onTrade() {}, onBookUpdate() {} }],
   ['setExecutor', { submit() {}, cancel() {}, capabilities() { return {}; } }],
 ];
 
@@ -60,7 +69,7 @@ for (const [setter, hook] of INLINE_HOOKS) {
   const { runner } = makeRunner(true);
   let err = null;
   try { runner[setter](hook); } catch (e) { err = e; }
-  check(err !== null, `${setter} on a threaded Runner throws (got no throw)`);
+  check(err !== null, `${setter} on a threaded Runner throws` + (err === null ? ' (got no throw)' : ''));
   if (err !== null) {
     check(/sync/i.test(String(err.message)),
           `${setter} says why (message was "${err.message}")`);
@@ -131,7 +140,7 @@ console.log('\n=== The dead mode is gone from the source ===');
   }
 }
 
-console.log('\n=== index.d.ts still documents the four as sync only ===');
+console.log('\n=== index.d.ts still documents all seven as sync only ===');
 {
   const dts = fs.readFileSync(path.join(__dirname, '..', 'index.d.ts'), 'utf8');
   const runner = dts.match(/export class Runner\s*\{([\s\S]*?)\n\}/);
