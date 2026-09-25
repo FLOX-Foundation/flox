@@ -573,14 +573,21 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
         if (seqState.lastUpdateId < 0 || updateId != seqState.lastUpdateId + 1)
         {
           // Gap: never apply onto a stale book. Drop, invalidate, and force a
-          // fresh snapshot by re-subscribing the topic.
+          // fresh snapshot by re-subscribing the topic. Detecting it is only
+          // half the job -- a supervisor that cannot see the hole keeps
+          // trading off a book that has quietly stopped updating, so the gap
+          // goes out on the framework's health channel as well. With no
+          // baseline yet there is no id to have expected: 0 says so.
+          const uint64_t expected =
+              seqState.lastUpdateId < 0 ? 0u : static_cast<uint64_t>(seqState.lastUpdateId + 1);
           _bookGapCount.fetch_add(1, std::memory_order_relaxed);
           _logger->warn("[Bybit] book gap on " + std::string(ssv) +
-                        ": expected u=" + std::to_string(seqState.lastUpdateId + 1) +
+                        ": expected u=" + std::to_string(expected) +
                         " got u=" + std::to_string(updateId) + " -- resyncing");
           seqState.lastUpdateId = -1;
           seqState.resyncInFlight = true;
           resubscribeBook(ssv);
+          emitSequenceGap(expected, static_cast<uint64_t>(updateId));
           return;
         }
         prev = seqState.lastUpdateId;
