@@ -1100,7 +1100,7 @@ TEST(BacktestFillRealism, WindowIsPairedOnARunWithNoStrategy)
 // callback that throws unwinds past the close, so the window has to be closed
 // by a scope guard rather than by the statement after the call. Enable this
 // once the runner owns the window through RAII.
-TEST(BacktestFillRealism, DISABLED_WindowIsPairedWhenABarCallbackThrows)
+TEST(BacktestFillRealism, WindowIsPairedWhenABarCallbackThrows)
 {
   SymbolRegistry reg;
   const SymbolId sym = addSymbol(reg, "BTCUSDT");
