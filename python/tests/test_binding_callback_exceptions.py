@@ -79,6 +79,11 @@ import flox_py as flox
 BUILD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(flox.__file__)))
 
 DEFAULT_TIMEOUT = 90
+MARKER_TEXT = "CALLBACK_BLEW_UP"
+
+# docs/bindings/python.md, "When a callback raises": "level: 0=info,
+# 1=warn, 2=error". callback_guard.h reports a callback error at error.
+LOG_LEVEL_ERROR = 2
 
 
 class Outcome:
@@ -101,14 +106,27 @@ class Outcome:
         """
         if marker in self.payload.get("raised", ""):
             return True
-        return any(marker in line for line in self.payload.get("log", []))
+        return any(marker in message for _level, message in self.log)
+
+    @property
+    def log(self):
+        """The (level, message) pairs the sink collected."""
+        return [tuple(entry) for entry in self.payload.get("log", [])]
+
+    @property
+    def extra(self):
+        return self.payload.get("extra", {})
+
+    def reports(self, marker):
+        """Log entries carrying `marker`, as (level, message) pairs."""
+        return [(level, message) for level, message in self.log if marker in message]
 
     def describe(self):
         return (f"returncode={self.returncode} payload={self.payload}\n"
                 f"--- subprocess output ---\n{self.output}")
 
 
-def drive(body, timeout=DEFAULT_TIMEOUT, marker="CALLBACK_BLEW_UP"):
+def drive(body, timeout=DEFAULT_TIMEOUT, marker=MARKER_TEXT):
     """Run `body` against this build in a fresh interpreter.
 
     Out of process on purpose: an exception crossing the C ABI can abort
@@ -125,11 +143,16 @@ def drive(body, timeout=DEFAULT_TIMEOUT, marker="CALLBACK_BLEW_UP"):
 
         MARKER = {marker!r}
         LOG = []
-        flox.set_log_callback(lambda level, msg: LOG.append(str(msg)))
+        # The level is half the contract: callback_guard.h reports at
+        # error level, and docs/bindings/python.md spells the mapping
+        # out -- "level: 0=info, 1=warn, 2=error". A sink that drops the
+        # level would make an Error->Info regression invisible.
+        flox.set_log_callback(lambda level, msg: LOG.append([int(level), str(msg)]))
 
         fired = [0]     # times the callback under test ran
         alive = [0]     # times the engine reached the strategy afterwards
         raised = [""]   # what came back out of the driving call
+        extra = {{}}     # whatever a single driver needs to report back
 
         def report():
             # Detach before the report: a Python log callback still
@@ -141,6 +164,7 @@ def drive(body, timeout=DEFAULT_TIMEOUT, marker="CALLBACK_BLEW_UP"):
                 "alive": alive[0],
                 "raised": raised[0],
                 "log": LOG,
+                "extra": extra,
             }}) + "\\n")
             sys.stdout.flush()
     """)
@@ -266,19 +290,13 @@ def test_gate_exception_is_surfaced(gate, base, method, attach, _bt_attach):
 
     assert not outcome.timed_out, outcome.describe()
     assert outcome.payload.get("fired", 0) >= 1, outcome.describe()
-    assert outcome.surfaced("CALLBACK_BLEW_UP"), (
+    assert outcome.surfaced(MARKER_TEXT), (
         f"the {gate} exception vanished: it was neither re-raised out of "
         f"Runner.on_trade nor reported through set_log_callback\n"
         f"{outcome.describe()}")
 
 
-def test_backtest_gate_denies_when_the_python_callable_raises():
-    """The same gate contract on the BacktestRunner attach points.
-
-    Red today for the same reason: BacktestRunner.set_risk_manager goes
-    through the same riskAllowBridge.
-    """
-    outcome = drive("""
+_BACKTEST_GATE_SETUP = """
         import numpy as np
 
         reg = flox.SymbolRegistry()
@@ -293,17 +311,12 @@ def test_backtest_gate_denies_when_the_python_callable_raises():
 
         bt.add_execution_listener(L())
 
-        class Gate(flox.RiskManager):
-            def allow(self, sig):
-                fired[0] += 1
-                raise RuntimeError(MARKER)
-
-        bt.set_risk_manager(Gate())
-
         class S(flox.Strategy):
             def on_bar(self, ctx, bar):
                 self.market_buy(0.5)
+"""
 
+_BACKTEST_GATE_RUN = """
         bt.set_strategy(S([sym]))
         n = 4
         start = np.array([i * 60_000_000_000 for i in range(n)], dtype=np.int64)
@@ -316,30 +329,86 @@ def test_backtest_gate_denies_when_the_python_callable_raises():
             raised[0] = repr(exc)
         alive[0] = len(fills)
         report()
-    """)
+"""
+
+
+@pytest.mark.parametrize("gate,base,method,_attach,bt_attach", GATES,
+                         ids=[g[0] for g in GATES])
+def test_backtest_gate_denies_when_the_python_callable_raises(gate, base, method,
+                                                              _attach, bt_attach):
+    """The same gate contract on the BacktestRunner attach points.
+
+    BacktestRunner does not go through the C ABI: it wraps
+    flox::BacktestRunner directly, so each gate arrives through its own
+    C++ adapter -- PyRiskManagerCxxAdapter, PyKillSwitchCxxAdapter,
+    PyOrderValidatorCxxAdapter (hook_bindings.h). Three adapters, three
+    `= false` defaults, so all three are pinned here and not just the
+    risk manager: the kill switch and the validator have their own
+    copy of the rule and nothing else in the suite reads them.
+    """
+    outcome = drive(_BACKTEST_GATE_SETUP + f"""
+        class Gate(flox.{base}):
+            def {method}(self, sig):
+                fired[0] += 1
+                raise RuntimeError(MARKER)
+
+        bt.{bt_attach}(Gate())
+    """ + _BACKTEST_GATE_RUN)
 
     assert not outcome.timed_out, outcome.describe()
     assert outcome.returncode == 0, outcome.describe()
     assert outcome.payload.get("fired", 0) >= 1, (
-        f"the backtest gate never ran\n{outcome.describe()}")
+        f"the backtest {gate} never ran\n{outcome.describe()}")
     assert outcome.payload.get("alive") == 0, (
-        f"a backtest risk gate that raises must deny; "
+        f"a backtest {gate} that raises must deny; "
+        f"{outcome.payload.get('alive')} fill(s) happened\n{outcome.describe()}")
+    assert outcome.reports(MARKER_TEXT), (
+        f"the backtest {gate} exception was not reported\n{outcome.describe()}")
+
+
+@pytest.mark.parametrize("gate,base,method,_attach,bt_attach", GATES,
+                         ids=[g[0] for g in GATES])
+def test_backtest_gate_that_returns_true_allows(gate, base, method, _attach,
+                                                bt_attach):
+    """The other half of each backtest adapter: an allow must allow.
+
+    Without this, an adapter that answers deny unconditionally passes
+    every deny test in the file and nothing notices.
+    """
+    outcome = drive(_BACKTEST_GATE_SETUP + f"""
+        class Gate(flox.{base}):
+            def {method}(self, sig):
+                fired[0] += 1
+                return True
+
+        bt.{bt_attach}(Gate())
+    """ + _BACKTEST_GATE_RUN)
+
+    assert not outcome.timed_out, outcome.describe()
+    assert outcome.returncode == 0, outcome.describe()
+    assert outcome.payload.get("fired", 0) >= 1, (
+        f"the backtest {gate} never ran\n{outcome.describe()}")
+    assert outcome.payload.get("alive", 0) >= 1, (
+        f"a backtest {gate} that returns True must let the order through; "
         f"{outcome.payload.get('alive')} fill(s) happened\n{outcome.describe()}")
 
 
-def test_gate_that_returns_false_still_denies():
-    """Green control for the gate area.
+@pytest.mark.parametrize("gate,base,method,attach,_bt_attach", GATES,
+                         ids=[g[0] for g in GATES])
+def test_gate_that_returns_false_still_denies(gate, base, method, attach,
+                                              _bt_attach):
+    """Green control for the gate area, on all three bridges.
 
-    Passes on the untouched tree. If this one goes red, the harness (or
-    the fix) broke plain deny, not the exception path.
+    Passes on the untouched tree. If this one goes red, plain deny
+    broke, not the exception path.
     """
-    outcome = drive(_SYNC_RUNNER_SETUP + """
-        class Gate(flox.RiskManager):
-            def allow(self, sig):
+    outcome = drive(_SYNC_RUNNER_SETUP + f"""
+        class Gate(flox.{base}):
+            def {method}(self, sig):
                 fired[0] += 1
                 return False
 
-        runner.set_risk_manager(Gate())
+        runner.{attach}(Gate())
         runner.start()
         runner.on_trade(sym, 100.0, 1.0, True, 1_000)
         runner.stop()
@@ -353,15 +422,81 @@ def test_gate_that_returns_false_still_denies():
     assert outcome.payload.get("alive") == 0, outcome.describe()
 
 
-def test_gate_that_returns_true_allows():
-    """Green control: the allow path is untouched by the deny-on-raise fix."""
-    outcome = drive(_SYNC_RUNNER_SETUP + """
-        class Gate(flox.RiskManager):
-            def allow(self, sig):
+@pytest.mark.parametrize("gate,base,method,attach,_bt_attach", GATES,
+                         ids=[g[0] for g in GATES])
+def test_gate_that_returns_true_allows(gate, base, method, attach, _bt_attach):
+    """Each bridge must carry the callable's answer, not a constant.
+
+    A bridge that returns deny whatever the callable said satisfies
+    every deny case in this file. Three signals go in and all three
+    must come out, so a bridge that drops the answer is visible on each
+    of riskAllowBridge, killCheckBridge and orderValidateBridge.
+    """
+    outcome = drive(_SYNC_RUNNER_SETUP + f"""
+        class Gate(flox.{base}):
+            def {method}(self, sig):
                 fired[0] += 1
                 return True
 
-        runner.set_risk_manager(Gate())
+        runner.{attach}(Gate())
+        runner.start()
+        for i in range(3):
+            runner.on_trade(sym, 100.0, 1.0, True, 1_000 + i)
+        runner.stop()
+        alive[0] = len(signals)
+        report()
+    """)
+
+    assert not outcome.timed_out, outcome.describe()
+    assert outcome.returncode == 0, outcome.describe()
+    assert outcome.payload.get("fired", 0) == 3, outcome.describe()
+    assert outcome.payload.get("alive") == 3, (
+        f"a {gate} that returns True must let every signal through; "
+        f"{outcome.payload.get('alive')} of 3 arrived\n{outcome.describe()}")
+
+
+# A gate's answer has to be a bool. docs/bindings/python.md, "When a
+# callback raises": the three gates "drop the signal when the callable
+# raises, or returns something that is not a bool".
+#
+# Measured carve-out: pybind11's bool caster accepts a Python int, so 0
+# denies as False and 1 allows as True rather than both denying. Every
+# other non-bool -- None, a str, a list, a bare object -- fails the cast,
+# which raises, which denies by rule 2. Only the deny side is pinned
+# here; `1` allowing is noted so the next reader knows it was measured
+# and not overlooked.
+NON_BOOL_DENIES = [
+    ("none", "None"),
+    ("zero", "0"),
+    ("empty_str", '""'),
+    ("nonempty_str", '"yes"'),
+    ("object", "object()"),
+    ("empty_list", "[]"),
+    ("nonempty_list", "[1]"),
+]
+
+
+@pytest.mark.parametrize("value_id,value", NON_BOOL_DENIES,
+                         ids=[v[0] for v in NON_BOOL_DENIES])
+@pytest.mark.parametrize("gate,base,method,attach,_bt_attach", GATES,
+                         ids=[g[0] for g in GATES])
+def test_gate_denies_when_the_callable_returns_a_non_bool(gate, base, method,
+                                                          attach, _bt_attach,
+                                                          value_id, value):
+    """An answer that is not a bool is not an answer.
+
+    The trampolines declare a `bool` return, so pybind11 casts strictly
+    and a value it cannot convert raises -- which lands on rule 2 and
+    denies. A bridge that instead treated "anything that is not literally
+    False" as allow would let None, "" and a bare object through.
+    """
+    outcome = drive(_SYNC_RUNNER_SETUP + f"""
+        class Gate(flox.{base}):
+            def {method}(self, sig):
+                fired[0] += 1
+                return {value}
+
+        runner.{attach}(Gate())
         runner.start()
         runner.on_trade(sym, 100.0, 1.0, True, 1_000)
         runner.stop()
@@ -371,7 +506,97 @@ def test_gate_that_returns_true_allows():
 
     assert not outcome.timed_out, outcome.describe()
     assert outcome.returncode == 0, outcome.describe()
-    assert outcome.payload.get("alive") == 1, outcome.describe()
+    assert outcome.payload.get("fired", 0) == 1, outcome.describe()
+    assert outcome.payload.get("alive") == 0, (
+        f"a {gate} answering {value} is not answering a bool and must deny; "
+        f"{outcome.payload.get('alive')} signal(s) got through\n"
+        f"{outcome.describe()}")
+
+
+@pytest.mark.parametrize("gate,base,method,attach,_bt_attach", GATES,
+                         ids=[g[0] for g in GATES])
+def test_gate_answers_again_after_it_has_raised(gate, base, method, attach,
+                                                _bt_attach):
+    """A raise costs that one signal, not the gate.
+
+    docs/bindings/python.md: "a callback that raises costs you that
+    event, not the run". So the bridge must not latch a deny after the
+    first exception, and it must keep calling the callable -- the third
+    signal, whose call returns True, has to get through.
+
+    The report is pinned per raise as well: two distinct exceptions from
+    the same source have to produce two distinct descriptions, or a
+    once-per-source dedup would hide every repeat failure of a gate that
+    breaks intermittently.
+    """
+    outcome = drive(_SYNC_RUNNER_SETUP + f"""
+        class Gate(flox.{base}):
+            def {method}(self, sig):
+                fired[0] += 1
+                if fired[0] <= 2:
+                    raise RuntimeError(MARKER + "_" + str(fired[0]))
+                return True
+
+        runner.{attach}(Gate())
+        runner.start()
+        for i in range(3):
+            runner.on_trade(sym, 100.0, 1.0, True, 1_000 + i)
+        runner.stop()
+        alive[0] = len(signals)
+        report()
+    """)
+
+    assert not outcome.timed_out, outcome.describe()
+    assert outcome.returncode == 0, outcome.describe()
+    assert outcome.payload.get("fired", 0) == 3, (
+        f"the {gate} callable stopped being called after it raised: "
+        f"{outcome.payload.get('fired')} of 3 calls\n{outcome.describe()}")
+    assert outcome.payload.get("alive") == 1, (
+        f"the {gate} did not answer again after raising; "
+        f"{outcome.payload.get('alive')} of 1 signal got through\n"
+        f"{outcome.describe()}")
+    assert outcome.reports(MARKER_TEXT + "_1"), (
+        f"the first {gate} raise was not reported\n{outcome.describe()}")
+    assert outcome.reports(MARKER_TEXT + "_2"), (
+        f"the second {gate} raise from the same source was dropped\n"
+        f"{outcome.describe()}")
+
+
+@pytest.mark.parametrize("gate,base,method,attach,_bt_attach", GATES,
+                         ids=[g[0] for g in GATES])
+def test_gate_error_is_logged_at_error_level(gate, base, method, attach,
+                                             _bt_attach):
+    """The description is reported at error level, naming the callback.
+
+    docs/bindings/python.md, "When a callback raises": "The exception
+    text, with type and traceback, goes to the engine log at error
+    level." A report that arrives at info level is a report a user
+    filtering on errors never sees.
+    """
+    outcome = drive(_SYNC_RUNNER_SETUP + f"""
+        class Gate(flox.{base}):
+            def {method}(self, sig):
+                fired[0] += 1
+                raise RuntimeError(MARKER)
+
+        runner.{attach}(Gate())
+        runner.start()
+        runner.on_trade(sym, 100.0, 1.0, True, 1_000)
+        runner.stop()
+        report()
+    """)
+
+    assert not outcome.timed_out, outcome.describe()
+    reports = outcome.reports(MARKER_TEXT)
+    assert reports, (
+        f"the {gate} exception never reached the log sink\n{outcome.describe()}")
+    assert all(level == LOG_LEVEL_ERROR for level, _ in reports), (
+        f"the {gate} exception was reported at level(s) "
+        f"{sorted({level for level, _ in reports})}, expected "
+        f"{LOG_LEVEL_ERROR} (error)\n{outcome.describe()}")
+    assert any(f"{base}.{method}" in message for _level, message in reports), (
+        f"the report does not name the callback that raised; expected "
+        f"{base}.{method} in it\n{outcome.describe()}")
 
 
 # ── 2. Strategy callbacks: nine C function pointers ──────────────────
@@ -523,6 +748,113 @@ _BACKTEST_DRIVER = """
     report()
 """
 
+# on_fill and on_order_update, with no other guarded callback on the
+# stack.
+#
+# The obvious driver -- market_buy() from inside on_bar -- fills
+# synchronously, so the fill is delivered while the bridge is still
+# inside on_bar's own guard. An exception raised there is contained by
+# that outer guard whether or not on_fill has one of its own, and the
+# test cannot tell the two apart. Both drivers below arrange for the
+# event to arrive from the executor's own market-data handling, which
+# BacktestRunner::processEvent runs before it calls the strategy
+# (src/backtest/backtest_runner.cpp:352), so the guard under test is the
+# outermost one. `depth` proves it: the strategy raises the depth
+# counter around every other callback it implements and the driver
+# records what it read when it raised.
+
+# A limit order placed on bar 0 below the market, filled by a later bar
+# from processPendingOrders inside sim().onBar().
+_ISOLATED_FILL_DRIVER = """
+    import numpy as np
+
+    reg = flox.SymbolRegistry()
+    sym = reg.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
+    bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
+    depth = [0]
+
+    class S(flox.Strategy):
+        def __init__(self, syms):
+            super().__init__(syms)
+            self.bars = 0
+        def on_bar(self, ctx, bar):
+            depth[0] += 1
+            if self.bars == 0:
+                self.limit_buy(98.0, 0.5)
+            self.bars += 1
+            if fired[0]:
+                alive[0] += 1
+            depth[0] -= 1
+        def on_fill(self, ctx, ev):
+            fired[0] += 1
+            if fired[0] == 1:
+                extra["depth_at_raise"] = depth[0]
+                raise ValueError(MARKER)
+
+    bt.set_strategy(S([sym]))
+    n = 6
+    start = np.array([i * 60_000_000_000 for i in range(n)], dtype=np.int64)
+    # Flat until bar 2, then the low dips under the resting limit.
+    low = np.array([99.0, 99.0, 97.0, 97.0, 97.0, 97.0])
+    close = np.array([100.0, 100.0, 98.0, 98.0, 98.0, 98.0])
+    try:
+        bt.run_bars(start, start + 60_000_000_000,
+                    np.full(n, 100.0), np.full(n, 101.0), low, close,
+                    np.full(n, 10.0), symbol="BTCUSDT")
+    except BaseException as exc:
+        raised[0] = repr(exc)
+    report()
+"""
+
+# A trailing stop ratcheting up on a rising series. updateTrailingStops()
+# runs at the end of SimulatedExecutor::onBar, so TRAILING_UPDATED is
+# delivered with nothing else of ours on the stack -- unlike the
+# SUBMITTED / ACCEPTED / PENDING_TRIGGER events, which arrive inside the
+# on_bar that emitted the order and are skipped here for exactly that
+# reason.
+_ISOLATED_ORDER_UPDATE_DRIVER = """
+    import numpy as np
+
+    reg = flox.SymbolRegistry()
+    sym = reg.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
+    sym_id = int(sym)
+    bt = flox.BacktestRunner(reg, fee_rate=0.0, initial_capital=100_000.0)
+    depth = [0]
+
+    class S(flox.Strategy):
+        def __init__(self, syms):
+            super().__init__(syms)
+            self.bars = 0
+        def on_bar(self, ctx, bar):
+            depth[0] += 1
+            if self.bars == 0:
+                self.emit_trailing_stop(sym_id, "sell", 5.0, 1.0)
+            self.bars += 1
+            if fired[0]:
+                alive[0] += 1
+            depth[0] -= 1
+        def on_order_update(self, ctx, ev):
+            if ev.status != "TRAILING_UPDATED":
+                return
+            fired[0] += 1
+            if fired[0] == 1:
+                extra["depth_at_raise"] = depth[0]
+                raise ValueError(MARKER)
+
+    bt.set_strategy(S([sym]))
+    n = 6
+    start = np.array([i * 60_000_000_000 for i in range(n)], dtype=np.int64)
+    price = np.array([100.0 + 5 * i for i in range(n)])
+    try:
+        bt.run_bars(start, start + 60_000_000_000,
+                    price, price + 0.5, price - 0.5, price + 0.25,
+                    np.full(n, 10.0), symbol="BTCUSDT")
+    except BaseException as exc:
+        raised[0] = repr(exc)
+    report()
+"""
+
+
 _VENUE_STACK_DRIVER = """
     import pathlib
 
@@ -663,8 +995,8 @@ STRATEGY_CALLBACKS = [
     ("on_bar", _ON_BAR_DRIVER),
     ("on_start", _ON_START_DRIVER),
     ("on_stop", _ON_STOP_DRIVER),
-    ("on_fill", _BACKTEST_DRIVER % {"cb": "on_fill"}),
-    ("on_order_update", _BACKTEST_DRIVER % {"cb": "on_order_update"}),
+    ("on_fill", _ISOLATED_FILL_DRIVER),
+    ("on_order_update", _ISOLATED_ORDER_UPDATE_DRIVER),
     ("on_queue_position_change", _QUEUE_POSITION_DRIVER),
     ("on_market_position_change",
      _VENUE_STACK_DRIVER % {"cb": "on_market_position_change", "csv": _CSV}),
@@ -710,10 +1042,19 @@ def test_strategy_callback_that_raises_does_not_cross_the_c_boundary(callback, b
         f"the engine stopped reaching the strategy after {callback} raised: "
         f"the exception tore the run down instead of being contained at the "
         f"bridge and reported out of band\n{outcome.describe()}")
-    assert outcome.surfaced("CALLBACK_BLEW_UP"), (
+    assert outcome.surfaced(MARKER_TEXT), (
         f"the exception from {callback} was swallowed: not re-raised out of "
         f"the driving call and not reported through set_log_callback\n"
         f"{outcome.describe()}")
+    if "depth_at_raise" in outcome.extra:
+        # Only the drivers that can arrange it report this. A non-zero
+        # depth means another guarded callback was on the stack and would
+        # have contained the exception on this one's behalf, which makes
+        # the case blind to a missing guard here.
+        assert outcome.extra["depth_at_raise"] == 0, (
+            f"{callback} raised {outcome.extra['depth_at_raise']} frame(s) "
+            f"inside another guarded callback, so this case does not test "
+            f"its own guard\n{outcome.describe()}")
 
 
 def test_threaded_consumer_survives_a_raising_callback():
@@ -750,7 +1091,82 @@ def test_threaded_consumer_survives_a_raising_callback():
     assert outcome.payload.get("alive", 0) >= 1, (
         "the bus consumer died on the first raise; no later event reached "
         f"the strategy\n{outcome.describe()}")
-    assert outcome.surfaced("CALLBACK_BLEW_UP"), outcome.describe()
+    assert outcome.surfaced(MARKER_TEXT), outcome.describe()
+
+
+def test_threaded_callback_runs_holding_the_gil():
+    """The live path stays correct with several threads in Python at once.
+
+    Runner(threaded=True) runs the callback on an EventBus consumer
+    thread while the feeding thread publishes -- and publish now
+    releases the GIL, so the two really do overlap. This drives that
+    overlap hard: the strategy allocates on every event, two more
+    Python threads churn objects, and 8k trades go through. A thread
+    touching CPython without the GIL corrupts refcounts here; the
+    process aborts, or wedges and the timeout reports it.
+
+    What this does *not* prove on its own is that
+    PyStrategyHost::dispatch is the frame doing the acquiring. Every one
+    of the nine callbacks reaches Python through PYBIND11_OVERRIDE,
+    which opens with `pybind11::gil_scoped_acquire gil;`
+    (pybind11/pybind11.h:3847), and error_already_set acquires in its
+    own destructor, so removing dispatch's acquire leaves no observable
+    trace from Python. The assertion here is the outcome -- every event
+    delivered, interpreter intact -- which is what a reader of this file
+    can actually check.
+    """
+    outcome = drive("""
+        import threading
+
+        reg = flox.SymbolRegistry()
+        sym = reg.add_symbol("test", "BTC", 0.01)
+        runner = flox.Runner(reg, lambda s: None, threaded=True)
+
+        class S(flox.Strategy):
+            def on_trade(self, ctx, trade):
+                d = {}
+                for i in range(8):
+                    d[str(i)] = [object(), (trade.price, trade.quantity),
+                                 "x" * (i + 1)]
+                fired[0] += 1
+
+        runner.add_strategy(S(symbols=[sym]))
+        runner.start()
+
+        stop = threading.Event()
+
+        def churn():
+            while not stop.is_set():
+                acc = [{"k": str(i), "v": [object()] * 4} for i in range(200)]
+                del acc
+
+        threads = [threading.Thread(target=churn, daemon=True) for _ in range(2)]
+        for t in threads:
+            t.start()
+
+        N = 8_000
+        for i in range(N):
+            runner.on_trade(sym, 100.0 + (i %% 7), 1.0, True, i + 1)
+        for _ in range(200):
+            if fired[0] >= N:
+                break
+            time.sleep(0.05)
+        stop.set()
+        for t in threads:
+            t.join(timeout=5)
+        runner.stop()
+        alive[0] = N
+        report()
+    """ % (), timeout=180)
+
+    assert not outcome.timed_out, (
+        f"the threaded run wedged under GIL contention\n{outcome.describe()}")
+    assert outcome.returncode == 0, (
+        f"the interpreter did not survive a callback running on the bus "
+        f"consumer thread while other threads ran Python\n{outcome.describe()}")
+    assert outcome.payload.get("fired", 0) == outcome.payload.get("alive"), (
+        f"{outcome.payload.get('fired')} of {outcome.payload.get('alive')} "
+        f"events reached the strategy\n{outcome.describe()}")
 
 
 def test_strategy_callback_that_does_not_raise_is_delivered():
