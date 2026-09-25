@@ -408,7 +408,7 @@ jobs:
     - name: Verify .pyi stubs are in sync with the binding
       run: python3 scripts/gen_pyi_stubs.py --check
 
-    # Build the wheel from python/pyproject.toml, install it into a
+    # Build the wheel from the root pyproject.toml, install it into a
     # throwaway venv, and assert every documented pure-Python module is
     # importable. Catches the regression where scikit-build-core only
     # collects the install component contents and silently drops new

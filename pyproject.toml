@@ -7,7 +7,7 @@ name = "flox-py"
 version = "0.10.0"
 authors = [{name = "FLOX Foundation"}]
 description = "AI-native framework for building trading systems."
-readme = "README.md"
+readme = "python/README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = ["numpy"]
@@ -67,6 +67,18 @@ Changelog = "https://github.com/FLOX-Foundation/flox/releases"
 flox = "flox_py.cli:main"
 
 [tool.scikit-build]
+# Layout rule: this file lives at the repository root, not in python/,
+# because the sdist root is the directory that holds pyproject.toml and
+# an sdist must carry every source CMake configures. The C++ core the
+# extension links (include/, src/, venue/) sits above python/, and
+# sdist.include patterns cannot reach outside the project root -- so a
+# pyproject under python/ can only ever produce a tarball without the
+# sources it tells CMake to build, which is exactly what shipped as
+# flox_py-0.10.0.tar.gz: 192 files, no include/, no src/. Anything a
+# `pip install <sdist>` configure step reads has to stay inside the
+# tree this file roots; sdist.exclude below removes the rest, and the
+# install-and-import gate in .github/workflows/python-wheels.yml is
+# what proves the remainder is enough.
 cmake.args = [
     "-DFLOX_ENABLE_BACKTEST=ON",
     "-DFLOX_BUILD_PYTHON=ON",
@@ -77,9 +89,36 @@ cmake.args = [
     # specific instructions.
     "-DFLOX_NATIVE=OFF",
 ]
-cmake.source-dir = ".."
+cmake.source-dir = "."
 # Ship the package directory (pure-Python wrapper, .pyi stubs, py.typed
 # marker). The compiled `_flox_py` extension is copied into this same
-# directory by the python_module install component.
-wheel.packages = ["flox_py"]
+# directory by the python_module install component, which installs to
+# `flox_py/` -- the wheel layout does not move with this file.
+wheel.packages = ["python/flox_py"]
 install.components = ["python_module"]
+# What the sdist drops. Kept as a list of what is *not* built by
+# `-DFLOX_BUILD_PYTHON=ON`, so the complement is "every input of that
+# configure": CMakeLists.txt, cmake/, include/, src/, venue/ (the
+# module is on by default and its sources are globbed at configure
+# time), third_party/ (paired with src/quickjs) and python/ itself.
+# Each entry is anchored at the root so python/tests and venue/tests
+# are unaffected.
+sdist.exclude = [
+    "/.api",
+    "/.github",
+    "/benchmarks",
+    "/codon",
+    "/connectors",
+    "/demo",
+    "/dist",
+    "/docs",
+    "/mcp",
+    "/mirror",
+    "/node",
+    "/quickjs",
+    "/scripts",
+    "/tests",
+    "/tools",
+    "/glama.json",
+    "/mkdocs.yml",
+]
