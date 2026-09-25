@@ -26,6 +26,7 @@
  */
 #include "flox-venue/control_api.h"
 #include "flox-venue/control_plane.h"
+#include "flox-venue/fixed_point_text.h"
 #include "flox-venue/messages.h"
 #include "flox-venue/metrics.h"
 #include "flox-venue/prometheus.h"
@@ -282,4 +283,41 @@ TEST(VenueMoneyRendering, TheInstrumentPricesAreRenderedAtThePriceScale)
   EXPECT_EQ(jsonValue(coarse, "tick"), "0.0001") << coarse;
   EXPECT_EQ(jsonValue(coarse, "minPrice"), "67123.4567") << coarse;
   EXPECT_EQ(jsonValue(coarse, "maxPrice"), "89000.0009") << coarse;
+}
+
+// Zero has no sign. A funding rate the venue has not settled yet, a band
+// bound left unset (SymbolConfig spells 0 as "unchecked"), a tick on an
+// instrument that does not constrain one -- all of them render, and a minus
+// in front of any of them is a number that reads as something other than what
+// it is. Scraped, "-0.00000000" is not even the same series value; parsed out
+// of a control reply it is a negative price band.
+TEST(VenueMoneyRendering, AZeroRawRendersUnsigned)
+{
+  const Metrics m;
+  const std::string page = prom::render(m, gauges(0));
+  const std::string rate = gaugeValue(page, "fme_funding_rate");
+  EXPECT_EQ(rate, "0.00000000");
+  EXPECT_EQ(rate.find('-'), std::string::npos) << page;
+
+  SymbolConfig unconstrained;
+  unconstrained.id = SYM;
+  unconstrained.tickSize = Price::fromRaw(0);
+  unconstrained.minPrice = Price::fromRaw(0);
+  unconstrained.maxPrice = Price::fromRaw(0);
+
+  InstrumentRegistry reg;
+  reg.listInstrument(unconstrained);
+  ControlApi api(reg);
+  const std::string reply = api.handle(R"({"method":"get","symbol":1})");
+
+  EXPECT_EQ(jsonValue(reply, "tick"), "0.00000000") << reply;
+  EXPECT_EQ(jsonValue(reply, "minPrice"), "0.00000000") << reply;
+  EXPECT_EQ(jsonValue(reply, "maxPrice"), "0.00000000") << reply;
+  EXPECT_EQ(reply.find('-'), std::string::npos) << reply;
+
+  // Whatever the scale is: the zeros a scale carries, and no more. A scale of
+  // one carries none, so the whole number is the whole string.
+  EXPECT_EQ(fixedPointToStr(0, 10'000), "0.0000");
+  EXPECT_EQ(fixedPointToStr(0, 1), "0");
+  EXPECT_EQ(fixedPointToStr(0, Price::Scale), "0.00000000");
 }

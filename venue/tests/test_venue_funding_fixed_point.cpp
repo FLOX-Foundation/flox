@@ -343,3 +343,46 @@ TEST(VenueFundingFixedPoint, TheSettledRateIsTheRateThatWasPublished)
   EXPECT_EQ(led.available(1, QUOTE),
             -rateOnNotional(kSmallNotionalRaw, eng.fundingRateRaw(), kFundingRateScale));
 }
+
+// A rate that is not a number. ApplyFunding carries a double, which is what a
+// rate calculator produces, and a calculator that divided by an index it did
+// not have produces this one. It is journaled, so it replays; it is published,
+// so a client reads it; and it is spent against every open position. Zero is
+// the only raw it can become -- the venue publishes no rate and settles
+// nothing, rather than transferring a number nobody computed.
+TEST(VenueFundingFixedPoint, ANaNRatePublishesZeroAndSettlesNothing)
+{
+  constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+  ASSERT_NE(kNaN, kNaN);
+
+  EXPECT_EQ(fundingRateRawOf(kNaN), 0);
+
+  Eng e;
+  const Amount before = e.led.available(1, QUOTE);
+  e.eng.submit(funding(kNaN), 3 * SEC);
+
+  EXPECT_EQ(e.eng.fundingRateRaw(), 0);
+  ASSERT_NE(e.lastDerivatives(), nullptr);
+  EXPECT_EQ(e.lastDerivatives()->fundingRateRaw, 0);
+  EXPECT_EQ(e.led.available(1, QUOTE), before);
+  EXPECT_EQ(e.led.available(VENUE_ACCT, QUOTE), Eng::kSeed);
+
+  // The portfolio book answers the same way, from its own copy of the
+  // boundary.
+  Ledger led;
+  const Amount seed = static_cast<Amount>(100'000'000'000'000LL);
+  led.deposit(1, QUOTE, seed);
+  led.deposit(2, QUOTE, seed);
+  CrossMarginManager cm(led, QUOTE, VENUE_ACCT);
+  cm.configureSymbol(SYM, /*imBps*/ 1000, /*mmBps*/ 0);
+  cm.setMark(SYM, Price::fromRaw(kMarkRaw));
+  cm.applyFill(1, SYM, Side::BUY, kQtyRaw, kMarkRaw);
+  cm.applyFill(2, SYM, Side::SELL, kQtyRaw, kMarkRaw);
+  const Amount longBefore = led.total(1, QUOTE);
+  const Amount shortBefore = led.total(2, QUOTE);
+
+  cm.applyFunding(SYM, kNaN, Price::fromRaw(kMarkRaw));
+
+  EXPECT_EQ(led.total(1, QUOTE), longBefore);
+  EXPECT_EQ(led.total(2, QUOTE), shortBefore);
+}

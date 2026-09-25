@@ -36,6 +36,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 using namespace flox;
@@ -157,21 +158,28 @@ std::vector<const FeeCharged*> feesIn(const std::vector<OutboundEvent>& out)
   return v;
 }
 
-// The two fees a print produces, maker first.
-std::pair<int64_t, int64_t> chargedBy(flox::FeeSchedule fs, const Trade& t, int64_t nowRaw = 0)
+// The two fees a print produces on `c`, maker first.
+std::pair<int64_t, int64_t> chargedOn(flox::FeeSchedule fs, const Trade& t, const SymbolConfig& c,
+                                      int64_t nowRaw = 0)
 {
   Fees f;
   f.setSchedule(std::move(fs));
   std::vector<OutboundEvent> out;
   EventSink sink = [&out](const OutboundEvent& e)
   { out.push_back(e); };
-  f.emit(t, cfg(), nowRaw, sink);
+  f.emit(t, c, nowRaw, sink);
   const auto fees = feesIn(out);
   if (fees.size() != 2)
   {
     return {0, 0};
   }
   return {fees[0]->fee.raw(), fees[1]->fee.raw()};
+}
+
+// The same on the default symbol.
+std::pair<int64_t, int64_t> chargedBy(flox::FeeSchedule fs, const Trade& t, int64_t nowRaw = 0)
+{
+  return chargedOn(std::move(fs), t, cfg(), nowRaw);
 }
 
 }  // namespace
@@ -489,4 +497,123 @@ TEST(VenueFeeFixedPoint, TheTierLookupIsIdempotentForOneTimestamp)
   EXPECT_EQ(first.second, second.second);
   EXPECT_EQ(first.first, 1.0);  // the lower tier, the window having been trimmed
   EXPECT_EQ(first.second, 2.0);
+}
+
+// ---- what must never become a number --------------------------------------
+
+// A rate that is not a number. It reaches feeRateRawOf from configuration --
+// a ladder read out of JSON, a tier computed from a division that had no
+// divisor -- and the only safe raw for it is zero: no fee, no rebate, nothing
+// moved. What must not happen is a raw at all, because a garbage rate raw is
+// spent on a real notional and lands in the ledger as a real transfer.
+// roundDoubleToI64 says so in its own words -- a NaN has no nearest
+// representable value, and zero is the only answer that cannot be mistaken
+// for a real quantity -- and this is the venue holding it to that.
+TEST(VenueFeeFixedPoint, ANaNRateChargesNothing)
+{
+  constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+  ASSERT_NE(kNaN, kNaN);
+
+  EXPECT_EQ(roundDoubleToI64(kNaN), 0);
+  EXPECT_EQ(flox::venue::engine::feeRateRawOf(kNaN), 0);
+
+  // Reported: both sides are told the print cost nothing.
+  const Trade t = unitPrint(200'000'00000000LL);
+  const auto [maker, taker] = chargedOn(scheduleBps(kNaN, kNaN), t, cfg());
+  EXPECT_EQ(maker, 0);
+  EXPECT_EQ(taker, 0);
+
+  // Settled: not a raw leaves either account, and the venue is not paid.
+  Fees f;
+  f.setSchedule(scheduleBps(kNaN, kNaN));
+  std::vector<OutboundEvent> out;
+  EventSink sink = [&out](const OutboundEvent& e)
+  { out.push_back(e); };
+
+  Ledger led;
+  const Amount seed = static_cast<Amount>(1'000'000'000'000'000LL);
+  led.deposit(1, QUOTE, seed);
+  led.deposit(2, QUOTE, seed);
+  f.settle(t, cfg(), 0, led, VENUE_ACCT, sink);
+
+  EXPECT_EQ(led.available(1, QUOTE), seed);
+  EXPECT_EQ(led.available(2, QUOTE), seed);
+  EXPECT_EQ(led.available(VENUE_ACCT, QUOTE), 0);
+}
+
+// ---- the symbol's own two scales ------------------------------------------
+
+// A fee prices the SYMBOL's notional, at the symbol's scales, the same
+// arithmetic the reservations and the margin use. A symbol carries two of
+// them and they are equal only by default: the price raw is read against
+// priceScale and the quantity raw against qtyScale, each in its own place.
+//
+// The same economic print -- one unit at 200000 -- costs the same whichever
+// way the symbol counts, and that is the point: the raws change, the money
+// does not.
+TEST(VenueFeeFixedPoint, TheNotionalReadsEachScaleInItsOwnPlace)
+{
+  constexpr int64_t kFeeRaw = 5'000'000'000LL;  // 2.5 bps of 200000 quote units
+
+  SymbolConfig plain = cfg();  // 1e8 / 1e8
+  const auto [plainMaker, plainTaker] =
+      chargedOn(scheduleBps(2.5, 2.5), unitPrint(200'000'00000000LL), plain);
+  EXPECT_EQ(plainMaker, kFeeRaw);
+  EXPECT_EQ(plainTaker, kFeeRaw);
+
+  // Quantities counted in thousandths: the quantity raw is a thousand times
+  // smaller, the price raw is untouched.
+  SymbolConfig coarseLots = cfg();
+  coarseLots.qtyScale = 1000;
+  Trade lots = unitPrint(200'000'00000000LL);
+  lots.quantity = Quantity::fromRaw(1000);
+  const auto [lotsMaker, lotsTaker] = chargedOn(scheduleBps(2.5, 2.5), lots, coarseLots);
+  EXPECT_EQ(lotsMaker, kFeeRaw);
+  EXPECT_EQ(lotsTaker, kFeeRaw);
+
+  // And the other way round: a symbol quoted in ten-thousandths, counted in
+  // hundred-millionths.
+  SymbolConfig coarseTicks = cfg();
+  coarseTicks.priceScale = 10'000;
+  Trade ticks = unitPrint(200'000'0000LL);
+  const auto [ticksMaker, ticksTaker] = chargedOn(scheduleBps(2.5, 2.5), ticks, coarseTicks);
+  EXPECT_EQ(ticksMaker, kFeeRaw);
+  EXPECT_EQ(ticksTaker, kFeeRaw);
+}
+
+// The two scales taken apart where the arithmetic can tell them apart at all.
+// notionalRaw is price x quantity x kMoneyScale / (priceScale x qtyScale),
+// which is symmetric in the two scales for every input that does not reach
+// its overflow guard -- so on an ordinary symbol, reading them in the wrong
+// order is invisible. Past the guard it stops being symmetric, because the
+// guard divides by priceScale FIRST to keep the product inside the 128-bit
+// Amount, and which scale is divided first is then the whole answer.
+//
+// The instrument: quoted to sixteen decimals, counted in whole units. A
+// trillion units at 0.2 is 2e22 quote units of notional -- exactly the region
+// ledger.h documents as the guard's, and the only region where a fee can say
+// which scale it read where.
+TEST(VenueFeeFixedPoint, TheNotionalReadsTheScalesInTheOrderLedgerDefines)
+{
+  SymbolConfig wide = cfg();
+  wide.priceScale = 10'000'000'000'000'000LL;  // 1e16
+  wide.qtyScale = 1;                           // whole units
+  ASSERT_TRUE(scalesValid(wide.priceScale, wide.qtyScale));
+
+  Trade t = print();
+  t.price = Price::fromRaw(2'000'000'000'000'001LL);
+  t.quantity = Quantity::fromRaw(1'000'000'000'000'003LL);
+
+  // What ledger.h makes of it, with the arguments in the order it defines.
+  const Amount notional = notionalRaw(t.price.raw(), t.quantity.raw(), wide.priceScale,
+                                      wide.qtyScale);
+  const Amount swapped = notionalRaw(t.price.raw(), t.quantity.raw(), wide.qtyScale,
+                                     wide.priceScale);
+  ASSERT_NE(notional, swapped);  // past the guard the order is observable
+
+  const auto [maker, taker] = chargedOn(scheduleBps(2.5, 2.5), t, wide);
+  EXPECT_EQ(maker, 5'000'000'000'000'000'000LL);  // 2.5 bps of 2e22
+  EXPECT_EQ(taker, 5'000'000'000'000'000'000LL);
+  // Read the other way round the same print costs 5000000000000017500.
+  EXPECT_NE(maker, static_cast<int64_t>(rateOnNotional(swapped, 25'000, kFeeRateScale)));
 }
