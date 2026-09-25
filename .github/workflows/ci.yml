@@ -1539,7 +1539,9 @@ jobs:
     runs-on: ubuntu-24.04
     # Observed: ~4 min (without-venue) + ~5 min (engine-only) run
     # sequentially now; was two ~4 min / ~5 min jobs on separate runners.
-    timeout-minutes: 20
+    # Since then about 20 min on a cold cache as the test suite grew, and
+    # the 20-minute cap cancelled the job on main; 30 leaves a margin.
+    timeout-minutes: 30
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # ccache defaults to comparing the compiler binary's mtime, and
