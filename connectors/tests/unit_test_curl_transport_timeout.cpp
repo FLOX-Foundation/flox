@@ -820,3 +820,58 @@ TEST(CurlTransportTimeout, ConnectTimeoutIsBoundedInMilliseconds)
                              "is not being honoured in milliseconds";
   EXPECT_FALSE(error.empty()) << "an unreachable address must be reported as an error";
 }
+
+// A post() that arrives after stop() has nowhere to go: the sender threads
+// are joined and gone, so a request appended to the queue would sit there
+// with nobody to pick it up. Shutdown is not an orderly moment on the order
+// path -- it is where a strategy is being torn down, possibly mid-flight --
+// and a submit that neither reaches the venue nor answers is the one outcome
+// a caller cannot recover from. It has to come back refused, at once, and
+// tearing the transport down afterwards must not wait on anything.
+TEST(CurlTransportTimeout, PostAfterStopIsAnsweredImmediately)
+{
+  LoopbackPeer peer(LoopbackPeer::Mode::Silent);
+
+  Completion done;
+  std::string error;
+  int successes = 0;
+  int64_t answeredAfterMs = -1;
+
+  auto transport = std::make_unique<CurlTransport>(
+      1, CurlTimeoutConfig{.connectTimeoutMs = 2000, .requestTimeoutMs = 30000});
+  transport->stop();
+
+  const auto start = std::chrono::steady_clock::now();
+  transport->post(
+      peer.url(), R"({"x":1})", kHeaders,
+      [&](std::string_view)
+      {
+        ++successes;
+        done.signal();
+      },
+      [&](std::string_view e)
+      {
+        error = std::string(e);
+        answeredAfterMs = elapsedMs(start);
+        done.signal();
+      });
+
+  ASSERT_TRUE(done.waitFor(2s))
+      << "a post() made after stop() was queued with no sender left to run it: it will never be "
+         "answered and never reach the venue";
+
+  EXPECT_EQ(successes, 0) << "a request that was never sent reported success";
+  EXPECT_LE(answeredAfterMs, 500) << "the refusal took " << answeredAfterMs
+                                  << " ms; a stopped transport knows the answer straight away";
+  EXPECT_NE(error.find("stopped"), std::string::npos)
+      << "the refusal must say the transport is stopped, not look like a venue error: " << error;
+  EXPECT_EQ(peer.requestCount(), 0u) << "a request posted after stop() reached the peer anyway";
+
+  // The destructor calls stop() a second time. With the request already
+  // answered there is nothing to drain and no sender to join, so this returns
+  // immediately -- and it must not answer the request a second time either.
+  const auto beforeDestroy = std::chrono::steady_clock::now();
+  transport.reset();
+  EXPECT_LE(elapsedMs(beforeDestroy), 500) << "tearing down a stopped transport blocked";
+  EXPECT_EQ(successes, 0);
+}

@@ -304,6 +304,19 @@ MUTATIONS: list[Mutation] = [
             "    if (t.joinable())\n    {\n      t.detach();\n    }\n  }\n  _senders.clear();",
     ),
     Mutation(
+        name="post-after-stop-is-queued-forever",
+        why="a post() that arrives after stop() is appended to the queue instead of being "
+            "refused, and the sender threads are already joined and gone -- the request neither "
+            "reaches the venue nor ever answers its caller",
+        binary=CURL_T,
+        test="CurlTransportTimeout.PostAfterStopIsAnsweredImmediately",
+        file=TRANSPORT_CPP,
+        old="    if (_stopping)\n    {\n      lk.unlock();\n"
+            "      invokeSafely(req.onError, \"Transport is stopped\", \"onError\");\n"
+            "      return;\n    }\n",
+        new="    // BUG: queued to a transport whose senders are gone.\n",
+    ),
+    Mutation(
         name="two-sender-threads",
         why="the default sender count goes to two, so requests no longer leave in the order "
             "they were handed over -- a cancel can overtake the place it cancels",
@@ -410,6 +423,18 @@ MUTATIONS: list[Mutation] = [
             "        onRejected();\n        return;",
         new="        FLOX_LOG_WARN(\"[RateLimit] Deferral queue full, dropping orderId=\" << orderId);\n"
             "        return;",
+    ),
+    Mutation(
+        name="shutdown-wakeup-read-as-a-token",
+        why="the sleeping waiter treats the shutdown notification as the token it was waiting "
+            "for, so a deferred order is sent over the budget while the process is tearing "
+            "itself down",
+        binary=WAIT_T,
+        test="RateLimitWaitPolicy.ShutdownRefusesTheSleepingWaiter",
+        file=POLICIES_H,
+        old="      if (_stopping)\n      {\n        return false;\n      }\n    }\n  }",
+        new="      if (_stopping)\n      {\n        // BUG: the wakeup is read as a token.\n"
+            "        return true;\n      }\n    }\n  }",
     ),
     Mutation(
         name="reject-policy-runs-the-action",

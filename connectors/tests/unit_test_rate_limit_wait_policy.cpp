@@ -401,3 +401,76 @@ TEST(RateLimitWaitPolicy, CallbackPolicyNotifiesRefusesAndDoesNotSend)
   EXPECT_EQ(refused.load(), 1) << "CALLBACK denied the request without telling the caller";
   EXPECT_EQ(notified.load(), 1) << "the configured rate-limit callback was not called";
 }
+
+// Shutdown reaches the sender in two different places, and both have to
+// refuse. A deferred request the sender has already picked up is asleep
+// inside the token wait; the same notification that ends that sleep is the
+// one that says the policy is going away, and a waiter that treats being
+// woken as "the token arrived" sends an order while the process is tearing
+// itself down -- past the budget, to a venue nobody is left to hear the
+// answer from. A request still in the queue behind it has to be refused too.
+TEST(RateLimitWaitPolicy, ShutdownRefusesTheSleepingWaiter)
+{
+  std::atomic<int> sent{0};
+  std::atomic<int> refused{0};
+
+  {
+    // One token, refilling once a second: the first request takes it, and
+    // the next has a wait far longer than this test will run, so the sender
+    // is certain to be asleep rather than about to succeed.
+    ActiveRateLimitPolicy policy;
+    policy.init(limitConfig(1, 1, RateLimitPolicy::WAIT));
+
+    policy.gate(
+        1,
+        [&]
+        {
+          ++sent;
+        },
+        [&]
+        {
+          ++refused;
+        });
+    ASSERT_EQ(sent.load(), 1) << "the first request holds the only token and is sent inline";
+
+    // Deferred: the sender picks this one up and sleeps on the bucket.
+    policy.gate(
+        2,
+        [&]
+        {
+          ++sent;
+        },
+        [&]
+        {
+          ++refused;
+        });
+    // Deferred behind it: this one is still in the queue when shutdown runs.
+    policy.gate(
+        3,
+        [&]
+        {
+          ++sent;
+        },
+        [&]
+        {
+          ++refused;
+        });
+
+    // Long enough for the sender thread to have taken request 2 out of the
+    // queue and entered its timed wait, which is the state under test. A
+    // machine loaded enough to miss that window makes this case fall back to
+    // covering the queue-drain path only -- it cannot make it fail wrongly.
+    std::this_thread::sleep_for(50ms);
+
+    EXPECT_EQ(sent.load(), 1) << "a deferred request was sent while the bucket was still empty";
+  }
+  // The policy is destroyed here: _stopping is set, the sleeping sender is
+  // woken and whatever is still queued is drained.
+
+  EXPECT_EQ(sent.load(), 1)
+      << "shutdown woke the sleeping waiter and it sent the order instead of refusing it: the "
+         "wakeup means the policy is going away, not that a token arrived";
+  EXPECT_EQ(refused.load(), 2) << "both deferred requests must be refused, not dropped";
+  EXPECT_EQ(sent.load() + refused.load(), 3)
+      << sent.load() << " sent and " << refused.load() << " refused out of 3";
+}
