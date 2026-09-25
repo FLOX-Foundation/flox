@@ -85,3 +85,40 @@ def test_every_layout_struct_has_a_codon_prefix():
     missing = [n for n in emit_layout.LAYOUT_STRUCTS
                if n not in emit_layout._CODON_PREFIX]
     assert not missing, f"no Codon constant prefix for {missing}"
+
+
+def test_an_array_field_occupies_every_one_of_its_elements():
+    """Nothing on the real event boundary has a non-padding array field: the
+    only arrays are `_pad` members, and mis-sizing one is absorbed by the
+    alignment of the field behind it, so the shipped tables cannot show this
+    rule holding. A synthetic struct can -- `tag` has to push `tail` six
+    bytes, not one."""
+    module = ir.Module(structs=[
+        ir.Struct("FloxArrayed", (
+            ir.StructField("head", "uint32_t"),
+            ir.StructField("tag", "uint8_t[6]"),
+            ir.StructField("tail", "uint16_t"),
+        ))])
+    layout = emit_layout.compute(module, ("FloxArrayed",))[0]
+
+    assert {f.name: f.offset for f in layout.fields} == {
+        "head": 0, "tag": 4, "tail": 10}
+    assert {f.name: f.size for f in layout.fields}["tag"] == 6
+    assert (layout.size, layout.alignment) == (12, 4)
+
+
+def test_an_array_of_structs_is_sized_by_element_too():
+    module = ir.Module(structs=[
+        ir.Struct("FloxPair", (
+            ir.StructField("a", "int32_t"),
+            ir.StructField("b", "int32_t"),
+        )),
+        ir.Struct("FloxHolder", (
+            ir.StructField("pairs", "FloxPair[3]"),
+            ir.StructField("count", "uint32_t"),
+        ))])
+    layout = {s.name: s for s in emit_layout.compute(
+        module, ("FloxPair", "FloxHolder"))}["FloxHolder"]
+
+    assert {f.name: f.offset for f in layout.fields} == {"pairs": 0, "count": 24}
+    assert layout.size == 28

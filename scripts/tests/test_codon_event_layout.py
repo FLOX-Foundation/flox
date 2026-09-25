@@ -162,3 +162,104 @@ def test_no_binding_file_hardcodes_a_struct_offset():
         "strategy.codon still reads FloxBar at literal offsets"
     assert not re.search(r"^_FLOXBAR_SIZE\s*=\s*\d+", strategy, re.MULTILINE), \
         "_FLOXBAR_SIZE is still defined by hand in strategy.codon"
+
+
+# ── Second pass: the constant a call site actually uses ───────────────
+#
+# The tests above prove the constants exist and carry the right offsets, and
+# that no file defines its own. They say nothing about which constant a given
+# read passes: swapping _EV_REJECT_REASON for _EV_TS_NS at one call site
+# leaves every generated artifact correct and every assertion above green,
+# and hands the strategy eight bytes of timestamp as a string pointer.
+#
+# There is no Codon toolchain in this environment, so this is checked at the
+# text level: each read is matched to the C type of the field its constant
+# names, which is what an accessor is choosing between.
+
+CODON_READERS = ("dispatch.codon", "strategy.codon", "tools.codon")
+
+# Codon accessor -> the C field types it may be pointed at.
+ACCESSOR_TYPES: dict[str, tuple[str, ...]] = {
+    "_cstr_at": ("const char*",),
+    "_u8_at": ("uint8_t",),
+    "_u32_at": ("uint32_t",),
+    "_i32_at": ("int32_t",),
+    "_i64_at": ("int64_t",),
+}
+
+# Raw Ptr[...] read -> the same.
+PTR_TYPES: dict[str, tuple[str, ...]] = {
+    "u8": ("uint8_t",),
+    "u32": ("uint32_t",),
+    "u64": ("uint64_t",),
+    "i32": ("int32_t",),
+    "i64": ("int64_t",),
+}
+
+_ACCESSOR_CALL = re.compile(r"(_[a-z0-9]+_at)\(\s*\w+\s*,\s*(_[A-Z][A-Z_0-9]*)\s*\)")
+_PTR_READ = re.compile(r"Ptr\[([a-z0-9]+)\]\(\s*\w+\s*\+\s*(_[A-Z][A-Z_0-9]*)\s*\)")
+
+_STRUCT_BLOCK = re.compile(r"typedef struct\s*\{(.*?)\}\s*(Flox\w+);", re.DOTALL)
+_FIELD_DECL = re.compile(
+    r"^(?P<type>[A-Za-z_][\w ]*?[\w*])\s+(?P<field>[A-Za-z_]\w*)(?:\[\d+\])?$")
+
+
+def _normalize_type(spelling: str) -> str:
+    return " ".join(spelling.replace("*", " *").split()).replace(" *", "*")
+
+
+def c_field_types() -> dict[tuple[str, str], str]:
+    """(struct, field) -> C type spelling, read from the shipped header."""
+    text = (REPO / "include" / "flox" / "capi" / "flox_capi.h").read_text()
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
+    text = re.sub(r"//[^\n]*", " ", text)
+    types: dict[tuple[str, str], str] = {}
+    for body, struct in _STRUCT_BLOCK.findall(text):
+        for decl in body.split(";"):
+            m = _FIELD_DECL.match(" ".join(decl.split()))
+            if m:
+                types[(struct, m.group("field"))] = m.group("type")
+    return types
+
+
+def test_every_event_read_uses_a_constant_of_the_right_type():
+    types = c_field_types()
+    checked = 0
+    for name in CODON_READERS:
+        text = (REPO / "codon" / "flox" / name).read_text()
+        for accessor, const in _ACCESSOR_CALL.findall(text):
+            if const not in CONSTANTS:
+                continue
+            assert accessor in ACCESSOR_TYPES, f"unknown accessor {accessor} in {name}"
+            struct, field = CONSTANTS[const]
+            actual = _normalize_type(types[(struct, field)])
+            assert actual in ACCESSOR_TYPES[accessor], (
+                f"{name}: {accessor}(..., {const}) reads {struct}.{field}, "
+                f"which is `{actual}`, not "
+                f"{' or '.join(ACCESSOR_TYPES[accessor])}")
+            checked += 1
+        for width, const in _PTR_READ.findall(text):
+            if const not in CONSTANTS:
+                continue
+            assert width in PTR_TYPES, f"unknown Ptr width {width} in {name}"
+            struct, field = CONSTANTS[const]
+            actual = _normalize_type(types[(struct, field)])
+            assert actual in PTR_TYPES[width], (
+                f"{name}: Ptr[{width}](... + {const}) reads {struct}.{field}, "
+                f"which is `{actual}`")
+            checked += 1
+    assert checked >= 40, f"only {checked} reads matched; the scan drifted"
+
+
+def test_the_order_event_builder_reads_the_rejection_reason_by_its_own_constant():
+    """_EV_REJECT_REASON is the only constant that may reach the string read;
+    every other one points at a number and would be handed to the strategy as
+    a pointer."""
+    text = (REPO / "codon" / "flox" / "dispatch.codon").read_text()
+    body = text[text.index("def _build_order_event"):]
+    body = body[:body.index("\ndef ", 1)]
+    reads = dict((const, accessor) for accessor, const in _ACCESSOR_CALL.findall(body))
+    assert reads.get("_EV_REJECT_REASON") == "_cstr_at", \
+        "_build_order_event does not read reject_reason through _EV_REJECT_REASON"
+    assert "_cstr_at" not in {a for c, a in reads.items() if c != "_EV_REJECT_REASON"}, \
+        "a numeric field is being read as a string"

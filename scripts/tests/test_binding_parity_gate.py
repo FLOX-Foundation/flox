@@ -105,3 +105,135 @@ def test_the_real_repository_passes_its_own_gate():
     assert "were NOT checked" not in r.output, r.output
     assert "undeclared" not in r.output, r.output
     assert r.returncode == 0, r.output
+
+
+# ── Second pass: holes a mutation run found ───────────────────────────
+#
+# Each test below corresponds to a mutation that survived the first suite.
+# The pattern is the same -- green fixture, one targeted change, red gate --
+# but the change is chosen so that a *weaker* check (a prefix match instead
+# of exact membership, a mapping nobody verifies, a comment counted as code)
+# would let it through.
+
+
+def test_a_call_site_that_merely_starts_with_the_name_does_not_satisfy_it(parity_tree):
+    """`flox_widget_create_ex` is a different function. Matching it as
+    "reachable" for `flox_widget_create` is how a prefix match reads a
+    neighbouring wrapper as the one that is missing."""
+    baseline = parity_tree.run()
+    assert baseline.returncode == 0, baseline.output
+
+    for rel in ("python/widget_bindings.h", "node/src/widget.h",
+                "codon/flox/widget.codon"):
+        parity_tree.write(rel, parity_tree.read(rel).replace(
+            "flox_widget_create", "flox_widget_create_ex"))
+
+    r = parity_tree.run()
+    assert r.returncode == 1, r.output
+    assert r.output.count("flox_widget_create'") >= 3, r.output
+    for binding in ("pybind11", "napi", "codon"):
+        assert binding in r.output, f"{binding} accepted the prefix: {r.output}"
+
+
+def test_a_quickjs_global_that_is_not_registered_is_red(parity_tree):
+    """The map is a claim about `addGlobalFunc`, not a fact. A name nobody
+    registered is a strategy calling into nothing."""
+    baseline = parity_tree.run()
+    assert baseline.returncode == 0, baseline.output
+
+    parity_tree.write("tools/codegen/binding_parity.yaml",
+                      parity_tree.read("tools/codegen/binding_parity.yaml").replace(
+                          "flox_widget_size: __flox_widget_size",
+                          "flox_widget_size: __flox_widget_size_typo"))
+
+    r = parity_tree.run()
+    assert r.returncode == 1, r.output
+    assert "quickjs" in r.output
+    assert "__flox_widget_size_typo" in r.output, r.output
+
+
+def test_a_quickjs_global_that_is_only_a_prefix_of_a_registration_is_red(parity_tree):
+    """`__flox_widget_size` is not registered; `__flox_widget_size_ex` is.
+    A prefix match would call that satisfied."""
+    parity_tree.write("src/quickjs/js_bindings.cpp",
+                      parity_tree.read("src/quickjs/js_bindings.cpp").replace(
+                          '"__flox_widget_size"', '"__flox_widget_size_ex"'))
+
+    r = parity_tree.run()
+    assert r.returncode == 1, r.output
+    assert "quickjs" in r.output
+    assert "__flox_widget_size" in r.output, r.output
+
+
+def test_a_function_named_only_in_a_comment_is_not_reachable(parity_tree):
+    """A comment is documentation, not a wrapper. Both comment forms, because
+    the scanner strips them separately."""
+    baseline = parity_tree.run()
+    assert baseline.returncode == 0, baseline.output
+
+    parity_tree.write("python/widget_bindings.h", """\
+#include <flox/capi/flox_capi.h>
+
+// flox_widget_size is reached through the C++ class, not the C ABI.
+void registerWidget(py::module_& m)
+{
+  py::class_<Widget>(m, "Widget")
+      .def(py::init([]() { return flox_widget_create(); }));
+  m.add_object("_widget_cleanup", py::capsule(flox_widget_destroy));
+}
+""")
+    parity_tree.write("node/src/widget.h", """\
+#include <flox/capi/flox_capi.h>
+
+/* The size accessor used to call flox_widget_size here; it now goes
+   through the cached handle instead. */
+Napi::Value WidgetNew(const Napi::CallbackInfo& info)
+{
+  return Wrap(flox_widget_create());
+}
+void WidgetFinalize(void* h) { flox_widget_destroy(h); }
+""")
+
+    r = parity_tree.run()
+    assert r.returncode == 1, r.output
+    assert r.output.count("flox_widget_size") >= 2, r.output
+    for binding in ("pybind11", "napi"):
+        assert binding in r.output, f"{binding} read a comment as a call site: {r.output}"
+
+
+def test_a_required_quickjs_group_with_no_mapped_functions_is_red(parity_tree):
+    """A `required` entry that maps nothing has verified nothing. Empty map
+    and absent key are the same claim and must fail the same way."""
+    header = """\
+groups:
+  widget:
+    pybind11: { status: required, classes: [Widget] }
+    napi: { status: required, classes: [Widget] }
+    codon: { status: required }
+    quickjs:
+      status: required
+      classes: [Widget]
+"""
+    for tail in ("", "      functions: {}\n"):
+        parity_tree.write("tools/codegen/binding_parity.yaml", header + tail)
+        r = parity_tree.run()
+        assert r.returncode == 1, f"functions:{tail!r} passed: {r.output}"
+        assert "quickjs" in r.output
+        assert r.output.count("flox_widget_") >= 3, r.output
+
+
+def test_an_idl_group_absent_from_the_manifest_is_red(parity_tree):
+    """A group that grows in the IDL and is declared nowhere is the case the
+    manifest exists to make impossible -- it must not pass by being skipped."""
+    baseline = parity_tree.run()
+    assert baseline.returncode == 0, baseline.output
+
+    idl = parity_tree.read("include/flox/capi/flox_capi_spec.hpp")
+    idl = idl.replace("}\n", '  FLOX_EXPORT(group = "gadget")\n'
+                             "  void flox_gadget_reset(FloxGadgetHandle gadget);\n}\n")
+    parity_tree.write("include/flox/capi/flox_capi_spec.hpp", idl)
+
+    r = parity_tree.run()
+    assert r.returncode == 1, r.output
+    assert "gadget" in r.output
+    assert "binding_parity.yaml" in r.output, r.output
