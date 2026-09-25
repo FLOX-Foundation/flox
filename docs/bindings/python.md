@@ -56,6 +56,8 @@ class SMAcross(flox.Strategy):
 
 Order methods: `market_buy(qty)`, `market_sell(qty)`, `limit_buy(price, qty)`, `limit_sell(price, qty)`, `stop_market(side, trigger, qty)`, `close_position()`. All accept an optional `symbol` argument; without it the first registered symbol is used.
 
+Where an API takes an order type as a string -- `SimulatedExecutor.submit_order`, `VenueExecutor.submit_order`, the bracket legs -- the accepted names are `flox_py.ORDER_TYPE_NAMES`: `limit`, `market`, `stop_market`, `stop_limit`, `tp_market`, `tp_limit`, `trailing_stop`, `iceberg`. `order_type_name(code)` and `order_type_code(name)` convert between a name and its wire code. Anything outside the set raises `ValueError` naming the accepted names, so a typo cannot become a market order.
+
 ### Live Runner
 
 ```python

@@ -283,6 +283,8 @@ class SMAcross(flox.Strategy):
 
 Order methods: `market_buy(qty)`, `market_sell(qty)`, `limit_buy(price, qty)`, `limit_sell(price, qty)`, `stop_market(side, trigger, qty)`, `close_position()`. All accept an optional `symbol` argument; without it the first registered symbol is used.
 
+Where an API takes an order type as a string -- `SimulatedExecutor.submit_order`, `VenueExecutor.submit_order`, the bracket legs -- the accepted names are `flox_py.ORDER_TYPE_NAMES`: `limit`, `market`, `stop_market`, `stop_limit`, `tp_market`, `tp_limit`, `trailing_stop`, `iceberg`. `order_type_name(code)` and `order_type_code(name)` convert between a name and its wire code. Anything outside the set raises `ValueError` naming the accepted names, so a typo cannot become a market order.
+
 ### Live Runner
 
 ```python
@@ -1474,6 +1476,16 @@ if (flox_capi_abi_version() != FLOX_CAPI_ABI_VERSION) {
     return 1;
 }
 ```
+
+C++ callers get the same comparison from `flox/capi/abi_check.hpp`:
+`flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &message)` returns
+false on a mismatch and fills `message` with both versions. Every shipped
+binding runs it at load and refuses to come up on a mismatch -- the
+Python extension raises `ImportError`, the Node addon throws from
+`require`, `registerFloxBindings` registers nothing and leaves the
+refusal on the QuickJS context, and the Codon package exits. Each also
+exports the pair it compared (`CAPI_ABI_VERSION` / `capi_abi_version()`,
+`__FLOX_CAPI_ABI_VERSION` / `__flox_capi_abi_version()`).
 
 The shared library also carries a real `SOVERSION` now, so the platform
 loader refuses a mismatched major/minor before any of this runs.
@@ -13888,7 +13900,7 @@ executor.submit_order(id=1, side="buy", price=0.0, quantity=1.0,
 | `trailing_offset` | `float` | `0.0` | Fixed-price offset for `"trailing_stop"` |
 | `trailing_bps` | `int` | `0` | Bps offset for `"trailing_stop"` — set exactly one of the two |
 
-**Order types:** `"market"`, `"limit"`, `"stop_market"`, `"stop_limit"`, `"take_profit_market"`, `"take_profit_limit"`, `"trailing_stop"`.
+**Order types:** `"limit"`, `"market"`, `"stop_market"`, `"stop_limit"`, `"tp_market"`, `"tp_limit"`, `"trailing_stop"`, `"iceberg"` — the canonical set, also readable as `flox_py.ORDER_TYPE_NAMES`. Anything else raises `ValueError` naming the accepted set; it is never quietly turned into a market order.
 
 #### `cancel_order(order_id)`
 
