@@ -1108,6 +1108,11 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
                    {
       auto tsArr = info[0].As<Napi::BigInt64Array>();
       auto closeArr = info[1].As<Napi::Float64Array>();
+      if (!requireSameLength(info.Env(), "runOhlcv",
+                             {tsArr.ElementLength(), closeArr.ElementLength()}))
+      {
+        return info.Env().Undefined();
+      }
       std::string symbol = info[2].As<Napi::String>().Utf8Value();
       uint32_t n = static_cast<uint32_t>(tsArr.ElementLength());
       FloxBacktestStats s{};
@@ -1136,6 +1141,21 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
       auto lowA = info[4].As<Napi::Float64Array>();
       auto closeA = info[5].As<Napi::Float64Array>();
       auto volA = info[6].As<Napi::Float64Array>();
+      // The C entry point takes one element count for all eight columns and
+      // indexes every one of them over [0, n). n came from startNs alone, so
+      // a `high` one element short was an out-of-bounds read of the other
+      // seven and the run reported stats as if nothing had happened. Reject
+      // before the call, the way indicators.h and aggregators.h already do,
+      // so a mismatch delivers no bars at all rather than a partial run over
+      // whatever followed the short array.
+      if (!requireSameLength(info.Env(), "runBars",
+                             {startNs.ElementLength(), endNs.ElementLength(),
+                              openA.ElementLength(), highA.ElementLength(),
+                              lowA.ElementLength(), closeA.ElementLength(),
+                              volA.ElementLength()}))
+      {
+        return info.Env().Undefined();
+      }
       std::string symbol = info[7].As<Napi::String>().Utf8Value();
       uint8_t barType = info.Length() > 8 ? static_cast<uint8_t>(info[8].As<Napi::Number>().Uint32Value()) : 0;
       uint64_t barTypeParam = info.Length() > 9
