@@ -9,16 +9,16 @@
 
 // Pool object lifetime and the acquire/release accounting.
 //
-// Two things the pool does not do today. It placement-news every slot in its
-// constructor and destroys none of them: ~Pool() is defaulted over a raw
-// array of Storage, so a pooled type holding anything that is not the pmr
-// arena -- a std::string, a shared_ptr, a file descriptor -- leaks one per
-// slot, per pool, for the life of the process. And release() is unguarded:
-// it pushes the slot back on the freelist and bumps a counter whatever state
-// the object was in, so a second release of the same object puts one index on
-// the freelist twice (two acquirers get the same object) and drives inUse()'s
-// `acquired - released` subtraction below zero, where size_t turns it into a
-// number near 2^64 that is then handed to the exhaustion callback.
+// Two things the pool has to do. Every slot it placement-news in its
+// constructor it has to unwind in its destructor: a defaulted ~Pool() over
+// raw Storage destroyed none of them, so a pooled type holding anything the
+// pmr arena does not own -- a std::string, a shared_ptr, a descriptor --
+// leaked one per slot, per pool, for the life of the process. And release()
+// has to refuse an object that is not currently acquired: an unguarded
+// release put one slot index on the freelist twice, so two acquirers were
+// handed the same object, and drove inUse()'s `acquired - released`
+// subtraction below zero, where size_t turned it into a number near 2^64 --
+// the value the exhaustion callback was then given.
 
 #include <gtest/gtest.h>
 
@@ -29,6 +29,7 @@
 #include <memory_resource>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace flox;
@@ -200,4 +201,218 @@ TEST(PoolObjectLifetime, TheFreelistNeverHandsOutOneSlotTwice)
       << seen.size() << " acquisitions returned only " << distinct.size()
       << " distinct objects: the same slot index sits on the freelist more than "
          "once, so two live acquirers are writing the same event";
+}
+
+// -------------------------------------------------- the refusal, in detail
+//
+// Three things the accounting above does not separate. The refusal is a
+// compare_exchange on a per-slot claim flag, and a flag read then written
+// unconditionally would behave identically for one thread and wrongly for
+// two, so the race the exchange exists for has to be driven. indexOf() maps a
+// pointer back to a slot, and a mapping that wraps or skips its bounds check
+// turns any address in the process into one of this pool's slots. And the
+// refusals are counted: invalidReleaseCount() is the machine-readable signal
+// a supervisor reads, so it has to move when a release is refused.
+
+TEST(PoolObjectLifetime, TwoThreadsReleasingOneObjectLetExactlyOneThrough)
+{
+  LifetimeCounters::reset();
+  CountedPool pool;
+
+  // Long-lived workers and a per-round gate rather than a thread pair per
+  // round: the two releases then start within a few instructions of each
+  // other, which is the window the exchange has to close.
+  constexpr int kRounds = 2000;
+  std::atomic<int> gate{-1};
+  std::atomic<int> arrived{0};
+  std::atomic<CountedEvent*> target{nullptr};
+
+  auto worker = [&]
+  {
+    for (int round = 0; round < kRounds; ++round)
+    {
+      while (gate.load(std::memory_order_acquire) != round)
+      {
+      }
+      pool.release(target.load(std::memory_order_acquire));
+      arrived.fetch_add(1, std::memory_order_release);
+    }
+  };
+
+  // Recorded rather than asserted inside the loop: the workers are still
+  // waiting on the gate, and leaving the test body with them running is a
+  // terminate rather than a failure. Every round is driven to the end and the
+  // first violation is reported after the join.
+  struct Violation
+  {
+    int round{-1};
+    size_t inUse{0};
+    size_t released{0};
+    size_t invalid{0};
+    bool acquireFailed{false};
+  };
+  Violation first;
+  bool broken = false;
+
+  std::thread a(worker);
+  std::thread b(worker);
+
+  for (int round = 0; round < kRounds; ++round)
+  {
+    CountedEvent* raw = nullptr;
+    {
+      auto h = pool.acquire();
+      if (h.has_value())
+      {
+        raw = h->get();
+        // One extra reference, so the handle going out of scope does not
+        // release the slot: the two explicit releases below are the only
+        // ones.
+        raw->retain();
+      }
+      else if (!broken)
+      {
+        broken = true;
+        first = Violation{round, pool.inUse(), pool.releaseCount(),
+                          pool.invalidReleaseCount(), true};
+      }
+    }
+
+    target.store(raw, std::memory_order_release);
+    arrived.store(0, std::memory_order_release);
+    gate.store(round, std::memory_order_release);
+    while (arrived.load(std::memory_order_acquire) != 2)
+    {
+    }
+
+    if (!broken && (pool.inUse() != 0u ||
+                    pool.releaseCount() != static_cast<size_t>(round + 1) ||
+                    pool.invalidReleaseCount() != static_cast<size_t>(round + 1)))
+    {
+      broken = true;
+      first = Violation{round, pool.inUse(), pool.releaseCount(),
+                        pool.invalidReleaseCount(), false};
+    }
+  }
+
+  a.join();
+  b.join();
+
+  ASSERT_FALSE(broken)
+      << "round " << first.round << ": two threads released the same object. "
+      << (first.acquireFailed ? "The pool had no slot left to hand out. "
+                              : "")
+      << "inUse=" << first.inUse << " (expected 0), releaseCount=" << first.released
+      << " (expected " << (first.round + 1) << ": exactly one of the two may be taken), "
+      << "invalidReleaseCount=" << first.invalid << " (expected " << (first.round + 1)
+      << ": the loser of the race must be counted, not ignored)";
+
+  // The slot survived every round: still exactly one object, still handed out
+  // once at a time.
+  EXPECT_EQ(pool.inUse(), 0u);
+  std::set<CountedEvent*> distinct;
+  std::vector<pool::Handle<CountedEvent>> held;
+  for (size_t i = 0; i < kCapacity; ++i)
+  {
+    auto h = pool.acquire();
+    ASSERT_TRUE(h.has_value()) << "slot " << i << " was lost to the race";
+    distinct.insert(h->get());
+    held.push_back(std::move(*h));
+  }
+  EXPECT_EQ(distinct.size(), kCapacity);
+  EXPECT_FALSE(pool.acquire().has_value());
+}
+
+TEST(PoolObjectLifetime, APointerThisPoolDidNotHandOutIsRefusedAndCounted)
+{
+  LifetimeCounters::reset();
+  CountedPool pool;
+  CountedPool sibling;  // same T, same Capacity, different slots
+
+  // Every slot claimed, so a pointer that is wrongly mapped onto one of them
+  // finds a claim to take rather than an already-free slot that would be
+  // refused for the wrong reason.
+  std::vector<pool::Handle<CountedEvent>> held;
+  for (size_t i = 0; i < kCapacity; ++i)
+  {
+    auto h = pool.acquire();
+    ASSERT_TRUE(h.has_value());
+    held.push_back(std::move(*h));
+  }
+  ASSERT_EQ(pool.inUse(), kCapacity);
+  ASSERT_EQ(pool.releaseCount(), 0u);
+
+  auto siblingHandle = sibling.acquire();
+  ASSERT_TRUE(siblingHandle.has_value());
+  CountedEvent* foreign = siblingHandle->get();
+
+  pool.release(foreign);
+
+  EXPECT_EQ(pool.invalidReleaseCount(), 1u)
+      << "a pointer from another pool of the same type was not refused: "
+         "indexOf() mapped an address this pool never handed out onto one of "
+         "its own slots";
+  EXPECT_EQ(pool.releaseCount(), 0u) << "no release of this pool's own may have been taken";
+  EXPECT_EQ(pool.inUse(), kCapacity) << "every slot is still held by a live handle";
+  auto stolen = pool.acquire();
+  EXPECT_FALSE(stolen.has_value())
+      << "a slot came free out of a foreign pointer: it is about to be handed "
+         "to a second acquirer while its first one is still writing it";
+  if (stolen.has_value())
+  {
+    // The pool is already corrupt at this point: this object is also owned by
+    // a handle in `held`, and the acquire has just reset its reference count
+    // under that owner. One extra reference so the two owners do not drive
+    // the count below zero at teardown, which aborts the process and takes
+    // the rest of this test's report with it.
+    stolen->get()->retain();
+  }
+
+  // A plain automatic object of the same type -- an address nowhere near the
+  // slot array.
+  CountedEvent local(nullptr);
+  pool.release(&local);
+
+  EXPECT_EQ(pool.invalidReleaseCount(), 2u) << "a stack address was not refused";
+  EXPECT_EQ(pool.releaseCount(), 0u);
+  EXPECT_EQ(pool.inUse(), kCapacity);
+
+  pool.release(nullptr);
+  EXPECT_EQ(pool.invalidReleaseCount(), 3u);
+
+  // The sibling is untouched by any of it.
+  EXPECT_EQ(sibling.inUse(), 1u);
+  EXPECT_EQ(sibling.releaseCount(), 0u);
+  EXPECT_EQ(sibling.invalidReleaseCount(), 0u);
+}
+
+TEST(PoolObjectLifetime, EveryRefusedReleaseIsCounted)
+{
+  LifetimeCounters::reset();
+  CountedPool pool;
+  CountedPool sibling;
+
+  CountedEvent* raw = nullptr;
+  {
+    auto h = pool.acquire();
+    ASSERT_TRUE(h.has_value());
+    raw = h->get();
+  }  // the handle's own release: the one legitimate one
+
+  ASSERT_EQ(pool.releaseCount(), 1u);
+  ASSERT_EQ(pool.invalidReleaseCount(), 0u) << "nothing has been refused yet";
+
+  pool.release(raw);  // the same object handed back a second time
+  EXPECT_EQ(pool.invalidReleaseCount(), 1u)
+      << "the double release was refused but not counted, so a supervisor "
+         "reading invalidReleaseCount() cannot see a caller releasing twice";
+
+  auto siblingHandle = sibling.acquire();
+  ASSERT_TRUE(siblingHandle.has_value());
+  pool.release(siblingHandle->get());  // a pointer from another pool
+  EXPECT_EQ(pool.invalidReleaseCount(), 2u)
+      << "the foreign release was refused but not counted";
+
+  EXPECT_EQ(pool.releaseCount(), 1u) << "neither refusal may count as a release";
+  EXPECT_EQ(pool.inUse(), 0u);
 }

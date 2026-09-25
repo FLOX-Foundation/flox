@@ -32,11 +32,19 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
+
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 
 using namespace flox;
 namespace fs = std::filesystem;
@@ -202,4 +210,181 @@ TEST(LogCost, AnAcceptedLevelIsStillFormattedAndDelivered)
   EXPECT_EQ(sink.accepted, 1);
   EXPECT_NE(sink.last.find("value=1"), std::string::npos)
       << "the accepted line reached the sink as '" << sink.last << "'";
+}
+
+#if !defined(_WIN32)
+// A logger that cannot open its file writes its lines to stderr instead.
+// rotationFailures() is the counter a supervisor polls; it says a transition
+// happened, not what became of the lines, and a logger that answers "1" and
+// then discards everything looks identical from there. So the line itself is
+// read back off the console.
+//
+// The obstruction is the same one AtomicLoggerTest uses for the rotation
+// path: a regular file standing where a directory component has to be, which
+// neither create_directories nor fopen can work through, from construction
+// onward.
+TEST(AtomicLoggerDefaults, ALoggerThatCannotOpenItsFileWritesTheLineToStderr)
+{
+  const fs::path root = fs::temp_directory_path() / "flox_stderr_probe";
+  std::error_code ec;
+  fs::remove_all(root, ec);
+  fs::create_directories(root, ec);
+  ASSERT_FALSE(ec);
+
+  const fs::path blocker = root / "not-a-directory";
+  {
+    std::ofstream f(blocker.string());
+    f << "x";
+  }
+
+  const fs::path captured = root / "stderr.txt";
+
+  AtomicLoggerOptions opts;
+  opts.directory = (blocker / "logs").string();
+  opts.basename = "doomed.log";
+  opts.rotateInterval = std::chrono::minutes(999);
+  opts.maxFileSize = 0;
+
+  std::fflush(stderr);
+  const int savedStderr = ::dup(STDERR_FILENO);
+  ASSERT_NE(savedStderr, -1);
+  FILE* sink = std::fopen(captured.string().c_str(), "w+");
+  ASSERT_NE(sink, nullptr);
+  ASSERT_NE(::dup2(::fileno(sink), STDERR_FILENO), -1);
+
+  {
+    AtomicLogger logger(opts);
+    logger.error("the line that must reach the console");
+    logger.flush();
+    logger.info("and this one as well");
+    logger.flush();
+    ASSERT_GT(logger.rotationFailures(), 0u) << "the rotation was supposed to fail here";
+  }
+
+  std::fflush(stderr);
+  ASSERT_NE(::dup2(savedStderr, STDERR_FILENO), -1);
+  ::close(savedStderr);
+  std::fclose(sink);
+
+  std::ifstream in(captured);
+  std::ostringstream all;
+  all << in.rdbuf();
+  const std::string console = all.str();
+
+  EXPECT_NE(console.find("the line that must reach the console"), std::string::npos)
+      << "an ERROR line was dropped by a logger with no file instead of going "
+         "to stderr. What reached the console was:\n"
+      << console;
+  EXPECT_NE(console.find("and this one as well"), std::string::npos)
+      << "an INFO line was dropped the same way";
+  EXPECT_NE(console.find("ERROR"), std::string::npos) << "the level goes with the line";
+
+  ASSERT_FALSE(fs::exists(opts.directory)) << "the directory was never creatable";
+  fs::remove_all(root, ec);
+}
+#endif  // !_WIN32
+
+namespace
+{
+
+// A sink that declares a threshold and counts what it is given, from any
+// thread.
+class ThresholdSink final : public ILogger
+{
+ public:
+  explicit ThresholdSink(LogLevel min) : _min(min) {}
+
+  LogLevel minLevel() const noexcept override { return _min; }
+
+  void info(std::string_view) override { record(LogLevel::Info); }
+  void warn(std::string_view) override { record(LogLevel::Warn); }
+  void error(std::string_view) override { record(LogLevel::Error); }
+
+  std::atomic<int> belowThreshold{0};
+  std::atomic<int> accepted{0};
+
+ private:
+  void record(LogLevel level)
+  {
+    if (level < _min)
+    {
+      belowThreshold.fetch_add(1, std::memory_order_relaxed);
+    }
+    else
+    {
+      accepted.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+
+  LogLevel _min;
+};
+
+}  // namespace
+
+// The level the macro reads and the sink it is read for are two separate
+// atomics, published by setGlobalLogger() and consulted by every FLOX_LOG_*
+// on every other thread. Swapping the sink under a running logger must stay
+// a well-defined operation: no line may reach a sink below that sink's own
+// threshold, and nothing here may be a data race.
+//
+// This is the test to run under ThreadSanitizer -- a Debug -fsanitize=thread
+// build -- since that is the only place the ordering between those two
+// stores and the loads opposite them is actually checked. Without a reader
+// thread there is nothing for TSan to look at.
+TEST(LogCost, SwappingTheSinkUnderAConcurrentLoggerIsWellDefined)
+{
+  // Both outlive every thread that can reach them: the pointer is non-owning
+  // and the header's contract is that the caller keeps the sink alive for any
+  // concurrent FLOX_LOG_* call.
+  ThresholdSink errorsOnly(LogLevel::Error);
+  ThresholdSink everything(LogLevel::Info);
+
+  GlobalSinkGuard guard(&errorsOnly);
+
+  std::atomic<bool> stop{false};
+  std::atomic<int> turns{0};
+
+  std::thread reader(
+      [&]
+      {
+        while (!stop.load(std::memory_order_acquire))
+        {
+          const int turn = turns.fetch_add(1, std::memory_order_relaxed);
+          (void)logLevel();
+          FLOX_LOG_INFO("info " << turn);
+          FLOX_LOG_WARN("warn " << turn);
+          FLOX_LOG_ERROR("error " << turn);
+        }
+      });
+
+  // Keep swapping until the reader has actually been through the loop, so
+  // the two sides overlap rather than the writer finishing before the thread
+  // has started. The second bound stops a reader that never runs from
+  // hanging the suite.
+  int swaps = 0;
+  while ((swaps < 2000 || turns.load(std::memory_order_relaxed) < 500) && swaps < 2'000'000)
+  {
+    setGlobalLogger(swaps % 2 == 0 ? &everything : &errorsOnly);
+    ++swaps;
+  }
+
+  stop.store(true, std::memory_order_release);
+  reader.join();
+
+  EXPECT_GE(turns.load(), 500) << "the reader thread never ran alongside the swaps";
+
+  // Every turn emits one ERROR, and Error clears both thresholds in play, so
+  // no swap may lose one. A line that slipped through the macro against one
+  // sink's level and landed on the other is still delivered and still
+  // filtered by the sink it reached -- that window is deliberate, which is
+  // why belowThreshold is observed rather than required to be zero -- but
+  // nothing may vanish between the two stores.
+  const int delivered = errorsOnly.accepted.load() + everything.accepted.load();
+  EXPECT_GE(delivered, turns.load())
+      << "across " << swaps << " sink swaps, " << turns.load()
+      << " ERROR lines were emitted and only " << delivered
+      << " arrived: a line was lost between publishing the level and "
+         "publishing the sink";
+  EXPECT_EQ(everything.belowThreshold.load(), 0)
+      << "a sink that accepts everything was handed something below Info";
 }
