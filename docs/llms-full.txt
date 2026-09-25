@@ -8089,6 +8089,11 @@ still zero, so an unstamped feed that freezes keeps being quoted forever.
 
 ### Error Handling
 
+A log line is not a health signal: whoever supervises the feed is in another
+thread, usually another subsystem, and reads `setErrorCallbacks`. Report the
+close as well as recovering from it — the in-tree connectors all honour the
+same contract, described in [Connectors](../explanation/connectors.md#feed-health).
+
 ```cpp
 void run() {
   while (_running) {
@@ -8101,6 +8106,7 @@ void run() {
     } catch (const ConnectionError& e) {
       FLOX_LOG("Connection lost: " << e.what());
       _connected = false;
+      emitDisconnect(e.what());  // tell the supervisor, then recover
       reconnect();
     }
   }
@@ -8109,17 +8115,40 @@ void run() {
 
 ### Sequence Numbers
 
-Track exchange sequence numbers for gap detection:
+Track exchange sequence numbers for gap detection. Detecting a gap is half the
+job: drop the frame (never apply a delta onto a book known to be behind), ask
+for a snapshot, and raise the event — a supervisor that cannot see the hole
+keeps trading off a book that has quietly stopped updating.
 
 ```cpp
 void handleBookUpdate(const Message& msg) {
   if (_lastSeq > 0 && msg.seq != _lastSeq + 1) {
     FLOX_LOG("Gap detected: " << _lastSeq << " -> " << msg.seq);
+    emitSequenceGap(_lastSeq + 1, msg.seq);
+    _lastSeq = 0;
     requestSnapshot();  // Request full book snapshot
+    return;             // and drop this delta
   }
   _lastSeq = msg.seq;
 
   // ... create and emit event
+}
+```
+
+### Staleness
+
+A socket that stays open while the data stops is the failure the disconnect
+path cannot catch. Stamp each symbol as its data arrives and override
+`pollFeedHealth()`, which the connector's owner calls on its own cadence:
+
+```cpp
+void handleBookUpdate(const Message& msg) {
+  markFeedActivity(resolveSymbolId(msg.symbol), nowMonoNanos());
+  // ... create and emit event
+}
+
+void pollFeedHealth(MonoNanos now) override {
+  checkStaleFeeds(now, _config.staleDataTimeoutMs);  // 0 disables the check
 }
 ```
 

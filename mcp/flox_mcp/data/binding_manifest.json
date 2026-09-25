@@ -17757,6 +17757,11 @@
         },
         {
           "kind": "method",
+          "name": "checkStaleFeeds",
+          "parent": "IExchangeConnector"
+        },
+        {
+          "kind": "method",
           "name": "drain",
           "parent": "IExchangeConnector"
         },
@@ -17788,6 +17793,16 @@
         {
           "kind": "method",
           "name": "exchangeId",
+          "parent": "IExchangeConnector"
+        },
+        {
+          "kind": "method",
+          "name": "markFeedActivity",
+          "parent": "IExchangeConnector"
+        },
+        {
+          "kind": "method",
+          "name": "pollFeedHealth",
           "parent": "IExchangeConnector"
         },
         {

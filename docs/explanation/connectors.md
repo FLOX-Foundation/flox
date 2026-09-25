@@ -41,6 +41,34 @@ Every connector that reports fills must honour all of the following. The engine 
 
 `connectors/tests/unit_test_*_fill_contract.cpp` pins this per venue, offline, by feeding recorded frames into the connector's message handlers and asserting on what a real `IOrderExecutionListener` receives from a real `OrderExecutionBus`.
 
+## Feed health
+
+`IExchangeConnector` carries the framework's only generic health surface —
+`setErrorCallbacks(onDisconnect, onSequenceGap, onStaleData)` — and every
+connector in tree honours the same contract, so a supervisor wires the three
+callbacks once and hears about all four venues the same way.
+
+| Event | Every connector raises it when |
+|---|---|
+| `onDisconnect` | The WebSocket closed. Delivered from the socket's own close handler through the connector's public `handleDisconnect(code, reason)`; the reason carries both the close code and the venue's text. Both the public market-data socket and, where a venue has one, the private order stream report — losing the private stream stops fills reaching the engine. |
+| `onSequenceGap` | The venue's own continuity field broke, so the local book is no longer a valid continuation of the venue's: Bybit's orderbook update id `u` skipped, Bitget's `seq` skipped, or a Bitget snapshot failed its checksum. In every case the offending frame is dropped, further deltas are suppressed, and the topic is re-subscribed so the venue re-sends a snapshot — the event never replaces the invalidation, it reports it. |
+| `onStaleData` | A subscribed symbol stopped ticking. This is the failure a close handler cannot catch: the socket stays open and the data stops. |
+
+A gap event carries `(expected, received)` update ids. A Bitget checksum
+failure means the same thing — the book is wrong and must be re-baselined —
+and rides the same callback carrying the computed and received CRC32 values
+instead; the log line at `error` level says which of the two fired.
+
+Staleness is polled, not timed: no connector owns a timer, so the supervisor
+calls `pollFeedHealth(now)` on its own cadence and each connector compares
+`now` against its per-symbol last-arrival stamp. The window is
+`<Config>::staleDataTimeoutMs` and defaults to **0, which disables the
+check** — the right window is a property of the instrument's liquidity, not
+of the venue, so there is no default the connector can pick. A symbol is
+reported once per staleness episode, and fresh data re-arms it. Each
+connector stamps every subscribed symbol at `start()`, so a feed that never
+delivers a single frame ages out like one that stopped.
+
 ## Build
 
 ```bash
@@ -92,6 +120,15 @@ python3 connectors/utils/hl_signerd.py
 ```
 
 Out-of-process signing keeps the secret out of the trading binary's address space and avoids shipping a Rust crypto stack into every flox build.
+
+**Transport rule: the key travels over a Unix socket private to its owner, or it does not travel.** The signing request contains the raw private key in its body, so the transport *is* the access control:
+
+- The client speaks `AF_UNIX` only. There is no TCP fallback — loopback authenticates neither end, and any local process that binds the port first harvests the key.
+- The socket path is `FLOX_HL_SIGNER_SOCKET`, defaulting to `/dev/shm/hl_sign.sock`. Set it on any host without `/dev/shm` (macOS, for one) rather than expecting a fallback.
+- Before a byte is written the client checks the path itself: it must be a socket (checked with `lstat`, so a symlink is refused rather than followed), owned by the calling user, with no group or other permission bits. The daemon creates it `0600` under a narrowed umask so it is private from the moment it exists, not from the moment a `chmod` lands.
+- The reply's length header comes from the peer, so it is a request for an allocation rather than a fact. A signature is a few hundred bytes; anything above 4 KiB is refused before memory is reserved.
+
+With no daemon reachable, signing fails and returns no signature. It never falls back to a transport it cannot authenticate.
 
 ## Adding a new venue
 
