@@ -9,6 +9,9 @@
 # ── macro: abi_version ──
 FLOX_CAPI_ABI_VERSION: int = 2
 
+# ── macro: feature_flags ──
+FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE: int = 1
+
 # ── macro: signal_type ──
 FLOX_SIGNAL_TYPE_MARKET: int = 0
 FLOX_SIGNAL_TYPE_LIMIT: int = 1
@@ -177,6 +180,9 @@ from C import flox_last_trade_price_raw(cobj, u32) -> i64
 from C import flox_best_bid_raw(cobj, u32) -> i64
 from C import flox_best_ask_raw(cobj, u32) -> i64
 from C import flox_mid_price_raw(cobj, u32) -> i64
+from C import flox_best_bid_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import flox_best_ask_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import flox_mid_price_raw_opt(cobj, u32, Ptr[i64]) -> u8
 from C import flox_get_symbol_context(cobj, u32, cobj)
 from C import flox_get_order_status(cobj, u64) -> i32
 

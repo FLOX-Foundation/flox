@@ -2029,6 +2029,25 @@
     },
     {
       "group": "context_queries",
+      "name": "flox_best_ask_raw_opt",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_out",
+          "type": "int64_t *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
+      "group": "context_queries",
       "name": "flox_best_bid_raw",
       "params": [
         {
@@ -2041,6 +2060,25 @@
         }
       ],
       "return_type": "int64_t"
+    },
+    {
+      "group": "context_queries",
+      "name": "flox_best_bid_raw_opt",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_out",
+          "type": "int64_t *"
+        }
+      ],
+      "return_type": "uint8_t"
     },
     {
       "group": "tape_aggregator",
@@ -8472,6 +8510,25 @@
       "return_type": "int64_t"
     },
     {
+      "group": "context_queries",
+      "name": "flox_mid_price_raw_opt",
+      "params": [
+        {
+          "name": "s",
+          "type": "FloxStrategyHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "price_out",
+          "type": "int64_t *"
+        }
+      ],
+      "return_type": "uint8_t"
+    },
+    {
       "group": "tape_aggregator",
       "name": "flox_ohlc_bin_aggregator_create",
       "params": [
@@ -14456,6 +14513,11 @@
       "group": "abi_version",
       "name": "FLOX_CAPI_ABI_VERSION",
       "value": "2"
+    },
+    {
+      "group": "feature_flags",
+      "name": "FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE",
+      "value": "1"
     },
     {
       "group": "signal_type",

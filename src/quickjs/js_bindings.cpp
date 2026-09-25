@@ -504,11 +504,19 @@ static JSValue js_last_trade_price(JSContext* ctx, JSValueConst, int, JSValueCon
   return JS_NewFloat64(ctx, flox_price_to_double(raw));
 }
 
+// null when the side is empty, matching the book bindings below. The raw
+// accessors answer 0 for an empty side and for a best quote of exactly 0.0
+// alike, and a market that trades through zero reaches that price, so the
+// number 0 cannot carry both meanings on the way into JS.
 static JSValue js_best_bid(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  int64_t raw = flox_best_bid_raw(h, sym);
+  int64_t raw = 0;
+  if (!flox_best_bid_raw_opt(h, sym, &raw))
+  {
+    return JS_NULL;
+  }
   return JS_NewFloat64(ctx, flox_price_to_double(raw));
 }
 
@@ -516,7 +524,11 @@ static JSValue js_best_ask(JSContext* ctx, JSValueConst, int, JSValueConst* argv
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  int64_t raw = flox_best_ask_raw(h, sym);
+  int64_t raw = 0;
+  if (!flox_best_ask_raw_opt(h, sym, &raw))
+  {
+    return JS_NULL;
+  }
   return JS_NewFloat64(ctx, flox_price_to_double(raw));
 }
 
@@ -524,7 +536,11 @@ static JSValue js_mid_price(JSContext* ctx, JSValueConst, int, JSValueConst* arg
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  int64_t raw = flox_mid_price_raw(h, sym);
+  int64_t raw = 0;
+  if (!flox_mid_price_raw_opt(h, sym, &raw))
+  {
+    return JS_NULL;
+  }
   return JS_NewFloat64(ctx, flox_price_to_double(raw));
 }
 

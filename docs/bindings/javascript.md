@@ -101,9 +101,9 @@ this.closePosition()
 ```javascript
 this.position()             // current position (primary symbol)
 this.position("ETHUSDT")    // specific symbol
-this.bestBid()
-this.bestAsk()
-this.midPrice()
+this.bestBid()              // number, or null when there is no bid
+this.bestAsk()              // number, or null when there is no ask
+this.midPrice()             // number, or null when either side is empty
 this.lastPrice()
 this.orderStatus(orderId)
 this.hasPosition             // boolean

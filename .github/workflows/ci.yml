@@ -238,7 +238,10 @@ jobs:
     # Observed: ~15-20 min normally; this is the job that hung for hours on
     # PR #470 (T030 -- one step never released a threaded Runner's
     # ThreadSafeFunction, keeping the process alive with nothing left to do).
-    timeout-minutes: 30
+    # Observed: about 30 min since the test suite grew past 320 binaries plus
+    # the Python and Node steps, so 30 cut the demo step off; 45 leaves the
+    # hang guard in place with a margin.
+    timeout-minutes: 45
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # ccache defaults to comparing the compiler binary's mtime, and

@@ -3,6 +3,7 @@
 #include "js_executor.h"
 #include "js_strategy.h"
 
+#include "flox/book/events/book_update_event.h"
 #include "flox/capi/bridge_strategy.h"
 
 #include <gtest/gtest.h>
@@ -10,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory_resource>
 #include <thread>
 #include <vector>
 
@@ -2280,4 +2282,150 @@ TEST(JsIntegrationTest, CompositeBookDetectsArbitrageAcrossExchanges)
   JSValue arb = jsStrat.engine().getGlobalProperty("arb");
   EXPECT_TRUE(JS_ToBool(ctx, arb)) << "a higher bid on exchange 2 than the ask on exchange 1 is arbitrage";
   JS_FreeValue(ctx, arb);
+}
+
+// ============================================================
+// symbol.bestBid() / bestAsk() / midPrice() answer null, not 0
+// ============================================================
+//
+// The three strategy-side accessors used to come back through
+// flox_best_bid_raw and its two siblings, which spend the value 0 as their
+// "no quote" answer, and the bindings turned that into the JS number 0. A
+// strategy reading an empty book got a price of zero and sized against it.
+// They now go through the _opt trio and return null when there is no quote,
+// which has to stay distinguishable from a real quote at exactly 0.0 -- a
+// price a market walking through zero reaches.
+namespace
+{
+
+double readGlobalDouble(FloxJsStrategy& strat, const char* name)
+{
+  JSValue v = strat.engine().getGlobalProperty(name);
+  double out = 0;
+  JS_ToFloat64(strat.engine().context(), &out, v);
+  JS_FreeValue(strat.engine().context(), v);
+  return out;
+}
+
+// One book update, applied to the strategy's own context the way the bus
+// applies one, so the JS hook reads the book the engine holds.
+void pushBook(BridgeStrategy& bridge, SymbolId symbol,
+              const std::vector<std::pair<double, double>>& bids,
+              const std::vector<std::pair<double, double>>& asks)
+{
+  std::byte buf[4096];
+  std::pmr::monotonic_buffer_resource res(buf, sizeof(buf));
+  BookUpdateEvent ev(&res);
+  ev.update.type = BookUpdateType::SNAPSHOT;
+  ev.update.symbol = symbol;
+  for (const auto& [price, qty] : bids)
+  {
+    ev.update.bids.push_back({Price::fromDouble(price), Quantity::fromDouble(qty)});
+  }
+  for (const auto& [price, qty] : asks)
+  {
+    ev.update.asks.push_back({Price::fromDouble(price), Quantity::fromDouble(qty)});
+  }
+  bridge.onBookUpdate(ev);
+}
+
+}  // namespace
+
+TEST(JsIntegrationTest, BestQuoteAccessorsAnswerNullForNoQuoteAndZeroForAPriceOfZero)
+{
+  TempJsFile script(R"(
+    var phase = 0;
+    var emptyBidNull = false, emptyAskNull = false, emptyMidNull = false;
+    var bidZeroIsNumber = false, bidZeroValue = -1;
+    var askNullOnBidOnlyBook = false, midNullOnBidOnlyBook = false;
+    var askZeroIsNumber = false, askZeroValue = -1;
+    var bidNullOnAskOnlyBook = false, midNullOnAskOnlyBook = false;
+    var midZeroIsNumber = false, midZeroValue = -1;
+    var bidBelowZero = 0, askAboveZero = 0;
+
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "T", symbols: ["ZERO"] }); }
+      onBookUpdate(ctx, book) {
+        phase++;
+        var bid = this.bestBid("ZERO");
+        var ask = this.bestAsk("ZERO");
+        var mid = this.midPrice("ZERO");
+        if (phase === 1) {
+          emptyBidNull = (bid === null);
+          emptyAskNull = (ask === null);
+          emptyMidNull = (mid === null);
+        } else if (phase === 2) {
+          bidZeroIsNumber = (typeof bid === 'number');
+          bidZeroValue = (typeof bid === 'number') ? bid : -1;
+          askNullOnBidOnlyBook = (ask === null);
+          midNullOnBidOnlyBook = (mid === null);
+        } else if (phase === 3) {
+          askZeroIsNumber = (typeof ask === 'number');
+          askZeroValue = (typeof ask === 'number') ? ask : -1;
+          bidNullOnAskOnlyBook = (bid === null);
+          midNullOnAskOnlyBook = (mid === null);
+        } else if (phase === 4) {
+          midZeroIsNumber = (typeof mid === 'number');
+          midZeroValue = (typeof mid === 'number') ? mid : -1;
+          bidBelowZero = bid;
+          askAboveZero = ask;
+        }
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+  ASSERT_FALSE(symIds.empty());
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  const SymbolId sym = symIds[0];
+  // 1: an update carrying no levels at all -- the venue saying the book is
+  // gone. Nothing to quote on either side.
+  pushBook(*bridge, sym, {}, {});
+  // 2: a bid at exactly 0.0 and no ask.
+  pushBook(*bridge, sym, {{0.0, 1.0}}, {});
+  // 3: an ask at exactly 0.0 and no bid.
+  pushBook(*bridge, sym, {}, {{0.0, 1.0}});
+  // 4: a two-sided book straddling zero, so the mid is exactly 0.0 while
+  // neither quote is. The symbol's tick size is 0.01, so both prices are on
+  // an exact tick.
+  pushBook(*bridge, sym, {{-0.01, 1.0}}, {{0.01, 1.0}});
+
+  ASSERT_EQ(readGlobalInt32(jsStrat, "phase"), 4) << "the JS hook did not see every update";
+
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "emptyBidNull"))
+      << "bestBid() on an empty book is not null -- a strategy reads it as a price of 0";
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "emptyAskNull"))
+      << "bestAsk() on an empty book is not null";
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "emptyMidNull"))
+      << "midPrice() on an empty book is not null";
+
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "bidZeroIsNumber"))
+      << "a bid at exactly 0.0 comes back as null instead of the number 0";
+  EXPECT_DOUBLE_EQ(readGlobalDouble(jsStrat, "bidZeroValue"), 0.0);
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "askNullOnBidOnlyBook"))
+      << "bestAsk() on a book with no ask is not null";
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "midNullOnBidOnlyBook"))
+      << "midPrice() on a one-sided book is not null";
+
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "askZeroIsNumber"))
+      << "an ask at exactly 0.0 comes back as null instead of the number 0";
+  EXPECT_DOUBLE_EQ(readGlobalDouble(jsStrat, "askZeroValue"), 0.0);
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "bidNullOnAskOnlyBook"))
+      << "bestBid() on a book with no bid is not null";
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "midNullOnAskOnlyBook"))
+      << "midPrice() on a one-sided book is not null";
+
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "midZeroIsNumber"))
+      << "a mid of exactly 0.0 comes back as null instead of the number 0";
+  EXPECT_DOUBLE_EQ(readGlobalDouble(jsStrat, "midZeroValue"), 0.0);
+  EXPECT_NEAR(readGlobalDouble(jsStrat, "bidBelowZero"), -0.01, 1e-9);
+  EXPECT_NEAR(readGlobalDouble(jsStrat, "askAboveZero"), 0.01, 1e-9);
 }
