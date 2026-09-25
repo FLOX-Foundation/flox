@@ -32,6 +32,11 @@ struct PolymarketConfig
   int reconnectDelayMs{1000};
   int pingIntervalSec{5};
 
+  /// Window after which a token that stopped ticking is reported through
+  /// emitStaleData. 0 disables the check: a quiet prediction market is
+  /// normal, so there is no window the connector can pick for you.
+  int staleDataTimeoutMs{0};
+
   bool isValid() const { return !wsEndpoint.empty(); }
   // (hasCredentials() removed -- it had zero call sites; the executor takes
   //  credentials via its constructor, not this config.)

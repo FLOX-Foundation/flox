@@ -208,6 +208,23 @@ void BitgetExchangeConnector::start()
         handleMessage(payload);
       });
 
+  // The public socket had no close handler at all, so a feed that went away
+  // left nothing behind but silence.
+  _wsClient->onClose(
+      [this](int code, std::string_view reason)
+      {
+        handleDisconnect(code, reason);
+      });
+
+  // Baseline for the staleness check: without it a feed that never delivers a
+  // single frame has no stamp to age out from, which is the loudest failure
+  // of the two this check exists for.
+  const MonoNanos startedAt = nowMonoNanos();
+  for (const auto& entry : _config.symbols)
+  {
+    markFeedActivity(resolveSymbolId(entry.name), startedAt);
+  }
+
   _wsClient->start();
   _pingThread = makeThread("conn.bitget.ping",
                            [this]
@@ -232,8 +249,10 @@ void BitgetExchangeConnector::start()
     _wsClientPrivate->onClose(
         [this](int code, std::string_view reason)
         {
-          _logger->warn("[Bitget] Private WS closed: code=" + std::to_string(code) +
-                        " reason=" + std::string(reason));
+          // The private stream carries order and execution reports: losing it
+          // stops fills reaching the engine, so it is the same class of event
+          // as losing the public book.
+          handleDisconnect(code, std::string("private stream: ").append(reason));
         });
 
     _wsClientPrivate->onMessage(
@@ -268,6 +287,21 @@ void BitgetExchangeConnector::stop()
     _wsClientPrivate->stop();
     _wsClientPrivate.reset();
   }
+}
+
+void BitgetExchangeConnector::handleDisconnect(int code, std::string_view reason)
+{
+  const std::string detail = "code=" + std::to_string(code) + ", reason=" + std::string(reason);
+  if (_logger)
+  {
+    _logger->info("[Bitget] WebSocket closed: " + detail);
+  }
+  emitDisconnect(detail);
+}
+
+void BitgetExchangeConnector::pollFeedHealth(MonoNanos now)
+{
+  checkStaleFeeds(now, _config.staleDataTimeoutMs);
 }
 
 void BitgetExchangeConnector::pingLoop()
@@ -309,6 +343,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
   const uint64_t recvNs = nowNsMonotonic();
 
   static thread_local simdjson::dom::parser parser;
+  const MonoNanos arrivedAt = nowMonoNanos();
 
   try
   {
@@ -373,6 +408,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
       ev->update.symbol = sid;
       ev->recvNs = MonoNanos::fromRaw(recvNs);
       ev->sourceExchange = _exchangeId;
+      markFeedActivity(sid, arrivedAt);
 
       BookUpdateType updateType = BookUpdateType::SNAPSHOT;
       if (action == "update")
@@ -478,6 +514,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
 
         TradeEvent ev;
         SymbolId sid = resolveSymbolId(inst);
+        markFeedActivity(sid, arrivedAt);
         ev.trade.symbol = sid;
         ev.recvNs = MonoNanos::fromRaw(recvNs);
         if (_registry)

@@ -53,6 +53,11 @@ struct BitgetConfig
   std::string privateEndpoint;
   std::vector<SymbolEntry> symbols;
   int reconnectDelayMs{2000};
+  // Window after which a symbol that stopped ticking is reported through
+  // emitStaleData. 0 disables the check: the right window is a property of
+  // the instrument's liquidity, not of the venue, so there is no default the
+  // connector can pick for you.
+  int staleDataTimeoutMs{0};
   std::string apiKey;
   std::string apiSecret;
   std::string passphrase;
@@ -84,6 +89,12 @@ class BitgetExchangeConnector : public IExchangeConnector
   // trades) is testable offline by feeding raw frames without a live socket.
   // Same seam BybitExchangeConnector exposes.
   void handleMessage(std::string_view payload);
+
+  // Transport close. Called from the websocket onClose handler; public for
+  // the same reason as handleMessage.
+  void handleDisconnect(int code, std::string_view reason);
+
+  void pollFeedHealth(MonoNanos now) override;
 
   // Same rationale: public so the private "orders" channel handling is
   // testable offline, without a live authenticated socket.

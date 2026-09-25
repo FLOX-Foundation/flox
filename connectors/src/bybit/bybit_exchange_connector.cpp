@@ -272,11 +272,17 @@ void BybitExchangeConnector::start()
   _wsClient->onClose(
       [this](int code, std::string_view reason)
       {
-        FLOX_LOG("[Bybit] WebSocket closed: code=" << std::to_string(code)
-                                                   << ", reason=" << std::string(reason));
-        _logger->info("[Bybit] WebSocket closed: code=" + std::to_string(code) +
-                      ", reason=" + std::string(reason));
+        handleDisconnect(code, reason);
       });
+
+  // Baseline for the staleness check: without it a feed that never delivers a
+  // single frame has no stamp to age out from, which is the loudest failure
+  // of the two this check exists for.
+  const MonoNanos startedAt = nowMonoNanos();
+  for (const auto& entry : _config.symbols)
+  {
+    markFeedActivity(resolveSymbolId(entry.name), startedAt);
+  }
 
   _wsClient->start();
 
@@ -324,10 +330,10 @@ void BybitExchangeConnector::start()
     _wsClientPrivate->onClose(
         [this](int code, std::string_view reason)
         {
-          FLOX_LOG("[Bybit] Private WS closed: code=" << std::to_string(code)
-                                                      << ", reason=" << std::string(reason));
-          _logger->info("[Bybit] Private WS closed: code=" + std::to_string(code) +
-                        ", reason=" + std::string(reason));
+          // The private stream carries order and execution reports: losing it
+          // stops fills reaching the engine, so it is the same class of event
+          // as losing the public book.
+          handleDisconnect(code, std::string("private stream: ").append(reason));
         });
 
     _wsClientPrivate->start();
@@ -357,6 +363,22 @@ void BybitExchangeConnector::stop()
     _wsClientPrivate->stop();
     _wsClientPrivate.reset();
   }
+}
+
+void BybitExchangeConnector::handleDisconnect(int code, std::string_view reason)
+{
+  const std::string detail = "code=" + std::to_string(code) + ", reason=" + std::string(reason);
+  FLOX_LOG("[Bybit] WebSocket closed: " << detail);
+  if (_logger)
+  {
+    _logger->info("[Bybit] WebSocket closed: " + detail);
+  }
+  emitDisconnect(detail);
+}
+
+void BybitExchangeConnector::pollFeedHealth(MonoNanos now)
+{
+  checkStaleFeeds(now, _config.staleDataTimeoutMs);
 }
 
 void BybitExchangeConnector::resubscribeBook(std::string_view symbolName)
@@ -476,6 +498,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
       std::string_view ssv = data_obj.find_field_unordered("s").get_string().value();
       SymbolId sym = resolveSymbolId(ssv);
       ev->update.symbol = sym;
+      markFeedActivity(sym, MonoNanos::fromRaw(recvNs));
 
       if (_registry)
       {
@@ -592,6 +615,7 @@ void BybitExchangeConnector::handleMessage(std::string_view payload)
 
         std::string_view ssv = obj.find_field_unordered("s").get_string().value();
         SymbolId sym = resolveSymbolId(ssv);
+        markFeedActivity(sym, MonoNanos::fromRaw(recvNs));
 
         TradeEvent ev{};
         ev.recvNs = MonoNanos::fromRaw(recvNs);

@@ -97,12 +97,17 @@ void PolymarketExchangeConnector::start()
   _wsMarket->onClose(
       [this](int code, std::string_view reason)
       {
-        if (_logger)
-        {
-          _logger->info("[Polymarket] WebSocket closed: code=" + std::to_string(code) +
-                        ", reason=" + std::string(reason));
-        }
+        handleDisconnect(code, reason);
       });
+
+  // Baseline for the staleness check: without it a feed that never delivers a
+  // single frame has no stamp to age out from, which is the loudest failure
+  // of the two this check exists for.
+  const MonoNanos startedAt = nowMonoNanos();
+  for (const auto& tokenId : _config.tokenIds)
+  {
+    markFeedActivity(resolveSymbolId(tokenId), startedAt);
+  }
 
   _wsMarket->start();
 
@@ -129,6 +134,21 @@ void PolymarketExchangeConnector::stop()
   {
     _logger->info("[Polymarket] Connector stopped");
   }
+}
+
+void PolymarketExchangeConnector::handleDisconnect(int code, std::string_view reason)
+{
+  const std::string detail = "code=" + std::to_string(code) + ", reason=" + std::string(reason);
+  if (_logger)
+  {
+    _logger->info("[Polymarket] WebSocket closed: " + detail);
+  }
+  emitDisconnect(detail);
+}
+
+void PolymarketExchangeConnector::pollFeedHealth(MonoNanos now)
+{
+  checkStaleFeeds(now, _config.staleDataTimeoutMs);
 }
 
 SymbolId PolymarketExchangeConnector::resolveSymbolId(std::string_view tokenId)
@@ -371,6 +391,7 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
 
   std::string_view tokenId = assetIdField.get_string().value();
   SymbolId sym = resolveSymbolId(tokenId);
+  markFeedActivity(sym, MonoNanos::fromRaw(recvNs));
 
   auto evOpt = _bookPool.acquire();
   if (!evOpt)
@@ -502,7 +523,9 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
     {
       continue;  // unparseable level; skip rather than corrupt the delta
     }
-    changes.push_back({resolveSymbolId(tokenId), isBid, *priceOpt, *qtyOpt});
+    const SymbolId sym = resolveSymbolId(tokenId);
+    markFeedActivity(sym, MonoNanos::fromRaw(recvNs));
+    changes.push_back({sym, isBid, *priceOpt, *qtyOpt});
   }
 
   if (changes.empty())
