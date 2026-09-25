@@ -11709,11 +11709,6 @@
           "name": "ExchangeClockSync"
         },
         {
-          "header": "include/flox/engine/engine_config.h",
-          "kind": "type",
-          "name": "ExchangeConfig"
-        },
-        {
           "header": "include/flox/exchange/exchange_info.h",
           "kind": "type",
           "name": "ExchangeInfo"
@@ -13142,11 +13137,6 @@
           "header": "include/flox/indicator/streaming.h",
           "kind": "type",
           "name": "StreamingSingle"
-        },
-        {
-          "header": "include/flox/engine/engine_config.h",
-          "kind": "type",
-          "name": "SymbolConfig"
         },
         {
           "header": "include/flox/strategy/symbol_context.h",

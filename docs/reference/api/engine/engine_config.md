@@ -1,85 +1,40 @@
 # EngineConfig
 
-`EngineConfig` holds top-level runtime configuration for the trading engine, including exchange definitions, kill switch limits, and logging preferences.
+`EngineConfig` holds what the engine itself needs to start: how long to drain
+in-flight orders on shutdown, and the deployment memory profile.
 
 ```cpp
 struct EngineConfig
 {
-  std::vector<ExchangeConfig> exchanges;
-  KillSwitchConfig killSwitchConfig;
-  std::string logLevel = "info";
-  std::string logFile;
   uint32_t drainTimeoutMs = 5000;
+  std::string memoryProfile = "default";
 };
 ```
 
 ## Purpose
 
-* Aggregate all user-specified engine parameters into a single loadable structure.
+* Carry the two runtime parameters `Engine::start()` and `Engine::stop()` read.
 
 ## Fields
 
-| Field            | Description                                                          |
-| ---------------- | -------------------------------------------------------------------- |
-| exchanges        | List of exchanges and symbols to connect (via `ExchangeConfig`).     |
-| killSwitchConfig | Limits for order size, frequency, and loss (see `KillSwitchConfig`). |
-| logLevel         | Runtime log verbosity (`info`, `debug`, `trace`, etc.).              |
-| logFile          | Optional path to write logs to disk.                                 |
-| drainTimeoutMs   | Timeout for draining subsystems during shutdown (default: 5000ms).   |
+| Field          | Default     | Description                                                                                 |
+| -------------- | ----------- | ------------------------------------------------------------------------------------------- |
+| drainTimeoutMs | 5000        | How long `stop()` waits for each connector to drain in-flight orders.                        |
+| memoryProfile  | `"default"` | `"default"` (no page locking) or `"colo"` (`mlockall` at start; degrades with a warning).    |
 
+## Exchanges and symbols are not configured here
 
-## Substructures
+The struct used to carry `std::vector<ExchangeConfig> exchanges`, with a
+`SymbolConfig{symbol, tickSize, expectedDeviation}` under each, and the engine
+read none of it: a caller who filled it in got no registered symbol, no tick
+size and no error. Those three types are gone.
 
-### `ExchangeConfig`
-
-```cpp
-struct ExchangeConfig
-{
-  std::string name;
-  std::string type;
-  std::vector<SymbolConfig> symbols;
-};
-```
-
-| Field   | Description                                  |
-| ------- | -------------------------------------------- |
-| name    | Display name or label (e.g. `"Bybit"`).      |
-| type    | Connector type (used by `ConnectorFactory`). |
-| symbols | List of `SymbolConfig` entries.              |
-
-### `SymbolConfig`
-
-```cpp
-struct SymbolConfig
-{
-  std::string symbol;
-  double tickSize;
-  double expectedDeviation;
-};
-```
-
-| Field             | Description                              |
-| ----------------- | ---------------------------------------- |
-| symbol            | Symbol name (e.g. `"DOTUSDT"`).          |
-| tickSize          | Price resolution used by the order book. |
-| expectedDeviation | Max allowed distance from center price.  |
-
-### `KillSwitchConfig`
-
-```cpp
-struct KillSwitchConfig
-{
-  double maxOrderQty = 10'000.0;
-  double maxLoss = -1e6;
-  int maxOrdersPerSecond = -1;
-};
-```
-
-| Field              | Default   | Description                                         |
-| ------------------ | --------- | --------------------------------------------------- |
-| maxOrderQty        | 10,000    | Per-order size limit.                               |
-| maxLoss            | -1,000,000| Hard loss cap per session.                          |
-| maxOrdersPerSecond | -1        | Throttling limit for message rate (≤ 0 = disabled). |
+A connector is constructed with the venue and the symbols it serves, and
+registers what it resolves in a [`SymbolRegistry`](./symbol_registry.md) --
+which is the one place a configured symbol is observable, and where
+`SymbolInfo::tickSize` comes from. Kill-switch limits, log level and log file
+were likewise described here and never existed in the struct; configure the
+kill switch and the logger through their own objects.
 
 ## Global Constants
 
@@ -123,6 +78,5 @@ These can be overridden via preprocessor defines:
 
 ## Notes
 
-* Typically loaded from JSON during engine bootstrap.
-* Used by multiple components: symbol registry, kill switch, connector setup, and logging.
+* Read by `Engine::start()` (memory profile) and `Engine::stop()` (drain timeout); nothing else in the tree reads it.
 * Priority constants are used for CPU affinity and thread scheduling when `FLOX_ENABLE_CPU_AFFINITY` is enabled.

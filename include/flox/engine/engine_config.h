@@ -9,31 +9,23 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 namespace flox
 {
 
-struct SymbolConfig
-{
-  std::string symbol;
-  double tickSize;
-  double expectedDeviation;
-};
-
-struct ExchangeConfig
-{
-  std::string name;
-  std::string type;
-  std::vector<SymbolConfig> symbols;
-};
-
+// What the engine itself needs to start. Exchanges and their symbols used to
+// be declared here -- EngineConfig::exchanges, ExchangeConfig, SymbolConfig --
+// and were read by nothing: the engine touched only the two fields below, and
+// a caller who filled them in got no registered symbol, no tick size and no
+// error. Connectors are constructed with the venue and symbols they serve and
+// register what they resolve in a SymbolRegistry, which is the one place a
+// configured symbol is observable; a second, silent declaration of the same
+// thing was worse than none.
 struct EngineConfig
 {
-  std::vector<ExchangeConfig> exchanges;
-
   uint32_t drainTimeoutMs = 5000;  ///< Timeout for draining in-flight orders on shutdown
 
   /// Deployment memory profile: "default" (no page locking) or "colo"
