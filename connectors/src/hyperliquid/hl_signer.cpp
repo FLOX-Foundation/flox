@@ -1,5 +1,6 @@
 #include "flox-connectors/hyperliquid/hl_signer.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <string>
@@ -18,8 +19,8 @@ using socket_t = SOCKET;
 constexpr socket_t INVALID_SOCK = INVALID_SOCKET;
 #else
 #include <arpa/inet.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -96,6 +97,45 @@ static bool recv_all(socket_t fd, void* p, size_t n)
 }
 
 #ifndef _WIN32
+// The signing request carries the raw private key, so the only transport this
+// client will use is a Unix socket that no other user on the box can open:
+// a filesystem path with an owner and a mode, both checkable before a byte is
+// written. Anything else -- loopback TCP above all -- authenticates neither
+// end, and whoever binds the port first harvests the key.
+//
+// The path is checked, not just connected to. lstat rather than stat so a
+// symlink pointing somewhere world-writable is refused instead of followed.
+// A window remains between the check and the connect; closing it for real
+// needs the socket to live in a directory only this user can write, which is
+// what the shipped daemon does.
+static bool is_private_signer_socket(const char* path)
+{
+  struct stat st
+  {
+  };
+  if (::lstat(path, &st) != 0)
+  {
+    return false;
+  }
+  if (!S_ISSOCK(st.st_mode))
+  {
+    FLOX_LOG_ERROR("[HL] signer path is not a socket: " << path);
+    return false;
+  }
+  if (st.st_uid != ::geteuid())
+  {
+    FLOX_LOG_ERROR("[HL] signer socket is owned by another user, refusing: " << path);
+    return false;
+  }
+  if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0)
+  {
+    FLOX_LOG_ERROR("[HL] signer socket is accessible beyond its owner (mode "
+                   << (st.st_mode & 07777) << "), refusing: " << path);
+    return false;
+  }
+  return true;
+}
+
 static socket_t connect_unix(const char* path, int timeout_ms = 50)
 {
   socket_t fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -118,42 +158,6 @@ static socket_t connect_unix(const char* path, int timeout_ms = 50)
   return fd;
 }
 #endif
-
-// Connect via TCP to localhost:port (cross-platform fallback)
-static socket_t connect_tcp(uint16_t port, int timeout_ms = 50)
-{
-#ifdef _WIN32
-  ensureWinsock();
-#endif
-
-  socket_t fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (fd == INVALID_SOCK)
-  {
-    return INVALID_SOCK;
-  }
-
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(port);
-  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-#ifdef _WIN32
-  DWORD tv = static_cast<DWORD>(timeout_ms);
-  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
-  ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
-#else
-  timeval tv{timeout_ms / 1000, (timeout_ms % 1000) * 1000};
-  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-#endif
-
-  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
-  {
-    close_socket(fd);
-    return INVALID_SOCK;
-  }
-  return fd;
-}
 
 }  // namespace
 
@@ -223,30 +227,44 @@ static std::string build_request_json(const HlSignParams& p)
   return j;
 }
 
-// Default TCP port for hl_signerd (can be overridden via environment)
-static constexpr uint16_t HL_SIGNER_DEFAULT_PORT = 19847;
+// Where hl_signerd listens, overridable because /dev/shm is Linux-only.
+static constexpr const char* HL_SIGNER_DEFAULT_SOCKET = "/dev/shm/hl_sign.sock";
+static constexpr const char* HL_SIGNER_SOCKET_ENV = "FLOX_HL_SIGNER_SOCKET";
+
+// A signature reply is {"r","s","v"} -- a couple of hundred bytes. The length
+// header comes from the peer, so it is a request for an allocation, not a
+// fact; anything past this ceiling is a protocol violation and is refused
+// before a single byte is reserved.
+static constexpr uint32_t HL_SIGNER_MAX_RESPONSE = 4096;
 
 std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
 {
-  const std::string req = build_request_json(p);
+#ifdef _WIN32
+  // No Unix sockets, and loopback TCP is not an acceptable substitute for a
+  // transport that carries a private key, so there is nothing to talk to.
+  (void)p;
+  (void)HL_SIGNER_DEFAULT_SOCKET;
+  (void)HL_SIGNER_SOCKET_ENV;
+  (void)HL_SIGNER_MAX_RESPONSE;
+  FLOX_LOG_ERROR("[HL] no signer transport on this platform: hl_signerd needs a Unix socket");
+  return std::nullopt;
+#else
+  const char* envPath = std::getenv(HL_SIGNER_SOCKET_ENV);
+  const std::string path = (envPath && *envPath) ? envPath : HL_SIGNER_DEFAULT_SOCKET;
 
-  socket_t fd = INVALID_SOCK;
-
-#ifndef _WIN32
-  // On POSIX, try Unix socket first (faster, default)
-  fd = connect_unix("/dev/shm/hl_sign.sock", /*timeout_ms=*/50);
-#endif
-
-  // Fall back to TCP localhost (cross-platform)
-  if (fd == INVALID_SOCK)
+  if (!is_private_signer_socket(path.c_str()))
   {
-    fd = connect_tcp(HL_SIGNER_DEFAULT_PORT, /*timeout_ms=*/50);
+    return std::nullopt;
   }
 
+  // Built only once the transport is known to be trustworthy: no reason to
+  // have the key in a buffer we might never be allowed to send.
+  const std::string req = build_request_json(p);
+
+  socket_t fd = connect_unix(path.c_str(), /*timeout_ms=*/50);
   if (fd == INVALID_SOCK)
   {
-    FLOX_LOG_ERROR("[HL] connect hl_signerd failed (tried Unix socket and TCP localhost:"
-                   << HL_SIGNER_DEFAULT_PORT << ")");
+    FLOX_LOG_ERROR("[HL] connect hl_signerd failed on " << path);
     return std::nullopt;
   }
 
@@ -264,7 +282,15 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
     close_socket(fd);
     return std::nullopt;
   }
-  uint32_t rlen = ntohl(rlen_be);
+  const uint32_t rlen = ntohl(rlen_be);
+  if (rlen == 0 || rlen > HL_SIGNER_MAX_RESPONSE)
+  {
+    close_socket(fd);
+    FLOX_LOG_ERROR("[HL] signer declared a " << rlen << "-byte response, above the "
+                                             << HL_SIGNER_MAX_RESPONSE << "-byte bound");
+    return std::nullopt;
+  }
+
   std::string out;
   out.resize(rlen);
   if (!recv_all(fd, out.data(), rlen))
@@ -314,6 +340,7 @@ std::optional<HlSig> hl_sign_with_sdk(const HlSignParams& p)
     return std::nullopt;
   }
   return HlSig{std::move(r), std::move(s), std::atoi(v.c_str())};
+#endif
 }
 
 }  // namespace flox::hl
