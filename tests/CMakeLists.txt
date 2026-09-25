@@ -324,6 +324,8 @@ if(FLOX_BUILD_CAPI)
   target_link_libraries(test_capi_signal_codes PRIVATE flox_capi)
   add_flox_test(test_capi_bar_aggregation)
   target_link_libraries(test_capi_bar_aggregation PRIVATE flox_capi)
+  add_flox_test(test_capi_book_snapshot)
+  target_link_libraries(test_capi_book_snapshot PRIVATE flox_capi)
   # test_capi_logger needs to share a single ILogger global with flox_capi.
   # If we use add_flox_test, the test exe links the static `flox` library
   # alongside flox_capi.dylib (which itself statically embeds `flox`) —

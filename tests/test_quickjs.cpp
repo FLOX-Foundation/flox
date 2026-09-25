@@ -2281,3 +2281,247 @@ TEST(JsIntegrationTest, CompositeBookDetectsArbitrageAcrossExchanges)
   EXPECT_TRUE(JS_ToBool(ctx, arb)) << "a higher bid on exchange 2 than the ask on exchange 1 is arbitrage";
   JS_FreeValue(ctx, arb);
 }
+
+// ============================================================
+// Bar timestamps — one unit and one type on every path
+// ============================================================
+//
+// A bar's `ts` used to mean two different things inside the same binding.
+// `Engine.loadCsv` divided the parsed timestamp down to milliseconds and
+// handed it over as a Number, while every aggregator emitted
+// `start_time_ns` as a BigInt. A script that read one bar from the CSV and
+// one from `flox.timeBars` was off by a factor of 1e6 in the best case and
+// threw a TypeError the moment it subtracted one from the other -- JS
+// refuses to mix BigInt and Number in arithmetic. Milliseconds also drop
+// everything below the millisecond, which is the whole point of carrying a
+// nanosecond timestamp.
+//
+// The convention these tests pin: every bar timestamp the QuickJS binding
+// produces is a BigInt of nanoseconds, whatever produced the bar.
+
+namespace
+{
+
+// A CSV file that lives for the duration of one test, mirroring TempJsFile.
+class TempCsvFile
+{
+ public:
+  explicit TempCsvFile(const std::string& content)
+  {
+    _path = std::filesystem::temp_directory_path() /
+            ("flox_test_bars_" + std::to_string(counter_++) + ".csv");
+    std::ofstream f(_path);
+    f << content;
+  }
+  ~TempCsvFile() { std::filesystem::remove(_path); }
+  std::string path() const { return _path.string(); }
+
+ private:
+  std::filesystem::path _path;
+  static int counter_;
+};
+int TempCsvFile::counter_ = 0;
+
+// Nanosecond timestamps whose sub-millisecond digits are non-zero and
+// which sit far above 2^53, so neither a millisecond truncation nor a
+// float64 round-trip can reproduce them.
+constexpr const char* kCsvTsNs0 = "1776606960123456789";
+constexpr const char* kCsvTsNs1 = "1776607020123456789";
+
+std::string barCsvContent()
+{
+  return std::string("timestamp,open,high,low,close,volume\n") + kCsvTsNs0 +
+         ",100.0,101.0,99.0,100.5,3.0\n" + kCsvTsNs1 + ",100.5,102.0,100.0,101.5,4.0\n";
+}
+
+// Prepends the CSV path as a global, so the script bodies below stay
+// plain JS instead of C++ string concatenation.
+std::string withCsvPath(const std::string& path, const std::string& body)
+{
+  return "var CSV_PATH = \"" + path + "\";\n" + body;
+}
+
+// Reads a global back as a string. A BigInt cannot be read through
+// JS_ToFloat64 without losing exactly the digits under test.
+std::string globalAsString(FloxJsStrategy& strat, const char* name)
+{
+  auto* ctx = strat.engine().context();
+  JSValue v = strat.engine().getGlobalProperty(name);
+  const char* s = JS_ToCString(ctx, v);
+  std::string out = s != nullptr ? s : "";
+  JS_FreeCString(ctx, s);
+  JS_FreeValue(ctx, v);
+  return out;
+}
+
+}  // namespace
+
+// Engine.loadCsv must hand the script the CSV timestamp in nanoseconds,
+// exactly, as a BigInt -- not a millisecond Number.
+TEST(JsBarTimestampUnits, LoadCsvBarTimestampIsBigIntNanoseconds)
+{
+  TempCsvFile csv(barCsvContent());
+  TempJsFile script(withCsvPath(csv.path(), R"(
+    var bars = flox.loadCsv(CSV_PATH);
+    var barCount = bars.length;
+    var tsType = typeof bars[0].ts;
+    var tsStr = String(bars[0].ts);
+    var gapStr = (tsType === "bigint") ? String(bars[1].ts - bars[0].ts) : "";
+  )"));
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "barCount"), "2");
+  EXPECT_EQ(globalAsString(jsStrat, "tsType"), "bigint")
+      << "a bar timestamp is a BigInt on every path";
+  EXPECT_EQ(globalAsString(jsStrat, "tsStr"), kCsvTsNs0)
+      << "the CSV timestamp reaches the script in nanoseconds, undivided and unrounded";
+  EXPECT_EQ(globalAsString(jsStrat, "gapStr"), "60000000000")
+      << "one minute between the two rows, measured in nanoseconds";
+}
+
+// Control: the aggregators already emit BigInt nanoseconds. That is the
+// side of the boundary loadCsv has to meet, so it must stay this way.
+TEST(JsBarTimestampUnits, AggregatorBarTimestampIsBigIntNanoseconds)
+{
+  TempJsFile script(R"(
+    var ts  = [1000000000, 61000000000, 121000000000, 181000000000];
+    var px  = [100.0, 101.0, 102.0, 103.0];
+    var qty = [1.0, 1.0, 1.0, 1.0];
+    var side = [0, 1, 0, 1];
+    // Tick bars: the bar boundary is a trade count, so the interval
+    // argument carries no unit of its own and cannot confuse the reading.
+    var aggBars = flox.tickBars(ts, px, qty, side, 2);
+    var aggCount = aggBars.length;
+    var aggTsType = aggCount > 0 ? typeof aggBars[0].ts : "";
+    var aggTsStr = aggCount > 0 ? String(aggBars[0].ts) : "";
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  ASSERT_NE(globalAsString(jsStrat, "aggCount"), "0") << "the tape closes at least one tick bar";
+  EXPECT_EQ(globalAsString(jsStrat, "aggTsType"), "bigint");
+  EXPECT_EQ(globalAsString(jsStrat, "aggTsStr"), "1000000000")
+      << "the aggregator reports the bar start in nanoseconds";
+}
+
+// The failure a user actually hits: one bar from the CSV, one from an
+// aggregator, and a subtraction between them. Today the operands are a
+// Number and a BigInt and the subtraction throws.
+TEST(JsBarTimestampUnits, CsvAndAggregatorBarsMixWithoutTypeError)
+{
+  TempCsvFile csv(barCsvContent());
+  TempJsFile script(withCsvPath(csv.path(), R"(
+    var csvBars = flox.loadCsv(CSV_PATH);
+    var aggBars = flox.tickBars([1000000000, 61000000000, 121000000000, 181000000000],
+                                [100.0, 101.0, 102.0, 103.0],
+                                [1.0, 1.0, 1.0, 1.0],
+                                [0, 1, 0, 1],
+                                2);
+    var mixError = "";
+    var deltaType = "";
+    var deltaStr = "";
+    try {
+      var delta = csvBars[0].ts - aggBars[0].ts;
+      deltaType = typeof delta;
+      deltaStr = String(delta);
+    } catch (e) {
+      mixError = String(e);
+    }
+  )"));
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "mixError"), "")
+      << "mixing a CSV bar with an aggregator bar must not throw";
+  EXPECT_EQ(globalAsString(jsStrat, "deltaType"), "bigint");
+  EXPECT_EQ(globalAsString(jsStrat, "deltaStr"), "1776606959123456789")
+      << "the difference is exact nanoseconds, not a rounded double";
+}
+
+// Control: the live onBar path already delivers BigInt nanoseconds and
+// keeps every digit of a timestamp far above 2^53.
+TEST(JsBarTimestampUnits, OnBarBarTimestampIsBigIntNanoseconds)
+{
+  TempJsFile script(R"(
+    var barTsType = "";
+    var barTsStr = "";
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "Test", symbols: ["BTCUSDT"] }); }
+      onBar(ctx, bar) {
+        barTsType = typeof bar.startTimeNs;
+        barTsStr = String(bar.startTimeNs);
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  constexpr int64_t kStartNs = 1776606960123456789LL;
+  const uint64_t M1_NS = 60ull * 1'000'000'000ull;
+
+  BarEvent ev{};
+  ev.symbol = symIds[0];
+  ev.barType = BarType::Time;
+  ev.barTypeParam = M1_NS;
+  ev.bar.open = Price::fromDouble(100.0);
+  ev.bar.high = Price::fromDouble(101.0);
+  ev.bar.low = Price::fromDouble(99.0);
+  ev.bar.close = Price::fromDouble(100.5);
+  ev.bar.startTime = TimePoint{std::chrono::nanoseconds{kStartNs}};
+  ev.bar.endTime = TimePoint{std::chrono::nanoseconds{kStartNs + static_cast<int64_t>(M1_NS)}};
+  bridge->onBar(ev);
+
+  EXPECT_EQ(globalAsString(jsStrat, "barTsType"), "bigint");
+  EXPECT_EQ(globalAsString(jsStrat, "barTsStr"), "1776606960123456789");
+}
+
+// Control: the signal-list Engine reads the same `ts` field, so a change of
+// unit and type there has to be carried through Engine.run's merged
+// timeline, its clock and SignalBuilder. The script never names a unit --
+// it timestamps its signals from the bars themselves -- so this stays true
+// whichever representation the bar carries, and fails if only half of the
+// Engine is converted.
+TEST(JsBarTimestampUnits, EngineRunAcceptsSignalsTimestampedFromBars)
+{
+  TempCsvFile csv(barCsvContent());
+  TempJsFile script(withCsvPath(csv.path(), R"(
+    var engine = new Engine(10000.0, 0.0004);
+    engine.loadCsv(CSV_PATH);
+    var barCount = engine.barCount;
+    var bars = engine._symbols["__default__"];
+    var runError = "";
+    var totalTrades = -1;
+    var finalCapital = 0;
+    try {
+      var signals = new SignalBuilder();
+      signals.buy(bars[0].ts, 0.01);
+      signals.sell(bars[1].ts, 0.01);
+      var stats = engine.run(signals);
+      totalTrades = stats.totalTrades;
+      finalCapital = stats.finalCapital;
+    } catch (e) {
+      runError = String(e);
+    }
+  )"));
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "runError"), "");
+  EXPECT_EQ(globalAsString(jsStrat, "barCount"), "2");
+  EXPECT_EQ(globalAsString(jsStrat, "totalTrades"), "1")
+      << "buy on the first bar, sell on the second -- one closed round trip";
+  EXPECT_NE(globalAsString(jsStrat, "finalCapital"), "0");
+}
