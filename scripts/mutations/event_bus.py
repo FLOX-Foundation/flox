@@ -217,6 +217,8 @@ MUTATIONS: list[Mutation] = [
       return -1;
     }
 
+    PublishSeam::beforeClaim();
+
     const int64_t lastSeq = _next.fetch_add(static_cast<int64_t>(count),
                                             std::memory_order_acq_rel) +
                             static_cast<int64_t>(count);
@@ -227,6 +229,8 @@ MUTATIONS: list[Mutation] = [
     {
       return -1;
     }
+
+    PublishSeam::beforeClaim();
 
     const int64_t lastSeq = _next.fetch_add(static_cast<int64_t>(count),
                                             std::memory_order_acq_rel) +
