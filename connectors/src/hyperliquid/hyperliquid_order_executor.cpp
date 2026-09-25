@@ -352,6 +352,27 @@ void HyperliquidOrderExecutorT<Policies>::publishRejection(const Order& order,
   _orderBus->publish(std::move(ev));
 }
 
+// A client-side rate-limit refusal never reached the venue and used to leave
+// no trace at all: no transport call, no event, and for a cancel a tracker
+// that goes on reporting the order live. Deliberately does not touch
+// OrderTracker -- unlike publishRejection there was no submission attempt to
+// mark rejected. Same shape as the Bitget executor's.
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::publishRateLimited(const Order& order)
+{
+  FLOX_LOG_WARN("[HL] client-side rate limit refused orderId=" << order.id);
+  if (!_orderBus)
+  {
+    return;
+  }
+  OrderEvent ev;
+  ev.status = OrderEventStatus::REJECTED_RATE_LIMIT;
+  ev.order = order;
+  ev.rejectReason = "client-side rate limit";
+  ev.publishNs = nowMonoNanos();
+  _orderBus->publish(std::move(ev));
+}
+
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::publishSubmitted(const Order& order)
 {
@@ -422,9 +443,9 @@ void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
       {
         sendSubmitOrder(order);
       },
-      [order]
+      [this, order]
       {
-        FLOX_LOG_WARN("[HL] client-side rate limit refused orderId=" << order.id);
+        publishRateLimited(order);
       });
 }
 
@@ -627,15 +648,26 @@ void HyperliquidOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::cancelOrder(OrderId localId)
 {
+  // Resolved before the gate so a refused cancel is reported against the
+  // order it targeted instead of vanishing while the tracker keeps reporting
+  // that order live.
+  auto target = _orderTracker->get(localId);
+  if (!target)
+  {
+    FLOX_LOG_ERROR("[HL] cancelOrder: no orderState for localId " << localId);
+    return;
+  }
+
+  Order local = target->localOrder;
   _policies.rateLimit.gate(
       localId,
       [this, localId]
       {
         sendCancelOrder(localId);
       },
-      [localId]
+      [this, local]
       {
-        FLOX_LOG_WARN("[HL] client-side rate limit refused cancel of orderId=" << localId);
+        publishRateLimited(local);
       });
 }
 
@@ -732,15 +764,23 @@ void HyperliquidOrderExecutorT<Policies>::sendCancelOrder(OrderId localId)
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::replaceOrder(OrderId oldLocalId, const Order& n)
 {
+  auto target = _orderTracker->get(oldLocalId);
+  if (!target)
+  {
+    FLOX_LOG_ERROR("[HL] replaceOrder: no orderState for oldLocalId " << oldLocalId);
+    return;
+  }
+
+  Order local = target->localOrder;
   _policies.rateLimit.gate(
       oldLocalId,
       [this, oldLocalId, n]
       {
         sendReplaceOrder(oldLocalId, n);
       },
-      [oldLocalId]
+      [this, local]
       {
-        FLOX_LOG_WARN("[HL] client-side rate limit refused replace of orderId=" << oldLocalId);
+        publishRateLimited(local);
       });
 }
 
@@ -750,7 +790,7 @@ void HyperliquidOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldLocalId, c
   auto orderState = _orderTracker->get(oldLocalId);
   if (!orderState)
   {
-    FLOX_LOG_ERROR("[HL] cancelOrder: no replaceOrder for oldLocalId " << oldLocalId);
+    FLOX_LOG_ERROR("[HL] replaceOrder: no orderState for oldLocalId " << oldLocalId);
     return;
   }
 

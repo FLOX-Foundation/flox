@@ -170,6 +170,13 @@ class BitgetOrderExecutorT : public IOrderExecutor
   void sendSubmitOrder(const Order& order);
   void sendCancelOrder(OrderId orderId);
   void sendReplaceOrder(OrderId oldOrderId, const Order& newOrder);
+  void sendSetLeverage(const std::string& symbol, int leverage);
+  void sendSubmitOrderWithLeverage(const Order& order, int leverage, double slPrice,
+                                   double tpPrice);
+  void sendPlacePosTpsl(SymbolId symbol, HoldSide holdSide, double slPrice, double tpPrice,
+                        OrderId localId);
+  void sendModifyPosTpsl(SymbolId symbol, const std::string& exchangeOrderId,
+                         double newTriggerPrice, double qty);
 
   void submitPlanOrder(const Order& order, const SymbolInfo& info);
   void publishRejection(const Order& order, const std::string& reason);

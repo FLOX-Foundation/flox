@@ -112,8 +112,32 @@ void appendPositionFields(std::string& body, const Order& order, const Bitget::P
 
 }  // namespace
 
+// setLeverage, submitOrderWithLeverage, placePosTpsl and modifyPosTpsl are
+// ordinary REST requests against the same venue budget as a submit, and the
+// trailing stop walks modifyPosTpsl on every bar -- the paths that used to
+// skip the limiter were the ones that fire most often. Neither setLeverage
+// nor modifyPosTpsl carries an OrderId to report against, so a refusal is a
+// log line rather than an event; kNoOrderId only names that in the log.
+static constexpr OrderId kNoOrderId = 0;
+
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::setLeverage(const std::string& symbol, int leverage)
+{
+  _policies.rateLimit.gate(
+      kNoOrderId,
+      [this, symbol, leverage]
+      {
+        sendSetLeverage(symbol, leverage);
+      },
+      [symbol]
+      {
+        FLOX_LOG_WARN("[BitgetOE] setLeverage for " << symbol
+                                                    << " refused by the client-side rate limit");
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendSetLeverage(const std::string& symbol, int leverage)
 {
   std::string body;
   body.reserve(128);
@@ -156,6 +180,22 @@ void BitgetOrderExecutorT<Policies>::setLeverage(const std::string& symbol, int 
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitOrderWithLeverage(const Order& order, int leverage,
                                                              double slPrice, double tpPrice)
+{
+  _policies.rateLimit.gate(
+      order.id,
+      [this, order, leverage, slPrice, tpPrice]
+      {
+        sendSubmitOrderWithLeverage(order, leverage, slPrice, tpPrice);
+      },
+      [this, order]
+      {
+        publishRateLimited(order);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendSubmitOrderWithLeverage(const Order& order, int leverage,
+                                                                 double slPrice, double tpPrice)
 {
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
@@ -729,6 +769,28 @@ template <typename Policies>
 void BitgetOrderExecutorT<Policies>::placePosTpsl(SymbolId symbol, HoldSide holdSide,
                                                   double slPrice, double tpPrice, OrderId localId)
 {
+  _policies.rateLimit.gate(
+      localId,
+      [this, symbol, holdSide, slPrice, tpPrice, localId]
+      {
+        sendPlacePosTpsl(symbol, holdSide, slPrice, tpPrice, localId);
+      },
+      [this, symbol, localId]
+      {
+        // A protective stop that never left the process is worth an event:
+        // the position is unprotected and only this connector knows it.
+        Order refused;
+        refused.id = localId;
+        refused.symbol = symbol;
+        publishRateLimited(refused);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendPlacePosTpsl(SymbolId symbol, HoldSide holdSide,
+                                                      double slPrice, double tpPrice,
+                                                      OrderId localId)
+{
   auto info = _registry->getSymbolInfo(symbol);
   if (!info)
   {
@@ -825,6 +887,26 @@ template <typename Policies>
 void BitgetOrderExecutorT<Policies>::modifyPosTpsl(SymbolId symbol,
                                                    const std::string& exchangeOrderId,
                                                    double newTriggerPrice, double qty)
+{
+  _policies.rateLimit.gate(
+      kNoOrderId,
+      [this, symbol, exchangeOrderId, newTriggerPrice, qty]
+      {
+        sendModifyPosTpsl(symbol, exchangeOrderId, newTriggerPrice, qty);
+      },
+      [exchangeOrderId]
+      {
+        FLOX_LOG_WARN("[BitgetOE] modifyPosTpsl for "
+                      << exchangeOrderId
+                      << " refused by the client-side rate limit: the stop "
+                         "stays where the venue last accepted it");
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendModifyPosTpsl(SymbolId symbol,
+                                                       const std::string& exchangeOrderId,
+                                                       double newTriggerPrice, double qty)
 {
   auto info = _registry->getSymbolInfo(symbol);
   if (!info)
