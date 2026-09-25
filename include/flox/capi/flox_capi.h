@@ -22,8 +22,16 @@
  * structs here are solid, with no reserved tail, so a header from one
  * version used against a library from another produces wrong numbers
  * rather than a failed load -- compare FLOX_CAPI_ABI_VERSION against
- * flox_capi_abi_version() once at startup and refuse the mismatch. */
-#define FLOX_CAPI_ABI_VERSION 2
+ * flox_capi_abi_version() once at startup and refuse the mismatch.
+ * 3: FloxBar grew close_reason. */
+#define FLOX_CAPI_ABI_VERSION 3
+
+/* Declared by a header that carries flox_best_bid_raw_opt and its two
+ * siblings, so a binding can compile against a header with or without them.
+ * Adding a function does not move FLOX_CAPI_ABI_VERSION: the version marks a
+ * struct whose shape changed, a function whose signature changed, or a code
+ * space that gained a meaning, and an addition is none of those. */
+#define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1
 
 /* ============================================================
  * Calling contract
@@ -265,6 +273,9 @@ extern "C"
     uint8_t _pad2[2];
   } FloxOrderEventData;
 
+  /* close_reason: 0=Threshold, 1=Gap, 2=Forced, 3=Warmup (mirrors
+   * flox::BarCloseReason, and FloxBarData::close_reason above). Added in
+   * ABI version 3. */
   typedef struct
   {
     int64_t start_time_ns;
@@ -276,6 +287,7 @@ extern "C"
     int64_t volume_raw;
     int64_t buy_volume_raw;
     uint32_t trade_count;
+    uint8_t close_reason;
   } FloxBar;
 
   typedef struct
@@ -1266,6 +1278,19 @@ extern "C"
   int64_t flox_best_bid_raw(FloxStrategyHandle s, uint32_t symbol);
   int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol);
   int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol);
+
+  /* The _opt trio answers the question the three above cannot: they return 0
+   * both when the side is empty and when the best quote is a price of exactly
+   * 0.0, and a book quoting through zero reaches that price. Here the return
+   * value is the presence flag -- 1 with the raw price written to price_out,
+   * 0 with price_out untouched -- so "no quote" has its own answer. price_out
+   * may be NULL when only the flag is wanted. The three int64_t forms above
+   * are unchanged and stay for callers that cannot see below zero.
+   * FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE marks a header that declares them. */
+  uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+
   void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext* out);
   int32_t flox_get_order_status(FloxStrategyHandle s, uint64_t order_id);
 
@@ -2338,6 +2363,25 @@ extern "C"
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                       double close_price);
+  /* Open-aware form: moves the market to the open (releasing any order held
+   * from a bar-callback window at the previous bar's open), then walks
+   * low -> high -> close so resting stops/targets match the intrabar
+   * extremes, not just the close. Use this, not the close-only
+   * flox_simulated_executor_on_bar, to drive the executor by hand to the
+   * same fills BacktestRunner::runBars produces. */
+  void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                           double open_price, double high_price,
+                                           double low_price, double close_price);
+  /* Bar-callback window: while open, every arriving order is held instead of
+   * matched, released at the next flox_simulated_executor_on_bar_ohlc call's
+   * open. Depth-counted; call begin before a hand-driven bar callback and
+   * end right after. */
+  void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  /* Drops fills and run-scoped state while keeping installed configuration,
+   * so a second hand-driven run reports that run and not the sum of every
+   * run. */
+  void flox_simulated_executor_reset(FloxSimulatedExecutorHandle executor);
   void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                         double price, uint8_t is_buy);
   void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle executor,

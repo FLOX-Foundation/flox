@@ -104,6 +104,15 @@ class BybitOrderExecutorT : public IOrderExecutor
   void setOrderBus(OrderExecutionBus* bus) { _orderBus = bus; }
 
  private:
+  // The gate decides whether the request may leave and when; these are what
+  // it runs -- inline on the caller when the budget had a token, on the
+  // rate-limit policy's sender thread when the WAIT policy had to wait for
+  // one. A deferred send runs after its entry point returned, so it re-reads
+  // the tracker rather than borrowing state from the caller's frame.
+  void sendSubmitOrder(const Order& order);
+  void sendCancelOrder(OrderId orderId);
+  void sendReplaceOrder(OrderId oldOrderId, const Order& newOrder);
+
   void publishRejection(const Order& order, const std::string& reason);
   void publishRateLimited(const Order& order);
 

@@ -59,48 +59,22 @@ def _as_class(x: T, D: type, T: type) -> D:
 
 
 # ── C struct offsets ──────────────────────────────────────────────────
-# Verified against include/flox/capi/flox_capi.h with offsetof; the smoke
-# example checks the values that arrive, so a layout change that moves a
-# field fails there rather than silently delivering a wrong number.
+# Generated from the IDL spec into flox/layout.codon by
+# tools/codegen/flox_codegen/emit_layout.py, and checked against offsetof
+# on the real structs by tests/test_capi_event_layout.cpp. They used to be
+# typed in here: a field that moved moved them all, and nothing said so.
 
-# FloxSymbolContext (88 bytes)
-_CTX_SYMBOL_ID = 0
-
-# FloxTradeData (40 bytes)
-_TRADE_SYMBOL = 0
-_TRADE_PRICE_RAW = 8
-_TRADE_QTY_RAW = 16
-_TRADE_IS_BUY = 24
-_TRADE_TS_NS = 32
-
-# FloxBarData (88 bytes)
-_BAR_SYMBOL = 0
-_BAR_TYPE = 4
-_BAR_CLOSE_REASON = 5
-_BAR_TYPE_PARAM = 8
-_BAR_OPEN_RAW = 16
-_BAR_HIGH_RAW = 24
-_BAR_LOW_RAW = 32
-_BAR_CLOSE_RAW = 40
-_BAR_VOLUME_RAW = 48
-_BAR_BUY_VOLUME_RAW = 56
-_BAR_START_NS = 72
-_BAR_END_NS = 80
-
-# FloxOrderEventData (144 bytes)
-_EV_ORDER_ID = 0
-_EV_SYMBOL_ID = 8
-_EV_SIDE = 12
-_EV_ORDER_TYPE = 13
-_EV_STATUS = 14
-_EV_FILL_QTY_RAW = 16
-_EV_FILL_PRICE_RAW = 24
-_EV_TS_NS = 32
-_EV_QUEUE_AHEAD_RAW = 48
-_EV_QUEUE_TOTAL_RAW = 56
-_EV_IS_MAKER = 128
-_EV_MARKET_POSITION = 129
-_EV_DISTANCE_TICKS = 132
+from flox.layout import _CTX_SYMBOL_ID
+from flox.layout import _TRADE_SYMBOL, _TRADE_PRICE_RAW, _TRADE_QTY_RAW
+from flox.layout import _TRADE_IS_BUY, _TRADE_TS_NS
+from flox.layout import _BAR_SYMBOL, _BAR_TYPE, _BAR_CLOSE_REASON, _BAR_TYPE_PARAM
+from flox.layout import _BAR_OPEN_RAW, _BAR_HIGH_RAW, _BAR_LOW_RAW, _BAR_CLOSE_RAW
+from flox.layout import _BAR_VOLUME_RAW, _BAR_BUY_VOLUME_RAW
+from flox.layout import _BAR_START_NS, _BAR_END_NS
+from flox.layout import _EV_ORDER_ID, _EV_SYMBOL_ID, _EV_SIDE, _EV_ORDER_TYPE
+from flox.layout import _EV_STATUS, _EV_FILL_QTY_RAW, _EV_FILL_PRICE_RAW, _EV_TS_NS
+from flox.layout import _EV_REJECT_REASON, _EV_QUEUE_AHEAD_RAW, _EV_QUEUE_TOTAL_RAW
+from flox.layout import _EV_IS_MAKER, _EV_MARKET_POSITION, _EV_DISTANCE_TICKS
 
 # Slot order in FloxStrategyCallbacks, in pointers.
 _CB_ON_TRADE = 0
@@ -130,6 +104,13 @@ def _u8_at(p: cobj, off: int) -> int:
 
 def _i32_at(p: cobj, off: int) -> int:
     return int(Ptr[i32](p + off)[0])
+
+
+def _cstr_at(p: cobj, off: int) -> str:
+    # The C side owns the string and keeps it only for the duration of the
+    # call, so copy it here rather than handing the pointer on.
+    q = Ptr[cobj](p + off)[0]
+    return str.from_ptr(q) if q != cobj() else ""
 
 
 def _ctx_symbol(ctx: cobj) -> int:
@@ -193,7 +174,8 @@ def _build_order_event(s, ev: cobj, T: type) -> OrderEventData:
         _i64_at(ev, _EV_QUEUE_TOTAL_RAW),
         _u8_at(ev, _EV_MARKET_POSITION),
         _i32_at(ev, _EV_DISTANCE_TICKS),
-        s._reverse_lookup(sym))
+        s._reverse_lookup(sym),
+        _cstr_at(ev, _EV_REJECT_REASON))
 
 
 def _ctx_for(s, ctx: cobj, sym: int, T: type) -> SymbolContext:

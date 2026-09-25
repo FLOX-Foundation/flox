@@ -660,6 +660,10 @@ class FixConnection
       return;  // nothing in range (or nothing ever sent)
     }
     const std::string now52 = FixSession::sendingTime(nowNs);
+    // Counted by the decision, before the first frame is queued: the writer
+    // thread delivers as it goes and a requester can have read the whole
+    // replay before a count taken at the end of this loop was visible.
+    registry_.noteResendServed();  // same counter as the SBE resend path
     uint64_t cur = begin;
     for (const auto& logged : registry_.logSlice(account_, begin, end))
     {
@@ -680,7 +684,6 @@ class FixConnection
     {
       gapFill(cur, end + 1, now52);
     }
-    registry_.noteResendServed();  // same counter as the SBE resend path
   }
 
   void gapFill(uint64_t seq, uint64_t newSeq, const std::string& now52)

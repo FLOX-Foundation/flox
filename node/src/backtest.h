@@ -94,6 +94,12 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
                         InstanceMethod("cancelOrder", &SimulatedExecutorWrap::CancelOrder),
                         InstanceMethod("cancelAll", &SimulatedExecutorWrap::CancelAll),
                         InstanceMethod("onBar", &SimulatedExecutorWrap::OnBar),
+                        InstanceMethod("onBarOhlc", &SimulatedExecutorWrap::OnBarOhlc),
+                        InstanceMethod("beginBarCallbackWindow",
+                                       &SimulatedExecutorWrap::BeginBarCallbackWindow),
+                        InstanceMethod("endBarCallbackWindow",
+                                       &SimulatedExecutorWrap::EndBarCallbackWindow),
+                        InstanceMethod("reset", &SimulatedExecutorWrap::Reset),
                         InstanceMethod("onTrade", &SimulatedExecutorWrap::OnTrade),
                         InstanceMethod("advanceClock", &SimulatedExecutorWrap::AdvanceClock),
                         InstanceMethod("setDefaultSlippage", &SimulatedExecutorWrap::SetDefaultSlippage),
@@ -222,6 +228,30 @@ class SimulatedExecutorWrap : public Napi::ObjectWrap<SimulatedExecutorWrap>
   void CancelOrder(const Napi::CallbackInfo& info) { flox_simulated_executor_cancel_order(_h, info[0].As<Napi::Number>().Int64Value()); }
   void CancelAll(const Napi::CallbackInfo& info) { flox_simulated_executor_cancel_all(_h, info[0].As<Napi::Number>().Uint32Value()); }
   void OnBar(const Napi::CallbackInfo& info) { flox_simulated_executor_on_bar(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().DoubleValue()); }
+  // Open-aware form: moves the market to the open (releasing any order held
+  // from the previous bar's callback there), then walks low -> high -> close.
+  // Needed to drive SimulatedExecutor by hand to the same fills
+  // BacktestRunner.runBars produces, which uses this path internally.
+  void OnBarOhlc(const Napi::CallbackInfo& info)
+  {
+    flox_simulated_executor_on_bar_ohlc(_h, info[0].As<Napi::Number>().Uint32Value(),
+                                        info[1].As<Napi::Number>().DoubleValue(),
+                                        info[2].As<Napi::Number>().DoubleValue(),
+                                        info[3].As<Napi::Number>().DoubleValue(),
+                                        info[4].As<Napi::Number>().DoubleValue());
+  }
+  void BeginBarCallbackWindow(const Napi::CallbackInfo&)
+  {
+    flox_simulated_executor_begin_bar_callback_window(_h);
+  }
+  void EndBarCallbackWindow(const Napi::CallbackInfo&)
+  {
+    flox_simulated_executor_end_bar_callback_window(_h);
+  }
+  // Drops fills and run-scoped state while keeping installed configuration
+  // (slippage, queue model, latency, ...), so a second hand-driven run
+  // reports that run and not the sum of every run.
+  void Reset(const Napi::CallbackInfo&) { flox_simulated_executor_reset(_h); }
   void OnTrade(const Napi::CallbackInfo& info) { flox_simulated_executor_on_trade(_h, info[0].As<Napi::Number>().Uint32Value(), info[1].As<Napi::Number>().DoubleValue(), info[2].As<Napi::Boolean>().Value() ? 1 : 0); }
   void AdvanceClock(const Napi::CallbackInfo& info) { flox_simulated_executor_advance_clock(_h, toInt64Ns(info[0])); }
   void SetDefaultSlippage(const Napi::CallbackInfo& info)

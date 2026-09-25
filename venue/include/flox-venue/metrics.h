@@ -103,7 +103,7 @@ struct Metrics
   // show up in the total and nowhere else. test_venue_reject_reasons pins the
   // two together by asking toString whether anything past the end has a name.
   static constexpr size_t kReasons =
-      static_cast<size_t>(RejectReason::BookCapacityExceeded) + 1;
+      static_cast<size_t>(RejectReason::PegRequiresTick) + 1;
   std::array<uint64_t, kReasons> rejectsByReason{};  // indexed by RejectReason
 
   // Symbols with a non-default scale must be registered so trade notional is
@@ -158,7 +158,7 @@ struct MdCounters
 struct Gauges
 {
   __int128 insuranceFundRaw{0};    // venue collateral balance (insurance fund)
-  double fundingRate{0.0};         // last settled funding rate
+  int64_t fundingRateRaw{0};       // last settled funding rate, kFundingRateScale
   __int128 openInterestRaw{0};     // aggregate open position notional (quote raw)
   uint64_t openPositions{0};       // count of open perp positions
   uint64_t restingOrders{0};       // live orders across the book

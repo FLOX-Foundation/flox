@@ -95,12 +95,13 @@ git diff --exit-code -- docs/ >/dev/null || {
 "$PY" scripts/gen_api_index.py --check
 "$PY" scripts/check_dts_exports.py
 "$PY" scripts/check_dts_class_members.py
-"$PY" scripts/check_binding_parity.py
+"$PY" scripts/check_binding_parity.py --require-quickjs
 "$PY" scripts/check_error_codes.py
 "$PY" scripts/check_test_gating.py
 "$PY" scripts/check_suite_discovery.py
 "$PY" scripts/check_binding_smoke.py
 "$PY" scripts/check_quickjs_registration.py
+"$PY" -m pytest scripts/tests -q
 "$PY" scripts/scan_sanitizer_reports.py --self-test
 "$PY" scripts/check_sanitizer_scan.py
 "$PY" scripts/check_doc_snippets.py --min-includes 24

@@ -114,9 +114,9 @@ typedef void* FloxVenueStackHandle;
 | Field | Type | Description |
 |-------|------|-------------|
 | `bid_price_raw` | `int64_t` | Best bid price × 1e8 (0 if absent) |
-| `bid_qty_raw` | `int64_t` | Best bid quantity × 1e8 |
+| `bid_qty_raw` | `int64_t` | Size resting at the best bid × 1e8 (0 when the book cannot say) |
 | `ask_price_raw` | `int64_t` | Best ask price × 1e8 (0 if absent) |
-| `ask_qty_raw` | `int64_t` | Best ask quantity × 1e8 |
+| `ask_qty_raw` | `int64_t` | Size resting at the best ask × 1e8 (0 when the book cannot say) |
 | `mid_raw` | `int64_t` | Mid price × 1e8 (0 if absent) |
 | `spread_raw` | `int64_t` | Spread × 1e8 (0 if absent) |
 
@@ -568,11 +568,39 @@ All return `OrderId` (`uint64_t`), 0 on failure. `cancel` and `modify` return vo
 |----------|---------|-------------|
 | `flox_position_raw(s, sym)` | `int64_t` | Position × 1e8 |
 | `flox_last_trade_price_raw(s, sym)` | `int64_t` | Last trade price × 1e8 |
-| `flox_best_bid_raw(s, sym)` | `int64_t` | Best bid × 1e8 |
-| `flox_best_ask_raw(s, sym)` | `int64_t` | Best ask × 1e8 |
-| `flox_mid_price_raw(s, sym)` | `int64_t` | Mid price × 1e8 |
+| `flox_best_bid_raw(s, sym)` | `int64_t` | Best bid × 1e8, 0 if none |
+| `flox_best_ask_raw(s, sym)` | `int64_t` | Best ask × 1e8, 0 if none |
+| `flox_mid_price_raw(s, sym)` | `int64_t` | Mid price × 1e8, 0 if none |
+| `flox_best_bid_raw_opt(s, sym, price_out)` | `uint8_t` | 1 with the raw bid in `price_out`, 0 if none |
+| `flox_best_ask_raw_opt(s, sym, price_out)` | `uint8_t` | 1 with the raw ask in `price_out`, 0 if none |
+| `flox_mid_price_raw_opt(s, sym, price_out)` | `uint8_t` | 1 with the raw mid in `price_out`, 0 if none |
 | `flox_get_symbol_context(s, sym, out)` | `void` | Fill `FloxSymbolContext` |
 | `flox_get_order_status(s, order_id)` | `int32_t` | Order status (-1 = not found) |
+
+### No quote, and prices at or below zero
+
+A price below zero is a quote: WTI settled at -37.63 in April 2020, day-ahead
+power clears below zero on a windy afternoon, and a calendar spread is negative
+in contango. A price of exactly 0.0 is a quote too. The book reports such a
+book the same way it reports any other, so a return value cannot double as a
+"no quote" marker.
+
+The three `int64_t` accessors return 0 for an empty side and for a best quote
+of 0.0 alike; they are unchanged, for callers whose markets never reach zero.
+The `_opt` trio puts the answer in the return value instead -- 1 with the raw
+price written to `price_out`, 0 with `price_out` untouched -- so the two cases
+are distinct. `price_out` may be `NULL` when only the flag is wanted. A header
+carrying them defines `FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE`, so a binding can
+compile against either.
+
+`FloxSymbolContext.book` has the same limitation as the `int64_t` accessors:
+`bid_price_raw`, `ask_price_raw`, `mid_raw` and `spread_raw` are 0 when the
+side is empty. Read the `_opt` accessors where that matters.
+
+The book handle accessors -- `flox_book_best_bid`, `flox_book_best_ask`,
+`flox_book_mid`, `flox_book_spread` -- already return a presence flag with the
+price in an out parameter and need no variant; they report a negative best
+quote like any other.
 
 ---
 

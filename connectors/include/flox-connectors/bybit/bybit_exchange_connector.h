@@ -54,6 +54,11 @@ struct BybitConfig
   std::string privateEndpoint;
   std::vector<SymbolEntry> symbols;
   int reconnectDelayMs{2000};
+  // Window after which a symbol that stopped ticking is reported through
+  // emitStaleData. 0 disables the check: the right window is a property of
+  // the instrument's liquidity, not of the venue, so there is no default the
+  // connector can pick for you.
+  int staleDataTimeoutMs{0};
   std::string apiKey;
   std::string apiSecret;
   bool enablePrivate = false;
@@ -82,6 +87,13 @@ class BybitExchangeConnector : public IExchangeConnector
   // Public so protocol behaviour (sequencing, gap resync) is testable offline
   // by feeding raw frames without a live socket.
   void handleMessage(std::string_view payload);
+
+  // Transport close. Called from the websocket onClose handler; public for
+  // the same reason as handleMessage -- a close can then be delivered without
+  // a live socket.
+  void handleDisconnect(int code, std::string_view reason);
+
+  void pollFeedHealth(MonoNanos now) override;
 
   // Same rationale as handleMessage: public so the private-stream (order /
   // execution) protocol handling is testable offline by feeding raw frames,

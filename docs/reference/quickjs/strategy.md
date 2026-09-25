@@ -123,9 +123,14 @@ this.closePosition()
 ```javascript
 this.position()             // primary symbol
 this.position('ETHUSDT')    // specific symbol
-this.bestBid()
-this.bestAsk()
-this.midPrice()
+this.bestBid()              // number, or null when there is no bid
+this.bestAsk()              // number, or null when there is no ask
+this.midPrice()             // number, or null when either side is empty
 this.lastPrice()
 this.orderStatus(orderId)   // -1 if not found
 ```
+
+`bestBid`, `bestAsk` and `midPrice` return `null` for an empty side, never a
+number. A price below zero is a quote -- WTI settled at -37.63 in April 2020,
+day-ahead power clears below zero -- and so is a price of exactly 0, so no
+number is free to stand for "no quote". Test with `=== null`, not `=== 0`.

@@ -76,6 +76,7 @@ void SimulatedExecutor::applyConfig(const BacktestConfig& config)
   _cancelAckRng.seed(config.cancelAckSeed);
   setReplaceAckLatency(config.replaceAckLatencyNs, config.replaceAckJitterNs);
   setSubmitAckLatency(config.submitAckLatencyNs, config.submitAckJitterNs);
+  setLatencyModel(config.latency);
 }
 
 void SimulatedExecutor::reset()
@@ -579,12 +580,24 @@ stp_done:
 
   emitEvent(OrderEventStatus::SUBMITTED, accepted);
 
-  if (_submitAckDist.medianNs() > 0)
+  // How long this order takes to reach the matching engine: the wire delay
+  // the latency model draws, plus whatever the venue's ack model adds. Both
+  // are sampled once, here, so a model and an ack profile compose instead of
+  // overriding each other.
+  //
+  // The branch is on the sampled total, not on whether a model is attached:
+  // a model that draws zero must reproduce the instant baseline to the
+  // nanosecond, and the synchronous path is the only thing that fills inside
+  // this call.
+  const int64_t deferNs =
+      sampleOrderLatency() +
+      (_submitAckDist.medianNs() > 0 ? sampleSubmitAckLatency() : 0);
+  if (deferNs > 0)
   {
-    // Async path: ACCEPTED defers until the sampled deadline. The
-    // order is held aside; finishSubmission runs the existing
-    // book-add / queue-tracker / try-fill logic when ack arrives.
-    enqueuePendingSubmission(accepted);
+    // Async path: ACCEPTED defers until the deadline. The order is held
+    // aside; finishSubmission runs the existing book-add / queue-tracker /
+    // try-fill logic when it arrives.
+    enqueuePendingSubmission(accepted, deferNs);
     return;
   }
 
@@ -2373,11 +2386,20 @@ int64_t SimulatedExecutor::sampleSubmitAckLatency()
   return base;
 }
 
-void SimulatedExecutor::enqueuePendingSubmission(const Order& order)
+void SimulatedExecutor::enqueuePendingSubmission(const Order& order, int64_t delayNs)
 {
   const int64_t now = _clock.nowNs().raw();
   _pendingSubmissions.push_back(
-      PendingSubmission{.ackAtNs = now + sampleSubmitAckLatency(), .order = order});
+      PendingSubmission{.ackAtNs = now + delayNs, .order = order});
+}
+
+int64_t SimulatedExecutor::sampleOrderLatency()
+{
+  if (!_latency)
+  {
+    return 0;
+  }
+  return std::max<int64_t>(0, _latency->orderDelay());
 }
 
 void SimulatedExecutor::finalizePendingSubmissions()

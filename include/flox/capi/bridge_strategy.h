@@ -318,13 +318,15 @@ class BridgeStrategy : public Strategy
     if (bid)
     {
       snap.bid_price_raw = bid->raw();
-      // Quantity at best bid not directly available from bestBid()
-      snap.bid_qty_raw = 0;
+      // The size at the best level, not 0: bestBid() answers the price and
+      // bidAtPrice() the quantity resting at it. Hardcoding 0 here left a
+      // direct C ABI consumer unable to tell a sized side from an empty one.
+      snap.bid_qty_raw = c.book.bidAtPrice(*bid).raw();
     }
     if (ask)
     {
       snap.ask_price_raw = ask->raw();
-      snap.ask_qty_raw = 0;
+      snap.ask_qty_raw = c.book.askAtPrice(*ask).raw();
     }
     auto mid = c.mid();
     if (mid)

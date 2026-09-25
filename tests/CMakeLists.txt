@@ -72,6 +72,7 @@ add_flox_test(test_multi_feed_clock)
 add_flox_test(test_connection_factory)
 add_flox_test(test_connector_manager)
 add_flox_test(test_decimal)
+add_flox_test(test_decimal_locale)
 # Built twice: once the way this toolchain would, once with the native 128-bit
 # intermediate compiled out, so Decimal's MSVC arithmetic is run here too.
 add_flox_test(test_decimal_portable)
@@ -99,6 +100,7 @@ add_flox_test(test_nlevel_order_book)
 add_flox_test(test_nlevel_order_book_window)
 add_flox_test(test_nlevel_order_book_model)
 add_flox_test(test_nlevel_tick_rounding)
+add_flox_test(test_nlevel_order_book_negative_prices)
 add_flox_test(test_order_execution_bus)
 add_flox_test(test_pool_batch)
 add_flox_test(test_spsc_queue_segments)
@@ -229,6 +231,7 @@ if(FLOX_ENABLE_BACKTEST)
   add_flox_test(test_replace_in_flight)
   add_flox_test(test_backtest_metrics)
   add_flox_test(test_backtest_fee_attribution)
+  add_flox_test(test_backtest_economics)
   add_flox_test(test_backtest_ctx_position)
   add_flox_test(test_backtest_run_tape)
   # Needs the backtest runner's tape path alongside the replay writer/reader,
@@ -288,6 +291,8 @@ add_flox_test(test_option_quote_record)
 add_flox_test(test_option_quote_io)
 
 if(FLOX_BUILD_CAPI)
+  add_flox_test(test_capi_event_layout)
+  target_link_libraries(test_capi_event_layout PRIVATE flox_capi)
   add_flox_test(test_capi_registry)
   target_link_libraries(test_capi_registry PRIVATE flox_capi)
   add_flox_test(test_capi_dex_amount)
@@ -330,6 +335,15 @@ if(FLOX_BUILD_CAPI)
   target_link_libraries(test_capi_signal_codes PRIVATE flox_capi)
   add_flox_test(test_capi_bar_aggregation)
   target_link_libraries(test_capi_bar_aggregation PRIVATE flox_capi)
+  add_flox_test(test_capi_book_snapshot)
+  target_link_libraries(test_capi_book_snapshot PRIVATE flox_capi)
+  add_flox_test(test_capi_negative_book)
+  target_link_libraries(test_capi_negative_book PRIVATE flox_capi)
+  # The strategy-side case needs a strategy that already holds a book; the
+  # fixture that builds one is force-included so the test source stays on the
+  # C API and gtest alone.
+  target_precompile_headers(test_capi_negative_book
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support/capi_strategy_under_test.h)
   # test_capi_logger needs to share a single ILogger global with flox_capi.
   # If we use add_flox_test, the test exe links the static `flox` library
   # alongside flox_capi.dylib (which itself statically embeds `flox`) —
@@ -352,6 +366,8 @@ if(FLOX_BUILD_CAPI)
     target_link_libraries(test_capi_backtest PRIVATE flox_capi)
     add_flox_test(test_capi_backtest_timestamps)
     target_link_libraries(test_capi_backtest_timestamps PRIVATE flox_capi)
+    add_flox_test(test_capi_executor_bar_ohlc)
+    target_link_libraries(test_capi_executor_bar_ohlc PRIVATE flox_capi)
   endif()
   add_flox_test(test_order_type_names)
 endif()
@@ -359,6 +375,11 @@ endif()
 if(FLOX_BUILD_QUICKJS)
   add_flox_test(test_quickjs)
   target_link_libraries(test_quickjs PRIVATE flox_quickjs)
+  # One test runs quickjs/examples/backtest_sma.js and checks the numbers it
+  # computes. The example loads its CSV by a path relative to the repo root,
+  # so the test has to know where that is.
+  target_compile_definitions(test_quickjs PRIVATE
+    FLOX_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
 endif()
 
 if(FLOX_ENABLE_CPU_AFFINITY)

@@ -22,8 +22,12 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace flox
@@ -53,6 +57,11 @@ struct BitgetConfig
   std::string privateEndpoint;
   std::vector<SymbolEntry> symbols;
   int reconnectDelayMs{2000};
+  // Window after which a symbol that stopped ticking is reported through
+  // emitStaleData. 0 disables the check: the right window is a property of
+  // the instrument's liquidity, not of the venue, so there is no default the
+  // connector can pick for you.
+  int staleDataTimeoutMs{0};
   std::string apiKey;
   std::string apiSecret;
   std::string passphrase;
@@ -85,11 +94,36 @@ class BitgetExchangeConnector : public IExchangeConnector
   // Same seam BybitExchangeConnector exposes.
   void handleMessage(std::string_view payload);
 
+  // Transport close. Called from the websocket onClose handler; public for
+  // the same reason as handleMessage.
+  void handleDisconnect(int code, std::string_view reason);
+
+  void pollFeedHealth(MonoNanos now) override;
+
   // Same rationale: public so the private "orders" channel handling is
   // testable offline, without a live authenticated socket.
   void handlePrivateMessage(std::string_view payload);
 
+  // Book frames whose "seq" broke continuity (delta dropped, resync forced).
+  uint64_t bookGapCount() const noexcept { return _bookGapCount.load(std::memory_order_relaxed); }
+
+  // Snapshots whose levels did not hash to the "checksum" the venue sent.
+  uint64_t bookChecksumFailureCount() const noexcept
+  {
+    return _bookChecksumFailureCount.load(std::memory_order_relaxed);
+  }
+
  private:
+  // Bitget's books channel ships both integrity fields it defines: "seq",
+  // which increments once per frame, and "checksum", a CRC32 over the levels
+  // of a snapshot. Either one breaking means the local book is no longer a
+  // valid continuation of the venue's, so the frame is dropped and counted,
+  // the break is reported, and deltas stay suppressed until a fresh snapshot
+  // re-baselines. Returns false when the caller must not publish.
+  bool verifyBookIntegrity(SymbolId symbol, std::string_view instId, BookUpdateType type,
+                           int64_t seq, std::optional<uint32_t> venueChecksum,
+                           const std::vector<std::pair<std::string_view, std::string_view>>& bids,
+                           const std::vector<std::pair<std::string_view, std::string_view>>& asks);
   void subscribePrivateOrders();
   void pingLoop();
 
@@ -112,6 +146,21 @@ class BitgetExchangeConnector : public IExchangeConnector
   // the order's cumulative filled quantity; publishing only what it adds makes
   // the repeat a no-op instead of a second fill. See FillWatermark.
   FillWatermark _reportedFill;
+  // Per-symbol book integrity. Bitget's books channel carries a "seq" that
+  // increments per frame and, on a snapshot, a "checksum" over the levels;
+  // either one breaking means the local book is no longer a valid
+  // continuation of the venue's, so deltas are suppressed until a fresh,
+  // verified snapshot re-baselines.
+  struct BookSeqState
+  {
+    int64_t lastSeq{-1};
+    bool invalid{true};
+  };
+  std::unordered_map<SymbolId, BookSeqState> _bookSeq;
+  std::atomic<uint64_t> _bookGapCount{0};
+  std::atomic<uint64_t> _bookChecksumFailureCount{0};
+
+  void resubscribeBook(std::string_view symbolName);
 
   std::shared_ptr<ILogger> _logger;
 

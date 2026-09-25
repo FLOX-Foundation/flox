@@ -330,7 +330,17 @@
         {
           "group": "context_queries",
           "kind": "function",
+          "name": "flox_best_ask_raw_opt"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
           "name": "flox_best_bid_raw"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_best_bid_raw_opt"
         },
         {
           "group": "tape_aggregator",
@@ -2078,6 +2088,11 @@
           "name": "flox_mid_price_raw"
         },
         {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_mid_price_raw_opt"
+        },
+        {
           "group": "tape_aggregator",
           "kind": "function",
           "name": "flox_ohlc_bin_aggregator_create"
@@ -3065,6 +3080,11 @@
         {
           "group": "simulated_executor",
           "kind": "function",
+          "name": "flox_simulated_executor_begin_bar_callback_window"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
           "name": "flox_simulated_executor_bracket_state"
         },
         {
@@ -3100,6 +3120,11 @@
         {
           "group": "simulated_executor",
           "kind": "function",
+          "name": "flox_simulated_executor_end_bar_callback_window"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
           "name": "flox_simulated_executor_fill_count"
         },
         {
@@ -3123,6 +3148,11 @@
           "name": "flox_simulated_executor_on_bar"
         },
         {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_on_bar_ohlc"
+        },
+        {
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_on_best_levels"
@@ -3141,6 +3171,11 @@
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_reset"
         },
         {
           "group": "simulated_executor",
@@ -7246,6 +7281,11 @@
         },
         {
           "kind": "method",
+          "name": "begin_bar_callback_window",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "bracket_state",
           "parent": "SimulatedExecutor"
         },
@@ -7276,6 +7316,11 @@
         },
         {
           "kind": "method",
+          "name": "end_bar_callback_window",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "fill_count",
           "parent": "SimulatedExecutor"
         },
@@ -7301,6 +7346,11 @@
         },
         {
           "kind": "method",
+          "name": "on_bar_ohlc",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "on_best_levels",
           "parent": "SimulatedExecutor"
         },
@@ -7312,6 +7362,11 @@
         {
           "kind": "method",
           "name": "on_trade_qty",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
           "parent": "SimulatedExecutor"
         },
         {
@@ -8486,7 +8541,15 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_best_ask_raw_opt"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_best_bid_raw"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_best_bid_raw_opt"
         },
         {
           "kind": "c_import",
@@ -9886,6 +9949,10 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_mid_price_raw_opt"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_ohlc_bin_aggregator_create"
         },
         {
@@ -10674,6 +10741,10 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_simulated_executor_begin_bar_callback_window"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_simulated_executor_bracket_state"
         },
         {
@@ -10702,6 +10773,10 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_simulated_executor_end_bar_callback_window"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_simulated_executor_fill_count"
         },
         {
@@ -10722,6 +10797,10 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_simulated_executor_on_bar_ohlc"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_simulated_executor_on_best_levels"
         },
         {
@@ -10735,6 +10814,10 @@
         {
           "kind": "c_import",
           "name": "flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_simulated_executor_reset"
         },
         {
           "kind": "c_import",
@@ -14014,6 +14097,11 @@
         },
         {
           "kind": "method",
+          "name": "setFeeSchedule",
+          "parent": "BacktestResult"
+        },
+        {
+          "kind": "method",
           "name": "totalPnl",
           "parent": "BacktestResult"
         },
@@ -14055,6 +14143,11 @@
         {
           "kind": "method",
           "name": "advanceClocks",
+          "parent": "BacktestRunner"
+        },
+        {
+          "kind": "method",
+          "name": "attachFeeSchedule",
           "parent": "BacktestRunner"
         },
         {
@@ -17724,6 +17817,11 @@
         },
         {
           "kind": "method",
+          "name": "checkStaleFeeds",
+          "parent": "IExchangeConnector"
+        },
+        {
+          "kind": "method",
           "name": "drain",
           "parent": "IExchangeConnector"
         },
@@ -17755,6 +17853,16 @@
         {
           "kind": "method",
           "name": "exchangeId",
+          "parent": "IExchangeConnector"
+        },
+        {
+          "kind": "method",
+          "name": "markFeedActivity",
+          "parent": "IExchangeConnector"
+        },
+        {
+          "kind": "method",
+          "name": "pollFeedHealth",
           "parent": "IExchangeConnector"
         },
         {
@@ -20569,12 +20677,22 @@
         },
         {
           "kind": "method",
+          "name": "bestAskTick",
+          "parent": "NLevelOrderBook"
+        },
+        {
+          "kind": "method",
           "name": "bestBid",
           "parent": "NLevelOrderBook"
         },
         {
           "kind": "method",
           "name": "bestBidIndex",
+          "parent": "NLevelOrderBook"
+        },
+        {
+          "kind": "method",
+          "name": "bestBidTick",
           "parent": "NLevelOrderBook"
         },
         {
@@ -23619,6 +23737,11 @@
         },
         {
           "kind": "method",
+          "name": "feeSchedule",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "fills",
           "parent": "SimulatedExecutor"
         },
@@ -23724,6 +23847,11 @@
         },
         {
           "kind": "method",
+          "name": "latencyModel",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "maybeEmitMarketPositionChanges",
           "parent": "SimulatedExecutor"
         },
@@ -23824,6 +23952,11 @@
         },
         {
           "kind": "method",
+          "name": "sampleOrderLatency",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "sampleReplaceAckLatency",
           "parent": "SimulatedExecutor"
         },
@@ -23859,6 +23992,11 @@
         },
         {
           "kind": "method",
+          "name": "setFeeSchedule",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "setFokMode",
           "parent": "SimulatedExecutor"
         },
@@ -23890,6 +24028,11 @@
         {
           "kind": "method",
           "name": "setIcebergSizeRandomisationPct",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "setLatencyModel",
           "parent": "SimulatedExecutor"
         },
         {
@@ -25919,7 +26062,22 @@
         },
         {
           "kind": "method",
+          "name": "gridPoints",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
+          "name": "parameterGrid",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
           "name": "run",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
+          "name": "setParameterGrid",
           "parent": "WalkForwardRunner"
         },
         {
@@ -26302,6 +26460,10 @@
         {
           "kind": "class",
           "name": "HeatmapOptions"
+        },
+        {
+          "kind": "class",
+          "name": "HookErrorRecord"
         },
         {
           "kind": "class",
@@ -29121,6 +29283,21 @@
         },
         {
           "kind": "method",
+          "name": "hook",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
+          "name": "message",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
+          "name": "method",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
           "name": "filledQty",
           "parent": "IcebergExecutor"
         },
@@ -31021,6 +31198,11 @@
         },
         {
           "kind": "method",
+          "name": "hookErrors",
+          "parent": "Runner"
+        },
+        {
+          "kind": "method",
           "name": "onBar",
           "parent": "Runner"
         },
@@ -31366,6 +31548,11 @@
         },
         {
           "kind": "method",
+          "name": "beginBarCallbackWindow",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "bracketState",
           "parent": "SimulatedExecutor"
         },
@@ -31391,6 +31578,11 @@
         },
         {
           "kind": "method",
+          "name": "endBarCallbackWindow",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "fillCount",
           "parent": "SimulatedExecutor"
         },
@@ -31411,7 +31603,17 @@
         },
         {
           "kind": "method",
+          "name": "onBarOhlc",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "onTrade",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
           "parent": "SimulatedExecutor"
         },
         {
@@ -32426,6 +32628,11 @@
         },
         {
           "kind": "method",
+          "name": "exchangeTsNs",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
           "name": "isBuy",
           "parent": "TradeData"
         },
@@ -32441,7 +32648,17 @@
         },
         {
           "kind": "method",
+          "name": "quantity",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
           "name": "side",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
+          "name": "symbol",
           "parent": "TradeData"
         },
         {
@@ -40046,6 +40263,10 @@
         },
         {
           "kind": "global",
+          "name": "__flox_simulated_executor_begin_bar_callback_window"
+        },
+        {
+          "kind": "global",
           "name": "__flox_simulated_executor_bracket_state"
         },
         {
@@ -40066,6 +40287,10 @@
         },
         {
           "kind": "global",
+          "name": "__flox_simulated_executor_end_bar_callback_window"
+        },
+        {
+          "kind": "global",
           "name": "__flox_simulated_executor_fill_count"
         },
         {
@@ -40082,6 +40307,10 @@
         },
         {
           "kind": "global",
+          "name": "__flox_simulated_executor_on_bar_ohlc"
+        },
+        {
+          "kind": "global",
           "name": "__flox_simulated_executor_on_best_levels"
         },
         {
@@ -40091,6 +40320,10 @@
         {
           "kind": "global",
           "name": "__flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "kind": "global",
+          "name": "__flox_simulated_executor_reset"
         },
         {
           "kind": "global",
@@ -40475,8 +40708,29 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_account_add_equity",
+          "__flox_account_close_position",
+          "__flox_account_create",
+          "__flox_account_destroy",
+          "__flox_account_equity",
+          "__flox_account_has_stale_marks",
+          "__flox_account_id",
+          "__flox_account_margin_mode",
+          "__flox_account_mark_ts",
+          "__flox_account_open_position",
+          "__flox_account_position_count",
+          "__flox_account_record_fill",
+          "__flox_account_reset_rolling",
+          "__flox_account_rolling_notional_30d",
+          "__flox_account_rolling_notional_by_symbol",
+          "__flox_account_set_equity",
+          "__flox_account_set_margin_mode",
+          "__flox_account_set_mark",
+          "__flox_account_total_notional",
+          "__flox_account_total_unrealised_pnl"
+        ],
+        "status": "required"
       }
     },
     "additional_bar": {
@@ -40506,8 +40760,11 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_agg_range",
+          "__flox_agg_renko"
+        ],
+        "status": "required"
       }
     },
     "additional_stats": {
@@ -40540,8 +40797,11 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_stat_bootstrap_ci",
+          "__flox_stat_permutation_test"
+        ],
+        "status": "required"
       }
     },
     "amm_curve": {
@@ -40589,7 +40849,7 @@
         "classes": [],
         "functions": [],
         "reason": "Pricing needs 256-bit amounts, which the QuickJS bound surface has no BigInt for yet (see dex_amount). Bind the curves once that lands.\n",
-        "status": "allowlist"
+        "status": "required"
       }
     },
     "backtest_slippage": {
@@ -40658,8 +40918,46 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_backtest_result_create",
+          "__flox_backtest_result_destroy",
+          "__flox_backtest_result_equity_curve",
+          "__flox_backtest_result_ingest",
+          "__flox_backtest_result_record_fill",
+          "__flox_backtest_result_stats",
+          "__flox_backtest_result_write_csv",
+          "__flox_latency_distribution_create",
+          "__flox_latency_distribution_destroy",
+          "__flox_latency_distribution_median_ns",
+          "__flox_latency_distribution_set_burst_correlation",
+          "__flox_latency_distribution_set_constant",
+          "__flox_latency_distribution_set_empirical",
+          "__flox_latency_distribution_set_lognormal",
+          "__flox_latency_distribution_set_uniform",
+          "__flox_simulated_executor_apply_latency_profile",
+          "__flox_simulated_executor_fok_mode",
+          "__flox_simulated_executor_on_best_levels",
+          "__flox_simulated_executor_on_trade_qty",
+          "__flox_simulated_executor_set_cancel_ack",
+          "__flox_simulated_executor_set_cancel_ack_latency_distribution",
+          "__flox_simulated_executor_set_default_slippage",
+          "__flox_simulated_executor_set_fok_mode",
+          "__flox_simulated_executor_set_lmm_bonus_multiplier",
+          "__flox_simulated_executor_set_lmm_orders",
+          "__flox_simulated_executor_set_order_priority_multiplier",
+          "__flox_simulated_executor_set_queue_fifo_top_n",
+          "__flox_simulated_executor_set_queue_model",
+          "__flox_simulated_executor_set_replace_ack",
+          "__flox_simulated_executor_set_replace_ack_latency_distribution",
+          "__flox_simulated_executor_set_stp_group_membership",
+          "__flox_simulated_executor_set_stp_mode",
+          "__flox_simulated_executor_set_submit_ack",
+          "__flox_simulated_executor_set_submit_ack_latency_distribution",
+          "__flox_simulated_executor_set_symbol_slippage",
+          "__flox_simulated_executor_set_top_priority_share",
+          "__flox_simulated_executor_stp_group_for"
+        ],
+        "status": "required"
       }
     },
     "backtestrunner_replay": {
@@ -40700,7 +40998,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "bar_aggregation": {
@@ -40733,8 +41031,12 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_agg_tick",
+          "__flox_agg_time",
+          "__flox_agg_volume"
+        ],
+        "status": "required"
       }
     },
     "bar_dispatch": {
@@ -40811,8 +41113,15 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_blrh_add_symbol",
+          "__flox_blrh_as_recorder",
+          "__flox_blrh_create",
+          "__flox_blrh_destroy",
+          "__flox_blrh_flush",
+          "__flox_blrh_stats"
+        ],
+        "status": "required"
       }
     },
     "capi_diagnostics": {
@@ -40839,7 +41148,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "not_applicable"
+        "status": "required"
       }
     },
     "composite_book": {
@@ -40877,15 +41186,15 @@
           "CompositeBook"
         ],
         "functions": [
+          "__flox_cb_apply_delta",
+          "__flox_cb_apply_snapshot",
+          "__flox_cb_best_ask",
+          "__flox_cb_best_bid",
+          "__flox_cb_check_staleness",
           "__flox_cb_create",
           "__flox_cb_destroy",
-          "__flox_cb_apply_snapshot",
-          "__flox_cb_apply_delta",
-          "__flox_cb_best_bid",
-          "__flox_cb_best_ask",
           "__flox_cb_has_arb",
-          "__flox_cb_mark_stale",
-          "__flox_cb_check_staleness"
+          "__flox_cb_mark_stale"
         ],
         "status": "required"
       }
@@ -40893,11 +41202,14 @@
     "context_queries": {
       "capi_functions": [
         "flox_best_ask_raw",
+        "flox_best_ask_raw_opt",
         "flox_best_bid_raw",
+        "flox_best_bid_raw_opt",
         "flox_get_order_status",
         "flox_get_symbol_context",
         "flox_last_trade_price_raw",
         "flox_mid_price_raw",
+        "flox_mid_price_raw_opt",
         "flox_position_raw"
       ],
       "codon": {
@@ -40916,8 +41228,15 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_best_ask",
+          "__flox_best_bid",
+          "__flox_get_order_status",
+          "__flox_last_trade_price",
+          "__flox_mid_price",
+          "__flox_position"
+        ],
+        "status": "required"
       }
     },
     "data_reader": {
@@ -40948,8 +41267,12 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_dr_count",
+          "__flox_dr_create",
+          "__flox_dr_destroy"
+        ],
+        "status": "required"
       }
     },
     "data_writer": {
@@ -40981,8 +41304,15 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_dw_close",
+          "__flox_dw_create",
+          "__flox_dw_destroy",
+          "__flox_dw_flush",
+          "__flox_dw_write_book",
+          "__flox_dw_write_trade"
+        ],
+        "status": "required"
       }
     },
     "datareader": {
@@ -41020,8 +41350,18 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_dr_create_filtered",
+          "__flox_dr_read_bbo",
+          "__flox_dr_read_bbo_from",
+          "__flox_dr_read_book_updates",
+          "__flox_dr_read_book_updates_from",
+          "__flox_dr_read_trades",
+          "__flox_dr_read_trades_from",
+          "__flox_dr_stats",
+          "__flox_dr_summary"
+        ],
+        "status": "required"
       }
     },
     "datawriter": {
@@ -41049,8 +41389,10 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_dw_stats"
+        ],
+        "status": "required"
       }
     },
     "delta_book": {
@@ -41091,8 +41433,15 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_delta_book_encoder_create",
+          "__flox_delta_book_encoder_destroy",
+          "__flox_delta_book_encoder_encode",
+          "__flox_delta_book_replayer_apply",
+          "__flox_delta_book_replayer_create",
+          "__flox_delta_book_replayer_destroy"
+        ],
+        "status": "required"
       }
     },
     "dex_amount": {
@@ -41129,7 +41478,7 @@
         "classes": [],
         "functions": [],
         "reason": "QuickJS has no arbitrary-precision integer in the bound surface, so a 256-bit amount cannot round-trip through a JS number. Bind when the QuickJS layer grows a BigInt path.\n",
-        "status": "allowlist"
+        "status": "required"
       }
     },
     "execution": {
@@ -41169,7 +41518,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "execution_algos": {
@@ -41213,8 +41562,21 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_exec_destroy",
+          "__flox_exec_filled_qty",
+          "__flox_exec_iceberg_create",
+          "__flox_exec_is_done",
+          "__flox_exec_observe_volume",
+          "__flox_exec_pov_create",
+          "__flox_exec_remaining_qty",
+          "__flox_exec_report_fill",
+          "__flox_exec_step",
+          "__flox_exec_submitted_qty",
+          "__flox_exec_twap_create",
+          "__flox_exec_vwap_create"
+        ],
+        "status": "required"
       }
     },
     "executor_fill": {
@@ -41238,7 +41600,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "fee_schedule": {
@@ -41276,8 +41638,20 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_fee_schedule_add_tier",
+          "__flox_fee_schedule_bind_account",
+          "__flox_fee_schedule_clear_account_binding",
+          "__flox_fee_schedule_create",
+          "__flox_fee_schedule_current_tier",
+          "__flox_fee_schedule_destroy",
+          "__flox_fee_schedule_fee_for",
+          "__flox_fee_schedule_load_profile",
+          "__flox_fee_schedule_record_fill",
+          "__flox_fee_schedule_reset_rolling",
+          "__flox_fee_schedule_rolling_notional"
+        ],
+        "status": "required"
       }
     },
     "feed_clock": {
@@ -41352,7 +41726,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "floxliveengine_disruptor": {
@@ -41387,7 +41761,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "floxrun": {
@@ -41441,8 +41815,25 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_run_reader_close",
+          "__flox_run_reader_fills",
+          "__flox_run_reader_open",
+          "__flox_run_reader_orders",
+          "__flox_run_reader_run_ended_ns",
+          "__flox_run_reader_run_started_ns",
+          "__flox_run_reader_signals",
+          "__flox_run_reader_strategy_id",
+          "__flox_run_recorder_add_tape_ref",
+          "__flox_run_recorder_close",
+          "__flox_run_recorder_create",
+          "__flox_run_recorder_destroy",
+          "__flox_run_recorder_set_run_ended_ns",
+          "__flox_run_recorder_write_fill",
+          "__flox_run_recorder_write_order_event",
+          "__flox_run_recorder_write_signal"
+        ],
+        "status": "required"
       }
     },
     "footprint_bar": {
@@ -41475,8 +41866,15 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_fp_add_trade",
+          "__flox_fp_clear",
+          "__flox_fp_create",
+          "__flox_fp_destroy",
+          "__flox_fp_total_delta",
+          "__flox_fp_total_volume"
+        ],
+        "status": "required"
       }
     },
     "funding_schedule": {
@@ -41512,8 +41910,18 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_funding_schedule_create",
+          "__flox_funding_schedule_destroy",
+          "__flox_funding_schedule_load_profile",
+          "__flox_funding_schedule_load_tape",
+          "__flox_funding_schedule_reset",
+          "__flox_funding_schedule_set_constant",
+          "__flox_funding_schedule_set_constant_rate",
+          "__flox_funding_schedule_set_tape_by_symbol",
+          "__flox_funding_schedule_tick"
+        ],
+        "status": "required"
       }
     },
     "grid_search": {
@@ -41546,7 +41954,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "heatmap": {
@@ -41572,7 +41980,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "heikin_ashi": {
@@ -41599,8 +42007,10 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_agg_heikin"
+        ],
+        "status": "required"
       }
     },
     "indicator_functions": {
@@ -41746,8 +42156,23 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_graph_add_node",
+          "__flox_graph_create",
+          "__flox_graph_get",
+          "__flox_graph_invalidate",
+          "__flox_graph_invalidate_all",
+          "__flox_graph_require",
+          "__flox_graph_set_bars",
+          "__flox_streaming_add_node",
+          "__flox_streaming_bar_count",
+          "__flox_streaming_create",
+          "__flox_streaming_current",
+          "__flox_streaming_reset",
+          "__flox_streaming_reset_all",
+          "__flox_streaming_step"
+        ],
+        "status": "required"
       }
     },
     "l3_order": {
@@ -41782,8 +42207,16 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_l3_add_order",
+          "__flox_l3_best_ask",
+          "__flox_l3_best_bid",
+          "__flox_l3_create",
+          "__flox_l3_destroy",
+          "__flox_l3_modify_order",
+          "__flox_l3_remove_order"
+        ],
+        "status": "required"
       }
     },
     "latency_models": {
@@ -41826,8 +42259,19 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_lat_constant_create",
+          "__flox_lat_destroy",
+          "__flox_lat_empirical_create",
+          "__flox_lat_exponential_create",
+          "__flox_lat_feed_delay",
+          "__flox_lat_fill_delay",
+          "__flox_lat_gaussian_create",
+          "__flox_lat_order_delay",
+          "__flox_lat_reset",
+          "__flox_lat_sample"
+        ],
+        "status": "required"
       }
     },
     "liquidation_engine": {
@@ -41888,8 +42332,40 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_liquidation_engine_add_tier",
+          "__flox_liquidation_engine_adl_closeouts_count",
+          "__flox_liquidation_engine_adl_ranking",
+          "__flox_liquidation_engine_attach_account",
+          "__flox_liquidation_engine_cascade_sizes",
+          "__flox_liquidation_engine_close_position",
+          "__flox_liquidation_engine_create",
+          "__flox_liquidation_engine_deficits_paid_by_adl",
+          "__flox_liquidation_engine_deficits_paid_by_fund",
+          "__flox_liquidation_engine_destroy",
+          "__flox_liquidation_engine_detach_account",
+          "__flox_liquidation_engine_fund_balance_history",
+          "__flox_liquidation_engine_insurance_fund_balance",
+          "__flox_liquidation_engine_insurance_payments_count",
+          "__flox_liquidation_engine_liquidations_count",
+          "__flox_liquidation_engine_load_profile",
+          "__flox_liquidation_engine_mark_impact_model",
+          "__flox_liquidation_engine_mark_impact_weight",
+          "__flox_liquidation_engine_max_cascade_depth",
+          "__flox_liquidation_engine_on_mark",
+          "__flox_liquidation_engine_on_marks",
+          "__flox_liquidation_engine_open_position",
+          "__flox_liquidation_engine_reset_stats",
+          "__flox_liquidation_engine_set_adl_enabled",
+          "__flox_liquidation_engine_set_adl_ranking",
+          "__flox_liquidation_engine_set_executor",
+          "__flox_liquidation_engine_set_insurance_fund_capital",
+          "__flox_liquidation_engine_set_liquidation_slippage_bps",
+          "__flox_liquidation_engine_set_mark_impact_model",
+          "__flox_liquidation_engine_set_max_cascade_depth",
+          "__flox_liquidation_engine_ticks_to_first_adl"
+        ],
+        "status": "required"
       }
     },
     "live_queue_position": {
@@ -41971,7 +42447,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "market_profile": {
@@ -42009,8 +42485,20 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_mp_add_trade",
+          "__flox_mp_clear",
+          "__flox_mp_create",
+          "__flox_mp_destroy",
+          "__flox_mp_ib_high",
+          "__flox_mp_ib_low",
+          "__flox_mp_is_poor_high",
+          "__flox_mp_is_poor_low",
+          "__flox_mp_poc",
+          "__flox_mp_vah",
+          "__flox_mp_val"
+        ],
+        "status": "required"
       }
     },
     "merged_tape_reader": {
@@ -42047,8 +42535,20 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_mtr_count_books",
+          "__flox_mtr_count_trades",
+          "__flox_mtr_create",
+          "__flox_mtr_destroy",
+          "__flox_mtr_get_symbols",
+          "__flox_mtr_get_tape_stats",
+          "__flox_mtr_read_books",
+          "__flox_mtr_read_trades",
+          "__flox_mtr_symbol_count",
+          "__flox_mtr_tape_count",
+          "__flox_mtr_time_range"
+        ],
+        "status": "required"
       }
     },
     "metrics": {
@@ -42080,7 +42580,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "multi_tf_helpers": {
@@ -42152,8 +42652,21 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_book_apply_delta",
+          "__flox_book_apply_snapshot",
+          "__flox_book_best_ask",
+          "__flox_book_best_bid",
+          "__flox_book_clear",
+          "__flox_book_create",
+          "__flox_book_destroy",
+          "__flox_book_get_asks",
+          "__flox_book_get_bids",
+          "__flox_book_is_crossed",
+          "__flox_book_mid",
+          "__flox_book_spread"
+        ],
+        "status": "required"
       }
     },
     "order_group": {
@@ -42201,8 +42714,31 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_order_group_add_limit_leg",
+          "__flox_order_group_add_market_leg",
+          "__flox_order_group_create",
+          "__flox_order_group_destroy",
+          "__flox_order_group_find_leg_by_order_id",
+          "__flox_order_group_leg_count",
+          "__flox_order_group_leg_filled",
+          "__flox_order_group_leg_order_id",
+          "__flox_order_group_leg_state",
+          "__flox_order_group_mark_action_dispatched",
+          "__flox_order_group_pair_latency_decision",
+          "__flox_order_group_precheck_submission",
+          "__flox_order_group_recommended_actions",
+          "__flox_order_group_record_cancel",
+          "__flox_order_group_record_failure",
+          "__flox_order_group_record_fill",
+          "__flox_order_group_record_replace_accepted",
+          "__flox_order_group_record_replace_rejected",
+          "__flox_order_group_record_submit",
+          "__flox_order_group_set_pair_latency_budget_ns",
+          "__flox_order_group_set_risk_limits",
+          "__flox_order_group_state"
+        ],
+        "status": "required"
       }
     },
     "order_journey_tracer": {
@@ -42240,8 +42776,20 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_ojt_cancel_race",
+          "__flox_ojt_clear",
+          "__flox_ojt_create",
+          "__flox_ojt_destroy",
+          "__flox_ojt_journey",
+          "__flox_ojt_maker_ratio",
+          "__flox_ojt_median_ack",
+          "__flox_ojt_median_ttf",
+          "__flox_ojt_order_count",
+          "__flox_ojt_record_count",
+          "__flox_ojt_result"
+        ],
+        "status": "required"
       }
     },
     "order_tracker": {
@@ -42276,8 +42824,18 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_ot_active_count",
+          "__flox_ot_canceled",
+          "__flox_ot_create",
+          "__flox_ot_destroy",
+          "__flox_ot_filled",
+          "__flox_ot_is_active",
+          "__flox_ot_prune",
+          "__flox_ot_submit",
+          "__flox_ot_total_count"
+        ],
+        "status": "required"
       }
     },
     "partitioner": {
@@ -42311,8 +42869,17 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_part_by_calendar",
+          "__flox_part_by_duration",
+          "__flox_part_by_event_count",
+          "__flox_part_by_symbol",
+          "__flox_part_by_time",
+          "__flox_part_create",
+          "__flox_part_destroy",
+          "__flox_part_per_symbol"
+        ],
+        "status": "required"
       }
     },
     "pointer_out": {
@@ -42345,7 +42912,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "pool_tape": {
@@ -42396,7 +42963,7 @@
         "classes": [],
         "functions": [],
         "reason": "Replay returns 256-bit reserves, which the QuickJS bound surface has no BigInt for yet (see dex_amount / amm_curve). Bind once that lands.\n",
-        "status": "allowlist"
+        "status": "required"
       }
     },
     "portfolio_risk": {
@@ -42435,8 +43002,16 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_portfolio_risk_check_order",
+          "__flox_portfolio_risk_create",
+          "__flox_portfolio_risk_destroy",
+          "__flox_portfolio_risk_remove",
+          "__flox_portfolio_risk_reset",
+          "__flox_portfolio_risk_snapshot",
+          "__flox_portfolio_risk_update"
+        ],
+        "status": "required"
       }
     },
     "position": {
@@ -42469,8 +43044,16 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_pos_avg_entry",
+          "__flox_pos_create",
+          "__flox_pos_destroy",
+          "__flox_pos_on_fill",
+          "__flox_pos_pnl",
+          "__flox_pos_position",
+          "__flox_pos_total_pnl"
+        ],
+        "status": "required"
       }
     },
     "position_group": {
@@ -42506,8 +43089,19 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_pg_close",
+          "__flox_pg_create",
+          "__flox_pg_destroy",
+          "__flox_pg_open",
+          "__flox_pg_open_count",
+          "__flox_pg_partial_close",
+          "__flox_pg_pnl",
+          "__flox_pg_prune",
+          "__flox_pg_total_pnl",
+          "__flox_position"
+        ],
+        "status": "required"
       }
     },
     "rate_limit": {
@@ -42544,8 +43138,19 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_rate_limit_policy_add_bucket",
+          "__flox_rate_limit_policy_add_bucket_family",
+          "__flox_rate_limit_policy_ban_until_ns",
+          "__flox_rate_limit_policy_consecutive_rejects",
+          "__flox_rate_limit_policy_create",
+          "__flox_rate_limit_policy_destroy",
+          "__flox_rate_limit_policy_load_profile",
+          "__flox_rate_limit_policy_set_ban",
+          "__flox_simulated_executor_clear_rate_limit_policy",
+          "__flox_simulated_executor_set_rate_limit_policy"
+        ],
+        "status": "required"
       }
     },
     "recorder": {
@@ -42577,7 +43182,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "replay": {
@@ -42607,7 +43212,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "risk": {
@@ -42653,7 +43258,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "segment": {
@@ -42688,8 +43293,17 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_seg_export",
+          "__flox_seg_extract_symbols",
+          "__flox_seg_extract_time",
+          "__flox_seg_merge_dir",
+          "__flox_seg_recompress",
+          "__flox_seg_split",
+          "__flox_segment_merge",
+          "__flox_segment_validate"
+        ],
+        "status": "required"
       }
     },
     "signal_emission": {
@@ -42732,23 +43346,42 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_emit_cancel",
+          "__flox_emit_cancel_all",
+          "__flox_emit_close_position",
+          "__flox_emit_limit_buy_tif",
+          "__flox_emit_limit_sell_tif",
+          "__flox_emit_market_buy",
+          "__flox_emit_market_sell",
+          "__flox_emit_modify",
+          "__flox_emit_stop_limit",
+          "__flox_emit_stop_market",
+          "__flox_emit_take_profit_limit",
+          "__flox_emit_take_profit_market",
+          "__flox_emit_trailing_stop",
+          "__flox_emit_trailing_stop_pct"
+        ],
+        "status": "required"
       }
     },
     "simulated_executor": {
       "capi_functions": [
         "flox_simulated_executor_advance_clock",
+        "flox_simulated_executor_begin_bar_callback_window",
         "flox_simulated_executor_bracket_state",
         "flox_simulated_executor_cancel_all",
         "flox_simulated_executor_cancel_bracket",
         "flox_simulated_executor_cancel_order",
         "flox_simulated_executor_create",
         "flox_simulated_executor_destroy",
+        "flox_simulated_executor_end_bar_callback_window",
         "flox_simulated_executor_fill_count",
         "flox_simulated_executor_iceberg_hidden_remaining_raw",
         "flox_simulated_executor_on_bar",
+        "flox_simulated_executor_on_bar_ohlc",
         "flox_simulated_executor_on_trade",
+        "flox_simulated_executor_reset",
         "flox_simulated_executor_set_bracket_child_arm_mode",
         "flox_simulated_executor_set_iceberg_jitter_seed",
         "flox_simulated_executor_set_iceberg_priority_mode",
@@ -42779,8 +43412,31 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_simulated_executor_advance_clock",
+          "__flox_simulated_executor_begin_bar_callback_window",
+          "__flox_simulated_executor_bracket_state",
+          "__flox_simulated_executor_cancel_bracket",
+          "__flox_simulated_executor_create",
+          "__flox_simulated_executor_destroy",
+          "__flox_simulated_executor_end_bar_callback_window",
+          "__flox_simulated_executor_fill_count",
+          "__flox_simulated_executor_iceberg_hidden_remaining_raw",
+          "__flox_simulated_executor_on_bar",
+          "__flox_simulated_executor_on_bar_ohlc",
+          "__flox_simulated_executor_on_trade",
+          "__flox_simulated_executor_reset",
+          "__flox_simulated_executor_set_bracket_child_arm_mode",
+          "__flox_simulated_executor_set_iceberg_jitter_seed",
+          "__flox_simulated_executor_set_iceberg_priority_mode",
+          "__flox_simulated_executor_set_iceberg_refresh_latency",
+          "__flox_simulated_executor_set_iceberg_size_randomisation_pct",
+          "__flox_simulated_executor_submit",
+          "__flox_simulated_executor_submit_bracket",
+          "__flox_simulated_executor_submit_ex",
+          "__flox_simulated_executor_submit_iceberg"
+        ],
+        "status": "required"
       }
     },
     "statistics": {
@@ -42847,7 +43503,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "strategy_lifecycle": {
@@ -42879,7 +43535,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "strategyrunner_synchronous": {
@@ -42914,7 +43570,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "symbol_registry": {
@@ -42947,7 +43603,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "tape_aggregator": {
@@ -43001,7 +43657,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "tape_diff": {
@@ -43034,8 +43690,10 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_tape_diff"
+        ],
+        "status": "required"
       }
     },
     "targets": {
@@ -43094,7 +43752,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     },
     "validation": {
@@ -43118,8 +43776,11 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_dataset_validate",
+          "__flox_seg_validate_full"
+        ],
+        "status": "required"
       }
     },
     "venue_availability": {
@@ -43257,8 +43918,17 @@
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_vprofile_add_trade",
+          "__flox_vprofile_clear",
+          "__flox_vprofile_create",
+          "__flox_vprofile_destroy",
+          "__flox_vprofile_poc",
+          "__flox_vprofile_total_volume",
+          "__flox_vprofile_vah",
+          "__flox_vprofile_val"
+        ],
+        "status": "required"
       }
     },
     "walk_forward": {
@@ -43286,7 +43956,7 @@
       "quickjs": {
         "classes": [],
         "functions": [],
-        "status": "missing_yaml"
+        "status": "required"
       }
     }
   },

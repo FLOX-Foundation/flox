@@ -31,8 +31,9 @@ std::string toLower(const std::string& s)
 
 // Common wire-up shared across canned venues. Builds the executor +
 // account peer relationships consistently: liquidation attached to
-// account + executor, fees bound to account, queue/iceberg/rate-limit
-// applied to executor, venue availability pointer installed.
+// account + executor, fees bound to account and handed to the executor so
+// a run's result prices fills off this venue's ladder, queue/iceberg/
+// rate-limit applied to executor, venue availability pointer installed.
 VenueStack wireStack(uint64_t accountId, double equity,
                      std::unique_ptr<FeeSchedule> fees,
                      std::unique_ptr<FundingSchedule> funding,
@@ -61,6 +62,7 @@ VenueStack wireStack(uint64_t accountId, double equity,
   }
   a.executor->setVenueAvailability(a.venue.get());
   a.executor->setRateLimitPolicy(a.rateLimits);
+  a.executor->setFeeSchedule(a.fees.get());
 
   // Wire the account into liquidation + fees.
   a.fees->bindAccount(a.account.get());

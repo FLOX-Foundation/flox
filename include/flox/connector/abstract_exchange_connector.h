@@ -14,9 +14,13 @@
 #include "flox/common.h"
 #include "flox/engine/abstract_subsystem.h"
 #include "flox/util/base/move_only_function.h"
+#include "flox/util/base/time.h"
 
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 namespace flox
 {
@@ -50,6 +54,13 @@ class IExchangeConnector : public ISubsystem, public IDrainable
     _onSequenceGap = std::move(onSequenceGap);
     _onStaleData = std::move(onStaleData);
   }
+
+  // A feed that stops delivering while its socket stays open is invisible to
+  // the disconnect path, and no connector owns a timer of its own, so the
+  // check is driven from outside on the supervisor's own cadence. Connectors
+  // that track per-symbol arrival times override this and forward their
+  // configured window to checkStaleFeeds().
+  virtual void pollFeedHealth(MonoNanos /*now*/) {}
 
  protected:
   void emitBookUpdate(const BookUpdateEvent& bu)
@@ -92,7 +103,65 @@ class IExchangeConnector : public ISubsystem, public IDrainable
     }
   }
 
+  // Record that data for `symbol` arrived at `when`. Called from the
+  // market-data thread; checkStaleFeeds() reads it from whichever thread
+  // drives pollFeedHealth(), hence the lock. It is uncontended in practice
+  // and costs orders of magnitude less than the JSON parse that precedes
+  // every call.
+  void markFeedActivity(SymbolId symbol, MonoNanos when)
+  {
+    std::lock_guard<std::mutex> lk(_feedMutex);
+    auto& state = _feeds[symbol];
+    state.lastUpdate = when;
+    state.reported = false;  // fresh data re-arms the report
+  }
+
+  // Emit emitStaleData() for every symbol whose last update is older than
+  // `timeoutMs`, once per staleness episode -- a supervisor polling at 1 Hz
+  // wants one event per feed that died, not one per poll, and fresh data
+  // re-arms it through markFeedActivity(). A window of 0 (or less) disables
+  // the check entirely.
+  void checkStaleFeeds(MonoNanos now, int timeoutMs)
+  {
+    if (timeoutMs <= 0)
+    {
+      return;
+    }
+
+    const uint64_t windowNs = static_cast<uint64_t>(timeoutMs) * 1'000'000ULL;
+    std::vector<std::pair<SymbolId, uint64_t>> stale;
+    {
+      std::lock_guard<std::mutex> lk(_feedMutex);
+      for (auto& [symbol, state] : _feeds)
+      {
+        if (state.reported || now.raw() <= state.lastUpdate.raw() ||
+            now.raw() - state.lastUpdate.raw() < windowNs)
+        {
+          continue;
+        }
+        state.reported = true;
+        stale.emplace_back(symbol, state.lastUpdate.raw() / 1'000'000ULL);
+      }
+    }
+
+    // Emitted outside the lock: the callback belongs to the supervisor and
+    // may call straight back into this connector.
+    for (const auto& [symbol, lastUpdateMs] : stale)
+    {
+      emitStaleData(symbol, lastUpdateMs);
+    }
+  }
+
  private:
+  struct FeedState
+  {
+    MonoNanos lastUpdate{0};
+    bool reported{false};
+  };
+
+  std::mutex _feedMutex;
+  std::unordered_map<SymbolId, FeedState> _feeds;
+
   BookUpdateCallback _onBookUpdate;
   TradeCallback _onTrade;
   DisconnectCallback _onDisconnect;

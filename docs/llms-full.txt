@@ -170,7 +170,7 @@ MIT License
 
 # Language bindings
 
-All bindings expose the same core model: strategy callbacks, order emission, position queries. The API shape is the same across languages.
+All bindings expose the same core model: strategy callbacks, order emission, position queries. What each one carries around that model differs, and the table below says where.
 
 | Language | Guide | Reference |
 |---|---|---|
@@ -179,6 +179,22 @@ All bindings expose the same core model: strategy callbacks, order emission, pos
 | Codon | [Codon](codon.md) | [API reference](../reference/codon/index.md) |
 | JavaScript (embedded) | [JavaScript](javascript.md) | [API reference](../reference/quickjs/index.md) |
 | C API | [C API](capi.md) | [reference](../reference/api/capi/flox_capi.md) |
+
+## What each binding carries
+
+| Capability | Python | Node | Codon | JavaScript (QuickJS) |
+|---|---|---|---|---|
+| `Strategy` callbacks — trade, book, bar | yes | yes | yes | yes |
+| `BacktestRunner` — event-driven replay (`run_csv`, `run_tape`, `run_ohlcv`, `run_bars`) | yes | yes | yes | no |
+| `Engine` + `SignalBuilder` — backtest a pre-built signal list | yes | yes | yes | yes |
+| `SimulatedExecutor`, `BacktestResult` | yes | yes | yes | yes |
+| `DataReader`, `DataWriter` | yes | yes | yes | yes |
+| Bar aggregators — time, tick, volume, range, Renko, Heikin-Ashi | yes | yes | yes | yes |
+
+The embedded JavaScript binding has no `BacktestRunner`: the event-driven
+replay entry points are unreachable from QuickJS, and a strategy backtests
+there by building a signal list and running it through `Engine`. Everything
+else in the table is reachable from all four.
 
 ## Which one to use
 
@@ -342,7 +358,7 @@ One call wires the cross-margin account, MM tiers and ADL, the VIP fee schedule 
 Two ways to use a `VenueStack`:
 
 - **Standalone.** Drive the returned subsystems directly — `acct.open_position(...)`, `liq.on_marks(...)`, `fees.record_fill(...)`, `funding.tick(...)`, `exec_.submit_order(...)`. See `docs/examples/python_realistic_backtest.py`.
-- **Attached to `BacktestRunner`.** Call `runner.set_venue_stack(stack)` before `run_csv`/`run_bars`/`run_tape(s)`. The runner then feeds the stack's executor market data and harvests its fills, so the run picks up the venue's fill mechanics — queue model and depth, iceberg refresh latency, venue availability, and rate limits — instead of the flat `fee_rate` fill model. Fees still come from `BacktestConfig` (a `Fill` carries no maker/taker flag), and funding and liquidation stay driven by explicit calls, not the replay loop. Pass `None` to revert to the built-in executor. Passing a bare `VenueExecutor` to `set_executor` is refused with a pointer back here, because the executor alone does not carry the clock the runner has to advance. Full walkthrough: [Realistic backtest in one call](../how-to/realistic-backtest.md#attach-a-venuestack-to-backtestrunner).
+- **Attached to `BacktestRunner`.** Call `runner.set_venue_stack(stack)` before `run_csv`/`run_bars`/`run_tape(s)`. The runner then feeds the stack's executor market data and harvests its fills, so the run picks up the venue's fill mechanics — queue model and depth, iceberg refresh latency, venue availability, and rate limits — instead of the flat `fee_rate` fill model. Fees come from the stack's `FeeSchedule` too: each fill is billed at the tier the account's 30-day notional resolves to, with the fill's maker/taker flag picking the side. Funding and liquidation stay driven by explicit calls, not the replay loop. Pass `None` to revert to the built-in executor. Passing a bare `VenueExecutor` to `set_executor` is refused with a pointer back here, because the executor alone does not carry the clock the runner has to advance. Full walkthrough: [Realistic backtest in one call](../how-to/realistic-backtest.md#attach-a-venuestack-to-backtestrunner).
 
 Full pattern and pieces: [Realistic backtest in one call](../how-to/realistic-backtest.md), [Cross-margin accounts](../how-to/cross-margin.md), [Liquidation and ADL](../how-to/liquidation-and-adl.md).
 
@@ -1081,9 +1097,9 @@ this.closePosition()
 ```javascript
 this.position()             // current position (primary symbol)
 this.position("ETHUSDT")    // specific symbol
-this.bestBid()
-this.bestAsk()
-this.midPrice()
+this.bestBid()              // number, or null when there is no bid
+this.bestAsk()              // number, or null when there is no ask
+this.midPrice()             // number, or null when either side is empty
 this.lastPrice()
 this.orderStatus(orderId)
 this.hasPosition             // boolean
@@ -3133,7 +3149,8 @@ latency, venue availability and rate limits.
 Two things it does not change, so read the result as "this venue's fill
 mechanics" and not "this venue's full economics":
 
-- Fees still come from `BacktestConfig`, not from the stack's `FeeSchedule`.
+- Fees come from the stack's `FeeSchedule`: each fill is billed at the tier
+  the account's 30-day notional resolves to, not at the flat `fee_rate`.
   Fills carry `is_maker`, so `maker_fee_rate` / `taker_fee_rate` charge the
   real spread between posting and taking; what the stack still knows and the
   result does not is 30-day volume tiering.
@@ -4996,6 +5013,11 @@ The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permuta
     bool wrote   = Stats::generateReport(results, "report.md");  // false if the path can't be opened
     ```
 
+    `generateReport` prints the Drawdown column straight from
+    `max_drawdown_pct`, which is already a percent -- 10.00% means ten
+    percent of the account. The Win Rate column beside it is scaled from a
+    fraction, which is why only one of the two carries a `* 100`.
+
     `bootstrapCI` and `permutationTest` resample with a fixed default seed
     (`42`), so the same inputs always return the same result; pass a trailing
     `seed` argument for an independent resample. See
@@ -6111,14 +6133,18 @@ in-process with the batch aggregators and feed the result to `run_bars`.
 
     The `aggregate*` helpers return an array of objects (`startTimeNs`,
     `endTimeNs`, `open`, `high`, `low`, `close`, `volume`, `buyVolume`,
-    `tradeCount`) — already in floats, so build the typed arrays `runBars`
-    wants from them.
+    `tradeCount`) — prices and volumes in floats, the two timestamps as
+    `bigint`, so build the typed arrays `runBars` wants from them.
+
+    The timestamp column they take is a `Float64Array` or a `BigInt64Array`;
+    pass the latter when the readings are real wall-clock nanoseconds, which
+    a double cannot hold exactly.
 
     ```javascript
     const bars = flox.aggregateTimeBars(timestamps, prices, quantities, isBuy, 60);
 
-    const startNs = BigInt64Array.from(bars, (b) => BigInt(b.startTimeNs));
-    const endNs   = BigInt64Array.from(bars, (b) => BigInt(b.endTimeNs));
+    const startNs = BigInt64Array.from(bars, (b) => b.startTimeNs);
+    const endNs   = BigInt64Array.from(bars, (b) => b.endTimeNs);
     const col = (k) => Float64Array.from(bars, (b) => b[k]);
 
     bt.runBars(startNs, endNs, col('open'), col('high'), col('low'),
@@ -8095,6 +8121,11 @@ still zero, so an unstamped feed that freezes keeps being quoted forever.
 
 ### Error Handling
 
+A log line is not a health signal: whoever supervises the feed is in another
+thread, usually another subsystem, and reads `setErrorCallbacks`. Report the
+close as well as recovering from it — the in-tree connectors all honour the
+same contract, described in [Connectors](../explanation/connectors.md#feed-health).
+
 ```cpp
 void run() {
   while (_running) {
@@ -8107,6 +8138,7 @@ void run() {
     } catch (const ConnectionError& e) {
       FLOX_LOG("Connection lost: " << e.what());
       _connected = false;
+      emitDisconnect(e.what());  // tell the supervisor, then recover
       reconnect();
     }
   }
@@ -8115,17 +8147,40 @@ void run() {
 
 ### Sequence Numbers
 
-Track exchange sequence numbers for gap detection:
+Track exchange sequence numbers for gap detection. Detecting a gap is half the
+job: drop the frame (never apply a delta onto a book known to be behind), ask
+for a snapshot, and raise the event — a supervisor that cannot see the hole
+keeps trading off a book that has quietly stopped updating.
 
 ```cpp
 void handleBookUpdate(const Message& msg) {
   if (_lastSeq > 0 && msg.seq != _lastSeq + 1) {
     FLOX_LOG("Gap detected: " << _lastSeq << " -> " << msg.seq);
+    emitSequenceGap(_lastSeq + 1, msg.seq);
+    _lastSeq = 0;
     requestSnapshot();  // Request full book snapshot
+    return;             // and drop this delta
   }
   _lastSeq = msg.seq;
 
   // ... create and emit event
+}
+```
+
+### Staleness
+
+A socket that stays open while the data stops is the failure the disconnect
+path cannot catch. Stamp each symbol as its data arrives and override
+`pollFeedHealth()`, which the connector's owner calls on its own cadence:
+
+```cpp
+void handleBookUpdate(const Message& msg) {
+  markFeedActivity(resolveSymbolId(msg.symbol), nowMonoNanos());
+  // ... create and emit event
+}
+
+void pollFeedHealth(MonoNanos now) override {
+  checkStaleFeeds(now, _config.staleDataTimeoutMs);  // 0 disables the check
 }
 ```
 
@@ -11381,7 +11436,7 @@ Referencing an unregistered symbol name raises `FloxError(code="E_SYM_001")`.
 |--------|------|-------------|
 | `symbols` | `list[str]` | Registered symbol names (property) |
 | `bar_count(symbol='')` | `int` | Number of bars loaded for a symbol |
-| `ts(symbol='')` | `float64[]` | Bar timestamps in nanoseconds |
+| `ts(symbol='')` | `int64[]` | Bar timestamps in nanoseconds |
 | `open(symbol='')` | `float64[]` | Open prices |
 | `high(symbol='')` | `float64[]` | High prices |
 | `low(symbol='')` | `float64[]` | Low prices |
@@ -12331,6 +12386,7 @@ batch function.
 | `volume_raw` | `int64` | Total volume * 10^8 |
 | `buy_volume_raw` | `int64` | Buy volume * 10^8 |
 | `trade_count` | `int64` | Number of trades in bar |
+| `close_reason` | `uint8` | Why the bar closed: `0` threshold, `2` forced, `3` warmup. Every bar this batch path returns closed on its own threshold, so `0` here. |
 
 ---
 
@@ -13918,6 +13974,36 @@ Feed a bar close price for order matching. Limit orders are matched against this
 executor.on_bar(symbol=1, close_price=50000.0)
 ```
 
+#### `on_bar_ohlc(symbol, open, high, low, close)`
+
+The manual bar path: feed a full OHLC bar instead of a close price alone. Moves
+the market to `open` — releasing any order held from a prior
+`begin_bar_callback_window()` / `end_bar_callback_window()` pair at that
+price — then walks `low -> high -> close` so resting stops and targets match
+the bar's intrabar extremes, not just its close. Use this, not `on_bar`, when
+driving `SimulatedExecutor` by hand: `BacktestRunner.run_bars` uses this
+overload internally, so `on_bar` alone gives a caller neither the bar's open
+nor its intrabar extremes.
+
+```python
+executor.on_bar_ohlc(symbol=1, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+```
+
+#### `begin_bar_callback_window()` / `end_bar_callback_window()`
+
+Bracket a hand-driven strategy callback so orders it submits are held instead
+of matched immediately — matching against a bar's own high/low/close from
+inside its callback is look-ahead, since the market has already been walked
+through that bar by the time the callback runs. Held orders release at the
+next `on_bar_ohlc` call's open.
+
+```python
+executor.on_bar_ohlc(1, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+executor.begin_bar_callback_window()
+executor.submit_order(1, "buy", 0.0, 1.0, "market", symbol=1)
+executor.end_bar_callback_window()
+```
+
 #### `on_trade(symbol, price, is_buy)`
 
 Feed a trade for order matching.
@@ -13987,6 +14073,20 @@ Advance the simulation clock.
 
 ```python
 executor.advance_clock(timestamp_ns=1704067200_000_000_000)
+```
+
+#### `reset()`
+
+Drop fills and run-scoped state (held/conditional orders, queue positions,
+net positions, brackets, in-flight acks, market state) while keeping
+installed configuration — slippage, queue model, latency distributions, rate
+limits, STP, callbacks, attached venue availability. Seeded RNGs go back to
+their configured seeds. Call between passes when replaying several
+hand-driven runs through one executor, so each reports only its own fills.
+
+```python
+executor.reset()
+assert executor.fill_count == 0
 ```
 
 #### `fills() -> ndarray`
@@ -14440,7 +14540,7 @@ All callbacks are optional.
 |----------|------|-------------|
 | `open`, `high`, `low`, `close` | `number` | OHLC prices |
 | `volume`, `buyVolume` | `number` | Total / buy-side volume |
-| `startTimeNs`, `endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
+| `startTimeNs`, `endTimeNs` | `bigint` | Bar window timestamps (nanoseconds) |
 | `barType`, `barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
 | `closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine emits `Threshold` for a normal close, `Gap` for the bar that absorbs the remainder of a Renko price jump too wide to walk brick by brick, and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
 
@@ -14527,6 +14627,27 @@ Each takes a plain JS object, or `null` to detach.
 | `setOrderValidator(ov)` | Attach an order validator. Sync only |
 | `setMarketDataRecorder(recorder)` | Attach a `MarketDataRecorderHook` or `BinaryLogRecorderHook` |
 | `setExecutor(executor)` | Replace the executor. Sync only — `capabilities()` is read inline |
+
+#### What a hook is handed
+
+An order — the argument to `Executor.submit` and to every
+`ExecutionListener` callback — carries `createdAtNs` and `exchangeTsNs` as
+`bigint`. They are clock readings, and a JS `Number` is a double that steps
+256 ns at present-day magnitudes. Prices, sizes and ids on the same object
+stay `number`.
+
+A trade handed to a `MarketDataRecorderHook`'s `onTrade` is a `TradeData`:
+`{ symbol, price, qty, isBuy, side, timestampNs }`, with `timestampNs` a
+`bigint`. It is the same shape a strategy's `onTrade` receives.
+
+!!! warning "Deprecated: `trade.quantity` and `trade.exchangeTsNs`"
+
+    The recorder hook used to be handed `quantity` and `exchangeTsNs` in
+    place of the declared `qty` and `timestampNs`. Both spellings are
+    delivered for one release and the old two are removed in the next.
+    `exchangeTsNs` is a `bigint` like `timestampNs` — the reading never fit
+    in a double — so a hook doing arithmetic on it needs `Number()` at the
+    edge, or the one-word change to `timestampNs`.
 
 ### Trace recording
 
@@ -14631,6 +14752,9 @@ exec.setQueueModel('tob', 1);
 | `cancelOrder(orderId)` | Cancel an order |
 | `cancelAll(symbol)` | Cancel all orders for a symbol |
 | `onBar(symbol, closePrice)` | Feed a bar close |
+| `onBarOhlc(symbol, open, high, low, close)` | Feed a full OHLC bar: the manual bar path (see below) |
+| `beginBarCallbackWindow()` / `endBarCallbackWindow()` | Hold orders submitted between the two calls until the next bar's open |
+| `reset()` | Drop fills and run-scoped state, keeping installed configuration |
 | `onTrade(symbol, price, isBuy)` | Feed a trade |
 | `advanceClock(timestampNs)` | Advance simulated time |
 | `setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff)` | Configure slippage. `model` is one of `"none"`, `"fixed_ticks"`, `"fixed_bps"`, `"volume_impact"` |
@@ -14640,6 +14764,30 @@ exec.setQueueModel('tob', 1);
 `submitOrder`'s `type` is one of `"market"`, `"limit"`, `"stop_market"`,
 `"stop_limit"`, `"trailing_stop"`. The optional seventh argument carries
 `{ tif?: 'gtc' | 'ioc' | 'fok' | 'gtd' | 'post_only', reduceOnly?: boolean, expiresAtNs?: number }`.
+
+### The manual bar path
+
+`onBar` moves the market straight to a bar's close, so a caller driving
+`SimulatedExecutor` by hand never sees the bar's open or its intrabar
+extremes — a held order would match at a price that only exists because the
+bar has already happened. `onBarOhlc` is what `BacktestRunner.runBars` uses
+internally: it moves the market to the open first (releasing any order held
+from a `beginBarCallbackWindow`/`endBarCallbackWindow` pair at that price),
+then walks `low -> high -> close`.
+
+```javascript
+const exec = new flox.SimulatedExecutor();
+exec.advanceClock(60_000_000_000n);
+exec.onBarOhlc(1, 50000.0, 50500.0, 49800.0, 50200.0);
+
+exec.beginBarCallbackWindow();
+exec.submitOrder(1, 'buy', 0.0, 1.0, 'market', 1);
+exec.endBarCallbackWindow();
+// The order above is held, not matched, and releases at the next
+// onBarOhlc call's open.
+
+exec.reset(); // drop fills before a second hand-driven run
+```
 
 ---
 
@@ -14683,7 +14831,7 @@ const stats = engine.run(signals);
 | `resample(src, dst, interval)` | `void` | Three strings, e.g. `('BTCUSDT', 'BTCUSDT_1h', '1h')`. Interval is `<count><s\|m\|h\|d>`. Throws `E_SYM_001` if `src` is not loaded |
 | `run(signals)` | `BacktestStats` | Takes a `SignalBuilder` only. Passing a Strategy aborts |
 | `barCount(symbol?)` | `number` | Bars loaded; defaults to the first loaded symbol |
-| `ts(symbol?)` | `Float64Array` | Timestamps |
+| `ts(symbol?)` | `BigInt64Array` | Bar open times in nanoseconds. Exact int64 — a double steps 256 ns at present-day magnitudes |
 | `open(symbol?)` | `Float64Array` | Open prices |
 | `high(symbol?)` | `Float64Array` | High prices |
 | `low(symbol?)` | `Float64Array` | Low prices |
@@ -14719,8 +14867,8 @@ const stats = engine.run(signals);
 | `clear()` | Clear all signals |
 | `length` | Signal count (read-only property) |
 
-Timestamps are read as a JS `number`, not a `bigint`; values in s / ms / us
-are auto-scaled to ns.
+`tsNs` takes a JS `number` or a `bigint`, so an `Engine.ts()` element goes
+straight in; values in s / ms / us are auto-scaled to ns.
 | `length` | Number of signals (property) |
 
 ------------------------------------------------------------------------------
@@ -14857,7 +15005,10 @@ for (const v of stream) {
 
 # Bar aggregation
 
-All functions take `(timestamps, prices, quantities, isBuy, param)` where `timestamps`, `prices`, `quantities` are `Float64Array` and `isBuy` is `Uint8Array`. Return an array of bar objects.
+All functions take `(timestamps, prices, quantities, isBuy, param)` where `prices` and
+`quantities` are `Float64Array` and `isBuy` is `Uint8Array`. `timestamps` is a
+`Float64Array` or a `BigInt64Array` — pass the latter for real wall-clock nanoseconds,
+which a double cannot hold exactly. Return an array of bar objects.
 
 `aggregateRenkoBars` can return more bar objects than there were input trades: a trade that
 gaps past more than one brick width closes the brick that was forming and synthesizes the
@@ -14877,8 +15028,8 @@ Each returned bar object:
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `startTimeNs` | `number` | Open time (ns) |
-| `endTimeNs` | `number` | Close time (ns) |
+| `startTimeNs` | `bigint` | Open time (ns) |
+| `endTimeNs` | `bigint` | Close time (ns) |
 | `open` | `number` | Open price |
 | `high` | `number` | High price |
 | `low` | `number` | Low price |
@@ -14886,6 +15037,7 @@ Each returned bar object:
 | `volume` | `number` | Total volume |
 | `buyVolume` | `number` | Buy-side volume |
 | `tradeCount` | `number` | Number of trades |
+| `closeReason` | `number` | Why the bar closed: `0` threshold, `2` forced, `3` warmup. Every bar this batch path returns closed on its own threshold, so `0` here. |
 
 Only fully closed bars are returned -- a trailing bar still open when the
 trade array ends is dropped, so the bar count depends only on the input.
@@ -16337,6 +16489,9 @@ SimulatedExecutor()
 | `cancel_order(order_id)` | Cancel an order |
 | `cancel_all(symbol)` | Cancel all orders for a symbol |
 | `on_bar(symbol, close_price)` | Feed a bar close |
+| `on_bar_ohlc(symbol, open, high, low, close)` | Feed a full OHLC bar: the manual bar path (see below) |
+| `begin_bar_callback_window()` / `end_bar_callback_window()` | Hold orders submitted between the two calls until the next bar's open |
+| `reset()` | Drop fills and run-scoped state, keeping installed configuration |
 | `on_trade(symbol, price, is_buy)` | Feed a trade |
 | `on_trade_qty(symbol, price, qty, is_buy)` | Feed a trade with quantity (enables queue-fill simulation) |
 | `on_best_levels(symbol, bid_price, bid_qty, ask_price, ask_qty)` | Feed top-of-book snapshot |
@@ -16351,6 +16506,27 @@ SimulatedExecutor()
 | Property | Type | Description |
 |----------|------|-------------|
 | `fill_count` | `int` | Number of fills generated |
+
+### The manual bar path
+
+`on_bar` moves the market straight to a bar's close, so driving the executor
+by hand with it never shows a held order the bar's open or its intrabar
+extremes. `on_bar_ohlc` is what `BacktestRunner` uses internally: it moves
+the market to the open first (releasing any order held from a
+`begin_bar_callback_window`/`end_bar_callback_window` pair at that price),
+then walks `low -> high -> close`.
+
+```codon
+exec.advance_clock(60_000_000_000)
+exec.on_bar_ohlc(symbol, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+
+exec.begin_bar_callback_window()
+exec.submit_order(order_id, "buy", 0.0, 1.0)
+exec.end_bar_callback_window()
+# Held, not matched -- releases at the next on_bar_ohlc call's open.
+
+exec.reset()  # drop fills before a second hand-driven run
+```
 
 ### Slippage models
 
@@ -16741,7 +16917,9 @@ for b in bars:
 
 `AggBar` mirrors the C `FloxBar` struct: `*_raw` fields are fixed-point
 (divide by `1e8`), plus float accessors `open()`, `high()`, `low()`,
-`close()`, `volume()`, `buy_volume()`, and a plain `trade_count`.
+`close()`, `volume()`, `buy_volume()`, a plain `trade_count`, and
+`close_reason` -- why the bar closed (`0` threshold, `2` forced, `3` warmup;
+every bar this batch path returns closed on its own threshold, so `0` here).
 
 | Function | Threshold argument | Description |
 |----------|--------------------|--------------|
@@ -17029,12 +17207,17 @@ this.closePosition()
 ```javascript
 this.position()             // primary symbol
 this.position('ETHUSDT')    // specific symbol
-this.bestBid()
-this.bestAsk()
-this.midPrice()
+this.bestBid()              // number, or null when there is no bid
+this.bestAsk()              // number, or null when there is no ask
+this.midPrice()             // number, or null when either side is empty
 this.lastPrice()
 this.orderStatus(orderId)   // -1 if not found
 ```
+
+`bestBid`, `bestAsk` and `midPrice` return `null` for an empty side, never a
+number. A price below zero is a quote -- WTI settled at -37.63 in April 2020,
+day-ahead power clears below zero -- and so is a price of exactly 0, so no
+number is free to stand for "no quote". Test with `=== null`, not `=== 0`.
 
 ------------------------------------------------------------------------------
 # Source: docs/reference/quickjs/indicators.md
@@ -17312,12 +17495,17 @@ Every other helper here closes at most one bar per input trade.
 
 | Call | `param` |
 |------|---------|
-| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
+| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds — `60000000000` is one minute |
 | `flox.tickBars(ts, px, qty, sides, ticksPerBar)` | Trades per bar |
 | `flox.volumeBars(ts, px, qty, sides, volumePerBar)` | Volume per bar |
 | `flox.rangeBars(ts, px, qty, sides, rangeSize)` | High-low range |
 | `flox.renkoBars(ts, px, qty, sides, brickSize)` | Brick size |
 | `flox.heikinBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
+
+A nanosecond interval may be a `Number` or a `BigInt`. Each bar comes back
+with `ts` (the bar start, a nanosecond `BigInt`), `open`, `high`, `low`,
+`close`, `volume`, `buyVolume` and `trades`. Only closed bars are returned:
+a bar still forming when the tape ends is not one of them.
 
 ---
 
@@ -17386,6 +17574,27 @@ executor.submitOrder(id, 'buy', 50000, 1.0, 0, symbolId);
 executor.onBar(symbolId, 50100);
 executor.advanceClock(tsNs);
 executor.fillCount;
+```
+
+### The manual bar path
+
+`onBar` moves the market straight to a bar's close, so driving the executor
+by hand with it never shows a held order the bar's open or its intrabar
+extremes. `onBarOhlc` is what `BacktestRunner` uses internally: it moves the
+market to the open first (releasing any order held from a
+`beginBarCallbackWindow`/`endBarCallbackWindow` pair at that price), then
+walks `low -> high -> close`.
+
+```javascript
+executor.advanceClock(60000000000n);
+executor.onBarOhlc(symbolId, 50000, 50500, 49800, 50200);
+
+executor.beginBarCallbackWindow();
+executor.submitOrder(id, 'buy', 0, 1.0, 1 /* market */, symbolId);
+executor.endBarCallbackWindow();
+// Held, not matched -- releases at the next onBarOhlc call's open.
+
+executor.reset(); // drop fills before a second hand-driven run
 ```
 
 ---
@@ -17530,9 +17739,9 @@ typedef void* FloxVenueStackHandle;
 | Field | Type | Description |
 |-------|------|-------------|
 | `bid_price_raw` | `int64_t` | Best bid price × 1e8 (0 if absent) |
-| `bid_qty_raw` | `int64_t` | Best bid quantity × 1e8 |
+| `bid_qty_raw` | `int64_t` | Size resting at the best bid × 1e8 (0 when the book cannot say) |
 | `ask_price_raw` | `int64_t` | Best ask price × 1e8 (0 if absent) |
-| `ask_qty_raw` | `int64_t` | Best ask quantity × 1e8 |
+| `ask_qty_raw` | `int64_t` | Size resting at the best ask × 1e8 (0 when the book cannot say) |
 | `mid_raw` | `int64_t` | Mid price × 1e8 (0 if absent) |
 | `spread_raw` | `int64_t` | Spread × 1e8 (0 if absent) |
 
@@ -17984,11 +18193,39 @@ All return `OrderId` (`uint64_t`), 0 on failure. `cancel` and `modify` return vo
 |----------|---------|-------------|
 | `flox_position_raw(s, sym)` | `int64_t` | Position × 1e8 |
 | `flox_last_trade_price_raw(s, sym)` | `int64_t` | Last trade price × 1e8 |
-| `flox_best_bid_raw(s, sym)` | `int64_t` | Best bid × 1e8 |
-| `flox_best_ask_raw(s, sym)` | `int64_t` | Best ask × 1e8 |
-| `flox_mid_price_raw(s, sym)` | `int64_t` | Mid price × 1e8 |
+| `flox_best_bid_raw(s, sym)` | `int64_t` | Best bid × 1e8, 0 if none |
+| `flox_best_ask_raw(s, sym)` | `int64_t` | Best ask × 1e8, 0 if none |
+| `flox_mid_price_raw(s, sym)` | `int64_t` | Mid price × 1e8, 0 if none |
+| `flox_best_bid_raw_opt(s, sym, price_out)` | `uint8_t` | 1 with the raw bid in `price_out`, 0 if none |
+| `flox_best_ask_raw_opt(s, sym, price_out)` | `uint8_t` | 1 with the raw ask in `price_out`, 0 if none |
+| `flox_mid_price_raw_opt(s, sym, price_out)` | `uint8_t` | 1 with the raw mid in `price_out`, 0 if none |
 | `flox_get_symbol_context(s, sym, out)` | `void` | Fill `FloxSymbolContext` |
 | `flox_get_order_status(s, order_id)` | `int32_t` | Order status (-1 = not found) |
+
+### No quote, and prices at or below zero
+
+A price below zero is a quote: WTI settled at -37.63 in April 2020, day-ahead
+power clears below zero on a windy afternoon, and a calendar spread is negative
+in contango. A price of exactly 0.0 is a quote too. The book reports such a
+book the same way it reports any other, so a return value cannot double as a
+"no quote" marker.
+
+The three `int64_t` accessors return 0 for an empty side and for a best quote
+of 0.0 alike; they are unchanged, for callers whose markets never reach zero.
+The `_opt` trio puts the answer in the return value instead -- 1 with the raw
+price written to `price_out`, 0 with `price_out` untouched -- so the two cases
+are distinct. `price_out` may be `NULL` when only the flag is wanted. A header
+carrying them defines `FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE`, so a binding can
+compile against either.
+
+`FloxSymbolContext.book` has the same limitation as the `int64_t` accessors:
+`bid_price_raw`, `ask_price_raw`, `mid_raw` and `spread_raw` are 0 when the
+side is empty. Read the `_opt` accessors where that matters.
+
+The book handle accessors -- `flox_book_best_bid`, `flox_book_best_ask`,
+`flox_book_mid`, `flox_book_spread` -- already return a presence flag with the
+price in an out parameter and need no variant; they report a negative best
+quote like any other.
 
 ---
 

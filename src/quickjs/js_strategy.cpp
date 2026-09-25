@@ -150,6 +150,24 @@ void FloxJsStrategy::loadStdlib()
         __flox_simulated_executor_submit(this._h, id, side === "buy" ? 0 : 1, price, qty, cType, symbol || 1);
       }
       onBar(symbol, closePrice) { __flox_simulated_executor_on_bar(this._h, symbol, closePrice); }
+      // Open-aware form: moves the market to the open (releasing any order
+      // held from the previous bar's callback there), then walks
+      // low -> high -> close so resting stops/targets match the intrabar
+      // extremes. Use this, not onBar, to drive the executor by hand to the
+      // same fills BacktestRunner produces on the same bars.
+      onBarOhlc(symbol, open, high, low, close) {
+        __flox_simulated_executor_on_bar_ohlc(this._h, symbol, open, high, low, close);
+      }
+      // Open the bar-callback window: every order submitted while it is
+      // open is held instead of matched immediately, and released at the
+      // next onBarOhlc call's open. Call before invoking a hand-driven bar
+      // callback; always pair with endBarCallbackWindow.
+      beginBarCallbackWindow() { __flox_simulated_executor_begin_bar_callback_window(this._h); }
+      endBarCallbackWindow() { __flox_simulated_executor_end_bar_callback_window(this._h); }
+      // Drops fills and run-scoped state while keeping installed
+      // configuration (slippage, queue model, latency, ...), so a second
+      // hand-driven run reports that run and not the sum of every run.
+      reset() { __flox_simulated_executor_reset(this._h); }
       onTrade(symbol, price, isBuy) { __flox_simulated_executor_on_trade(this._h, symbol, price, isBuy ? 1 : 0); }
       onTradeQty(symbol, price, quantity, isBuy) {
         __flox_simulated_executor_on_trade_qty(this._h, symbol, price, quantity, isBuy ? 1 : 0);
@@ -524,18 +542,28 @@ void FloxJsStrategy::loadStdlib()
       }
     }
 
+    // A bar timestamp is a nanosecond BigInt wherever it comes from, so
+    // everything that orders or compares one works in BigInt. A script may
+    // still hand over a plain Number, and Array.prototype.sort insists on a
+    // Number back from its comparator (a BigInt difference makes it treat
+    // every pair as equal) -- both conversions live here.
+    function __floxToNs(ts) {
+      return typeof ts === "bigint" ? ts : BigInt(Math.trunc(Number(ts)));
+    }
+    function __floxCmpNs(a, b) { return a < b ? -1 : (a > b ? 1 : 0); }
+
     class SignalBuilder {
       constructor() { this._entries = []; }
-      _add(tsMs, side, qty, price, orderType, symbol) {
-        this._entries.push({ tsMs, side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });
+      _add(ts, side, qty, price, orderType, symbol) {
+        this._entries.push({ tsNs: __floxToNs(ts), side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });
       }
-      buy(tsMs, qty, symbol) { this._add(tsMs, 0, qty, 0, 0, symbol); }
-      sell(tsMs, qty, symbol) { this._add(tsMs, 1, qty, 0, 0, symbol); }
-      limitBuy(tsMs, price, qty, symbol) { this._add(tsMs, 0, qty, price, 1, symbol); }
-      limitSell(tsMs, price, qty, symbol) { this._add(tsMs, 1, qty, price, 1, symbol); }
+      buy(ts, qty, symbol) { this._add(ts, 0, qty, 0, 0, symbol); }
+      sell(ts, qty, symbol) { this._add(ts, 1, qty, 0, 0, symbol); }
+      limitBuy(ts, price, qty, symbol) { this._add(ts, 0, qty, price, 1, symbol); }
+      limitSell(ts, price, qty, symbol) { this._add(ts, 1, qty, price, 1, symbol); }
       get length() { return this._entries.length; }
       clear() { this._entries = []; }
-      sorted() { return this._entries.slice().sort(function(a, b) { return a.tsMs - b.tsMs; }); }
+      sorted() { return this._entries.slice().sort(function(a, b) { return __floxCmpNs(a.tsNs, b.tsNs); }); }
     }
 
     class Engine {
@@ -550,7 +578,7 @@ void FloxJsStrategy::loadStdlib()
         var key = this._canon(symbol);
         var bars = __flox_load_csv(path);
         if (!this._symbols[key]) { this._symbols[key] = bars; this._symbolOrder.push(key); }
-        else { this._symbols[key] = this._symbols[key].concat(bars).sort(function(a,b){return a.ts-b.ts;}); }
+        else { this._symbols[key] = this._symbols[key].concat(bars).sort(function(a,b){return __floxCmpNs(__floxToNs(a.ts), __floxToNs(b.ts));}); }
       }
       get barCount() {
         var total = 0;
@@ -568,16 +596,16 @@ void FloxJsStrategy::loadStdlib()
         };
         var defaultKey = this._symbolOrder.length > 0 ? this._symbolOrder[0] : "__default__";
 
-        // Build merged bar timeline. bar.ts is in ms (safe integer range).
+        // Build merged bar timeline. bar.ts is a nanosecond BigInt.
         var merged = [];
         for (var i = 0; i < this._symbolOrder.length; i++) {
           var key = this._symbolOrder[i];
           var bars = this._symbols[key];
           for (var j = 0; j < bars.length; j++) {
-            merged.push({ tsMs: bars[j].ts, key: key, bar: bars[j] });
+            merged.push({ tsNs: __floxToNs(bars[j].ts), key: key, bar: bars[j] });
           }
         }
-        merged.sort(function(a, b) { return a.tsMs - b.tsMs; });
+        merged.sort(function(a, b) { return __floxCmpNs(a.tsNs, b.tsNs); });
 
         var sorted = signals.sorted();
         var sigIdx = 0;
@@ -588,10 +616,10 @@ void FloxJsStrategy::loadStdlib()
           var sid = getSid(ref.key);
           // Advance clock (ns) and fill pending orders at this bar's close.
           // Signals are submitted AFTER onBar to match Python Engine semantics.
-          executor.advanceClock(ref.tsMs * 1000000);
+          executor.advanceClock(ref.tsNs);
           executor.onBar(sid, ref.bar.close);
-          // Submit signals timestamped at or before this bar (ms comparison)
-          while (sigIdx < sorted.length && sorted[sigIdx].tsMs <= ref.tsMs) {
+          // Submit signals timestamped at or before this bar (ns comparison)
+          while (sigIdx < sorted.length && sorted[sigIdx].tsNs <= ref.tsNs) {
             var sig = sorted[sigIdx];
             var sigKey = this._canon(sig.symbol) in this._symbols ? this._canon(sig.symbol) : defaultKey;
             var ssid = getSid(sigKey);

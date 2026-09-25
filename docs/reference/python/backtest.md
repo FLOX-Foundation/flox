@@ -55,6 +55,36 @@ Feed a bar close price for order matching. Limit orders are matched against this
 executor.on_bar(symbol=1, close_price=50000.0)
 ```
 
+#### `on_bar_ohlc(symbol, open, high, low, close)`
+
+The manual bar path: feed a full OHLC bar instead of a close price alone. Moves
+the market to `open` — releasing any order held from a prior
+`begin_bar_callback_window()` / `end_bar_callback_window()` pair at that
+price — then walks `low -> high -> close` so resting stops and targets match
+the bar's intrabar extremes, not just its close. Use this, not `on_bar`, when
+driving `SimulatedExecutor` by hand: `BacktestRunner.run_bars` uses this
+overload internally, so `on_bar` alone gives a caller neither the bar's open
+nor its intrabar extremes.
+
+```python
+executor.on_bar_ohlc(symbol=1, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+```
+
+#### `begin_bar_callback_window()` / `end_bar_callback_window()`
+
+Bracket a hand-driven strategy callback so orders it submits are held instead
+of matched immediately — matching against a bar's own high/low/close from
+inside its callback is look-ahead, since the market has already been walked
+through that bar by the time the callback runs. Held orders release at the
+next `on_bar_ohlc` call's open.
+
+```python
+executor.on_bar_ohlc(1, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+executor.begin_bar_callback_window()
+executor.submit_order(1, "buy", 0.0, 1.0, "market", symbol=1)
+executor.end_bar_callback_window()
+```
+
 #### `on_trade(symbol, price, is_buy)`
 
 Feed a trade for order matching.
@@ -124,6 +154,20 @@ Advance the simulation clock.
 
 ```python
 executor.advance_clock(timestamp_ns=1704067200_000_000_000)
+```
+
+#### `reset()`
+
+Drop fills and run-scoped state (held/conditional orders, queue positions,
+net positions, brackets, in-flight acks, market state) while keeping
+installed configuration — slippage, queue model, latency distributions, rate
+limits, STP, callbacks, attached venue availability. Seeded RNGs go back to
+their configured seeds. Call between passes when replaying several
+hand-driven runs through one executor, so each reports only its own fills.
+
+```python
+executor.reset()
+assert executor.fill_count == 0
 ```
 
 #### `fills() -> ndarray`

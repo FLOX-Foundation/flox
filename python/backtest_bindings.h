@@ -310,6 +310,25 @@ class PySimulatedExecutor
     _executor.onBar(symbol, Price::fromDouble(closePrice));
   }
 
+  // Open-aware form: moves the market to the open (releasing any order held
+  // from the previous bar's callback there), then walks low -> high -> close.
+  // Needed for a caller driving SimulatedExecutor by hand to reach the same
+  // fills as BacktestRunner.run_bars, which uses this overload internally.
+  void onBarOhlc(uint32_t symbol, double openPrice, double highPrice, double lowPrice,
+                 double closePrice)
+  {
+    _executor.onBar(symbol, Price::fromDouble(openPrice), Price::fromDouble(highPrice),
+                    Price::fromDouble(lowPrice), Price::fromDouble(closePrice));
+  }
+
+  void beginBarCallbackWindow() { _executor.beginBarCallbackWindow(); }
+  void endBarCallbackWindow() { _executor.endBarCallbackWindow(); }
+
+  // Drops fills, live/held/conditional orders and run-scoped state while
+  // keeping installed configuration (slippage, queue model, latency, ...).
+  // Lets a caller replay several hand-driven runs through one executor.
+  void reset() { _executor.reset(); }
+
   void onTrade(uint32_t symbol, double price, bool isBuy)
   {
     _executor.onTrade(symbol, Price::fromDouble(price), isBuy);
@@ -754,6 +773,25 @@ inline void bindBacktest(py::module_& m)
       .def("on_bar", &PySimulatedExecutor::onBar,
            "Feed a bar close price for order matching",
            py::arg("symbol"), py::arg("close_price"))
+      .def("on_bar_ohlc", &PySimulatedExecutor::onBarOhlc,
+           "Feed a full OHLC bar: moves the market to the open (releasing any "
+           "order held from the previous bar's callback there), then walks "
+           "low -> high -> close so resting stops/targets match the intrabar "
+           "extremes. Use this, not on_bar, when driving the executor by hand "
+           "to reach the fills BacktestRunner.run_bars produces.",
+           py::arg("symbol"), py::arg("open"), py::arg("high"), py::arg("low"),
+           py::arg("close"))
+      .def("begin_bar_callback_window", &PySimulatedExecutor::beginBarCallbackWindow,
+           "Open the bar-callback window: every order submitted while it is "
+           "open is held instead of matched immediately, and released at the "
+           "next bar's open. Call before invoking a strategy's bar callback "
+           "by hand; always pair with end_bar_callback_window.")
+      .def("end_bar_callback_window", &PySimulatedExecutor::endBarCallbackWindow,
+           "Close the bar-callback window opened by begin_bar_callback_window.")
+      .def("reset", &PySimulatedExecutor::reset,
+           "Drop fills and run-scoped state while keeping installed "
+           "configuration (slippage, queue model, latency, ...), so a second "
+           "hand-driven run reports that run and not the sum of every run.")
       .def("on_trade", &PySimulatedExecutor::onTrade,
            "Feed a trade for order matching",
            py::arg("symbol"), py::arg("price"), py::arg("is_buy"))

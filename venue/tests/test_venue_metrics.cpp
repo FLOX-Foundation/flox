@@ -103,7 +103,7 @@ void test_gauges()
   const Metrics m = sampleMetrics();
   Gauges g;
   g.insuranceFundRaw = amountOf(Volume::fromDouble(50000));
-  g.fundingRate = 0.0001;
+  g.fundingRateRaw = kFundingRateScale / 10'000;  // 1bp
   g.openInterestRaw = amountOf(Volume::fromDouble(1200000));
   g.openPositions = 7;
   g.restingOrders = 42;
@@ -116,6 +116,7 @@ void test_gauges()
   CHECK(contains(txt, "# TYPE fme_insurance_fund_raw gauge"));
   CHECK(contains(txt, "fme_insurance_fund_raw 5000000000000"));  // 50000 * 1e8
   CHECK(contains(txt, "# TYPE fme_funding_rate gauge"));
+  CHECK(contains(txt, "fme_funding_rate 0.00010000"));
   CHECK(contains(txt, "fme_open_positions 7"));
   CHECK(contains(txt, "fme_resting_orders 42"));
   CHECK(contains(txt, "fme_mark_price_age_ns 250000000"));

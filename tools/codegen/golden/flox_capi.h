@@ -89,7 +89,10 @@ extern "C"
   // ============================================================
 
   // ABI version
-#define FLOX_CAPI_ABI_VERSION 2
+#define FLOX_CAPI_ABI_VERSION 3
+
+  // Feature Flags
+#define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1
 
   // Signal type codes (FloxSignal.order_type)
 #define FLOX_SIGNAL_TYPE_MARKET 0
@@ -239,6 +242,7 @@ extern "C"
     int64_t volume_raw;
     int64_t buy_volume_raw;
     uint32_t trade_count;
+    uint8_t close_reason;
   } FloxBar;
 
   typedef struct
@@ -1166,6 +1170,9 @@ extern "C"
   int64_t flox_best_bid_raw(FloxStrategyHandle s, uint32_t symbol);
   int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol);
   int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol);
+  uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
   void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext* out);
   int32_t flox_get_order_status(FloxStrategyHandle s, uint64_t order_id);
 
@@ -2221,6 +2228,12 @@ extern "C"
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                       double close_price);
+  void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                           double open_price, double high_price, double low_price,
+                                           double close_price);
+  void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  void flox_simulated_executor_reset(FloxSimulatedExecutorHandle executor);
   void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol,
                                         double price, uint8_t is_buy);
   void flox_simulated_executor_advance_clock(FloxSimulatedExecutorHandle executor,

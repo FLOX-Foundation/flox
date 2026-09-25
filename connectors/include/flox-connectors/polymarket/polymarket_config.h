@@ -18,13 +18,6 @@ namespace flox
 struct PolymarketConfig
 {
   std::string wsEndpoint{"wss://ws-subscriptions-clob.polymarket.com/ws/market"};
-  std::string restEndpoint{"https://clob.polymarket.com"};
-
-  /// Private key for signing orders (hex, with or without 0x prefix)
-  std::string privateKey;
-
-  /// Funder/proxy wallet address (0x...)
-  std::string funderWallet;
 
   /// Token IDs to subscribe to for market data
   std::vector<std::string> tokenIds;
@@ -32,9 +25,19 @@ struct PolymarketConfig
   int reconnectDelayMs{1000};
   int pingIntervalSec{5};
 
+  /// Window after which a token that stopped ticking is reported through
+  /// emitStaleData. 0 disables the check: a quiet prediction market is
+  /// normal, so there is no window the connector can pick for you.
+  int staleDataTimeoutMs{0};
+
   bool isValid() const { return !wsEndpoint.empty(); }
-  // (hasCredentials() removed -- it had zero call sites; the executor takes
-  //  credentials via its constructor, not this config.)
+  // The connector is WS-only and the order executor takes the signing key,
+  // the funder wallet and the REST endpoint through its own constructor, so
+  // privateKey/funderWallet/restEndpoint are gone: a config field nothing
+  // reads is a lie in the public API, and for the two credentials it also
+  // invited an operator to write a plaintext key into a file no code path
+  // ever consumed. (hasCredentials() went the same way, for the same
+  // reason.)
 };
 
 }  // namespace flox

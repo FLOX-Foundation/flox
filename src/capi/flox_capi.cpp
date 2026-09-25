@@ -749,6 +749,57 @@ int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol)
   FLOX_CAPI_LEAVE;
 }
 
+// The three above cannot separate "no quote" from a best quote of exactly 0.0:
+// both come back as a raw of 0, and a book that quotes through zero reaches
+// that price. These carry the presence flag in the return value instead.
+uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+{
+  FLOX_CAPI_ENTER(s);
+  auto bid = toStrategy(s)->ctx(symbol).book.bestBid();
+  if (!bid)
+  {
+    return 0;
+  }
+  if (price_out)
+  {
+    *price_out = bid->raw();
+  }
+  return 1;
+  FLOX_CAPI_LEAVE;
+}
+
+uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+{
+  FLOX_CAPI_ENTER(s);
+  auto ask = toStrategy(s)->ctx(symbol).book.bestAsk();
+  if (!ask)
+  {
+    return 0;
+  }
+  if (price_out)
+  {
+    *price_out = ask->raw();
+  }
+  return 1;
+  FLOX_CAPI_LEAVE;
+}
+
+uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out)
+{
+  FLOX_CAPI_ENTER(s);
+  auto mid = toStrategy(s)->ctx(symbol).mid();
+  if (!mid)
+  {
+    return 0;
+  }
+  if (price_out)
+  {
+    *price_out = mid->raw();
+  }
+  return 1;
+  FLOX_CAPI_LEAVE;
+}
+
 void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext* out)
 {
   FLOX_CAPI_ENTER_VOID(s);
@@ -763,9 +814,11 @@ void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolCo
   auto bid = c.book.bestBid();
   auto ask = c.book.bestAsk();
   out->book.bid_price_raw = bid ? bid->raw() : 0;
-  out->book.bid_qty_raw = 0;
+  // See BridgeStrategy::toBookSnapshot: the size at the best level comes
+  // from bidAtPrice()/askAtPrice(), and 0 is reserved for an empty side.
+  out->book.bid_qty_raw = bid ? c.book.bidAtPrice(*bid).raw() : 0;
   out->book.ask_price_raw = ask ? ask->raw() : 0;
-  out->book.ask_qty_raw = 0;
+  out->book.ask_qty_raw = ask ? c.book.askAtPrice(*ask).raw() : 0;
   auto mid = c.mid();
   out->book.mid_raw = mid ? mid->raw() : 0;
   auto spread = c.bookSpread();
@@ -1824,6 +1877,38 @@ void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle h, uint32_t symb
   FLOX_CAPI_LEAVE_VOID;
 }
 
+void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle h, uint32_t symbol,
+                                         double open_price, double high_price,
+                                         double low_price, double close_price)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(
+      symbol, Price::fromDouble(open_price), Price::fromDouble(high_price),
+      Price::fromDouble(low_price), Price::fromDouble(close_price));
+  FLOX_CAPI_LEAVE_VOID;
+}
+
+void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle h)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.beginBarCallbackWindow();
+  FLOX_CAPI_LEAVE_VOID;
+}
+
+void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle h)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.endBarCallbackWindow();
+  FLOX_CAPI_LEAVE_VOID;
+}
+
+void flox_simulated_executor_reset(FloxSimulatedExecutorHandle h)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.reset();
+  FLOX_CAPI_LEAVE_VOID;
+}
+
 void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle h, uint32_t symbol, double price, uint8_t is_buy)
 {
   FLOX_CAPI_ENTER_VOID(h);
@@ -1860,7 +1945,8 @@ static FloxBar toFloxBar(const Bar& bar)
           bar.close.raw(),
           bar.volume.raw(),
           bar.buyVolume.raw(),
-          static_cast<uint32_t>(bar.tradeCount.raw())};
+          static_cast<uint32_t>(bar.tradeCount.raw()),
+          static_cast<uint8_t>(bar.reason)};
 }
 
 // The batch copy of the close path. It has to agree bar for bar with

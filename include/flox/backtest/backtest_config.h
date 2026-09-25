@@ -13,12 +13,15 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
 namespace flox
 {
+
+class LatencyModel;
 
 enum class SlippageModel : uint8_t
 {
@@ -130,6 +133,25 @@ struct BacktestConfig
   // participate in queue matching or fills until ACCEPTED.
   int64_t submitAckLatencyNs{0};
   int64_t submitAckJitterNs{0};
+
+  // Wire latency between the strategy and the matching engine. When set, an
+  // order submitted at T is not marketable until T + orderDelay(), and its
+  // fill is stamped at the time it actually matched -- the market can move
+  // away in between, which is the whole point of modelling it. The delay is
+  // drawn once per order and added to the venue's own submitAckLatencyNs, so
+  // a model and an ack profile compose rather than override each other.
+  //
+  // Default null keeps the instant baseline, and so does a model that draws
+  // zero: the deferral is decided by the sampled value, not by whether a
+  // model is attached.
+  //
+  // Only orderDelay() is consumed today. feedDelay() and fillDelay() would
+  // have to move event timestamps and callback delivery, which the runner and
+  // the executor do not defer yet -- see docs/how-to/backtest-with-latency.md.
+  //
+  // Copied by value with the config, so every fold of a walk-forward run
+  // shares the one model (and, for a stochastic one, its RNG stream).
+  std::shared_ptr<LatencyModel> latency{};
 
   double riskFreeRate{0.0};
   // Annualization factor for Sharpe/Sortino/Calmar. NOTE: the equity curve is

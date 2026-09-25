@@ -286,3 +286,65 @@ TEST(JournalWindow, AForeignFormatVersionThrowsRatherThanReturningAPrefix)
   EXPECT_NE(what.find("version"), std::string::npos) << "and it must name what it found: " << what;
   std::remove(seg.c_str());
 }
+
+// A window replayed over a pro-rata instrument.
+//
+// The extract is evidence, and what makes it evidence is that the replay
+// resolves fills under the rule the venue actually ran. The allocation rule
+// travels on the config, so replayWindow has to read it: a pro-rata segment
+// replayed under price-time hands a disputing counterparty an allocation the
+// venue never made -- the same three makers, different sizes, and nothing in
+// the answer says which rule produced it.
+//
+// One level of 2 + 3 + 5 met by a buyer for 5. Pro-rata gives every maker
+// half of what it showed (1.0 / 1.5 / 2.5); price-time gives the first two
+// everything and the third nothing.
+TEST(JournalWindow, AProRataSegmentIsReplayedUnderProRata)
+{
+  SymbolConfig c = cfg();
+  c.matchPolicy = MatchPolicy::ProRata;
+
+  Script s;
+  s.cmds.emplace_back(2000, InboundCommand{limit(1, Side::SELL, 100, 2, kOther)});
+  s.cmds.emplace_back(2010, InboundCommand{limit(2, Side::SELL, 100, 3, kOther)});
+  s.cmds.emplace_back(2020, InboundCommand{limit(3, Side::SELL, 100, 5, kOther)});
+  s.cmds.emplace_back(2030, InboundCommand{limit(4, Side::BUY, 100, 5, kSubject)});
+
+  const std::string seg = writeSegment(s);
+  const WindowResult r = replayWindow(c, "", {seg}, WindowQuery{kWindowFrom, kWindowTo, 0});
+  std::remove(seg.c_str());
+
+  EXPECT_EQ(r.recordsReplayed, s.cmds.size());
+
+  std::vector<std::pair<OrderId, Quantity>> fills;
+  int trades = 0;
+  for (const auto& we : r.events)
+  {
+    if (const auto* t = std::get_if<Trade>(&we.event); t != nullptr)
+    {
+      ++trades;
+      bool seen = false;
+      for (auto& [id, q] : fills)
+      {
+        if (id == t->makerId)
+        {
+          q += t->quantity;
+          seen = true;
+        }
+      }
+      if (!seen)
+      {
+        fills.emplace_back(t->makerId, t->quantity);
+      }
+    }
+  }
+
+  ASSERT_EQ(trades, 3) << "pro-rata resolves every maker at the level, price-time stops early: "
+                          "the window was replayed under the wrong allocation rule";
+  ASSERT_EQ(fills.size(), 3u);
+  for (const auto& [id, q] : fills)
+  {
+    const Quantity want = id == 1 ? qty(1.0) : (id == 2 ? qty(1.5) : qty(2.5));
+    EXPECT_EQ(q, want) << "maker " << id << " was allocated a size this venue never gave it";
+  }
+}

@@ -2,7 +2,9 @@
 
 Per-trade fills in flox work in instant mode by default: an order created at time `T` sees the next observed trade as its fill. That is fine for bar-driven strategies on minute-or-larger timeframes. For market-making, latency arbitrage, and HFT-style work, the gap between event arrival, decision, and round-trip to the exchange is what determines whether a fill happens at all.
 
-Latency models live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface. Each draw covers `feed` (event arrival to engine), `order` (engine submit to exchange), and `fill` (exchange match to engine notification). These models are a sampling primitive: the user app applies samples to its own timestamps before submitting orders to `SimulatedExecutor`. `BacktestConfig` has no latency field. For ack latency that the simulator applies itself, see the `SimulatedExecutor` setters at the bottom of this page.
+Latency models live in the C++ engine and are exposed through every binding (Python, Node, Codon, QuickJS) with the same surface. Each draw covers `feed` (event arrival to engine), `order` (engine submit to exchange), and `fill` (exchange match to engine notification).
+
+In C++, `BacktestConfig::latency` takes one of these models and the simulator applies its `order_delay()` itself: an order submitted at `T` is not marketable until `T + order_delay()`, and its fill is stamped at the time it actually matched. `feed_delay()` and `fill_delay()` are still a sampling primitive the user app applies to its own timestamps -- see [What is wired, what is not](#what-is-wired-what-is-not). For ack latency the simulator has always applied, see the `SimulatedExecutor` setters at the bottom of this page.
 
 ## The four models
 
@@ -76,9 +78,41 @@ Every model implements `feed_delay() / order_delay() / fill_delay()` returning n
 
 Pass `seed` for reproducible runs. `reset(seed)` replays the same sequence.
 
-## Applying samples in your backtest loop
+## Order latency the engine applies for you
 
-Phase 1 leaves integration to the user app. Around a `SimulatedExecutor` the pattern is:
+Attach a model to the run configuration and the executor holds each order out
+of matching for the delay it draws:
+
+```cpp
+BacktestConfig cfg;
+cfg.latency = std::make_shared<ConstantLatency>(/*feed_ns=*/0,
+                                                /*order_ns=*/5'000'000,
+                                                /*fill_ns=*/0);
+
+SimulatedExecutor exec(clock);
+exec.applyConfig(cfg);           // or exec.setLatencyModel(model) directly
+
+exec.submitOrder(marketBuy);     // SUBMITTED fires; nothing fills yet
+clock.advanceTo(submitNs + 5'000'000);
+exec.onBookUpdate(...);          // ACCEPTED, then the fill, stamped here
+```
+
+The delay is drawn once per order and added to the venue's own
+`submit_ack_latency_ns`, so a model and an ack profile compose rather than
+override each other. The branch is on the sampled value, not on whether a
+model is attached: a `ConstantLatency(0, 0, 0)` reproduces the instant
+baseline to the nanosecond.
+
+The market is free to move inside the window, which is the point -- the order
+fills against whatever book is standing when it arrives, not the one the
+strategy saw. A stochastic model keeps drawing from where it left off across
+a re-run; call `model.reset(seed)` before the second run to replay the same
+sequence.
+
+## Applying feed and fill samples in your backtest loop
+
+The other two components are left to the user app. Around a
+`SimulatedExecutor` the pattern is:
 
 === "Python"
 
@@ -157,9 +191,20 @@ For bar-driven strategies on minute-or-larger timeframes, latency rarely changes
 - You are testing a latency-arbitrage strategy where round-trip is the whole point.
 - A live recording diverges from the instant-mode backtest and you want to localize whether the gap is latency-driven.
 
-## What is not here yet
+## What is wired, what is not
 
-- A single `BacktestConfig.latency` knob. `BacktestConfig` has no latency field; the models on this page are a sampling primitive that the user app applies to its own timestamps.
+| Component | Applied by | Effect |
+|---|---|---|
+| `order_delay()` | The engine, from `BacktestConfig::latency` | The order is not marketable until the delay has elapsed; the fill is stamped when it matched |
+| `feed_delay()` | Your app | Add it to the event timestamp before handing the event to the simulator |
+| `fill_delay()` | Your app | The simulator dispatches the fill callback as soon as the order matches |
+
+Still open:
+
+- `BacktestConfig::latency` is a C++ field. The Python, Node and QuickJS
+  runners take a fee rate and an initial capital rather than a
+  `BacktestConfig`, and there is no C API call to attach a model to a
+  simulated executor, so from a binding the order delay is not reachable yet.
 - Per-symbol calibration. The models are global per component.
 
 `SimulatedExecutor` does have its own ack-latency knobs, independent of the models above, and they *are* wired into the fill path:

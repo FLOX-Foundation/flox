@@ -279,6 +279,9 @@ class BacktestRunner : public ISignalHandler
   }
   // Keeps a venue executor's clock in lockstep with the runner's.
   void advanceClocks(UnixNanos ns);
+  // Hands the venue's fee ladder (when there is one) to a result before it
+  // replays the fills, so the fills are priced at the venue's tier.
+  void attachFeeSchedule(BacktestResult& res) const;
 
   BacktestConfig _config;
   SimulatedClock _clock;

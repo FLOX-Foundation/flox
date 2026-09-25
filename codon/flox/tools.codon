@@ -2,6 +2,10 @@
 # Wrappers over the C API for non-strategy infrastructure.
 
 from flox.order_type_codes import order_type_code_from_str
+from flox.layout import _FLOXBAR_SIZE, _FLOXBAR_START_NS, _FLOXBAR_END_NS
+from flox.layout import _FLOXBAR_OPEN_RAW, _FLOXBAR_HIGH_RAW, _FLOXBAR_LOW_RAW
+from flox.layout import _FLOXBAR_CLOSE_RAW, _FLOXBAR_VOLUME_RAW
+from flox.layout import _FLOXBAR_BUY_VOLUME_RAW, _FLOXBAR_TRADE_COUNT, _FLOXBAR_CLOSE_REASON
 
 # The C ABI handshake runs when this module is imported: see
 # flox/abi.codon. Every module that declares a `from C import`
@@ -27,6 +31,10 @@ from C import flox_simulated_executor_submit_order(cobj, u64, u8, f64, f64, u8, 
 from C import flox_simulated_executor_cancel_order(cobj, u64)
 from C import flox_simulated_executor_cancel_all(cobj, u32)
 from C import flox_simulated_executor_on_bar(cobj, u32, f64)
+from C import flox_simulated_executor_on_bar_ohlc(cobj, u32, f64, f64, f64, f64)
+from C import flox_simulated_executor_begin_bar_callback_window(cobj)
+from C import flox_simulated_executor_end_bar_callback_window(cobj)
+from C import flox_simulated_executor_reset(cobj)
 from C import flox_simulated_executor_on_trade(cobj, u32, f64, u8)
 from C import flox_simulated_executor_advance_clock(cobj, i64)
 from C import flox_simulated_executor_fill_count(cobj) -> u32
@@ -157,7 +165,7 @@ from C import flox_aggregate_heikin_ashi_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[
 # bindings.h) -- a raw trade array in, an FloxBar array out. Unlike
 # Python and Node, Codon had no wrapper: the declaration above types
 # `bars_out` as `cobj`, so calling any of these six meant hand-rolling
-# the output buffer and reading FloxBar's 72-byte layout back by pointer
+# the output buffer and reading FloxBar's layout back by pointer
 # arithmetic at every call site. AggBar + _decode_agg_bars() below do
 # that once, the same way DataReader.read_trades() already does for
 # FloxTradeRecord a few hundred lines down.
@@ -176,6 +184,10 @@ class AggBar:
     volume_raw:    int
     buy_volume_raw: int
     trade_count:   int
+    # flox::Bar::reason (BarCloseReason): 0=Threshold, 1=Gap, 2=Forced,
+    # 3=Warmup. Carried through so a batch-aggregated bar says why it
+    # closed the same way the live callback path already does.
+    close_reason:  int
 
     def open(self) -> float:
         return float(self.open_raw) / 1e8
@@ -197,33 +209,22 @@ class AggBar:
 
 
 def _decode_agg_bars(buf: List[byte], count: int) -> List[AggBar]:
-    # FloxBar layout (include/flox/capi/flox_capi.h):
-    #   i64 start_time_ns   (0)
-    #   i64 end_time_ns     (8)
-    #   i64 open_raw        (16)
-    #   i64 high_raw        (24)
-    #   i64 low_raw         (32)
-    #   i64 close_raw       (40)
-    #   i64 volume_raw      (48)
-    #   i64 buy_volume_raw  (56)
-    #   u32 trade_count     (64) + 4 bytes padding
-    #   total: 72 bytes (python/aggregator_bindings.h static_asserts this)
-    stride = 72
+    # FloxBar's size and offsets come from flox/layout.codon, generated from
+    # the IDL spec; tests/test_capi_event_layout.cpp holds them to offsetof.
     result = list[AggBar]()
     for i in range(count):
-        base = i * stride
-        lp = Ptr[i64](Ptr[byte](buf.arr.ptr) + base)
-        up = Ptr[u32](Ptr[byte](buf.arr.ptr) + base)
+        p = Ptr[byte](buf.arr.ptr) + i * _FLOXBAR_SIZE
         result.append(AggBar(
-            start_time_ns=int(lp[0]),
-            end_time_ns=int(lp[1]),
-            open_raw=int(lp[2]),
-            high_raw=int(lp[3]),
-            low_raw=int(lp[4]),
-            close_raw=int(lp[5]),
-            volume_raw=int(lp[6]),
-            buy_volume_raw=int(lp[7]),
-            trade_count=int(up[16]),  # byte offset 64 -> u32 index 16
+            start_time_ns=int(Ptr[i64](p + _FLOXBAR_START_NS)[0]),
+            end_time_ns=int(Ptr[i64](p + _FLOXBAR_END_NS)[0]),
+            open_raw=int(Ptr[i64](p + _FLOXBAR_OPEN_RAW)[0]),
+            high_raw=int(Ptr[i64](p + _FLOXBAR_HIGH_RAW)[0]),
+            low_raw=int(Ptr[i64](p + _FLOXBAR_LOW_RAW)[0]),
+            close_raw=int(Ptr[i64](p + _FLOXBAR_CLOSE_RAW)[0]),
+            volume_raw=int(Ptr[i64](p + _FLOXBAR_VOLUME_RAW)[0]),
+            buy_volume_raw=int(Ptr[i64](p + _FLOXBAR_BUY_VOLUME_RAW)[0]),
+            trade_count=int(Ptr[u32](p + _FLOXBAR_TRADE_COUNT)[0]),
+            close_reason=int(Ptr[u8](p + _FLOXBAR_CLOSE_REASON)[0]),
         ))
     return result
 
@@ -467,6 +468,30 @@ class SimulatedExecutor:
 
     def on_bar(self, symbol: int, close_price: float):
         flox_simulated_executor_on_bar(self._h, u32(symbol), close_price)
+
+    def on_bar_ohlc(self, symbol: int, open: float, high: float, low: float, close: float):
+        """Open-aware form: moves the market to the open (releasing any order
+        held from the previous bar's callback there), then walks
+        low -> high -> close so resting stops/targets match the intrabar
+        extremes. Use this, not on_bar, to drive the executor by hand to the
+        same fills BacktestRunner produces on the same bars."""
+        flox_simulated_executor_on_bar_ohlc(self._h, u32(symbol), open, high, low, close)
+
+    def begin_bar_callback_window(self):
+        """Open the bar-callback window: every order submitted while it is
+        open is held instead of matched immediately, and released at the
+        next on_bar_ohlc call's open. Call before invoking a hand-driven bar
+        callback; always pair with end_bar_callback_window."""
+        flox_simulated_executor_begin_bar_callback_window(self._h)
+
+    def end_bar_callback_window(self):
+        flox_simulated_executor_end_bar_callback_window(self._h)
+
+    def reset(self):
+        """Drop fills and run-scoped state while keeping installed
+        configuration (slippage, queue model, latency, ...), so a second
+        hand-driven run reports that run and not the sum of every run."""
+        flox_simulated_executor_reset(self._h)
 
     def on_trade(self, symbol: int, price: float, is_buy: bool):
         flox_simulated_executor_on_trade(self._h, u32(symbol), price,

@@ -1,6 +1,9 @@
 # Bar aggregation
 
-All functions take `(timestamps, prices, quantities, isBuy, param)` where `timestamps`, `prices`, `quantities` are `Float64Array` and `isBuy` is `Uint8Array`. Return an array of bar objects.
+All functions take `(timestamps, prices, quantities, isBuy, param)` where `prices` and
+`quantities` are `Float64Array` and `isBuy` is `Uint8Array`. `timestamps` is a
+`Float64Array` or a `BigInt64Array` — pass the latter for real wall-clock nanoseconds,
+which a double cannot hold exactly. Return an array of bar objects.
 
 `aggregateRenkoBars` can return more bar objects than there were input trades: a trade that
 gaps past more than one brick width closes the brick that was forming and synthesizes the
@@ -20,8 +23,8 @@ Each returned bar object:
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `startTimeNs` | `number` | Open time (ns) |
-| `endTimeNs` | `number` | Close time (ns) |
+| `startTimeNs` | `bigint` | Open time (ns) |
+| `endTimeNs` | `bigint` | Close time (ns) |
 | `open` | `number` | Open price |
 | `high` | `number` | High price |
 | `low` | `number` | Low price |
@@ -29,6 +32,7 @@ Each returned bar object:
 | `volume` | `number` | Total volume |
 | `buyVolume` | `number` | Buy-side volume |
 | `tradeCount` | `number` | Number of trades |
+| `closeReason` | `number` | Why the bar closed: `0` threshold, `2` forced, `3` warmup. Every bar this batch path returns closed on its own threshold, so `0` here. |
 
 Only fully closed bars are returned -- a trailing bar still open when the
 trade array ends is dropped, so the bar count depends only on the input.

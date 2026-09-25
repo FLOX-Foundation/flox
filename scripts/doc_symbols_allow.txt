@@ -24,5 +24,7 @@ docs/contributors/parity-gate.md:flox.LinearSlope  # hypothetical top-level name
 
 # --- surfaces this gate does not model ------------------------------------
 docs/how-to/strategy-hot-reload.md:flox.register  # QuickJS global (quickjs/flox/*.js), not the Python/Node surface
+docs/explanation/javascript-value-boundary.md:flox.timeBars  # QuickJS global (src/quickjs/js_strategy.cpp prelude), not the Python/Node surface
+docs/explanation/javascript-value-boundary.md:flox.loadCsv  # QuickJS global (src/quickjs/js_strategy.cpp prelude), not the Python/Node surface
 
 # --- TODO: node/index.d.ts is missing declarations that node/index.js ships -

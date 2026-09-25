@@ -45,6 +45,17 @@ Read side, now `BigInt`:
 - backtest stats `startTimeNs` / `endTimeNs`, equity-point `timestampNs`
 - trace reader run bounds, partition `fromNs` / `toNs` / `warmupFromNs`,
   merged-tape `firstEventNs` / `lastEventNs`
+- `bar.ts` on every bar object: the aggregators (`flox.timeBars` and the
+  rest) and `flox.loadCsv` / `Engine.loadCsv`
+
+`bar.ts` from `loadCsv` changed unit as well as type. It used to be a
+millisecond `Number`, while every other bar source reported nanoseconds,
+so a script that read one bar from a CSV and one from an aggregator was
+out by 1e6 and threw a `TypeError` the moment it subtracted one from the
+other. A CSV column in seconds, milliseconds or microseconds is still
+detected and scaled, but what reaches the script is always nanoseconds.
+`SignalBuilder` and `Engine.run` follow: they timestamp, order and match
+signals against bars in nanoseconds, and take a `BigInt` or a `Number`.
 
 Write side: every binding that takes a nanosecond argument accepts a
 `BigInt` or a `Number`, so `advanceClock`, `writeTrade`, `writeBook`,
@@ -89,6 +100,40 @@ console.log('ts=' + trade.timestampNs);
 `console.log` on a whole event object still works: the console shim falls
 back to a plain string conversion when `JSON.stringify` refuses the
 object.
+
+## A pre-trade gate that fails denies the order
+
+The three pre-trade gates — `RiskManager.allow`, `KillSwitch.check`,
+`OrderValidator.validate` — are C function pointers the engine calls
+inline while a signal is in flight. Two failure modes used to be
+unhandled: the gate threw, and the thrown value unwound out of a bridge
+declared to C and surfaced at whatever JavaScript frame was on the stack;
+or the gate returned something that was not a boolean, which one binding
+folded into a deny and another into an allow.
+
+The policy, one for every binding: a host-language throw and a
+non-boolean return both DENY the order, and both are reported. Neither
+ever lets the order through, and neither escapes through the C boundary.
+A gate that plainly returns false is a decision, not a failure, and is
+not reported.
+
+In Node, reported means `runner.hookErrors()`: an array of
+`{ hook, method, message }` records accumulated on the runner, oldest
+first, readable synchronously after the call that failed. The
+process-wide log callback is asynchronous and shared, so it cannot say
+which runner denied what.
+
+```javascript
+runner.setKillSwitch({ check() { throw new Error('feed is down'); } });
+runner.onTrade(sym, 100, 1, true, 1000n);   // the order is denied
+
+runner.hookErrors();
+// [ { hook: 'killSwitch', method: 'check', message: 'feed is down' } ]
+```
+
+A throw out of `Executor.capabilities()` crosses the same boundary and is
+handled the same way: the executor is read as supporting nothing, and the
+throw is recorded.
 
 ## String arguments reject values they cannot convert
 

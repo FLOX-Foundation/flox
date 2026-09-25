@@ -36,6 +36,7 @@ batch function.
 | `volume_raw` | `int64` | Total volume * 10^8 |
 | `buy_volume_raw` | `int64` | Buy volume * 10^8 |
 | `trade_count` | `int64` | Number of trades in bar |
+| `close_reason` | `uint8` | Why the bar closed: `0` threshold, `2` forced, `3` warmup. Every bar this batch path returns closed on its own threshold, so `0` here. |
 
 ---
 

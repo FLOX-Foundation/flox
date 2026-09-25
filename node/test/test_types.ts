@@ -181,7 +181,7 @@ engine.resample("BTCUSDT", "BTCUSDT_1h", "1h");
 const _bc: number = engine.barCount();
 const _bcSym: number = engine.barCount("BTCUSDT");
 void _bcSym;
-const _ts: Float64Array = engine.ts();
+const _ts: BigInt64Array = engine.ts();
 const _opens: Float64Array = engine.open("BTCUSDT");
 const _highs: Float64Array = engine.high();
 const _lows: Float64Array = engine.low();

@@ -100,7 +100,7 @@ Referencing an unregistered symbol name raises `FloxError(code="E_SYM_001")`.
 |--------|------|-------------|
 | `symbols` | `list[str]` | Registered symbol names (property) |
 | `bar_count(symbol='')` | `int` | Number of bars loaded for a symbol |
-| `ts(symbol='')` | `float64[]` | Bar timestamps in nanoseconds |
+| `ts(symbol='')` | `int64[]` | Bar timestamps in nanoseconds |
 | `open(symbol='')` | `float64[]` | Open prices |
 | `high(symbol='')` | `float64[]` | High prices |
 | `low(symbol='')` | `float64[]` | Low prices |

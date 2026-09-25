@@ -258,9 +258,48 @@ class Decimal
 
   constexpr bool isZero() const { return _raw == 0; }
 
+  // Formatted from the raw integer rather than through std::to_string(double).
+  // std::to_string writes the decimal separator of the C locale, and
+  // std::locale::global with a named locale sets that locale too, so on a host
+  // configured for comma decimals every price and quantity in an order body
+  // went to the venue as "60000,000000". The venue-facing shape is unchanged:
+  // six fractional digits, the same as the printf "%f" std::to_string uses.
   std::string toString() const
   {
-    return std::to_string(toDouble());
+    static constexpr int kFractionDigits = 6;
+    static constexpr uint64_t kFractionScale = 1000000;
+    static_assert(static_cast<uint64_t>(Scale) <= (UINT64_MAX / kFractionScale),
+                  "Scale too large to rescale to six fractional digits in 64 bits");
+
+    const bool negative = _raw < 0;
+    // Negated as unsigned: the most negative int64_t has no positive
+    // counterpart.
+    const uint64_t magnitude =
+        negative ? (0ULL - static_cast<uint64_t>(_raw)) : static_cast<uint64_t>(_raw);
+    const uint64_t scale = static_cast<uint64_t>(Scale);
+
+    uint64_t whole = magnitude / scale;
+    const uint64_t remainder = magnitude % scale;
+    uint64_t fraction = (remainder * kFractionScale + scale / 2) / scale;
+    if (fraction >= kFractionScale)
+    {
+      fraction -= kFractionScale;
+      ++whole;
+    }
+
+    std::string out;
+    out.reserve(24);
+    if (negative)
+    {
+      out.push_back('-');
+    }
+    out.append(std::to_string(whole));
+    out.push_back('.');
+    for (uint64_t divisor = kFractionScale / 10; divisor > 0; divisor /= 10)
+    {
+      out.push_back(static_cast<char>('0' + (fraction / divisor) % 10));
+    }
+    return out;
   }
 
   // Construct a value carrying an explicit runtime scale. In release the

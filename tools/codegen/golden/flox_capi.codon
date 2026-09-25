@@ -7,7 +7,10 @@
 # file is the flat reference, not directly imported by user code.
 
 # ── macro: abi_version ──
-FLOX_CAPI_ABI_VERSION: int = 2
+FLOX_CAPI_ABI_VERSION: int = 3
+
+# ── macro: feature_flags ──
+FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE: int = 1
 
 # ── macro: signal_type ──
 FLOX_SIGNAL_TYPE_MARKET: int = 0
@@ -177,6 +180,9 @@ from C import flox_last_trade_price_raw(cobj, u32) -> i64
 from C import flox_best_bid_raw(cobj, u32) -> i64
 from C import flox_best_ask_raw(cobj, u32) -> i64
 from C import flox_mid_price_raw(cobj, u32) -> i64
+from C import flox_best_bid_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import flox_best_ask_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import flox_mid_price_raw_opt(cobj, u32, Ptr[i64]) -> u8
 from C import flox_get_symbol_context(cobj, u32, cobj)
 from C import flox_get_order_status(cobj, u64) -> i32
 
@@ -781,6 +787,10 @@ from C import flox_simulated_executor_set_iceberg_jitter_seed(cobj, u64)
 from C import flox_simulated_executor_cancel_order(cobj, u64)
 from C import flox_simulated_executor_cancel_all(cobj, u32)
 from C import flox_simulated_executor_on_bar(cobj, u32, float)
+from C import flox_simulated_executor_on_bar_ohlc(cobj, u32, float, float, float, float)
+from C import flox_simulated_executor_begin_bar_callback_window(cobj)
+from C import flox_simulated_executor_end_bar_callback_window(cobj)
+from C import flox_simulated_executor_reset(cobj)
 from C import flox_simulated_executor_on_trade(cobj, u32, float, u8)
 from C import flox_simulated_executor_advance_clock(cobj, i64)
 from C import flox_simulated_executor_fill_count(cobj) -> u32

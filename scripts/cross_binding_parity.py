@@ -236,9 +236,8 @@ def main() -> int:
 
     js_bars_script = (
         "const flox = require('.');\n"
-        # aggregateTimeBars takes timestamps as a Float64Array (like every
-        # other batch aggregator input), not BigInt64Array -- that's the
-        # DataReader convention, not this one.
+        # aggregateTimeBars takes its timestamp column either way; a
+        # Float64Array is enough for the small readings built above.
         f"const ts = new Float64Array({ts_bars});\n"
         f"const px = new Float64Array({px_bars});\n"
         f"const qty = new Float64Array({qty_bars});\n"

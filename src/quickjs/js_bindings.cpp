@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -505,11 +506,19 @@ static JSValue js_last_trade_price(JSContext* ctx, JSValueConst, int, JSValueCon
   return JS_NewFloat64(ctx, flox_price_to_double(raw));
 }
 
+// null when the side is empty, matching the book bindings below. The raw
+// accessors answer 0 for an empty side and for a best quote of exactly 0.0
+// alike, and a market that trades through zero reaches that price, so the
+// number 0 cannot carry both meanings on the way into JS.
 static JSValue js_best_bid(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  int64_t raw = flox_best_bid_raw(h, sym);
+  int64_t raw = 0;
+  if (!flox_best_bid_raw_opt(h, sym, &raw))
+  {
+    return JS_NULL;
+  }
   return JS_NewFloat64(ctx, flox_price_to_double(raw));
 }
 
@@ -517,7 +526,11 @@ static JSValue js_best_ask(JSContext* ctx, JSValueConst, int, JSValueConst* argv
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  int64_t raw = flox_best_ask_raw(h, sym);
+  int64_t raw = 0;
+  if (!flox_best_ask_raw_opt(h, sym, &raw))
+  {
+    return JS_NULL;
+  }
   return JS_NewFloat64(ctx, flox_price_to_double(raw));
 }
 
@@ -525,7 +538,11 @@ static JSValue js_mid_price(JSContext* ctx, JSValueConst, int, JSValueConst* arg
 {
   GET_HANDLE_OR_THROW(ctx, argv);
   uint32_t sym = toUint32(ctx, argv[1]);
-  int64_t raw = flox_mid_price_raw(h, sym);
+  int64_t raw = 0;
+  if (!flox_mid_price_raw_opt(h, sym, &raw))
+  {
+    return JS_NULL;
+  }
   return JS_NewFloat64(ctx, flox_price_to_double(raw));
 }
 
@@ -1895,6 +1912,37 @@ static JSValue js_executor_on_bar(JSContext* ctx, JSValueConst, int, JSValueCons
 {
   flox_simulated_executor_on_bar(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
                                  toUint32(ctx, argv[1]), toDouble(ctx, argv[2]));
+  return JS_UNDEFINED;
+}
+// Open-aware form: moves the market to the open (releasing any order held
+// from the previous bar's callback there), then walks low -> high -> close.
+// Use this, not on_bar, to drive the executor by hand to the same fills
+// BacktestRunner produces on the same bars.
+static JSValue js_executor_on_bar_ohlc(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_simulated_executor_on_bar_ohlc(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])),
+      toUint32(ctx, argv[1]), toDouble(ctx, argv[2]), toDouble(ctx, argv[3]),
+      toDouble(ctx, argv[4]), toDouble(ctx, argv[5]));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_begin_bar_callback_window(JSContext* ctx, JSValueConst, int,
+                                                     JSValueConst* argv)
+{
+  flox_simulated_executor_begin_bar_callback_window(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_end_bar_callback_window(JSContext* ctx, JSValueConst, int,
+                                                   JSValueConst* argv)
+{
+  flox_simulated_executor_end_bar_callback_window(
+      static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
+  return JS_UNDEFINED;
+}
+static JSValue js_executor_reset(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
+{
+  flox_simulated_executor_reset(static_cast<FloxSimulatedExecutorHandle>(getHandle(ctx, argv[0])));
   return JS_UNDEFINED;
 }
 static JSValue js_executor_on_trade(JSContext* ctx, JSValueConst, int, JSValueConst* argv)
@@ -6618,6 +6666,9 @@ static JSValue barsToJsArray(JSContext* ctx, const std::vector<FloxBar>& bars)
     JS_SetPropertyStr(ctx, o, "volume", JS_NewFloat64(ctx, b.volume_raw / kScale));
     JS_SetPropertyStr(ctx, o, "buyVolume", JS_NewFloat64(ctx, b.buy_volume_raw / kScale));
     JS_SetPropertyStr(ctx, o, "trades", JS_NewUint32(ctx, b.trade_count));
+    // flox::Bar::reason, carried through so a batch-aggregated bar says why
+    // it closed the same way the live callback path's bar object does.
+    JS_SetPropertyStr(ctx, o, "closeReason", JS_NewUint32(ctx, b.close_reason));
     JS_SetPropertyUint32(ctx, arr, static_cast<uint32_t>(i), o);
   }
   return arr;
@@ -6680,9 +6731,31 @@ static JSValue doAgg(JSContext* c, JSValueConst* a, AggTimeFn fn, double param)
   return barsToJsArray(c, bars);
 }
 
+// flox.timeBars and flox.heikinBars document their interval in
+// nanoseconds; the C ABI takes seconds as a double and multiplies by 1e9
+// again on the other side. The JS argument used to be passed straight
+// through, so a script following the docs asked for 60'000'000'000
+// seconds and got a single bar covering the whole tape. Convert once,
+// here, and accept a BigInt or a Number (toInt64 takes either).
+//
+// A plain ns / 1e9 can come back one nanosecond short after the
+// truncation on the other side, so step the double up until the round
+// trip lands on the nanosecond count that was asked for.
+static double intervalNsToSeconds(int64_t interval_ns)
+{
+  double seconds = static_cast<double>(interval_ns) / 1'000'000'000.0;
+  for (int i = 0; i < 4 && interval_ns > 0 &&
+                  static_cast<int64_t>(seconds * 1'000'000'000.0) < interval_ns;
+       ++i)
+  {
+    seconds = std::nextafter(seconds, std::numeric_limits<double>::infinity());
+  }
+  return seconds;
+}
+
 static JSValue js_agg_time(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_time_bars, toDouble(c, a[4]));
+  return doAgg(c, a, flox_aggregate_time_bars, intervalNsToSeconds(toInt64(c, a[4])));
 }
 
 static JSValue js_agg_tick(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -6716,7 +6789,7 @@ static JSValue js_agg_renko(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_agg_heikin(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_heikin_ashi_bars, toDouble(c, a[4]));
+  return doAgg(c, a, flox_aggregate_heikin_ashi_bars, intervalNsToSeconds(toInt64(c, a[4])));
 }
 
 // ============================================================
@@ -6934,17 +7007,19 @@ static JSValue js_load_csv(JSContext* c, JSValueConst, int, JSValueConst* a)
     }
     try
     {
-      // Store ts in milliseconds — safe JS integer range (13 digits < 2^53).
-      // Nanoseconds (19 digits) would lose precision as float64.
+      // Store ts in nanoseconds, as a BigInt. Every other bar source here
+      // (the aggregators, the live onBar path) reports a nanosecond
+      // BigInt, and a millisecond Number both truncated everything below
+      // the millisecond and threw a TypeError the moment a script
+      // subtracted a CSV bar's ts from an aggregator bar's ts.
       int64_t ts_ns = detectTimestampNs(std::stoll(parts[0]));
-      int64_t ts_ms = ts_ns / 1'000'000LL;
       double o = std::stod(parts[1]);
       double h = std::stod(parts[2]);
       double l = std::stod(parts[3]);
       double cl = std::stod(parts[4]);
       double v = std::stod(parts[5]);
       JSValue o2 = JS_NewObject(c);
-      JS_SetPropertyStr(c, o2, "ts", JS_NewInt64(c, ts_ms));
+      JS_SetPropertyStr(c, o2, "ts", JS_NewBigInt64(c, ts_ns));
       JS_SetPropertyStr(c, o2, "open", JS_NewFloat64(c, o));
       JS_SetPropertyStr(c, o2, "high", JS_NewFloat64(c, h));
       JS_SetPropertyStr(c, o2, "low", JS_NewFloat64(c, l));
@@ -7141,6 +7216,12 @@ bool registerFloxBindings(JSContext* ctx)
   addGlobalFunc(ctx, "__flox_simulated_executor_set_iceberg_jitter_seed",
                 js_executor_set_iceberg_jitter_seed, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_bar", js_executor_on_bar, 3);
+  addGlobalFunc(ctx, "__flox_simulated_executor_on_bar_ohlc", js_executor_on_bar_ohlc, 6);
+  addGlobalFunc(ctx, "__flox_simulated_executor_begin_bar_callback_window",
+                js_executor_begin_bar_callback_window, 1);
+  addGlobalFunc(ctx, "__flox_simulated_executor_end_bar_callback_window",
+                js_executor_end_bar_callback_window, 1);
+  addGlobalFunc(ctx, "__flox_simulated_executor_reset", js_executor_reset, 1);
   addGlobalFunc(ctx, "__flox_simulated_executor_on_trade", js_executor_on_trade, 4);
   addGlobalFunc(ctx, "__flox_simulated_executor_advance_clock", js_executor_advance, 2);
   addGlobalFunc(ctx, "__flox_simulated_executor_fill_count", js_executor_fill_count, 1);
