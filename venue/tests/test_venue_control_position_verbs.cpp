@@ -418,3 +418,162 @@ TEST(VenueControlPositionVerbs, SetAccountRiskLimitsTakesTheTopOfTheMaxOpenOrder
   EXPECT_TRUE(d.forwarded.empty());
   EXPECT_EQ(d.journaled(), afterFirst);
 }
+
+// The registry is what the control plane validates against, and the check is
+// per verb: a symbol the venue never listed has no shard to route to, so the
+// record would be sequenced into whichever engine the sink happens to be and
+// then refused there -- after the journal already holds it. Refused at the
+// edge instead, where the refusal costs nothing and names what is wrong.
+TEST(VenueControlPositionVerbs, SetAccountRiskLimitsRefusesAnUnlistedSymbol)
+{
+  Desk d("venue_cpv_acctrisk_unknown");
+  const uint64_t before = d.journaled();
+
+  const std::string reply = d.ask(
+      R"({"method":"setAccountRiskLimits","symbol":8,"account":1,"maxOrderQty":1.0,)"
+      R"("maxOrderNotional":0})");
+  EXPECT_NE(reply.find("unknown_symbol"), std::string::npos)
+      << "a limit was accepted for an instrument the registry does not know";
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before) << "a limit on an unlisted symbol reached the journal";
+}
+
+// The same check on the same footing for the close: an owner cannot close a
+// position on an instrument this venue does not carry.
+TEST(VenueControlPositionVerbs, ForceClosePositionRefusesAnUnlistedSymbol)
+{
+  Desk d("venue_cpv_forceclose_unknown");
+  const uint64_t before = d.journaled();
+
+  const std::string reply = d.ask(R"({"method":"forceClosePosition","symbol":8,"account":1})");
+  EXPECT_NE(reply.find("unknown_symbol"), std::string::npos)
+      << "a close was accepted for an instrument the registry does not know";
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before) << "a close on an unlisted symbol reached the journal";
+}
+
+// maxOrderQty and maxOrderNotional are ONE limit under one mask bit: a size
+// cap with no notional cap is a fat-finger guard an operator can walk
+// straight past by pricing the order up, and the record cannot express "one
+// of the pair is set" -- the bit covers both fields. So half a pair is
+// refused rather than silently completed with a zero the engine would read
+// as "no notional limit at all".
+TEST(VenueControlPositionVerbs, SetAccountRiskLimitsRefusesHalfOfTheFatFingerPair)
+{
+  Desk d("venue_cpv_halfpair");
+  const uint64_t before = d.journaled();
+
+  const std::string qtyOnly =
+      d.ask(R"({"method":"setAccountRiskLimits","symbol":7,"account":1,"maxOrderQty":1.0})");
+  EXPECT_NE(qtyOnly.find("bad_field"), std::string::npos)
+      << "a fat-finger cap was set from half of its pair: the other half is not unset, it is "
+         "written as zero and read as 'no limit'";
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before);
+
+  const std::string notionalOnly = d.ask(
+      R"({"method":"setAccountRiskLimits","symbol":7,"account":1,"maxOrderNotional":100.0})");
+  EXPECT_NE(notionalOnly.find("bad_field"), std::string::npos);
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before);
+
+  // Named as a pair it is taken, and the one bit that covers both is set --
+  // so the refusals above are about the missing half and nothing else.
+  const std::string both = d.ask(
+      R"({"method":"setAccountRiskLimits","symbol":7,"account":1,"maxOrderQty":1.0,)"
+      R"("maxOrderNotional":250.0})");
+  EXPECT_EQ(both, ControlApi::ok());
+  ASSERT_EQ(d.forwarded.size(), 1u);
+  const auto* r = std::get_if<SetAccountRiskLimits>(&d.forwarded.front());
+  ASSERT_NE(r, nullptr);
+  EXPECT_EQ(r->fields, static_cast<uint16_t>(AccountRiskLimitField::AccountRiskFatFinger))
+      << "the pair set a mask bit that is not the fat-finger one";
+  EXPECT_EQ(r->maxOrderQty, qty(1.0));
+  EXPECT_EQ(r->maxOrderNotional, Volume::fromDouble(250.0));
+  EXPECT_EQ(d.journaled(), before + 1);
+}
+
+// Each limit group owns its own bit. A request naming only the position cap
+// must journal exactly that bit: masked as fat-finger instead, the engine
+// applies a zero order-size cap the operator never asked for and leaves the
+// position uncapped -- the two failures compound, and both survive a replay.
+TEST(VenueControlPositionVerbs, SetAccountRiskLimitsMasksTheMaxPositionGroupOnItsOwnBit)
+{
+  Desk d("venue_cpv_maxposition");
+  const uint64_t before = d.journaled();
+
+  const std::string reply = d.ask(
+      R"({"method":"setAccountRiskLimits","symbol":7,"account":1,"maxPositionQty":10.0})");
+  EXPECT_EQ(reply, ControlApi::ok());
+  ASSERT_EQ(d.forwarded.size(), 1u);
+  const auto* r = std::get_if<SetAccountRiskLimits>(&d.forwarded.front());
+  ASSERT_NE(r, nullptr);
+  EXPECT_EQ(r->fields, static_cast<uint16_t>(AccountRiskLimitField::AccountRiskMaxPosition))
+      << "a position cap was masked onto another group's bit";
+  EXPECT_EQ(r->maxPositionQty, qty(10.0));
+  EXPECT_EQ(r->maxOrderQty, qty(0.0)) << "a field nobody named carries no value";
+  EXPECT_EQ(d.journaled(), before + 1);
+
+  const auto* live = d.shard->engine().accountRiskLimits(OWNER);
+  ASSERT_NE(live, nullptr);
+  EXPECT_EQ(live->maxPositionQty, qty(10.0));
+}
+
+// An entry price is a price. A negative one is not a correction the venue can
+// carry: the record has no way to say "this entry is nonsense", so every
+// later PnL on the account is computed from it and the journal keeps it.
+TEST(VenueControlPositionVerbs, AdjustPositionRefusesANegativeEntry)
+{
+  Desk d("venue_cpv_negentry");
+  const uint64_t before = d.journaled();
+
+  const std::string reply = d.ask(
+      R"({"method":"adjustPosition","symbol":7,"account":1,"qtyDelta":-2.0,"entry":-100.0,)"
+      R"("reason":"reconciliation"})");
+  EXPECT_NE(reply.find("bad_field"), std::string::npos)
+      << "a negative entry price was journaled: every later PnL on the account is computed "
+         "from it";
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before);
+  EXPECT_EQ(d.shard->engine().positionQty(OWNER), qty(5).raw());
+
+  // The same correction with a real entry is taken, so the refusal is about
+  // the sign of the price and nothing else.
+  const std::string good = d.ask(
+      R"({"method":"adjustPosition","symbol":7,"account":1,"qtyDelta":-2.0,"entry":100.0,)"
+      R"("reason":"reconciliation"})");
+  EXPECT_EQ(good, ControlApi::ok());
+  ASSERT_EQ(d.forwarded.size(), 1u);
+  const auto* a = std::get_if<AdjustPosition>(&d.forwarded.front());
+  ASSERT_NE(a, nullptr);
+  EXPECT_EQ(a->entryRaw, px(100.0).raw());
+}
+
+// The note is memcpy'd into a fixed-length field in the journal, so the copy
+// has to leave room for the terminator. Filling the last byte makes the
+// record's note run into whatever follows it: every reader of the journal --
+// an operator's extract, a dispute bundle -- reads past the field.
+TEST(VenueControlPositionVerbs, AdjustPositionTruncatesALongNoteAndKeepsItTerminated)
+{
+  Desk d("venue_cpv_longnote");
+
+  // Longer than the field, and every character distinct enough that a
+  // truncation at the wrong offset is visible in the failure message.
+  const std::string long_note = "0123456789abcdefghijklmnopqrstuvwxyzABCD";
+  ASSERT_GT(long_note.size(), kAdjustNoteLen);
+
+  const std::string reply =
+      d.ask(R"({"method":"adjustPosition","symbol":7,"account":1,"qtyDelta":-1.0,)"
+            R"("reason":"manual","note":")" +
+            long_note + R"("})");
+  EXPECT_EQ(reply, ControlApi::ok());
+  ASSERT_EQ(d.forwarded.size(), 1u);
+  const auto* a = std::get_if<AdjustPosition>(&d.forwarded.front());
+  ASSERT_NE(a, nullptr);
+
+  ASSERT_EQ(a->note[kAdjustNoteLen - 1], '\0')
+      << "the copy filled the last byte of the note field: the record has no terminator and "
+         "every reader of it runs past the field";
+  EXPECT_EQ(std::string(a->note), long_note.substr(0, kAdjustNoteLen - 1))
+      << "the note was truncated somewhere other than the last writable character";
+}
