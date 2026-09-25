@@ -75,7 +75,7 @@ console.log('=== submitOrder rejects an unrecognized order type ===');
 // own BacktestRunner: a custom Executor bypasses the built-in simulated
 // fill loop, so onFill only fires when the default executor is left in
 // place.
-function runOneBarMarketBuy() {
+function makeMarketBuyRunner() {
   const reg = new flox.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
   const btr = new flox.BacktestRunner(reg, 0.0, 10000.0);
@@ -90,21 +90,25 @@ function runOneBarMarketBuy() {
   });
   return { btr, sym };
 }
+// Two bars, not one: an order emitted from a bar callback cannot trade on
+// the bar the strategy was shown -- every price in it is already past -- so
+// it is held until the next bar opens. With a single bar the market buy
+// below never reaches the book and onFill never fires.
 function runBars(btr, sym) {
   btr.runBars(
-    new BigInt64Array([1_000_000_000n]),
-    new BigInt64Array([1_999_999_999n]),
-    new Float64Array([100.0]),
-    new Float64Array([101.0]),
-    new Float64Array([99.0]),
-    new Float64Array([100.5]),
-    new Float64Array([10.0]),
+    new BigInt64Array([1_000_000_000n, 2_000_000_000n]),
+    new BigInt64Array([1_999_999_999n, 2_999_999_999n]),
+    new Float64Array([100.0, 100.5]),
+    new Float64Array([101.0, 101.5]),
+    new Float64Array([99.0, 99.5]),
+    new Float64Array([100.5, 101.0]),
+    new Float64Array([10.0, 10.0]),
     'BTC');
 }
 
 console.log('=== orderToJs (Executor.submit) decodes MARKET as "market" ===');
 {
-  const { btr, sym } = runOneBarMarketBuy();
+  const { btr, sym } = makeMarketBuyRunner();
   const submits = [];
   btr.setExecutor({ submit(o) { submits.push(o); } });
   runBars(btr, sym);

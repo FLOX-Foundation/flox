@@ -174,6 +174,14 @@ class BacktestRunner : public ISignalHandler
   /// Run backtest synchronously from start to end
   BacktestResult run(replay::IMultiSegmentReader& reader);
 
+  /// Every run entry point starts from a clean state: the executor's fills,
+  /// live orders and market state, the built-in position tracker, the clock
+  /// and the event counters are cleared before the first event. A second run
+  /// therefore reports that run. What is NOT cleared is configuration --
+  /// slippage, queue model, latencies, rate limits, gates, listeners -- and
+  /// anything owned outside the runner: a VenueStack's account, fee schedule
+  /// and funding state, and any book the caller pushed by hand before the run.
+  ///
   /// Replay a sequence of pre-built BarEvents through the strategy.
   /// Each bar updates the SimulatedExecutor (so resting orders / SL/TP get
   /// matched against bar.high / bar.low / bar.close) and is dispatched to
@@ -247,6 +255,9 @@ class BacktestRunner : public ISignalHandler
 
  private:
   void processEvent(const replay::ReplayEvent& event);
+  // Clears everything a previous run left behind so run() / runBars() /
+  // runTape() report their own run and not the sum of every run so far.
+  void resetRunState();
   bool checkBreakpoints(const replay::ReplayEvent& event);
   void waitForResume();
   void notifyPaused();

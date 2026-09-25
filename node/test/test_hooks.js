@@ -188,14 +188,17 @@ function testExecutionListenerBacktest() {
     },
   });
 
+  // Two bars: an order emitted from a bar callback is held until the next
+  // bar opens, since every price in the bar the strategy was shown is
+  // already past. With a single bar it would never reach the book.
   btr.runBars(
-    new BigInt64Array([1_000_000_000n]),
-    new BigInt64Array([1_999_999_999n]),
-    new Float64Array([100.0]),
-    new Float64Array([101.0]),
-    new Float64Array([99.0]),
-    new Float64Array([100.5]),
-    new Float64Array([10.0]),
+    new BigInt64Array([1_000_000_000n, 2_000_000_000n]),
+    new BigInt64Array([1_999_999_999n, 2_999_999_999n]),
+    new Float64Array([100.0, 100.5]),
+    new Float64Array([101.0, 101.5]),
+    new Float64Array([99.0, 99.5]),
+    new Float64Array([100.5, 101.0]),
+    new Float64Array([10.0, 10.0]),
     'BTC');
 
   // Fill counts may vary by simulator quirks — assert at least one fill

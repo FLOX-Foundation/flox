@@ -203,6 +203,73 @@ class SimulatedExecutor : public IOrderExecutor
   // target). Bars must be in non-decreasing time order.
   void onBar(SymbolId symbol, Price high, Price low, Price close);
 
+  // Open-aware form. The open is the first price of the bar, so it is also the
+  // first price an order held back from the previous bar's callback is allowed
+  // to trade at: this overload moves the market to the open, releases the held
+  // orders of `symbol` there, and only then walks low -> high -> close.
+  // Bar-driven runs should prefer it -- the high/low/close form carries no
+  // open, so it leaves held orders waiting for the next call that does.
+  void onBar(SymbolId symbol, Price open, Price high, Price low, Price close);
+
+  // Bar-callback window. A bar reaches the strategy only after the simulator
+  // has walked it, so open, high, low and close are all in the market state by
+  // the time the callback runs. Matching an order submitted from there is
+  // look-ahead: it prints at a price that exists only because the bar has
+  // already happened. While the window is open every arriving order is held
+  // instead of submitted, and the next bar's open releases it. The depth is
+  // counted so a re-entrant callback cannot close a window it did not open.
+  void beginBarCallbackWindow() noexcept { ++_barCallbackDepth; }
+  void endBarCallbackWindow() noexcept
+  {
+    if (_barCallbackDepth > 0)
+    {
+      --_barCallbackDepth;
+    }
+  }
+  bool barCallbackWindowOpen() const noexcept { return _barCallbackDepth > 0; }
+
+  // RAII pairing for the window. Hold one for the span of the callback rather
+  // than calling begin/end by hand: an early return or a callback that throws
+  // would otherwise leave the counter up, and a window that never closes holds
+  // every order submitted after it for the rest of the run -- silently, since
+  // a held order reports nothing. The raw calls stay public for drivers that
+  // cannot wrap the callback in a scope.
+  class BarCallbackScope
+  {
+   public:
+    explicit BarCallbackScope(SimulatedExecutor& exec) noexcept : _exec(exec)
+    {
+      _exec.beginBarCallbackWindow();
+    }
+    ~BarCallbackScope() { _exec.endBarCallbackWindow(); }
+
+    BarCallbackScope(const BarCallbackScope&) = delete;
+    BarCallbackScope& operator=(const BarCallbackScope&) = delete;
+    BarCallbackScope(BarCallbackScope&&) = delete;
+    BarCallbackScope& operator=(BarCallbackScope&&) = delete;
+
+   private:
+    SimulatedExecutor& _exec;
+  };
+  // Orders still held, over every symbol. Orders whose symbol never gets
+  // another bar stay held to the end of the run: they never reached the venue,
+  // so they neither fill nor cancel.
+  size_t heldOrderCount() const noexcept { return _heldBarOrders.size(); }
+  // Submit everything held for `symbol` into the current market state. Called
+  // from the open step of that symbol's next bar; a no-op while a window is
+  // open.
+  void releaseHeldOrders(SymbolId symbol);
+
+  // Drop every trace of a finished run -- fills, live, held and conditional
+  // orders, queue positions, net positions, brackets, in-flight acks, the
+  // market state and the visible ladder -- while keeping the configuration the
+  // caller installed: slippage, queue model, latency distributions, rate
+  // limits, STP, callbacks and the attached venue-availability model. Seeded
+  // RNGs go back to their configured seeds, so a repeated run repeats. A
+  // runner calls this before each run, which is what makes a second run report
+  // that run instead of the sum of every run so far.
+  void reset();
+
   const std::vector<Fill>& fills() const { return _fills; }
   std::vector<Fill> extractFills() { return std::move(_fills); }
   const std::vector<Order>& conditionalOrders() const { return _conditional_orders; }
@@ -228,7 +295,32 @@ class SimulatedExecutor : public IOrderExecutor
     bool hasTrade{false};
   };
 
+  // The visible ladder as of the last book update, most aggressive level
+  // first. A taker consumes it, so its size decides the price the taker pays
+  // and the next order in the same step sees what the previous one left
+  // behind. Only onBookUpdate fills it in: a bar or a trade-only feed reports
+  // no depth, and those paths keep the single-price behaviour.
+  struct DepthLadder
+  {
+    std::vector<std::pair<int64_t, int64_t>> bids;  // (priceRaw, qtyRaw)
+    std::vector<std::pair<int64_t, int64_t>> asks;
+  };
+
+  struct LadderWalk
+  {
+    int64_t takenRaw{0};       // size the ladder could actually supply
+    int64_t worstPriceRaw{0};  // deepest level the walk reached
+    Volume notional{};         // sum(price * qty) over the levels consumed
+    bool walked{false};        // false when the symbol has no visible ladder
+  };
+
   MarketState& getMarketState(SymbolId symbol);
+  DepthLadder* findLadder(SymbolId symbol);
+  // Takes up to `qtyRaw` off `side` of the ladder, stopping at `limitPriceRaw`
+  // (0 = no price bound), removes what it took and republishes the touch that
+  // is left. Returns what the walk found.
+  LadderWalk consumeLadder(SymbolId symbol, Side side, int64_t qtyRaw,
+                           int64_t limitPriceRaw);
   const SlippageProfile& slippageFor(SymbolId symbol) const;
   int64_t applySlippage(int64_t priceRaw, Side side, SymbolId symbol,
                         Quantity qty, int64_t levelQtyRaw) const;
@@ -236,7 +328,10 @@ class SimulatedExecutor : public IOrderExecutor
   // `resting` says the order is already sitting in the book rather than
   // arriving now. A resting limit order trades at the price it posted and
   // provides the liquidity; an arriving one crosses and pays the touch.
-  bool tryFillOrder(Order& order, bool resting);
+  // `triggerBoundRaw` (0 = none) is the price that armed a conditional order:
+  // its fill may be worse than that price but never better, whatever the
+  // market state the trigger happened to be evaluated against says.
+  bool tryFillOrder(Order& order, bool resting, int64_t triggerBoundRaw = 0);
   void processPendingOrders(SymbolId symbol, const MarketState& state);
   void processConditionalOrders(SymbolId symbol, const MarketState& state);
   void updateTrailingStops(SymbolId symbol, Price currentPrice);
@@ -319,7 +414,24 @@ class SimulatedExecutor : public IOrderExecutor
   // alongside the ack finalizers from onBookUpdate / onTrade so the
   // expiry fires deterministically at the next event boundary.
   void processExpiredOrders();
+  // Moves bid = ask = last to `price` without running a matching pass. The bar
+  // open needs the state in place before the held orders are released, so that
+  // they are matched at the open and not at the previous bar's close.
+  void setBarMarketState(SymbolId symbol, Price price);
   void stepBarPrice(SymbolId symbol, Price price);
+  // Bar data carries no trade stream, so the queue tracker would never hear a
+  // print and every resting limit would sit forever. A bar step that trades
+  // strictly through a resting order's price proves the queue ahead of it
+  // traded, so the step is handed to the tracker as a synthetic print at that
+  // level, sized to reach the order standing furthest back. How much of it
+  // each order gets is then the queue model's decision, not a hardcoded fill.
+  void driveQueueFromBarStep(SymbolId symbol, Price stepPrice);
+  // Iceberg refresh, level compaction and removal of fully-filled queued
+  // orders. Shared by every path that lets the queue tracker fill orders.
+  void settleQueuedFills();
+  // Shared prologue of every onBar overload: runs the outage state machine and
+  // says whether the venue is up enough to take the bar at all.
+  bool barFeedAllowed();
 
   // reduce_only enforcement: simulator-side net position per symbol,
   // updated in executeFill. A reduce-only submit that would open or
@@ -343,11 +455,23 @@ class SimulatedExecutor : public IOrderExecutor
   std::array<MarketState, kMaxSymbols> _marketStatesFlat{};
   std::vector<std::pair<SymbolId, MarketState>> _marketStatesOverflow;
 
+  std::unordered_map<SymbolId, DepthLadder> _ladders;
+
+  // Orders submitted while a bar-callback window was open, in arrival order,
+  // waiting for their symbol's next bar open.
+  std::vector<Order> _heldBarOrders;
+  size_t _barCallbackDepth{0};
+
   // Slippage config: default + per-symbol overrides
   std::array<SlippageProfile, kMaxSymbols> _slippageFlat{};
   std::array<bool, kMaxSymbols> _slippageSetFlat{};
   std::vector<std::pair<SymbolId, SlippageProfile>> _slippageOverflow;
   SlippageProfile _defaultSlippage{};
+
+  // Seeds as configured, kept so reset() can put the generators back where a
+  // fresh executor would have them.
+  uint64_t _cancelAckSeed{42};
+  uint64_t _icebergJitterSeed{0xC0FFEEC0FFEEULL};
 
   OrderQueueTracker _queueTracker;
   QueueModel _queueModel{};
@@ -398,6 +522,12 @@ class SimulatedExecutor : public IOrderExecutor
   LatencyDistribution _submitAckDist;
 
   RateLimitPolicy _rateLimit;
+  // The policy exactly as setRateLimitPolicy() installed it. reset() restores
+  // it: a policy's consumed-token log is timestamped, and a clock rewound to
+  // the start of the next run never expires entries the previous run wrote.
+  // Tuning applied through the mutable rateLimitPolicy() accessor after
+  // installation is not part of the snapshot and has to be reapplied.
+  RateLimitPolicy _rateLimitAsInstalled;
   bool _hasRateLimit{false};
 
   STPMode _stpMode{STPMode::None};
@@ -499,6 +629,7 @@ class SimulatedExecutor : public IOrderExecutor
   }
   void setIcebergJitterSeed(uint64_t seed) noexcept
   {
+    _icebergJitterSeed = seed;
     _icebergJitterRng.seed(seed);
   }
   // T041: queue priority on refresh.

@@ -49,9 +49,48 @@ void SimulatedExecutor::applyConfig(const BacktestConfig& config)
   setQueueModel(config.queueModel, config.queueDepth);
   _queuePosMinFraction = config.queuePositionMinChangeFraction;
   setCancelAckLatency(config.cancelAckLatencyNs, config.cancelAckJitterNs);
+  _cancelAckSeed = config.cancelAckSeed;
   _cancelAckRng.seed(config.cancelAckSeed);
   setReplaceAckLatency(config.replaceAckLatencyNs, config.replaceAckJitterNs);
   setSubmitAckLatency(config.submitAckLatencyNs, config.submitAckJitterNs);
+}
+
+void SimulatedExecutor::reset()
+{
+  _pending_orders.clear();
+  _conditional_orders.clear();
+  _heldBarOrders.clear();
+  _barCallbackDepth = 0;
+  _fills.clear();
+  _trailing_states.clear();
+  _fillScanIds.clear();
+  _netPositionRaw.clear();
+  _ladders.clear();
+  _marketStatesFlat.fill(MarketState{});
+  _marketStatesOverflow.clear();
+  _pendingCancels.clear();
+  _pendingReplaces.clear();
+  _pendingSubmissions.clear();
+  _outageBuffer.clear();
+  _venueWasUp = true;
+  _orderTimestamps.clear();
+  _lastEmittedQueueAheadRaw.clear();
+  _lastEmittedMarketPosition.clear();
+  _brackets.clear();
+  _legToBracket.clear();
+  _bracketTemplates.clear();
+  _iceberg.clear();
+  _queueFillBuffer.clear();
+  _queueSnapshotBuffer.clear();
+  _queueTracker.clear();
+  _compositeLogic = CompositeOrderLogic{0};
+  _compositeLogic.setExecutor(this);
+  _cancelAckRng.seed(_cancelAckSeed);
+  _icebergJitterRng.seed(_icebergJitterSeed);
+  if (_hasRateLimit)
+  {
+    _rateLimit = _rateLimitAsInstalled;
+  }
 }
 
 void SimulatedExecutor::setDefaultSlippage(const SlippageProfile& profile)
@@ -198,6 +237,7 @@ bool SimulatedExecutor::applyLatencyProfile(const char* name)
 
 void SimulatedExecutor::setRateLimitPolicy(const RateLimitPolicy& policy)
 {
+  _rateLimitAsInstalled = policy;
   _rateLimit = policy;
   _hasRateLimit = _rateLimit.bucketCount() > 0;
 }
@@ -316,6 +356,16 @@ int64_t SimulatedExecutor::applySlippage(int64_t priceRaw, Side side, SymbolId s
 
 void SimulatedExecutor::submitOrder(const Order& order)
 {
+  if (_barCallbackDepth > 0)
+  {
+    // The strategy is inside a bar callback, so every price of that bar --
+    // open, high, low and close -- is already in the market state. Matching
+    // here would hand the order a price it only exists to react to. Hold it;
+    // the next bar's open releases it through this same path.
+    _heldBarOrders.push_back(order);
+    return;
+  }
+
   Order accepted = order;
   accepted.createdAt = fromUnixNs(_clock.nowNs());
 
@@ -703,6 +753,20 @@ void SimulatedExecutor::finishSubmission(Order accepted, bool fromAck)
 
 void SimulatedExecutor::cancelOrder(OrderId orderId)
 {
+  // An order submitted and pulled inside the same bar callback never reached
+  // the venue. Drop it where it waits, or the next bar's open would release
+  // an order the strategy has already cancelled.
+  for (size_t i = 0; i < _heldBarOrders.size(); ++i)
+  {
+    if (_heldBarOrders[i].id == orderId)
+    {
+      const Order cancelled = _heldBarOrders[i];
+      _heldBarOrders.erase(_heldBarOrders.begin() + static_cast<std::ptrdiff_t>(i));
+      emitEvent(OrderEventStatus::CANCELED, cancelled);
+      return;
+    }
+  }
+
   if (_venue && !_venue->cancelsAllowed(_clock.nowNs().raw()))
   {
     _outageBuffer.push_back(BufferedRequest{.action = BufferedAction::CANCEL,
@@ -815,6 +879,22 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
   // the executor and can add or remove orders while the sweep is still running.
   std::vector<Order> canceled;
   size_t i = 0;
+  // Orders still held for the next bar's open are part of "all orders" as far
+  // as the strategy is concerned -- it submitted them and never got them back.
+  while (i < _heldBarOrders.size())
+  {
+    if (_heldBarOrders[i].symbol == symbol)
+    {
+      canceled.push_back(_heldBarOrders[i]);
+      _heldBarOrders.erase(_heldBarOrders.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+    else
+    {
+      ++i;
+    }
+  }
+
+  i = 0;
   while (i < _pending_orders.size())
   {
     if (_pending_orders[i].symbol == symbol)
@@ -873,6 +953,28 @@ void SimulatedExecutor::cancelAllOrders(SymbolId symbol)
 
 void SimulatedExecutor::replaceOrder(OrderId oldOrderId, const Order& newOrder)
 {
+  // Replacing an order that is still held for the next bar's open rewrites it
+  // in place: the venue never saw the original, so there is nothing to cancel
+  // and the replacement inherits its place in the hold list.
+  for (Order& held : _heldBarOrders)
+  {
+    if (held.id == oldOrderId)
+    {
+      const Order oldOrder = held;
+      held = newOrder;
+      if (_callback)
+      {
+        OrderEvent ev;
+        ev.status = OrderEventStatus::REPLACED;
+        ev.order = oldOrder;
+        ev.newOrder = newOrder;
+        ev.exchangeTsNs = _clock.nowNs();
+        _callback(ev);
+      }
+      return;
+    }
+  }
+
   // Replace is a cancel + submit pair; if either action is currently
   // gated we have to buffer the whole request until both are open.
   const int64_t nowNs = _clock.nowNs().raw();
@@ -1146,6 +1248,31 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
     state.bestAskQtyRaw = asks[0].quantity.raw();
   }
 
+  // Snapshot the visible ladder. Takers eat it, so it is replaced wholesale on
+  // every update: what an order consumed is restored by the next book event,
+  // which is the venue reporting the level again.
+  {
+    DepthLadder& ladder = _ladders[symbol];
+    ladder.bids.clear();
+    ladder.asks.clear();
+    ladder.bids.reserve(bids.size());
+    ladder.asks.reserve(asks.size());
+    for (const auto& lvl : bids)
+    {
+      if (lvl.quantity.raw() > 0)
+      {
+        ladder.bids.emplace_back(lvl.price.raw(), lvl.quantity.raw());
+      }
+    }
+    for (const auto& lvl : asks)
+    {
+      if (lvl.quantity.raw() > 0)
+      {
+        ladder.asks.emplace_back(lvl.price.raw(), lvl.quantity.raw());
+      }
+    }
+  }
+
   if (_queueTracker.enabled())
   {
     // First update every level present in the snapshot.
@@ -1209,6 +1336,48 @@ void SimulatedExecutor::onBookUpdate(SymbolId symbol, const std::pmr::vector<Boo
   processConditionalOrders(symbol, state);
 }
 
+void SimulatedExecutor::settleQueuedFills()
+{
+  // Native iceberg: top up the visible tranche from the hidden remainder
+  // before the fully-filled-orders cleanup pass. The refresh reads the level's
+  // remaining depth to place the new tranche, so the tracker has not compacted
+  // its levels yet.
+  for (auto& o : _pending_orders)
+  {
+    maybeRefreshIceberg(o);
+  }
+  _queueTracker.compact();
+  // Remove fully-filled queued orders and drop their queue position +
+  // timestamp tracking entries. Iceberg orders with hidden remainder or a
+  // pending refresh deadline are kept alive so the next tick can finalize the
+  // refresh.
+  auto icebergPending = [this](const Order& o)
+  {
+    auto it = _iceberg.find(o.id);
+    return it != _iceberg.end() &&
+           (it->second.hiddenRaw > 0 || it->second.refreshDueNs > 0);
+  };
+  for (const auto& o : _pending_orders)
+  {
+    if (o.filledQuantity.raw() >= o.quantity.raw() && !icebergPending(o))
+    {
+      forgetQueuePosition(o.id);
+      forgetTimestamps(o.id);
+      forgetMarketPosition(o.id);
+      forgetPendingReplace(o.id);
+      _iceberg.erase(o.id);
+    }
+  }
+  _pending_orders.erase(
+      std::remove_if(_pending_orders.begin(), _pending_orders.end(),
+                     [&](const Order& o)
+                     {
+                       return o.filledQuantity.raw() >= o.quantity.raw() &&
+                              !icebergPending(o);
+                     }),
+      _pending_orders.end());
+}
+
 void SimulatedExecutor::onTrade(SymbolId symbol, Price price, bool isBuy)
 {
   onTrade(symbol, price, Quantity::fromRaw(0), isBuy);
@@ -1257,44 +1426,7 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
       // aggressive opposite trade walked into it.
       executeFill(*ord, price, fillQty, /*isMaker=*/true);
     }
-    // Native iceberg: top up visible tranche from hidden remainder
-    // before the fully-filled-orders cleanup pass. The refresh reads the
-    // level's remaining depth to place the new tranche, so the tracker has
-    // not compacted its levels yet.
-    for (auto& o : _pending_orders)
-    {
-      maybeRefreshIceberg(o);
-    }
-    _queueTracker.compact();
-    // Remove fully-filled queued orders and drop their queue
-    // position + timestamp tracking entries. Iceberg orders with
-    // hidden remainder or a pending refresh deadline are kept alive
-    // so the next tick can finalize the refresh.
-    auto icebergPending = [this](const Order& o)
-    {
-      auto it = _iceberg.find(o.id);
-      return it != _iceberg.end() &&
-             (it->second.hiddenRaw > 0 || it->second.refreshDueNs > 0);
-    };
-    for (const auto& o : _pending_orders)
-    {
-      if (o.filledQuantity.raw() >= o.quantity.raw() && !icebergPending(o))
-      {
-        forgetQueuePosition(o.id);
-        forgetTimestamps(o.id);
-        forgetMarketPosition(o.id);
-        forgetPendingReplace(o.id);
-        _iceberg.erase(o.id);
-      }
-    }
-    _pending_orders.erase(
-        std::remove_if(_pending_orders.begin(), _pending_orders.end(),
-                       [&](const Order& o)
-                       {
-                         return o.filledQuantity.raw() >= o.quantity.raw() &&
-                                !icebergPending(o);
-                       }),
-        _pending_orders.end());
+    settleQueuedFills();
   }
 
   maybeEmitQueuePositionChanges();
@@ -1309,50 +1441,41 @@ void SimulatedExecutor::onTrade(SymbolId symbol, Price price, Quantity qty, bool
   updateTrailingStops(symbol, price);
 }
 
+bool SimulatedExecutor::barFeedAllowed()
+{
+  if (!_venue)
+  {
+    return true;
+  }
+  const int64_t now = _clock.nowNs().raw();
+  const bool up = _venue->isUp(now);
+  if (!up && _venueWasUp)
+  {
+    applyOutagePolicy();
+    _venueWasUp = false;
+  }
+  else if (up && !_venueWasUp)
+  {
+    _venueWasUp = true;
+    flushOutageBuffer();
+  }
+  return up;
+}
+
 void SimulatedExecutor::onBar(SymbolId symbol, Price price)
 {
-  if (_venue)
+  if (!barFeedAllowed())
   {
-    const int64_t now = _clock.nowNs().raw();
-    const bool up = _venue->isUp(now);
-    if (!up && _venueWasUp)
-    {
-      applyOutagePolicy();
-      _venueWasUp = false;
-    }
-    else if (up && !_venueWasUp)
-    {
-      _venueWasUp = true;
-      flushOutageBuffer();
-    }
-    if (!up)
-    {
-      return;
-    }
+    return;
   }
   stepBarPrice(symbol, price);
 }
 
 void SimulatedExecutor::onBar(SymbolId symbol, Price high, Price low, Price close)
 {
-  if (_venue)
+  if (!barFeedAllowed())
   {
-    const int64_t now = _clock.nowNs().raw();
-    const bool up = _venue->isUp(now);
-    if (!up && _venueWasUp)
-    {
-      applyOutagePolicy();
-      _venueWasUp = false;
-    }
-    else if (up && !_venueWasUp)
-    {
-      _venueWasUp = true;
-      flushOutageBuffer();
-    }
-    if (!up)
-    {
-      return;
-    }
+    return;
   }
   // low first (a long's protective stop is tested before its target), then the
   // opposite extreme, then settle at close. Each step runs the full matching
@@ -1362,8 +1485,62 @@ void SimulatedExecutor::onBar(SymbolId symbol, Price high, Price low, Price clos
   stepBarPrice(symbol, close);
 }
 
-void SimulatedExecutor::stepBarPrice(SymbolId symbol, Price price)
+void SimulatedExecutor::onBar(SymbolId symbol, Price open, Price high, Price low,
+                              Price close)
 {
+  if (!barFeedAllowed())
+  {
+    return;
+  }
+  // The open is in the market state before the held orders are released, so an
+  // order the previous bar's callback produced trades at this open -- the
+  // first price that exists after the strategy could have decided to send it.
+  setBarMarketState(symbol, open);
+  releaseHeldOrders(symbol);
+  stepBarPrice(symbol, open);
+  stepBarPrice(symbol, low);
+  stepBarPrice(symbol, high);
+  stepBarPrice(symbol, close);
+}
+
+void SimulatedExecutor::releaseHeldOrders(SymbolId symbol)
+{
+  if (_heldBarOrders.empty() || _barCallbackDepth > 0)
+  {
+    return;
+  }
+  // Submitting runs order-event callbacks, which can submit or cancel more
+  // orders. Lift this symbol's orders out of the hold list first so the list
+  // stays consistent whatever the callbacks do with it.
+  std::vector<Order> released;
+  for (size_t i = 0; i < _heldBarOrders.size();)
+  {
+    if (_heldBarOrders[i].symbol == symbol)
+    {
+      released.push_back(std::move(_heldBarOrders[i]));
+      _heldBarOrders.erase(_heldBarOrders.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+    else
+    {
+      ++i;
+    }
+  }
+  for (const Order& order : released)
+  {
+    // Full submit path: the order reaches the venue now, so rate limits,
+    // reduce-only and self-trade prevention are all evaluated against the
+    // state at the open rather than the state the strategy saw.
+    submitOrder(order);
+  }
+}
+
+void SimulatedExecutor::setBarMarketState(SymbolId symbol, Price price)
+{
+  // A bar reports no depth. Dropping the ladder keeps a stale book from being
+  // walked at prices this bar has already left behind: on bar data every size
+  // trades at the step price, which is the only thing the bar says.
+  _ladders.erase(symbol);
+
   MarketState& state = getMarketState(symbol);
   const int64_t priceRaw = price.raw();
   state.bestBidRaw = priceRaw;
@@ -1372,10 +1549,113 @@ void SimulatedExecutor::stepBarPrice(SymbolId symbol, Price price)
   state.hasBid = true;
   state.hasAsk = true;
   state.hasTrade = true;
+}
+
+void SimulatedExecutor::driveQueueFromBarStep(SymbolId symbol, Price stepPrice)
+{
+  if (!_queueTracker.enabled() || _pending_orders.empty())
+  {
+    return;
+  }
+  const int64_t stepRaw = stepPrice.raw();
+
+  // One synthetic print per level, not per order: two of our orders resting at
+  // the same price are behind the same queue, and printing twice would trade
+  // that queue twice. The print is sized to reach the order standing furthest
+  // back, so the model still decides how much of it each order gets.
+  struct LevelPrint
+  {
+    Side side{};
+    int64_t priceRaw{0};
+    int64_t qtyRaw{0};
+  };
+  std::vector<LevelPrint> prints;
+
+  for (const auto& order : _pending_orders)
+  {
+    if (order.symbol != symbol || order.type != OrderType::LIMIT)
+    {
+      continue;
+    }
+    // Strictly through, not merely touched: for the bar to print past the
+    // level, everything resting there had to trade. A bar that only reaches
+    // the price says nothing about whether our turn in the queue came up.
+    const bool tradedThrough = (order.side == Side::BUY) ? (stepRaw < order.price.raw())
+                                                         : (stepRaw > order.price.raw());
+    if (!tradedThrough)
+    {
+      continue;
+    }
+    const int64_t remainingRaw = order.quantity.raw() - order.filledQuantity.raw();
+    if (remainingRaw <= 0)
+    {
+      continue;
+    }
+    const auto snap = _queueTracker.snapshot(order.id);
+    if (!snap)
+    {
+      continue;
+    }
+    const int64_t reachRaw = snap->ahead.raw() + remainingRaw;
+
+    LevelPrint* existing = nullptr;
+    for (auto& lp : prints)
+    {
+      if (lp.side == order.side && lp.priceRaw == order.price.raw())
+      {
+        existing = &lp;
+        break;
+      }
+    }
+    if (existing == nullptr)
+    {
+      prints.push_back(LevelPrint{order.side, order.price.raw(), reachRaw});
+    }
+    else if (reachRaw > existing->qtyRaw)
+    {
+      existing->qtyRaw = reachRaw;
+    }
+  }
+
+  for (const LevelPrint& lp : prints)
+  {
+    // Our resting bid is taken out by a seller, our resting offer by a buyer.
+    const Side aggressor = (lp.side == Side::BUY) ? Side::SELL : Side::BUY;
+    const Price levelPrice = Price::fromRaw(lp.priceRaw);
+    _queueFillBuffer.clear();
+    _queueTracker.onTrade(symbol, levelPrice, Quantity::fromRaw(lp.qtyRaw), aggressor,
+                          _queueFillBuffer);
+    for (const auto& [orderId, fillQty] : _queueFillBuffer)
+    {
+      // Re-resolve every time: a fill callback can submit or cancel orders,
+      // which moves the pending-order storage under us.
+      Order* ord = findPendingOrder(orderId);
+      if (ord == nullptr || fillQty.raw() <= 0)
+      {
+        continue;
+      }
+      executeFill(*ord, levelPrice, fillQty, /*isMaker=*/true);
+    }
+  }
+
+  if (!prints.empty())
+  {
+    settleQueuedFills();
+    maybeEmitQueuePositionChanges();
+  }
+}
+
+void SimulatedExecutor::stepBarPrice(SymbolId symbol, Price price)
+{
+  setBarMarketState(symbol, price);
+  MarketState& state = getMarketState(symbol);
   finalizePendingSubmissions();
   finalizePendingCancels();
   finalizePendingReplaces();
   processExpiredOrders();
+  // Bar data carries no trade stream, so without this the queue tracker never
+  // hears a print and every resting limit sits untouched for the whole run.
+  driveQueueFromBarStep(symbol, price);
   processPendingOrders(symbol, state);
   processConditionalOrders(symbol, state);
   updateTrailingStops(symbol, price);
@@ -1456,7 +1736,92 @@ Order* SimulatedExecutor::findPendingOrder(OrderId orderId)
   return nullptr;
 }
 
-bool SimulatedExecutor::tryFillOrder(Order& order, bool resting)
+SimulatedExecutor::DepthLadder* SimulatedExecutor::findLadder(SymbolId symbol)
+{
+  auto it = _ladders.find(symbol);
+  return it == _ladders.end() ? nullptr : &it->second;
+}
+
+SimulatedExecutor::LadderWalk SimulatedExecutor::consumeLadder(SymbolId symbol, Side side,
+                                                               int64_t qtyRaw,
+                                                               int64_t limitPriceRaw)
+{
+  LadderWalk walk;
+  DepthLadder* ladder = findLadder(symbol);
+  if (ladder == nullptr)
+  {
+    return walk;
+  }
+  auto& levels = (side == Side::BUY) ? ladder->asks : ladder->bids;
+  if (levels.empty())
+  {
+    return walk;
+  }
+  walk.walked = true;
+
+  int64_t left = qtyRaw;
+  size_t emptied = 0;
+  for (auto& [priceRaw, levelQtyRaw] : levels)
+  {
+    if (left <= 0)
+    {
+      break;
+    }
+    // A limit order stops where its own price stops; a market order (limit 0)
+    // keeps walking down the ladder.
+    if (limitPriceRaw != 0)
+    {
+      const bool eligible = (side == Side::BUY) ? (priceRaw <= limitPriceRaw)
+                                                : (priceRaw >= limitPriceRaw);
+      if (!eligible)
+      {
+        break;
+      }
+    }
+    const int64_t take = std::min(left, levelQtyRaw);
+    if (take > 0)
+    {
+      // Notional through the fixed-point helpers, not doubles: a raw price
+      // times a raw quantity is a 1e16-scaled product that only the widened
+      // Quantity * Price -> Volume path carries without wrapping.
+      walk.notional = walk.notional + (Quantity::fromRaw(take) * Price::fromRaw(priceRaw));
+      walk.takenRaw += take;
+      walk.worstPriceRaw = priceRaw;
+      left -= take;
+      levelQtyRaw -= take;
+    }
+    if (levelQtyRaw == 0)
+    {
+      ++emptied;
+    }
+  }
+
+  if (emptied > 0)
+  {
+    levels.erase(levels.begin(), levels.begin() + static_cast<std::ptrdiff_t>(emptied));
+  }
+
+  // Republish the touch the walk left behind. The market state and the ladder
+  // have to agree, or the next order's crossing check would be answered by a
+  // level that is no longer there.
+  MarketState& state = getMarketState(symbol);
+  const bool empty = levels.empty();
+  if (side == Side::BUY)
+  {
+    state.hasAsk = !empty;
+    state.bestAskRaw = empty ? 0 : levels.front().first;
+    state.bestAskQtyRaw = empty ? 0 : levels.front().second;
+  }
+  else
+  {
+    state.hasBid = !empty;
+    state.bestBidRaw = empty ? 0 : levels.front().first;
+    state.bestBidQtyRaw = empty ? 0 : levels.front().second;
+  }
+  return walk;
+}
+
+bool SimulatedExecutor::tryFillOrder(Order& order, bool resting, int64_t triggerBoundRaw)
 {
   const MarketState& state = getMarketState(order.symbol);
   int64_t fillPriceRaw = 0;
@@ -1521,6 +1886,57 @@ bool SimulatedExecutor::tryFillOrder(Order& order, bool resting)
     isMaker = true;
   }
 
+  // A stop-limit armed at a price past its own limit cannot trade there: it
+  // rests instead, which is what a venue does with a stop-limit triggered on a
+  // gap. Decided before the walk, so a refused fill does not eat depth on its
+  // way out.
+  if (triggerBoundRaw != 0 && order.type != OrderType::MARKET)
+  {
+    const bool beyondLimit =
+        (order.side == Side::BUY && triggerBoundRaw > order.price.raw()) ||
+        (order.side == Side::SELL && triggerBoundRaw < order.price.raw());
+    if (beyondLimit)
+    {
+      return false;
+    }
+  }
+
+  // A taker walks the visible ladder instead of printing its whole size at the
+  // touch, and what it ate is gone for the next order in this same step. The
+  // fill is reported once, at the volume-weighted price of the walk.
+  //
+  // Size the ladder cannot cover is priced at the deepest level the walk
+  // reached -- for the whole order, not just the excess. Past that level the
+  // feed said nothing, and averaging the unknown remainder in at the touch is
+  // the one answer that is certainly wrong: it makes size free, which is the
+  // bug this replaces. The order still fills in full, so a thin book slows
+  // nothing down; it just stops being cheap.
+  if (!isMaker)
+  {
+    const int64_t limitRaw = (order.type == OrderType::MARKET) ? 0 : order.price.raw();
+    const LadderWalk walk =
+        consumeLadder(order.symbol, order.side, remainingQty.raw(), limitRaw);
+    if (walk.walked && walk.takenRaw > 0)
+    {
+      fillPriceRaw = (walk.takenRaw >= remainingQty.raw())
+                         ? (walk.notional / Quantity::fromRaw(walk.takenRaw)).raw()
+                         : walk.worstPriceRaw;
+    }
+  }
+
+  // A conditional order may not print better than the price that armed it. On
+  // bar data the trigger is tested against a synthetic bid = ask = extreme, so
+  // without this bound a take-profit sell at 105 books the bar's 110 high -- a
+  // price the order had no claim on, since it only existed once the bar was
+  // over. The bound is one-sided: a stop armed at 95 on a bar that traded to
+  // 90 still pays 90, because that is the adverse side and the order really
+  // was in the market for it.
+  if (triggerBoundRaw != 0)
+  {
+    fillPriceRaw = (order.side == Side::BUY) ? std::max(fillPriceRaw, triggerBoundRaw)
+                                             : std::min(fillPriceRaw, triggerBoundRaw);
+  }
+
   // Apply slippage only to market-style fills (limit makers trade at posted price).
   if (order.type == OrderType::MARKET)
   {
@@ -1544,8 +1960,14 @@ void SimulatedExecutor::processPendingOrders(SymbolId symbol, const MarketState&
     {
       continue;
     }
-    // Queue-registered limit orders are handled by the queue tracker on trades.
-    if (order.type == OrderType::LIMIT && _queueTracker.enabled())
+    // Orders the queue tracker holds are its business: it fills them from
+    // prints once their queue is gone. The test is registration, not the
+    // model being on -- a limit the tracker never took (a stop-limit that
+    // rested when it triggered, or an order submitted before the model was
+    // configured) has no queue to wait behind, and skipping it on the model
+    // alone left it resting for the whole run.
+    if (order.type == OrderType::LIMIT && _queueTracker.enabled() &&
+        _queueTracker.snapshot(order.id).has_value())
     {
       continue;
     }
@@ -2409,6 +2831,12 @@ void SimulatedExecutor::triggerConditionalOrder(Order& order)
 {
   emitEvent(OrderEventStatus::TRIGGERED, order);
 
+  // The price that armed the order bounds how good its fill may be. A trailing
+  // stop carries its moving trigger in the trailing state, which the caller
+  // has already copied onto the order by the time it fires; an order with no
+  // trigger price at all carries no bound.
+  const int64_t triggerBoundRaw = order.triggerPrice.raw();
+
   if (order.type == OrderType::STOP_MARKET || order.type == OrderType::TAKE_PROFIT_MARKET ||
       order.type == OrderType::TRAILING_STOP)
   {
@@ -2421,7 +2849,7 @@ void SimulatedExecutor::triggerConditionalOrder(Order& order)
 
   // A triggered conditional order enters the book now, so it is the aggressor
   // if it crosses.
-  if (!tryFillOrder(order, /*resting=*/false))
+  if (!tryFillOrder(order, /*resting=*/false, triggerBoundRaw))
   {
     _pending_orders.push_back(order);
   }
@@ -2460,6 +2888,16 @@ void SimulatedExecutor::processConditionalOrders(SymbolId symbol, const MarketSt
           if (id == order.id)
           {
             triggered = checkTrailingStopTrigger(order, trailing, state);
+            if (triggered && trailing.currentTrigger.raw() != 0)
+            {
+              // The trailing trigger lives in the trailing state, not on the
+              // order. Copy it across so the TRIGGERED event reports the price
+              // that armed the order and the fill is bounded by it like any
+              // other stop's. A trailing stop configured with neither an offset
+              // nor a callback rate has no trigger to copy, and whatever the
+              // caller put on the order is left alone.
+              order.triggerPrice = trailing.currentTrigger;
+            }
             break;
           }
         }

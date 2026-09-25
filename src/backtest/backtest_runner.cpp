@@ -119,16 +119,36 @@ void BacktestRunner::addExecutionListener(IOrderExecutionListener* listener)
 
 // ========== Non-interactive mode ==========
 
-BacktestResult BacktestRunner::run(replay::IMultiSegmentReader& reader)
+// Everything a finished run leaves behind. Without it a second run reports the
+// sum of both: cumulative fills, a position carried over from the first pass,
+// and a clock that never rewinds, so the equity curve still starts at the
+// first run's timestamps.
+void BacktestRunner::resetRunState()
 {
-  _interactiveMode = false;
-  _running.store(true, std::memory_order_release);
-  _paused.store(false, std::memory_order_release);
-  _finished.store(false, std::memory_order_release);
+  sim().reset();
+  _positionTracker.reset();
+  _clock.reset();
+  if (_venueClock != nullptr)
+  {
+    _venueClock->reset();
+  }
+  _nextOrderId = 1;
   _eventCount = 0;
   _tradeCount = 0;
   _bookUpdateCount = 0;
   _signalCount = 0;
+  _skippedRecordCount = 0;
+  _lastEventType.reset();
+  _signalEmitted = false;
+}
+
+BacktestResult BacktestRunner::run(replay::IMultiSegmentReader& reader)
+{
+  resetRunState();
+  _interactiveMode = false;
+  _running.store(true, std::memory_order_release);
+  _paused.store(false, std::memory_order_release);
+  _finished.store(false, std::memory_order_release);
 
   if (_strategy)
   {
@@ -199,14 +219,11 @@ BacktestResult BacktestRunner::runTapes(
 
 BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
 {
+  resetRunState();
   _interactiveMode = false;
   _running.store(true, std::memory_order_release);
   _paused.store(false, std::memory_order_release);
   _finished.store(false, std::memory_order_release);
-  _eventCount = 0;
-  _tradeCount = 0;
-  _bookUpdateCount = 0;
-  _signalCount = 0;
 
   if (_strategy)
   {
@@ -219,16 +236,26 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
     ++_eventCount;
 
     // Feed the bar's full range so resting stops/take-profits match against the
-    // intrabar high/low, not just the close.
-    sim().onBar(ev.symbol, ev.bar.high, ev.bar.low, ev.bar.close);
+    // intrabar high/low, not just the close. The open leads: it is where the
+    // orders held back from the previous bar's callback are matched.
+    sim().onBar(ev.symbol, ev.bar.open, ev.bar.high, ev.bar.low, ev.bar.close);
 
-    if (_strategy)
     {
-      _strategy->onBar(ev);
-    }
-    for (auto* sub : _marketDataSubscribers)
-    {
-      sub->onBar(ev);
+      // The strategy is shown a bar the simulator has already walked, so every
+      // price it can react to is in the market state. Anything it submits from
+      // here is held until the next bar for that symbol opens. The scope closes
+      // the window on every way out of this block -- including a callback that
+      // throws, which would otherwise leave it open and hold every later order
+      // for the rest of the run.
+      SimulatedExecutor::BarCallbackScope window(sim());
+      if (_strategy)
+      {
+        _strategy->onBar(ev);
+      }
+      for (auto* sub : _marketDataSubscribers)
+      {
+        sub->onBar(ev);
+      }
     }
   }
 
@@ -247,14 +274,11 @@ BacktestResult BacktestRunner::runBars(const std::vector<BarEvent>& bars)
 
 void BacktestRunner::start(replay::IMultiSegmentReader& reader)
 {
+  resetRunState();
   _interactiveMode = true;
   _running.store(true, std::memory_order_release);
   _paused.store(true, std::memory_order_release);
   _finished.store(false, std::memory_order_release);
-  _eventCount = 0;
-  _tradeCount = 0;
-  _bookUpdateCount = 0;
-  _signalCount = 0;
 
   if (_strategy)
   {

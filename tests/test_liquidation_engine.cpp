@@ -250,14 +250,14 @@ TEST(LiquidationEngine, ExecutorRoutedClosesAgainstBook)
   EXPECT_TRUE(e.positions().empty());
 }
 
-// Note: the simulator's market-order matching currently fills at
-// full quantity at the best-level price (no book walk / no
-// depth-cap). When that limitation is closed (filed as a follow-up
-// because it's an Executor concern, not a LiquidationEngine one),
-// the engine's partial-fill rollover path — already exercised
-// implicitly here via the closeThroughExecutor() return value — will
-// produce partial liquidations on thin books that roll to the next
-// tick.
+// Note: the simulator now walks the book. A routed liquidation pays the
+// volume-weighted price of the levels it consumes, and what it ate is gone
+// for whatever closes next in the same step (pinned in
+// test_backtest_fill_realism.cpp, RoutedLiquidationWalksTheBook). Size past
+// the visible ladder still fills in full, at the deepest level the walk
+// reached, so the engine's partial-fill rollover path — exercised implicitly
+// here via the closeThroughExecutor() return value — is still only reached
+// when the closing side of the book is empty.
 
 TEST(LiquidationEngine, ExecutorRoutedEmptyBookSkipsLiquidation)
 {
