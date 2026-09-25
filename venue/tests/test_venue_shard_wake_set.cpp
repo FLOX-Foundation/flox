@@ -142,8 +142,15 @@ void spinFor(microseconds d)
 class Driver
 {
  public:
+  // The set's net is pushed far out: a wake-up inside a round's spin budget
+  // then cannot have come from the net, whatever the runner's scheduler did
+  // to it, so the tests below prove the mechanism without a millisecond
+  // bound a loaded shared runner is free to miss.
+  static constexpr auto kFarNet = std::chrono::seconds(10);
+
   explicit Driver(int64_t lastLookWindowNs = 0)
   {
+    _set.setNetInterval(kFarNet);
     for (int i = 0; i < kShards; ++i)
     {
       auto& base = _bases[size_t(i)];
@@ -335,11 +342,12 @@ TEST(VenueShardWakeSet, ADriverParkedOverThreeShardsWakesOnASubmitToAnyOfThem)
   const auto elapsed = duration_cast<milliseconds>(steady_clock::now() - t0);
 
   // The timed wait inside the park is a net, not the mechanism. If wake-ups
-  // were arriving on its schedule instead of from the submitter, 45 rounds
-  // would take 45 net intervals.
+  // were arriving on its schedule instead of from the submitter, every round
+  // would wait out Driver::kFarNet and the spin above would have given up
+  // long before; the total is bounded by one net for the same reason.
   std::printf("%d submits to a driver parked over %d shards: %lld ms total\n", kRounds, kShards,
               static_cast<long long>(elapsed.count()));
-  EXPECT_LT(elapsed, milliseconds(1200)) << "wake-ups are riding the safety net";
+  EXPECT_LT(elapsed, Driver::kFarNet) << "wake-ups are riding the safety net";
   driver.shutdown();
 }
 
@@ -412,7 +420,7 @@ TEST(VenueShardWakeSet, ASubmitInsideTheSleepWindowStillWakesTheDriver)
   EXPECT_EQ(probe.fired.load(), kRounds);
   std::printf("%d rounds across the sleep window over %d shards: %lld ms total\n", kRounds, kShards,
               static_cast<long long>(elapsed.count()));
-  EXPECT_LT(elapsed, milliseconds(1200)) << "a wake-up came from the net, not from the submitter";
+  EXPECT_LT(elapsed, Driver::kFarNet) << "a wake-up came from the net, not from the submitter";
   driver.shutdown();
 }
 
@@ -429,7 +437,7 @@ TEST(VenueShardWakeSet, ParkUntilWakesOnItsDeadlineWithNobodyPublishing)
   WakeSet set;
   constexpr int kRounds = 32;
   constexpr int64_t kDeadlineMs = 5;
-  constexpr int64_t kNetMs = WakeSet::kNetInterval.count();
+  constexpr int64_t kNetMs = WakeSet::kDefaultNetInterval.count();
 
   int64_t worstMs = 0;
   int64_t totalMs = 0;

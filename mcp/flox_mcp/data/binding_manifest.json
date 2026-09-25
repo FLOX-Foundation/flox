@@ -16602,6 +16602,11 @@
         },
         {
           "kind": "method",
+          "name": "parkNetInterval",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
           "name": "pollConsumer",
           "parent": "EventBus"
         },
@@ -16663,6 +16668,11 @@
         {
           "kind": "method",
           "name": "setOwnConsumerThreads",
+          "parent": "EventBus"
+        },
+        {
+          "kind": "method",
+          "name": "setParkNetInterval",
           "parent": "EventBus"
         },
         {
@@ -26027,6 +26037,11 @@
         },
         {
           "kind": "method",
+          "name": "netInterval",
+          "parent": "WakeSet"
+        },
+        {
+          "kind": "method",
           "name": "park",
           "parent": "WakeSet"
         },
@@ -26038,6 +26053,11 @@
         {
           "kind": "method",
           "name": "parkUntil",
+          "parent": "WakeSet"
+        },
+        {
+          "kind": "method",
+          "name": "setNetInterval",
           "parent": "WakeSet"
         },
         {

@@ -64,6 +64,14 @@ using namespace std::chrono;
 
 using ParkBus = EventBus<ParkTestEvent, 1024, 4>;
 
+// Every net in these tests is pushed out this far. A wake-up that arrives
+// inside a round's spin budget then cannot have come from the net, whatever
+// the runner's scheduler did to it on the way: the mechanism is proved by
+// which side of the net the wake-up lands on, not by a number of
+// milliseconds that a loaded shared runner is free to miss.
+constexpr auto kFarNet = seconds(10);
+const int64_t kFarNetUs = duration_cast<microseconds>(kFarNet).count();
+
 int64_t nowNs()
 {
   return duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count();
@@ -195,6 +203,7 @@ TEST(EventBusPark, NoWakeUpIsLost)
 {
   ParkBus bus;
   Counting c;
+  bus.setParkNetInterval(kFarNet);
   ASSERT_TRUE(bus.subscribe(&c, /*required=*/true, ParkBus::WaitMode::PARKED));
   bus.start();
 
@@ -219,10 +228,13 @@ TEST(EventBusPark, NoWakeUpIsLost)
 
   EXPECT_EQ(c.count.load(), kRounds);
   // The timed wait inside park() is a net, not the mechanism. If wake-ups
-  // were arriving on its schedule instead of from the publisher, 300 rounds
-  // would take 300 net intervals; they take microseconds each.
-  EXPECT_LT(elapsed, milliseconds(3000)) << "wake-ups are riding the safety net";
-  EXPECT_LT(worst, milliseconds(40)) << "worst single wake-up came from the net";
+  // were arriving on its schedule instead of from the publisher, every round
+  // would wait out kFarNet and the spin above would have given up long
+  // before; the worst delay is bounded by the net for the same reason, and
+  // by nothing tighter, because the scheduler is not on trial.
+  std::printf("%d wake-ups from a cold park: worst %lld us, %lld ms total\n", kRounds,
+              static_cast<long long>(worst.count()), static_cast<long long>(elapsed.count()));
+  EXPECT_LT(worst, kFarNet / 2) << "worst single wake-up came from the net";
   bus.stop();
 }
 
@@ -240,6 +252,7 @@ TEST(EventBusPark, AWakeUpLandingExactlyOnTheSleepIsNotLost)
 {
   ParkBus bus;
   WorstLatency sink;
+  bus.setParkNetInterval(kFarNet);
   ASSERT_TRUE(bus.subscribe(&sink, /*required=*/true, ParkBus::WaitMode::PARKED));
   bus.start();
 
@@ -267,9 +280,9 @@ TEST(EventBusPark, AWakeUpLandingExactlyOnTheSleepIsNotLost)
     ASSERT_TRUE(spinFor(sink.count, ++expected, milliseconds(2000)))
         << "consumer never woke at round " << i;
 
-    if (sink.worstNs.load() > duration_cast<nanoseconds>(milliseconds(40)).count())
+    if (sink.worstNs.load() > duration_cast<nanoseconds>(kFarNet / 2).count())
     {
-      break;  // already failed; do not spend 50 ms a round proving it again
+      break;  // already failed; do not spend a net interval a round proving it again
     }
   }
   bus.stop();
@@ -277,9 +290,10 @@ TEST(EventBusPark, AWakeUpLandingExactlyOnTheSleepIsNotLost)
   const auto worstUs = sink.worstNs.load() / 1000;
   std::printf("worst publish->handler across the sleep window: %lld us\n",
               static_cast<long long>(worstUs));
-  // The bound is the net (50 ms) with room for a loaded machine underneath:
-  // a lost wake-up shows up as a whole net interval, nothing else does.
-  EXPECT_LT(worstUs, 40000) << "a wake-up landed on the sleep and the net picked it up";
+  // The bound is the net: a lost wake-up shows up as a whole net interval,
+  // nothing else does, and with the net at kFarNet the spin above has already
+  // given up on any round that rode it.
+  EXPECT_LT(worstUs, kFarNetUs / 2) << "a wake-up landed on the sleep and the net picked it up";
 }
 
 // The sweep above never reliably lands in the window; from outside, hitting
@@ -293,6 +307,7 @@ TEST(EventBusPark, APublishInsideTheSleepWindowStillWakesTheConsumer)
 {
   ParkBus bus;
   WorstLatency sink;
+  bus.setParkNetInterval(kFarNet);
   ASSERT_TRUE(bus.subscribe(&sink, /*required=*/true, ParkBus::WaitMode::PARKED));
 
   struct Probe
@@ -341,7 +356,7 @@ TEST(EventBusPark, APublishInsideTheSleepWindowStillWakesTheConsumer)
   const auto worstUs = sink.worstNs.load() / 1000;
   std::printf("worst publish->handler from inside the sleep window: %lld us\n",
               static_cast<long long>(worstUs));
-  EXPECT_LT(worstUs, 25000) << "the wake-up came from the net, not from the publisher";
+  EXPECT_LT(worstUs, kFarNetUs / 2) << "the wake-up came from the net, not from the publisher";
 }
 
 TEST(EventBusPark, ParkedIdleCostsNothingAndActiveDoesNot)
@@ -386,6 +401,7 @@ TEST(EventBusPark, StopDoesNotWaitOutTheNet)
 {
   ParkBus bus;
   Counting c;
+  bus.setParkNetInterval(kFarNet);
   ASSERT_TRUE(bus.subscribe(&c, /*required=*/true, ParkBus::WaitMode::PARKED));
   bus.start();
   bus.publish(ev(1));
@@ -395,7 +411,7 @@ TEST(EventBusPark, StopDoesNotWaitOutTheNet)
   const auto t0 = steady_clock::now();
   bus.stop();
   const auto took = duration_cast<milliseconds>(steady_clock::now() - t0);
-  EXPECT_LT(took, milliseconds(40)) << "stop() waited for the parked consumer's net";
+  EXPECT_LT(took, kFarNet / 2) << "stop() waited for the parked consumer's net";
 }
 
 TEST(EventBusPark, DrainOnStopStillReachesAParkedConsumer)

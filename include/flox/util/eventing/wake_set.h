@@ -52,7 +52,7 @@ class WakeSet
   // A missed wake-up costs one of these, not forever. Long on purpose, and
   // the same interval a bus uses for its own parked consumers: it is a net,
   // and a net that catches things often is a mechanism nobody meant to build.
-  static constexpr auto kNetInterval = std::chrono::milliseconds(50);
+  static constexpr auto kDefaultNetInterval = std::chrono::milliseconds(50);
 
   // parkUntil() with no deadline of its own: the net is the only bound, which
   // is what parkUnless() is.
@@ -132,6 +132,13 @@ class WakeSet
   // Advisory: how many threads are asleep on the set right now.
   uint32_t waiters() const noexcept { return _waiters.load(std::memory_order_acquire); }
 
+  // How long a sleep lasts when nothing wakes it. Only a test has a reason to
+  // move it: pushing the net far out is how a test proves that a wake-up came
+  // from the publisher and not from the schedule, without putting a number on
+  // the scheduler. Set it before anything parks; it is read under the mutex.
+  void setNetInterval(std::chrono::milliseconds interval) noexcept { _netInterval = interval; }
+  std::chrono::milliseconds netInterval() const noexcept { return _netInterval; }
+
  private:
   // The one sleep both entry points take, so the discipline exists once.
   template <typename Pred>
@@ -156,9 +163,9 @@ class WakeSet
   // Whichever comes first, the caller's deadline or the net under everything.
   // Read after the mutex is taken, so the net covers the sleep and not the
   // wait for the lock.
-  static std::chrono::steady_clock::time_point sleepUntil(int64_t deadlineNs) noexcept
+  std::chrono::steady_clock::time_point sleepUntil(int64_t deadlineNs) const noexcept
   {
-    const auto net = std::chrono::steady_clock::now() + kNetInterval;
+    const auto net = std::chrono::steady_clock::now() + _netInterval;
     if (deadlineNs == kNoDeadline)
     {
       return net;
@@ -173,6 +180,7 @@ class WakeSet
   }
 
   alignas(64) std::atomic<uint32_t> _waiters{0};
+  std::chrono::milliseconds _netInterval{kDefaultNetInterval};
   Probe _probe{nullptr};
   void* _probeUser{nullptr};
   std::mutex _mx;
