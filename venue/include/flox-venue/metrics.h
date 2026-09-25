@@ -158,7 +158,7 @@ struct MdCounters
 struct Gauges
 {
   __int128 insuranceFundRaw{0};    // venue collateral balance (insurance fund)
-  double fundingRate{0.0};         // last settled funding rate
+  int64_t fundingRateRaw{0};       // last settled funding rate, kFundingRateScale
   __int128 openInterestRaw{0};     // aggregate open position notional (quote raw)
   uint64_t openPositions{0};       // count of open perp positions
   uint64_t restingOrders{0};       // live orders across the book

@@ -9,6 +9,7 @@
 #pragma once
 
 #include "flox-venue/control_plane.h"
+#include "flox-venue/fixed_point_text.h"
 
 #include <cctype>
 #include <cerrno>
@@ -879,12 +880,15 @@ class ControlApi
     return out;
   }
 
+  // The instrument's prices are raws at the instrument's own price scale, and
+  // they are rendered as raws: a double here truncated a one-raw tick to
+  // 0.000000 and, under a comma locale, ended the JSON number in the middle.
   static std::string instrumentJson(const SymbolConfig& c)
   {
     return std::string("{\"ok\":true,\"symbol\":") + std::to_string(c.id) +
-           ",\"tick\":" + std::to_string(c.tickSize.toDouble()) +
-           ",\"minPrice\":" + std::to_string(c.minPrice.toDouble()) +
-           ",\"maxPrice\":" + std::to_string(c.maxPrice.toDouble()) +
+           ",\"tick\":" + fixedPointToStr(c.tickSize.raw(), c.priceScale) +
+           ",\"minPrice\":" + fixedPointToStr(c.minPrice.raw(), c.priceScale) +
+           ",\"maxPrice\":" + fixedPointToStr(c.maxPrice.raw(), c.priceScale) +
            ",\"halted\":" + (c.halted ? "true" : "false") +
            ",\"triggerRef\":\"" + (c.triggerRef == TriggerRef::Mark ? "mark" : "last") + "\"}";
   }
