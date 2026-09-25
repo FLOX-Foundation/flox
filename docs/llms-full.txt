@@ -4984,6 +4984,11 @@ The C++ `BacktestOptimizer` ships ranking, filtering, bootstrap CIs, and permuta
     bool wrote   = Stats::generateReport(results, "report.md");  // false if the path can't be opened
     ```
 
+    `generateReport` prints the Drawdown column straight from
+    `max_drawdown_pct`, which is already a percent -- 10.00% means ten
+    percent of the account. The Win Rate column beside it is scaled from a
+    fraction, which is why only one of the two carries a `* 100`.
+
     `bootstrapCI` and `permutationTest` resample with a fixed default seed
     (`42`), so the same inputs always return the same result; pass a trailing
     `seed` argument for an independent resample. See
