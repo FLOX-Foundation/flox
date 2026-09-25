@@ -21815,6 +21815,11 @@
         },
         {
           "kind": "method",
+          "name": "invalidReleaseCount",
+          "parent": "Pool"
+        },
+        {
+          "kind": "method",
           "name": "popSlot",
           "parent": "Pool"
         },
