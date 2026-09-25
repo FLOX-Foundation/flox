@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 #include <math.h>
+#include <compare>
 #include <cstdint>
 #include <limits>
 
@@ -59,6 +60,35 @@ TEST(DecimalTest, ComparisonOperators)
   EXPECT_TRUE(b >= a);
   EXPECT_TRUE(a == a);
   EXPECT_FALSE(a == b);
+}
+
+// ComparisonOperators above only ever compares two values that differ, so a
+// `<` widened to `<=` (or a `>=` narrowed to `>`) changes nothing it asserts.
+// Every one of the six operators is decided here at the exact threshold --
+// equal operands -- and one unit to either side of it.
+TEST(DecimalTest, ComparisonOperatorsAtTheExactThreshold)
+{
+  const Price a = Price::fromRaw(1'000'000);
+  const Price same = Price::fromRaw(1'000'000);
+  const Price bigger = Price::fromRaw(1'000'001);
+
+  EXPECT_FALSE(a < same);
+  EXPECT_FALSE(a > same);
+  EXPECT_TRUE(a <= same);
+  EXPECT_TRUE(a >= same);
+  EXPECT_TRUE(a == same);
+  EXPECT_TRUE((a <=> same) == std::strong_ordering::equal);
+
+  EXPECT_TRUE(a < bigger);
+  EXPECT_FALSE(bigger < a);
+  EXPECT_TRUE(bigger > a);
+  EXPECT_FALSE(a > bigger);
+  EXPECT_TRUE(a <= bigger);
+  EXPECT_FALSE(bigger <= a);
+  EXPECT_TRUE(bigger >= a);
+  EXPECT_FALSE(a >= bigger);
+  EXPECT_FALSE(a == bigger);
+  EXPECT_TRUE((a <=> bigger) == std::strong_ordering::less);
 }
 
 TEST(DecimalTest, RoundToTick)
@@ -228,6 +258,68 @@ TEST(DecimalTest, AccumulateNegativeSaturatesAtMin)
   total += Price::fromRaw(-100);
 
   EXPECT_EQ(total.raw(), std::numeric_limits<int64_t>::min());
+}
+
+#endif  // FLOX_SCALE_CHECKS
+
+// ---------------------------------------------------------------------------
+// Which scale the result of a mixed-scale add or subtract carries.
+//
+// Add and subtract require the same scale, with one exception: a zero is
+// scale-agnostic, so it may be added to a value at any scale. The result then
+// has to carry the NON-zero operand's scale, not the zero's -- read at the
+// wrong scale a DEX raw is off by whole orders of magnitude.
+//
+// The runtime scale only exists with FLOX_SCALE_CHECKS on; without it scale()
+// is the compile-time Scale for every value and there is nothing here to get
+// wrong, which is why this section has no saturation half.
+// ---------------------------------------------------------------------------
+
+#if FLOX_SCALE_CHECKS
+
+TEST(DecimalTest, AddingAZeroKeepsTheNonZeroOperandsScaleWithScaleChecksOn)
+{
+  const Price zeroFine = Price::fromDouble(0.0, 1000);
+  const Price valueCoarse = Price::fromDouble(2.0, 100);
+  ASSERT_EQ(zeroFine.raw(), 0);
+  ASSERT_EQ(valueCoarse.raw(), 200);
+
+  EXPECT_EQ((valueCoarse + zeroFine).scale(), 100);
+  EXPECT_EQ((zeroFine + valueCoarse).scale(), 100);
+  EXPECT_EQ((valueCoarse - zeroFine).scale(), 100);
+  EXPECT_EQ((zeroFine - valueCoarse).scale(), 100);
+
+  EXPECT_EQ((valueCoarse + zeroFine).raw(), 200);
+  EXPECT_EQ((zeroFine - valueCoarse).raw(), -200);
+
+  // Two zeros: nothing to adopt, and the left operand's scale stands.
+  EXPECT_EQ((zeroFine + Price::fromDouble(0.0, 100)).scale(), 100);
+  EXPECT_EQ((valueCoarse + Price::fromDouble(3.0, 100)).scale(), 100);
+}
+
+TEST(DecimalTest, InPlaceAddAndSubtractAdoptTheOtherScaleOnlyFromZeroWithScaleChecksOn)
+{
+  Price acc = Price::fromDouble(0.0, 1000);
+  acc += Price::fromDouble(2.0, 100);
+  EXPECT_EQ(acc.scale(), 100);
+  EXPECT_EQ(acc.raw(), 200);
+
+  Price dec = Price::fromDouble(0.0, 1000);
+  dec -= Price::fromDouble(2.0, 100);
+  EXPECT_EQ(dec.scale(), 100);
+  EXPECT_EQ(dec.raw(), -200);
+
+  // The adoption is conditional: an accumulator that already holds a value
+  // keeps its own scale, and the zero on the right is the scale-agnostic one.
+  Price held = Price::fromDouble(2.0, 100);
+  held += Price::fromDouble(0.0, 1000);
+  EXPECT_EQ(held.scale(), 100);
+  EXPECT_EQ(held.raw(), 200);
+
+  Price heldSub = Price::fromDouble(2.0, 100);
+  heldSub -= Price::fromDouble(0.0, 1000);
+  EXPECT_EQ(heldSub.scale(), 100);
+  EXPECT_EQ(heldSub.raw(), 200);
 }
 
 #endif  // FLOX_SCALE_CHECKS
