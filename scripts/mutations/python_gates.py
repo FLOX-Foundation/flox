@@ -327,6 +327,7 @@ MUTATIONS: list[Mutation] = [
             "bus consumer thread with no GIL of its own) now calls into Python without "
             "acquiring it, and the sync path acquires a GIL it already holds",
         file=STRATEGY,
+        equivalent_reason="every strategy callback reaches Python through PYBIND11_OVERRIDE, which opens with its own gil_scoped_acquire, and error_already_set acquires in its destructor; dispatch's acquire is redundant on both paths, so inverting the branch is not observable from Python (the contention test at test_binding_callback_exceptions.py:1097 stays green either way)",
         old="""  template <typename Fn>
   static void dispatch(const PyStrategyHost* self, const char* source, Fn&& fn)
   {
