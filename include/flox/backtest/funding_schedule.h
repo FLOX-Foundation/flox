@@ -233,22 +233,34 @@ class FundingSchedule
   {
     std::vector<FundingPayment> out;
 
-    // Guard against the epoch walk: a first tick with _lastTickNs == 0 and a
-    // real unix-nanos `now` would iterate every boundary since 1970 (~6e13).
-    // If a single tick would cross more than kMaxBoundariesPerTick boundaries,
-    // clamp the lower bound forward and warn -- this only trips on the misuse
-    // (unseeded schedule + real timestamps), never on a backtest driving time
-    // from a small base.
+    // A schedule that has never ticked sits at _lastTickNs == 0, i.e. the
+    // epoch. The first tick of a run stamped with real exchange timestamps
+    // would therefore settle every boundary since 1970 against the position
+    // held on that one tick: at an 8h cadence a 2026 timestamp is 61,362
+    // payments. Seed the cursor from the first timestamp the run actually
+    // shows us, so the opening tick settles at most the boundary that just
+    // passed and the cadence afterwards is unchanged.
+    //
+    // std::max keeps a schedule driven from a small base (the unit tests, and
+    // any run whose clock starts near zero) exactly where it was: there the
+    // previous boundary is at or before the cursor, so nothing moves.
     if (_intervalNs > 0 && !_seeded)
     {
       _seeded = true;
+      const int64_t previousBoundary = (nowNs / _intervalNs) * _intervalNs;
+      _lastTickNs = std::max(_lastTickNs, previousBoundary - _intervalNs);
+    }
+
+    // Later ticks can still be handed a jump (a resumed run, a gap in the
+    // tape). Warn and clamp rather than emitting an unbounded payment list.
+    if (_intervalNs > 0)
+    {
       const int64_t span = nowNs - _lastTickNs;
       if (span / _intervalNs > kMaxBoundariesPerTick)
       {
-        FLOX_LOG_WARN("[FundingSchedule] first tick would cross "
+        FLOX_LOG_WARN("[FundingSchedule] tick would cross "
                       << (span / _intervalNs) << " boundaries; clamping to the "
-                      << "last " << kMaxBoundariesPerTick
-                      << " (seed the schedule at your backtest start to avoid this)");
+                      << "last " << kMaxBoundariesPerTick);
         _lastTickNs = nowNs - kMaxBoundariesPerTick * _intervalNs;
       }
     }
@@ -328,9 +340,11 @@ class FundingSchedule
   std::vector<FundingTapeEntry> _perSymbolTape;
   std::vector<int64_t> _settlementTimestamps;
   int64_t _lastTickNs{0};
-  bool _seeded{false};  // first tick clamps an epoch-sized gap (see tick())
-  // ~1 year of 8h funding is 1095 settlements; 100k covers any realistic
-  // backtest span while still catching the 1970 walk (~6e13).
+  bool _seeded{false};  // first tick seeds the cursor from `now` (see tick())
+  // Backstop for a jump on a later tick. ~1 year of 8h funding is 1095
+  // settlements, so 100k is far above any window a run legitimately crosses
+  // in one call; the epoch walk the first tick used to make is now handled by
+  // seeding, not by this clamp.
   static constexpr int64_t kMaxBoundariesPerTick = 100'000;
 
   // Resolve rate for a (symbol, ts) pair. Search per-symbol tape for
