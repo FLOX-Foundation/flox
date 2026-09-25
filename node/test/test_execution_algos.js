@@ -27,6 +27,13 @@ console.log('=== TWAP ===');
   check(c2.length === 1, 'TWAP next slice fires at next interval');
   const cAll = algo.step(10_000);
   check(algo.isDone(), 'TWAP completes by end of duration');
+
+  // startTimeNs is a clock reading and takes a BigInt as well as a Number.
+  const big = new flox.TWAPExecutor({
+    targetQty: 100, side: 'buy', symbol: 1,
+    durationNs: 10_000, sliceCount: 5, startTimeNs: 0n,
+  });
+  check(big.step(0).length === 1, 'TWAP takes a BigInt startTimeNs');
 }
 
 console.log('=== VWAP ===');

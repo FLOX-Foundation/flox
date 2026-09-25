@@ -2900,7 +2900,8 @@ interface ExecAlgoCommon {
 export interface TWAPOptions extends ExecAlgoCommon {
   durationNs: number;
   sliceCount: number;
-  startTimeNs: number;
+  /** A clock reading: takes a `Number` or a `BigInt`. */
+  startTimeNs: number | bigint;
 }
 
 export interface VWAPOptions extends ExecAlgoCommon {
