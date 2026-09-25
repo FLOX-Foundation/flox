@@ -43,9 +43,12 @@ struct PyExtBar
   int64_t volume_raw;
   int64_t buy_volume_raw;
   int64_t trade_count;
+  // flox::Bar::reason (BarCloseReason), carried through so a batch-aggregated
+  // bar says why it closed the same way the live callback path's BarData does.
+  uint8_t close_reason;
 };
 #pragma pack(pop)
-static_assert(sizeof(PyExtBar) == 72);
+static_assert(sizeof(PyExtBar) == 73);
 
 namespace
 {
@@ -67,7 +70,8 @@ inline PyExtBar barToExtBar(const Bar& b)
           .close_raw = b.close.raw(),
           .volume_raw = b.volume.raw(),
           .buy_volume_raw = b.buyVolume.raw(),
-          .trade_count = b.tradeCount.raw()};
+          .trade_count = b.tradeCount.raw(),
+          .close_reason = static_cast<uint8_t>(b.reason)};
 }
 
 // Batch aggregation: takes pre-extracted vectors (no GIL needed).
@@ -184,7 +188,7 @@ py::array_t<PyExtBar> aggregateBars(
 inline void bindAggregators(py::module_& m)
 {
   PYBIND11_NUMPY_DTYPE(PyExtBar, start_time_ns, end_time_ns, open_raw, high_raw, low_raw,
-                       close_raw, volume_raw, buy_volume_raw, trade_count);
+                       close_raw, volume_raw, buy_volume_raw, trade_count, close_reason);
 
   // Ensure time mapping is initialized
   flox::init_timebase_mapping();

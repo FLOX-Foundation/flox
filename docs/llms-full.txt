@@ -10800,20 +10800,24 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 
 - `advance_clock(self, timestamp_ns: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `apply_latency_profile(self, name: str) -> None`
+- `begin_bar_callback_window(self) -> None`
 - `bracket_state(self, bracket_id: typing.SupportsInt | typing.SupportsIndex) -> str`
 - `cancel_all(self, symbol: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `cancel_bracket(self, bracket_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `clear_rate_limit_policy(self) -> None`
+- `end_bar_callback_window(self) -> None`
 - `fills(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]`
 - `fills_list(self) -> list`
 - `fok_mode(self) -> str`
 - `iceberg_hidden_remaining_raw(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> int`
 - `on_bar(self, symbol: typing.SupportsInt | typing.SupportsIndex, close_price: typing.SupportsFloat | typing.SupportsIndex) -> None`
+- `on_bar_ohlc(self, symbol: typing.SupportsInt | typing.SupportsIndex, open: typing.SupportsFloat | typing.SupportsIndex, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_best_levels(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_price: typing.SupportsFloat | typing.SupportsIndex, bid_qty: typing.SupportsFloat | typing.SupportsIndex, ask_price: typing.SupportsFloat | typing.SupportsIndex, ask_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_book_snapshot(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_levels: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]], ask_levels: collections.abc.Sequence[tuple[typing.SupportsFloat | typing.SupportsIndex, typing.SupportsFloat | typing.SupportsIndex]]) -> None`
 - `on_trade(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool) -> None`
 - `on_trade_qty(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool) -> None`
+- `reset(self) -> None`
 - `set_bracket_child_arm_mode(self, mode: str) -> None`
 - `set_cancel_ack_latency(self, latency_ns: typing.SupportsInt | typing.SupportsIndex, jitter_ns: typing.SupportsInt | typing.SupportsIndex = 0) -> None`
 - `set_cancel_ack_latency_distribution(self, dist: LatencyDistribution) -> None`
@@ -12314,6 +12318,7 @@ batch function.
 | `volume_raw` | `int64` | Total volume * 10^8 |
 | `buy_volume_raw` | `int64` | Buy volume * 10^8 |
 | `trade_count` | `int64` | Number of trades in bar |
+| `close_reason` | `uint8` | Why the bar closed: `0` threshold, `2` forced, `3` warmup. Every bar this batch path returns closed on its own threshold, so `0` here. |
 
 ---
 
@@ -13901,6 +13906,36 @@ Feed a bar close price for order matching. Limit orders are matched against this
 executor.on_bar(symbol=1, close_price=50000.0)
 ```
 
+#### `on_bar_ohlc(symbol, open, high, low, close)`
+
+The manual bar path: feed a full OHLC bar instead of a close price alone. Moves
+the market to `open` — releasing any order held from a prior
+`begin_bar_callback_window()` / `end_bar_callback_window()` pair at that
+price — then walks `low -> high -> close` so resting stops and targets match
+the bar's intrabar extremes, not just its close. Use this, not `on_bar`, when
+driving `SimulatedExecutor` by hand: `BacktestRunner.run_bars` uses this
+overload internally, so `on_bar` alone gives a caller neither the bar's open
+nor its intrabar extremes.
+
+```python
+executor.on_bar_ohlc(symbol=1, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+```
+
+#### `begin_bar_callback_window()` / `end_bar_callback_window()`
+
+Bracket a hand-driven strategy callback so orders it submits are held instead
+of matched immediately — matching against a bar's own high/low/close from
+inside its callback is look-ahead, since the market has already been walked
+through that bar by the time the callback runs. Held orders release at the
+next `on_bar_ohlc` call's open.
+
+```python
+executor.on_bar_ohlc(1, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+executor.begin_bar_callback_window()
+executor.submit_order(1, "buy", 0.0, 1.0, "market", symbol=1)
+executor.end_bar_callback_window()
+```
+
 #### `on_trade(symbol, price, is_buy)`
 
 Feed a trade for order matching.
@@ -13970,6 +14005,20 @@ Advance the simulation clock.
 
 ```python
 executor.advance_clock(timestamp_ns=1704067200_000_000_000)
+```
+
+#### `reset()`
+
+Drop fills and run-scoped state (held/conditional orders, queue positions,
+net positions, brackets, in-flight acks, market state) while keeping
+installed configuration — slippage, queue model, latency distributions, rate
+limits, STP, callbacks, attached venue availability. Seeded RNGs go back to
+their configured seeds. Call between passes when replaying several
+hand-driven runs through one executor, so each reports only its own fills.
+
+```python
+executor.reset()
+assert executor.fill_count == 0
 ```
 
 #### `fills() -> ndarray`
@@ -14614,6 +14663,9 @@ exec.setQueueModel('tob', 1);
 | `cancelOrder(orderId)` | Cancel an order |
 | `cancelAll(symbol)` | Cancel all orders for a symbol |
 | `onBar(symbol, closePrice)` | Feed a bar close |
+| `onBarOhlc(symbol, open, high, low, close)` | Feed a full OHLC bar: the manual bar path (see below) |
+| `beginBarCallbackWindow()` / `endBarCallbackWindow()` | Hold orders submitted between the two calls until the next bar's open |
+| `reset()` | Drop fills and run-scoped state, keeping installed configuration |
 | `onTrade(symbol, price, isBuy)` | Feed a trade |
 | `advanceClock(timestampNs)` | Advance simulated time |
 | `setDefaultSlippage(model, ticks, tickSize, bps, impactCoeff)` | Configure slippage. `model` is one of `"none"`, `"fixed_ticks"`, `"fixed_bps"`, `"volume_impact"` |
@@ -14623,6 +14675,30 @@ exec.setQueueModel('tob', 1);
 `submitOrder`'s `type` is one of `"market"`, `"limit"`, `"stop_market"`,
 `"stop_limit"`, `"trailing_stop"`. The optional seventh argument carries
 `{ tif?: 'gtc' | 'ioc' | 'fok' | 'gtd' | 'post_only', reduceOnly?: boolean, expiresAtNs?: number }`.
+
+### The manual bar path
+
+`onBar` moves the market straight to a bar's close, so a caller driving
+`SimulatedExecutor` by hand never sees the bar's open or its intrabar
+extremes — a held order would match at a price that only exists because the
+bar has already happened. `onBarOhlc` is what `BacktestRunner.runBars` uses
+internally: it moves the market to the open first (releasing any order held
+from a `beginBarCallbackWindow`/`endBarCallbackWindow` pair at that price),
+then walks `low -> high -> close`.
+
+```javascript
+const exec = new flox.SimulatedExecutor();
+exec.advanceClock(60_000_000_000n);
+exec.onBarOhlc(1, 50000.0, 50500.0, 49800.0, 50200.0);
+
+exec.beginBarCallbackWindow();
+exec.submitOrder(1, 'buy', 0.0, 1.0, 'market', 1);
+exec.endBarCallbackWindow();
+// The order above is held, not matched, and releases at the next
+// onBarOhlc call's open.
+
+exec.reset(); // drop fills before a second hand-driven run
+```
 
 ---
 
@@ -14869,6 +14945,7 @@ Each returned bar object:
 | `volume` | `number` | Total volume |
 | `buyVolume` | `number` | Buy-side volume |
 | `tradeCount` | `number` | Number of trades |
+| `closeReason` | `number` | Why the bar closed: `0` threshold, `2` forced, `3` warmup. Every bar this batch path returns closed on its own threshold, so `0` here. |
 
 Only fully closed bars are returned -- a trailing bar still open when the
 trade array ends is dropped, so the bar count depends only on the input.
@@ -16320,6 +16397,9 @@ SimulatedExecutor()
 | `cancel_order(order_id)` | Cancel an order |
 | `cancel_all(symbol)` | Cancel all orders for a symbol |
 | `on_bar(symbol, close_price)` | Feed a bar close |
+| `on_bar_ohlc(symbol, open, high, low, close)` | Feed a full OHLC bar: the manual bar path (see below) |
+| `begin_bar_callback_window()` / `end_bar_callback_window()` | Hold orders submitted between the two calls until the next bar's open |
+| `reset()` | Drop fills and run-scoped state, keeping installed configuration |
 | `on_trade(symbol, price, is_buy)` | Feed a trade |
 | `on_trade_qty(symbol, price, qty, is_buy)` | Feed a trade with quantity (enables queue-fill simulation) |
 | `on_best_levels(symbol, bid_price, bid_qty, ask_price, ask_qty)` | Feed top-of-book snapshot |
@@ -16334,6 +16414,27 @@ SimulatedExecutor()
 | Property | Type | Description |
 |----------|------|-------------|
 | `fill_count` | `int` | Number of fills generated |
+
+### The manual bar path
+
+`on_bar` moves the market straight to a bar's close, so driving the executor
+by hand with it never shows a held order the bar's open or its intrabar
+extremes. `on_bar_ohlc` is what `BacktestRunner` uses internally: it moves
+the market to the open first (releasing any order held from a
+`begin_bar_callback_window`/`end_bar_callback_window` pair at that price),
+then walks `low -> high -> close`.
+
+```codon
+exec.advance_clock(60_000_000_000)
+exec.on_bar_ohlc(symbol, open=50000.0, high=50500.0, low=49800.0, close=50200.0)
+
+exec.begin_bar_callback_window()
+exec.submit_order(order_id, "buy", 0.0, 1.0)
+exec.end_bar_callback_window()
+# Held, not matched -- releases at the next on_bar_ohlc call's open.
+
+exec.reset()  # drop fills before a second hand-driven run
+```
 
 ### Slippage models
 
@@ -16724,7 +16825,9 @@ for b in bars:
 
 `AggBar` mirrors the C `FloxBar` struct: `*_raw` fields are fixed-point
 (divide by `1e8`), plus float accessors `open()`, `high()`, `low()`,
-`close()`, `volume()`, `buy_volume()`, and a plain `trade_count`.
+`close()`, `volume()`, `buy_volume()`, a plain `trade_count`, and
+`close_reason` -- why the bar closed (`0` threshold, `2` forced, `3` warmup;
+every bar this batch path returns closed on its own threshold, so `0` here).
 
 | Function | Threshold argument | Description |
 |----------|--------------------|--------------|
@@ -17369,6 +17472,27 @@ executor.submitOrder(id, 'buy', 50000, 1.0, 0, symbolId);
 executor.onBar(symbolId, 50100);
 executor.advanceClock(tsNs);
 executor.fillCount;
+```
+
+### The manual bar path
+
+`onBar` moves the market straight to a bar's close, so driving the executor
+by hand with it never shows a held order the bar's open or its intrabar
+extremes. `onBarOhlc` is what `BacktestRunner` uses internally: it moves the
+market to the open first (releasing any order held from a
+`beginBarCallbackWindow`/`endBarCallbackWindow` pair at that price), then
+walks `low -> high -> close`.
+
+```javascript
+executor.advanceClock(60000000000n);
+executor.onBarOhlc(symbolId, 50000, 50500, 49800, 50200);
+
+executor.beginBarCallbackWindow();
+executor.submitOrder(id, 'buy', 0, 1.0, 1 /* market */, symbolId);
+executor.endBarCallbackWindow();
+// Held, not matched -- releases at the next onBarOhlc call's open.
+
+executor.reset(); // drop fills before a second hand-driven run
 ```
 
 ---
