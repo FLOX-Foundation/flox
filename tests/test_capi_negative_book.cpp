@@ -125,3 +125,150 @@ TEST(CapiNegativeBook, StrategyRawBestQuotesSeparateNoQuoteFromAPriceOfZero)
             "this case.";
 #endif
 }
+
+// The bid case above is only a third of the contract. The ask and the mid have
+// the same two answers to keep apart -- a quote at a price of exactly 0.0 and
+// no quote at all -- and they read different state to produce them, so each one
+// is asserted the same way against the same set of books: present with the raw
+// price written out, absent with the flag clear.
+TEST(CapiNegativeBook, OptionalRawBestQuotesAnswerEveryBookState)
+{
+#if defined(FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE)
+  const auto& books = bookStatesUnderTest();
+  FloxStrategyHandle s = books.strategy;
+  int64_t raw = 0;
+
+  // A book holding a bid and no ask: the bid is a real quote at 0.0, and the
+  // two accessors that need an ask have nothing to answer with.
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.bidAtZero, &raw), 1)
+      << "a bid at exactly 0.0 is reported as no bid";
+  EXPECT_EQ(raw, 0);
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.bidAtZero, &raw), 0)
+      << "an empty ask side reports a quote";
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.bidAtZero, &raw), 0)
+      << "a one-sided book has a mid";
+
+  // The mirror image: an ask and no bid.
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.askOnly, &raw), 1);
+  EXPECT_EQ(raw, flox_price_from_double(5.0));
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.askOnly, &raw), 0)
+      << "an empty bid side reports a quote";
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.askOnly, &raw), 0);
+
+  // An ask at exactly 0.0 -- the value the plain int64_t accessors spend as
+  // their "no quote" answer.
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.askAtZero, &raw), 1)
+      << "an ask at exactly 0.0 is reported as no ask";
+  EXPECT_EQ(raw, 0);
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.askAtZero, &raw), 1);
+  EXPECT_EQ(raw, flox_price_from_double(-2.0));
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.askAtZero, &raw), 1);
+  EXPECT_EQ(raw, flox_price_from_double(-1.0));
+
+  // A mid of exactly 0.0, from a two-sided book quoting either side of zero.
+  // The mid has to be the mid and not one of the two quotes it is built from.
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.midAtZero, &raw), 1)
+      << "a mid of exactly 0.0 is reported as no mid";
+  EXPECT_EQ(raw, 0);
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.midAtZero, &raw), 1);
+  EXPECT_EQ(raw, flox_price_from_double(-1.0));
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.midAtZero, &raw), 1);
+  EXPECT_EQ(raw, flox_price_from_double(1.0));
+
+  // A book quoted entirely below zero: three distinct prices, so a mid that
+  // answers with the bid, or an ask that answers with the bid, is visible.
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.belowZero, &raw), 1);
+  EXPECT_EQ(raw, flox_price_from_double(-101.0));
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.belowZero, &raw), 1);
+  EXPECT_EQ(raw, flox_price_from_double(-99.0));
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.belowZero, &raw), 1);
+  EXPECT_EQ(raw, flox_price_from_double(-100.0));
+
+  // A symbol with no book at all: all three absent.
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.noSymbol, &raw), 0);
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.noSymbol, &raw), 0);
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.noSymbol, &raw), 0);
+#else
+  FAIL() << "needs flox_best_bid_raw_opt / flox_best_ask_raw_opt / "
+            "flox_mid_price_raw_opt and FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE";
+#endif
+}
+
+// "0 with price_out untouched", in the header's own words. A caller that seeds
+// its local and then reads it back on the strength of the flag must find what
+// it put there, so a flag of 0 arriving next to a write of 0 -- indistinguishable
+// from a quote at 0.0 for anyone who forgets to check the flag -- is caught here.
+// Each call gets its own local, since a local shared between two calls only ever
+// shows the last write.
+TEST(CapiNegativeBook, OptionalRawBestQuotesLeavePriceOutUntouchedWhenThereIsNoQuote)
+{
+#if defined(FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE)
+  const auto& books = bookStatesUnderTest();
+  FloxStrategyHandle s = books.strategy;
+  constexpr int64_t kSentinel = -987654321;
+
+  int64_t bidOnEmptySide = kSentinel;
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.askOnly, &bidOnEmptySide), 0);
+  EXPECT_EQ(bidOnEmptySide, kSentinel) << "flox_best_bid_raw_opt wrote a price it has none of";
+
+  int64_t bidOnAbsentBook = kSentinel;
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.noSymbol, &bidOnAbsentBook), 0);
+  EXPECT_EQ(bidOnAbsentBook, kSentinel);
+
+  int64_t askOnEmptySide = kSentinel;
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.bidAtZero, &askOnEmptySide), 0);
+  EXPECT_EQ(askOnEmptySide, kSentinel) << "flox_best_ask_raw_opt wrote a price it has none of";
+
+  int64_t askOnAbsentBook = kSentinel;
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.noSymbol, &askOnAbsentBook), 0);
+  EXPECT_EQ(askOnAbsentBook, kSentinel);
+
+  int64_t midOnOneSidedBook = kSentinel;
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.bidAtZero, &midOnOneSidedBook), 0);
+  EXPECT_EQ(midOnOneSidedBook, kSentinel)
+      << "flox_mid_price_raw_opt wrote a price it has none of";
+
+  int64_t midOnAbsentBook = kSentinel;
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.noSymbol, &midOnAbsentBook), 0);
+  EXPECT_EQ(midOnAbsentBook, kSentinel);
+
+  // Green control: the same locals are written when there is a quote, so the
+  // assertions above are pinning "untouched on absence" and not "never writes".
+  int64_t present = kSentinel;
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.bidAtZero, &present), 1);
+  EXPECT_EQ(present, 0);
+#else
+  FAIL() << "needs FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE";
+#endif
+}
+
+// "price_out may be NULL when only the flag is wanted" -- a caller asking
+// whether a side is quoted at all, which is exactly what the JS bindings do on
+// the way to returning null. Every caller in the tree passes a real pointer, so
+// a dereference that stopped checking would never be noticed here.
+TEST(CapiNegativeBook, OptionalRawBestQuotesAcceptANullPriceOut)
+{
+#if defined(FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE)
+  const auto& books = bookStatesUnderTest();
+  FloxStrategyHandle s = books.strategy;
+
+  // With a quote on the other end: the flag still comes back, nothing is
+  // written anywhere.
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.bidAtZero, nullptr), 1);
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.askAtZero, nullptr), 1);
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.midAtZero, nullptr), 1);
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.belowZero, nullptr), 1);
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.belowZero, nullptr), 1);
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.belowZero, nullptr), 1);
+
+  // And with nothing to report.
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.askOnly, nullptr), 0);
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.bidAtZero, nullptr), 0);
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.bidAtZero, nullptr), 0);
+  EXPECT_EQ(flox_best_bid_raw_opt(s, books.noSymbol, nullptr), 0);
+  EXPECT_EQ(flox_best_ask_raw_opt(s, books.noSymbol, nullptr), 0);
+  EXPECT_EQ(flox_mid_price_raw_opt(s, books.noSymbol, nullptr), 0);
+#else
+  FAIL() << "needs FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE";
+#endif
+}

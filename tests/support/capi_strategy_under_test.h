@@ -64,10 +64,92 @@ struct StrategyUnderTest
   StrategyUnderTest& operator=(const StrategyUnderTest&) = delete;
 };
 
+// A second subject, for the cases the one above cannot state: every book state
+// the three _opt accessors have to answer differently, one symbol each, on one
+// strategy. Tick size 1.0 throughout, so every price below lands on an exact
+// tick and the expected raw values do not depend on how an off-tick price is
+// snapped.
+//
+//   bidAtZero   bid 0.0, no ask    -- bid present at raw 0, ask and mid absent
+//   askOnly     ask 5.0, no bid    -- ask present, bid and mid absent
+//   askAtZero   bid -2.0, ask 0.0  -- ask present at raw 0
+//   midAtZero   bid -1.0, ask 1.0  -- mid present at raw 0, from a live book
+//   belowZero   bid -101, ask -99  -- all three present below zero
+//   noSymbol    id 0               -- an id the registry never issues: no book
+struct BookStatesUnderTest
+{
+  FloxRegistryHandle registry{nullptr};
+  FloxStrategyHandle strategy{nullptr};
+  FloxRunnerHandle runner{nullptr};
+
+  uint32_t noSymbol{0};
+  uint32_t bidAtZero{0};
+  uint32_t askOnly{0};
+  uint32_t askAtZero{0};
+  uint32_t midAtZero{0};
+  uint32_t belowZero{0};
+
+  BookStatesUnderTest()
+  {
+    registry = flox_registry_create();
+    bidAtZero = flox_registry_add_symbol(registry, "test", "BID-AT-ZERO", 1.0);
+    askOnly = flox_registry_add_symbol(registry, "test", "ASK-ONLY", 1.0);
+    askAtZero = flox_registry_add_symbol(registry, "test", "ASK-AT-ZERO", 1.0);
+    midAtZero = flox_registry_add_symbol(registry, "test", "MID-AT-ZERO", 1.0);
+    belowZero = flox_registry_add_symbol(registry, "test", "BELOW-ZERO", 1.0);
+
+    FloxStrategyCallbacks callbacks{};
+    uint32_t symbols[] = {bidAtZero, askOnly, askAtZero, midAtZero, belowZero};
+    strategy = flox_strategy_create(1, symbols, 5, registry, callbacks);
+
+    runner = flox_runner_create(registry, onSignalIgnored, nullptr);
+    flox_runner_add_strategy(runner, strategy);
+    flox_runner_start(runner);
+
+    const double qty[] = {1.0};
+
+    const double zero[] = {0.0};
+    flox_runner_on_book_snapshot(runner, bidAtZero, zero, qty, 1, nullptr, nullptr, 0,
+                                 /*exchange_ts_ns=*/1);
+
+    const double five[] = {5.0};
+    flox_runner_on_book_snapshot(runner, askOnly, nullptr, nullptr, 0, five, qty, 1, 1);
+
+    const double minusTwo[] = {-2.0};
+    flox_runner_on_book_snapshot(runner, askAtZero, minusTwo, qty, 1, zero, qty, 1, 1);
+
+    const double minusOne[] = {-1.0};
+    const double plusOne[] = {1.0};
+    flox_runner_on_book_snapshot(runner, midAtZero, minusOne, qty, 1, plusOne, qty, 1, 1);
+
+    const double minus101[] = {-101.0};
+    const double minus99[] = {-99.0};
+    flox_runner_on_book_snapshot(runner, belowZero, minus101, qty, 1, minus99, qty, 1, 1);
+
+    flox_runner_stop(runner);
+  }
+
+  ~BookStatesUnderTest()
+  {
+    flox_runner_destroy(runner);
+    flox_strategy_destroy(strategy);
+    flox_registry_destroy(registry);
+  }
+
+  BookStatesUnderTest(const BookStatesUnderTest&) = delete;
+  BookStatesUnderTest& operator=(const BookStatesUnderTest&) = delete;
+};
+
 }  // namespace flox_test_support
 
 inline FloxStrategyHandle currentStrategyUnderTest()
 {
   static flox_test_support::StrategyUnderTest subject;
   return subject.strategy;
+}
+
+inline const flox_test_support::BookStatesUnderTest& bookStatesUnderTest()
+{
+  static flox_test_support::BookStatesUnderTest subject;
+  return subject;
 }

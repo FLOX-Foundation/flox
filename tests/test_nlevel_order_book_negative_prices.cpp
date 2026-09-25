@@ -243,6 +243,52 @@ TEST(NLevelOrderBookNegativePrices, ACrossedNegativeBookIsReportedCrossed)
   EXPECT_TRUE(positive.isCrossed());
 }
 
+// The boundary isCrossed() is written on: `*bid >= *ask`, which the reference
+// documents as "true if best bid >= best ask (crossed/locked market)". A locked
+// book -- bid and ask on the same tick, spread zero -- is therefore reported
+// crossed, not clean, and that is what is pinned here. The cases above only ever
+// place the two sides a tick or more apart, so nothing there tells a `>=` from
+// a `>`.
+TEST(NLevelOrderBookNegativePrices, ALockedBookIsReportedCrossed)
+{
+  NLevelOrderBook<> locked{Price::fromDouble(1.0)};
+  locked.applyBookUpdate(snapshot().bid(100.0, 1.0).ask(100.0, 1.0).event());
+
+  ASSERT_TRUE(locked.bestBid().has_value());
+  ASSERT_TRUE(locked.bestAsk().has_value());
+  ASSERT_EQ(locked.bestBid()->raw(), locked.bestAsk()->raw())
+      << "the two sides did not land on the same tick, so this is not a locked book";
+  ASSERT_TRUE(locked.spread().has_value());
+  EXPECT_EQ(locked.spread()->raw(), 0);
+  EXPECT_TRUE(locked.isCrossed())
+      << "a bid and an ask on the same tick read as a clean book";
+
+  // The same tick below zero, where the sentinel used to hide the state
+  // entirely.
+  NLevelOrderBook<> lockedBelowZero{Price::fromDouble(1.0)};
+  lockedBelowZero.applyBookUpdate(snapshot().bid(-100.0, 1.0).ask(-100.0, 1.0).event());
+  ASSERT_TRUE(lockedBelowZero.bestBid().has_value());
+  ASSERT_TRUE(lockedBelowZero.bestAsk().has_value());
+  ASSERT_EQ(lockedBelowZero.bestBid()->raw(), lockedBelowZero.bestAsk()->raw());
+  EXPECT_TRUE(lockedBelowZero.isCrossed())
+      << "a bid and an ask on the same negative tick read as a clean book";
+
+  // And locked exactly at zero, the price the C accessors spend as a sentinel.
+  NLevelOrderBook<> lockedAtZero{Price::fromDouble(1.0)};
+  lockedAtZero.applyBookUpdate(snapshot().bid(0.0, 1.0).ask(0.0, 1.0).event());
+  ASSERT_TRUE(lockedAtZero.bestBid().has_value());
+  ASSERT_TRUE(lockedAtZero.bestAsk().has_value());
+  EXPECT_EQ(lockedAtZero.bestBid()->raw(), 0);
+  EXPECT_EQ(lockedAtZero.bestAsk()->raw(), 0);
+  EXPECT_TRUE(lockedAtZero.isCrossed());
+
+  // Green control: one tick apart is not crossed, so the assertion above is
+  // pinning the boundary rather than making isCrossed() answer true everywhere.
+  NLevelOrderBook<> oneTickApart{Price::fromDouble(1.0)};
+  oneTickApart.applyBookUpdate(snapshot().bid(99.0, 1.0).ask(100.0, 1.0).event());
+  EXPECT_FALSE(oneTickApart.isCrossed());
+}
+
 // The delta path rebuilds the cached best cursor from scratch after it moves the
 // window (reanchorWithData), and that rebuild is driven by the level index, not
 // by the tick, so it finds the right level. Only the tick it writes down is then
@@ -257,6 +303,21 @@ TEST(NLevelOrderBookNegativePrices, AMarketWalkingBelowZeroKeepsItsBestQuotes)
 
   // New quotes far below zero: outside the window, so the book re-anchors.
   book.applyBookUpdate(delta().bid(-30.0, 1.0).ask(-29.0, 1.0).event());
+
+  // Read the best quotes here, while both markets are still in the book. The
+  // re-anchor rebuilt the cached cursors by walking the whole ladder, and the
+  // best bid of a book holding 20.0 and -30.0 is 20.0 -- the highest level, not
+  // the lowest one, and not the level that happened to arrive last. Once the
+  // stale side is pulled below, only one bid is left and the two answers
+  // coincide, so a rebuild running the wrong way would pass unnoticed.
+  ASSERT_TRUE(book.bestBid().has_value()) << "the re-anchor emptied the bid side";
+  ASSERT_TRUE(book.bestAsk().has_value()) << "the re-anchor emptied the ask side";
+  EXPECT_EQ(book.bestBid()->raw(), Price::fromDouble(20.0).raw())
+      << "the best bid across the re-anchor is not the highest level in the book";
+  EXPECT_EQ(book.bestAsk()->raw(), Price::fromDouble(-29.0).raw())
+      << "the best ask across the re-anchor is not the lowest level in the book";
+  EXPECT_TRUE(book.isCrossed()) << "a bid at 20.0 over an ask at -29.0 reads as clean";
+
   // The old ones are pulled, leaving only the negative side of the book.
   book.applyBookUpdate(delta().bid(20.0, 0.0).ask(21.0, 0.0).event());
 
@@ -275,6 +336,43 @@ TEST(NLevelOrderBookNegativePrices, AMarketWalkingBelowZeroKeepsItsBestQuotes)
   // An odd tick sum, so the half-tick in mid() is taken on a negative total.
   ASSERT_TRUE(book.mid().has_value());
   EXPECT_EQ(book.mid()->raw(), Price::fromDouble(-29.5).raw());
+  ASSERT_TRUE(book.spread().has_value());
+  EXPECT_EQ(book.spread()->raw(), Price::fromDouble(1.0).raw());
+}
+
+// Moving the window throws the cached best-quote cursors away and rebuilds them
+// by walking the whole ladder, so the rebuild has to pick the same level the
+// incremental path would: the highest bid, the lowest ask. With depth on both
+// sides at the moment the window moves, a rebuild running the wrong way down
+// the ladder picks the far side of the book -- and the market is then quoted at
+// a price behind the touch, which is exactly the read a strategy sizes against.
+// The re-anchor here is triggered by a quote far below zero, the move a market
+// walking through zero makes.
+TEST(NLevelOrderBookNegativePrices, ARebuiltBookStillQuotesItsTouch)
+{
+  NLevelOrderBook<64> book{Price::fromDouble(1.0)};
+  book.applyBookUpdate(
+      snapshot().bid(20.0, 1.0).bid(19.0, 2.0).ask(21.0, 1.0).ask(22.0, 2.0).event());
+  ASSERT_EQ(book.getBidLevels(4).size(), 2u);
+  ASSERT_EQ(book.getAskLevels(4).size(), 2u);
+
+  // Outside the window, so the book re-anchors and rebuilds both cursors while
+  // two levels are standing on each side.
+  book.applyBookUpdate(delta().bid(-30.0, 1.0).event());
+
+  ASSERT_EQ(book.getBidLevels(4).size(), 3u) << "the re-anchor dropped a bid level";
+  ASSERT_EQ(book.getAskLevels(4).size(), 2u) << "the re-anchor dropped an ask level";
+
+  ASSERT_TRUE(book.bestBid().has_value()) << "the rebuild emptied the bid side";
+  ASSERT_TRUE(book.bestAsk().has_value()) << "the rebuild emptied the ask side";
+  EXPECT_EQ(book.bestBid()->raw(), Price::fromDouble(20.0).raw())
+      << "the rebuilt best bid is not the highest level in the book";
+  EXPECT_EQ(book.bestAsk()->raw(), Price::fromDouble(21.0).raw())
+      << "the rebuilt best ask is not the lowest level in the book";
+
+  // The level walk and the best quote must agree, here as everywhere else.
+  EXPECT_EQ(book.getBidLevels(1)[0].price.raw(), book.bestBid()->raw());
+  EXPECT_EQ(book.getAskLevels(1)[0].price.raw(), book.bestAsk()->raw());
   ASSERT_TRUE(book.spread().has_value());
   EXPECT_EQ(book.spread()->raw(), Price::fromDouble(1.0).raw());
 }

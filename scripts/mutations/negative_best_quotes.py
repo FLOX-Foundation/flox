@@ -232,6 +232,20 @@ MUTATIONS: list[Mutation] = [
   }""",
         primary=NLEVEL_NEG,
         sweep=BOOK_SWEEP,
+        equivalent_reason=(
+            "unreachable, so no test can kill it. The scan runs only when "
+            "_bestBidIdx is empty while _minBid still points into the ladder, "
+            "and every writer of _bestBidIdx moves _minBid with it: clear() "
+            "and the snapshot reset empty both at once; reanchorWithData "
+            "rebuilds both in one pass over the ladder; and in the delta loop "
+            "prevNonZeroBid returns MAX_LEVELS only when every slot down to "
+            "_minBid is zero, which -- _minBid being the lowest non-zero bid "
+            "-- means the level just zeroed was _minBid itself, and the next "
+            "statement clears _minBid to MAX_LEVELS. A scratch probe counting "
+            "the precondition directly over 640,000 randomized snapshot/delta/"
+            "clear operations, across four ladder sizes and tick sizes, never "
+            "hit it once."
+        ),
     ),
     Mutation(
         name="mid-uses-bid-twice",
