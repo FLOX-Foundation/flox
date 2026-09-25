@@ -89,6 +89,29 @@ on the hot path.
 `resolveIPv4` is the name lookup, kept separate from `parseAddress` so that a
 dotted quad never pays for a resolver.
 
+## IPv4 only, and what that rules out
+
+The layer carries one address family. `openSocket` passes `AF_INET`, every
+address in the header is a `sockaddr_in`, `parseAddress` runs `inet_pton` with
+`AF_INET`, and `resolveIPv4` pins `hints.ai_family` to it, so a name that
+resolves only to an AAAA record does not resolve here at all. A perimeter
+built on this reaches v4 hosts and no others; an IPv6 literal (`::1`,
+`fe80::1`) is refused by `parseAddress`, and therefore by `bindTo`,
+`connectTo` and `sendTo`, rather than being turned into some other address.
+That refusal is the part to rely on: the limit is visible at the call, not
+later.
+
+This is a deliberate limit rather than an omission. Lifting it is not a flag
+on `openSocket`: every address-carrying signature here -- `parseAddress`,
+`acceptOne`, `connectAddress`, `sendTo`, `receiveFrom`, `resolveIPv4` -- names
+`sockaddr_in` in its type, and carrying both families means `sockaddr_storage`
+through all of them and a family argument at every open, with the venue
+perimeter and the FIX initiator moved over in the same change. Nothing in the
+tree has needed it. A deployment that has to reach a v6 host puts a v4 address
+in front of it today; when the layer does grow a family, it will be an
+`enum class Family { IPv4, IPv6 }` on `openSocket` and `sockaddr_storage`
+underneath, not a second set of functions.
+
 ## What is tested
 
 `tests/test_socket_portability.cpp` exercises the layer over loopback rather
@@ -96,8 +119,8 @@ than asserting that it compiles: a receive timeout must elapse in the
 milliseconds it was given, a non-blocking receive must return at once and say
 why, a peek must not consume, a send to a dead peer must fail rather than end
 the process, `pollRead` must see readable and must time out, address parsing
-must refuse what is not an address, a multicast join must refuse a unicast
-one, a datagram must carry its sender back to the receiver, and a signal
+must refuse what is not an address (an IPv6 literal included), a multicast
+join must refuse a unicast one, a datagram must carry its sender back to the receiver, and a signal
 arriving mid-wait must be reported as interrupted rather than as a broken
 socket -- that last one is arranged on purpose, with a handler installed
 without `SA_RESTART` and a thread that signals the waiter.
