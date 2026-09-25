@@ -87,6 +87,26 @@ LadderBook book(LadderBook::Config{
   firm size is zero stops the sweep, so the aggressor residual follows its
   TIF instead of a fabricated fill.
 
+The rule is **instrument configuration**: `SymbolConfig::matchPolicy` carries
+it, and `SequencedShard`, `SymbolRouter` and the offline `replayWindow` all
+build their engine with it. That is what makes a pro-rata instrument
+deployable rather than test-only -- the config is the only way into a journal,
+a checkpoint, a gateway or a window query. `MatchingEngine`'s constructor
+argument still wins for a caller that names it, so the hand-built engines in
+the test tree are unchanged.
+
+```cpp
+SymbolConfig cfg;
+cfg.id = 1;
+cfg.matchPolicy = MatchPolicy::ProRata;   // the shard, the router and replay all read this
+SequencedShard<> shard(cfg, "/var/lib/flox/sym1.journal");
+```
+
+`configHash()` folds the policy, so the two rules do not share snapshots: a
+generation written by a pro-rata engine is refused by a price-time one instead
+of re-queueing every resting order under an allocation it was never priced
+for.
+
 ```cpp
 Matcher<MatchingBook> m(MatchPolicy::ProRata);
 m.setStpGroup(/*account*/ 10, /*firm*/ 1);   // firm-scope self-trade prevention

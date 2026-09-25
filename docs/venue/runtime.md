@@ -54,8 +54,11 @@ source of truth for instrument configuration as well. Listing, band changes,
 trigger-reference switches and halts arrive as `ListInstrument` / `SetBands` /
 `SetTriggerRef` / `AdminCmd` records; `InstrumentRegistry::apply` rebuilds the
 registry from the same stream the engines replay. Structural knobs the control
-plane cannot express (assets, scales, margin parameters, fee schedule) are
-startup configuration supplied when a shard is constructed.
+plane cannot express (assets, scales, margin parameters, fee schedule, the
+allocation rule `matchPolicy`) are startup configuration supplied when a shard
+is constructed -- the shard, the router and `replayWindow` all build their
+engine from that `SymbolConfig`, so a pro-rata instrument is configured rather
+than hand-wired (see [Matching](matching.md)).
 
 ## Trading sessions and the funding calendar
 

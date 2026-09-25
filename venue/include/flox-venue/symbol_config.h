@@ -78,6 +78,20 @@ struct SymbolConfig
   Quantity maxPositionQty{};   // 0 = unchecked (max |position| per account, perp risk cap)
   uint32_t maxOpenOrders{0};   // 0 = unchecked (max live resting orders per account)
 
+  // How a price level is allocated between the makers resting on it.
+  //
+  // The engine takes the policy as a constructor argument too, and that
+  // argument still wins for a caller that names it. What this field adds is
+  // the only route a DEPLOYMENT has: SequencedShard and SymbolRouter build
+  // their engine from a SymbolConfig, so a policy that cannot travel on the
+  // config cannot reach a journal, a checkpoint or a gateway at all.
+  //
+  // Not folded into configHash by this field: the hash already folds
+  // matcher_.policy(), which is the value the engine actually matches under
+  // however it was given. Hashing both would move every existing row for no
+  // new information.
+  MatchPolicy matchPolicy{MatchPolicy::PriceTimeFifo};
+
   // Per-symbol fixed-point scale, same semantics as core SymbolInfo. Default
   // 1e8 = the compile-time Price/Quantity scale. Money always settles at
   // kMoneyScale regardless. Must satisfy scalesValid().

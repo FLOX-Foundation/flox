@@ -611,7 +611,7 @@ class SequencedShard
                       return;
                     }
                     msg.publishMonoNs = venueMonoNs();
-                    out_.publish(std::move(msg)); }, std::move(book))
+                    out_.publish(std::move(msg)); }, std::move(book), cfg.matchPolicy)
     {
     }
 
@@ -861,7 +861,11 @@ class SequencedShard
       return false;
     }
     Ledger scratch;
-    MatchingEngine<Book> probe(cfg_, [](const OutboundEvent&) {}, Book{bookProto_});
+    // The probe matches under the instrument's own allocation rule: a
+    // snapshot is validated by an engine configured like the one that wrote
+    // it, and configHash folds the policy, so a price-time probe would refuse
+    // every pro-rata generation this shard ever published.
+    MatchingEngine<Book> probe(cfg_, [](const OutboundEvent&) {}, Book{bookProto_}, cfg_.matchPolicy);
     if (consumer_.engine().ledger() != nullptr)
     {
       probe.setLedger(&scratch, consumer_.engine().venueAccount());
