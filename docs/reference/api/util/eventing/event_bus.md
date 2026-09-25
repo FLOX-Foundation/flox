@@ -5,7 +5,8 @@
 ```cpp
 template <typename Event,
           size_t CapacityPow2 = config::DEFAULT_EVENTBUS_CAPACITY,
-          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS>
+          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS,
+          typename PublishSeam = NoPublishSeam>
 class EventBus : public ISubsystem;
 ```
 
@@ -21,8 +22,9 @@ class EventBus : public ISubsystem;
 | ----------------------- | --------------------------------------------------------------- |
 | `subscribe(listener, required, wait)` | Registers a consumer. `required=true` (default) gates publishing. `wait` is `ConsumerWaitMode::ACTIVE` (default, spins) or `PARKED` (blocks, publisher wakes it). Returns `bool`. |
 | `publish(event)`        | Publishes event to ring buffer, returns sequence number (-1 if stopped). |
+| `publishBatch(evs, count)` | Publishes a contiguous batch, returns the last sequence. -1 if stopped, if `count == 0`, or if `count > CapacityPow2 / 2`. |
 | `tryPublish(event, timeout)` | Publishes with timeout. Returns `{PublishResult, seq}`. |
-| `start()` / `stop()`    | Starts or stops all consumer threads.                           |
+| `start()` / `stop()`    | Starts or stops all consumer threads. `stop()` returns only once no publisher is inside the ring. |
 | `waitConsumed(seq)`     | Blocks until all **required** consumers have processed up to `seq`. |
 | `flush()`               | Waits until all published events are consumed by **required** consumers. |
 | `consumerCount()`       | Returns number of registered consumers.                         |
@@ -31,6 +33,10 @@ class EventBus : public ISubsystem;
 | `pollConsumer(i)`       | One step over consumer `i`; `false` means nothing was there. One stepper per consumer. |
 | `drainConsumer(i)`      | Hands consumer `i` everything left in the ring, uncapped.        |
 | `consumerFailed(i)`     | The listener threw; the slot is out of service and steps on it do nothing. |
+| `consumerHealth(i)`     | The last observed health of one consumer. Readable at any time, from any thread. |
+| `healthSnapshot()`      | Counts of stalled and dead consumers from the last sweep, without re-sweeping. |
+| `consumerHealthReport(i)` | State, `lastSeen` and `lastChange` for one consumer, from a single sweep. |
+| `monitorPeriod(threshold)` | Static. The period the built-in monitor thread sleeps between sweeps. |
 
 ## PublishResult
 
@@ -59,6 +65,86 @@ sequence number was spent, so the next accepted publish takes the sequence this
 one would have had. `stats().dropped` counts the refusals. See
 [The Disruptor Pattern](../../../../explanation/disruptor.md) for why the two
 publish paths claim their sequence at different points.
+
+## Batch Publishing
+
+```cpp
+int64_t lastSeq = bus.publishBatch(evs, count);
+```
+
+`count` must be between 1 and `CapacityPow2 / 2`; anything else is refused with
+-1, in every build, and nothing is published. The upper bound is the ring's, not
+a style rule: a range wider than the ring reserves slots it wraps back onto, so
+the wrap gate would wait on sequences inside the same batch that only this
+publisher can stamp. The refusal is a return, never a block.
+
+## Stopping
+
+`stop()` takes the bus down in this order: publishing is closed, the publishers
+already inside the ring are waited out, consumer threads are joined (draining
+first if `enableDrainOnStop()` was set), and only then are the remaining events
+destroyed and the gating lines reset.
+
+The contract that follows from it:
+
+* A publish is either refused -- `publish()` returns -1, `publishBatch()`
+  returns -1, `tryPublish()` returns `STOPPED` -- or its event is in the ring.
+  An accepted event is never thrown away by the shutdown before the consumers
+  that were going to get it have had their chance (with `enableDrainOnStop()`,
+  that means delivered; without it, the undrained tail is dropped as
+  documented below).
+* When `stop()` returns, no publisher is writing into a slot any more, so the
+  bus can be destroyed or restarted.
+* `stop()` waits for a publisher that is inside the ring, including one parked
+  in the event's own copy constructor. A publisher blocked at the wrap gate or
+  the reclaim fence gives up instead of waiting, so a stalled consumer does not
+  keep `stop()` from returning.
+* Sequence numbers restart from zero on the next `start()`, so they are unique
+  within a run and not across runs.
+
+## Consumer Health
+
+`consumerHealth(i)`, `healthSnapshot()` and `consumerHealthReport(i)` are
+level-triggered queries: they read what the last sweep recorded, from any
+thread, while the sweep is running and after the bus has stopped.
+
+```cpp
+const auto report = bus.consumerHealthReport(0);
+// report.state      -- HEALTHY, STALLED or DEAD
+// report.lastSeen   -- the sequence this consumer had reached
+// report.lastChange -- when that sequence last moved
+```
+
+The three fields come from one sweep: `lastChange` moves only together with
+`lastSeen`, so the pair says whether the consumer is progressing and, if not,
+since when. A state on its own does not.
+
+With `enableMonitorThread`, the sweep runs on a thread of the bus's own.
+`monitorPeriod(stallThreshold)` is the period it sleeps between sweeps: half the
+threshold, floored at 1 ms. The floor matters because the arithmetic is integer
+milliseconds -- without it a threshold under 2 ms halves to zero and the monitor
+holds a core. An idle bus costs no measurable CPU at any threshold.
+
+### The publish seam
+
+One window in the publish path cannot be reached from outside the bus: the
+instant after `publish()` has read "is the bus running" and before it claims a
+sequence. It is the window the stop contract above is built around -- a
+publisher preempted there comes back with an arbitrarily old answer -- so a
+test needs a way into it.
+
+```cpp
+struct NoPublishSeam
+{
+  static void beforeClaim() noexcept {}
+};
+```
+
+Pass a type of the same shape as the fourth template argument and its
+`beforeClaim()` runs at that instant, on `publish()`, `tryPublish()` and
+`publishBatch()` alike. The default does nothing and compiles to nothing, so a
+production bus carries no branch, no member and no call for it; a bus with a
+seam is a distinct type from the bus the engine builds.
 
 ## CPU Affinity (when `FLOX_CPU_AFFINITY_ENABLED`)
 
@@ -136,6 +222,7 @@ read independently — so treat them as monotonic indicators, not as an invarian
 | `Event`       | -                                 | Event type to broadcast.       |
 | `CapacityPow2`| `config::DEFAULT_EVENTBUS_CAPACITY` (4096) | Ring buffer size (power of 2). |
 | `MaxConsumers`| `config::DEFAULT_EVENTBUS_MAX_CONSUMERS` (128) | Maximum consumer count.     |
+| `PublishSeam` | `NoPublishSeam`                   | Test seam on the publish path. The default's hook is an empty static function: it inlines away and the publish path is unchanged. Leave it alone outside tests. |
 
 ## Example Usage
 
@@ -203,6 +290,7 @@ bus.subscribe(&loggingHandler, false);   // optional
 * `enableDrainOnStop()` should be called before `start()` if drain behavior is needed.
 * CPU affinity features require `FLOX_CPU_AFFINITY_ENABLED` compile flag.
 * `publish()` returns -1 if the bus is not running.
+* `publishBatch()` returns -1 for an empty batch and for one larger than half the ring.
 
 ## Benchmarking
 

@@ -73,9 +73,32 @@ enum class ConsumerWaitMode : uint8_t
   PARKED
 };
 
+// The publish path's one seam, and the only window in the bus a test cannot
+// reach from outside: the instant after publish() has read _running and before
+// it claims a sequence. That window is the whole reason stop() closes the
+// sequence line instead of trusting the flag -- a publisher preempted in it
+// comes back with an answer that is arbitrarily old -- and a fix for a window
+// no test can open is a fix nobody can check.
+//
+// A policy rather than an #ifdef because the seam must cost nothing and must
+// not change what a production bus IS. The default's hook is an empty static
+// function: it inlines to nothing, leaves no branch behind and adds no member,
+// so the publish path is instruction-for-instruction what it was. And a bus
+// carrying a test seam is a different type from the bus the engine builds,
+// rather than the same type compiled two ways in two translation units, which
+// is how a probe added under a macro ends up with one definition in the test
+// and another in the library.
+struct NoPublishSeam
+{
+  // Called between publish()'s read of _running and its claim. Also on the
+  // batch path, between the same read and the batch's reservation.
+  static void beforeClaim() noexcept {}
+};
+
 template <typename Event,
           size_t CapacityPow2 = config::DEFAULT_EVENTBUS_CAPACITY,
-          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS>
+          size_t MaxConsumers = config::DEFAULT_EVENTBUS_MAX_CONSUMERS,
+          typename PublishSeam = NoPublishSeam>
 class EventBus : public ISubsystem
 {
   static_assert(CapacityPow2 > 0, "Capacity must be > 0");
@@ -125,7 +148,9 @@ class EventBus : public ISubsystem
   // it delivered anything. This is what lets something other than a dedicated
   // thread drive a consumer -- see pollConsumer().
   using ConsumerStepFn = bool (*)(EventBus*, uint32_t);
-  using ConsumerDrainFn = void (*)(EventBus*, uint32_t);
+  // The drain takes the last sequence the run ever handed out, because after
+  // a stop the ring may hold a gap: see drainSlot.
+  using ConsumerDrainFn = void (*)(EventBus*, uint32_t, int64_t);
 
   struct ConsumerSlot
   {
@@ -192,6 +217,21 @@ class EventBus : public ISubsystem
   // Must be called before start().
   void setHealthConfig(const HealthConfig& cfg) { _healthCfg = cfg; }
 
+  // How long the built-in monitor thread sleeps between sweeps: half the stall
+  // threshold, and never nothing. The arithmetic is integer milliseconds, so
+  // any threshold below 2 ms halves to zero -- and a zero sleep is not "poll
+  // often", it is a thread holding a core to run checkHealth(), an
+  // O(consumers) scan over atomics, with nothing in between. A millisecond
+  // threshold is a reasonable setting for a bus where a millisecond of stall
+  // matters; a spinning core is not what it should buy.
+  static constexpr std::chrono::milliseconds monitorPeriod(
+      std::chrono::milliseconds stallThreshold) noexcept
+  {
+    constexpr auto floor = std::chrono::milliseconds{1};
+    const auto half = stallThreshold / 2;
+    return half < floor ? floor : half;
+  }
+
   struct HealthSweep
   {
     uint32_t stalled{0};
@@ -209,7 +249,46 @@ class EventBus : public ISubsystem
     {
       return ConsumerHealth::HEALTHY;
     }
-    return _healthBook[consumerIndex].state;
+    return _healthBook[consumerIndex].state.load(std::memory_order_acquire);
+  }
+
+  // What the last sweep saw for one consumer, as one update: the state, the
+  // sequence it had reached, and the instant that sequence last moved.
+  // lastChange moves only together with lastSeen, so the pair answers "is this
+  // consumer progressing, and if not, since when" -- which the state alone
+  // does not.
+  struct ConsumerHealthReport
+  {
+    ConsumerHealth state{ConsumerHealth::HEALTHY};
+    int64_t lastSeen{-1};
+    std::chrono::steady_clock::time_point lastChange{};
+  };
+
+  ConsumerHealthReport consumerHealthReport(uint32_t consumerIndex) const
+  {
+    ConsumerHealthReport report;
+    if (consumerIndex >= MaxConsumers)
+    {
+      return report;
+    }
+    const HealthBook& book = _healthBook[consumerIndex];
+    for (;;)
+    {
+      const uint32_t before = book.version.load(std::memory_order_acquire);
+      if ((before & 1u) != 0u)
+      {
+        continue;  // a sweep is mid-update; its next store releases us
+      }
+      report.state = book.state.load(std::memory_order_relaxed);
+      report.lastSeen = book.lastSeen.load(std::memory_order_relaxed);
+      const int64_t ticks = book.lastChangeTicks.load(std::memory_order_relaxed);
+      std::atomic_thread_fence(std::memory_order_acquire);
+      if (book.version.load(std::memory_order_relaxed) == before)
+      {
+        report.lastChange = HealthBook::timeOf(ticks);
+        return report;
+      }
+    }
   }
 
   // Counts from the last recorded per-consumer states, without re-sweeping and
@@ -221,11 +300,12 @@ class EventBus : public ISubsystem
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < n; ++i)
     {
-      if (_healthBook[i].state == ConsumerHealth::STALLED)
+      const ConsumerHealth state = _healthBook[i].state.load(std::memory_order_acquire);
+      if (state == ConsumerHealth::STALLED)
       {
         ++sweep.stalled;
       }
-      else if (_healthBook[i].state == ConsumerHealth::DEAD)
+      else if (state == ConsumerHealth::DEAD)
       {
         ++sweep.dead;
       }
@@ -251,7 +331,13 @@ class EventBus : public ISubsystem
     for (uint32_t i = 0; i < n; ++i)
     {
       auto& book = _healthBook[i];
+      // The checker is the only writer, so it reads its own last update back
+      // relaxed and republishes the whole of it below.
+      int64_t seen = book.lastSeen.load(std::memory_order_relaxed);
+      int64_t changeTicks = book.lastChangeTicks.load(std::memory_order_relaxed);
+      const ConsumerHealth previous = book.state.load(std::memory_order_relaxed);
       ConsumerHealth next = ConsumerHealth::HEALTHY;
+      bool progressed = false;
 
       if (_consumers[i].failed.load(std::memory_order_acquire))
       {
@@ -260,20 +346,26 @@ class EventBus : public ISubsystem
       else
       {
         const int64_t s = _consumers[i].seq.load(std::memory_order_acquire);
-        if (s != book.lastSeen)
+        if (s != seen)
         {
-          book.lastSeen = s;
-          book.lastChange = now;
+          seen = s;
+          changeTicks = HealthBook::ticksOf(now);
+          progressed = true;
         }
-        else if (s < head && now - book.lastChange >= _healthCfg.stallThreshold)
+        else if (s < head &&
+                 now - HealthBook::timeOf(changeTicks) >= _healthCfg.stallThreshold)
         {
           next = ConsumerHealth::STALLED;
         }
       }
 
-      if (next != book.state)
+      if (progressed || next != previous)
       {
-        book.state = next;
+        book.write(seen, changeTicks, next);
+      }
+
+      if (next != previous)
+      {
         if (next == ConsumerHealth::DEAD)
         {
           FLOX_LOG_ERROR("EventBus consumer " << i << " is dead (handler threw)");
@@ -281,7 +373,7 @@ class EventBus : public ISubsystem
         else if (next == ConsumerHealth::STALLED)
         {
           FLOX_LOG_WARN("EventBus consumer " << i << " stalled: seq="
-                                             << book.lastSeen << " head=" << head);
+                                             << seen << " head=" << head);
         }
         if (_healthCfg.callback)
         {
@@ -402,7 +494,9 @@ class EventBus : public ISubsystem
     {
       return;
     }
-    _consumers[i].drainer(this, i);
+    // A running bus has no resolved gaps: every sequence below the head is
+    // either stamped or still being written by a publisher that owns it.
+    _consumers[i].drainer(this, i, std::numeric_limits<int64_t>::min());
   }
 
   // Is there anything published for consumer i right now? Exactly the look
@@ -481,6 +575,20 @@ class EventBus : public ISubsystem
       return;
     }
 
+    // The run's claim accounting starts here: stop() counts this run's
+    // resolutions, and the counters themselves are cumulative over the life of
+    // the bus (stats().published is one of them). Nobody is publishing -- the
+    // bus is stopped and the previous stop() waited its publishers out -- so
+    // the baseline and the reopening below have the ring to themselves.
+    // Release, and acquired by every reader of the baseline: a stop() that
+    // read a previous run's baseline would count this run's claims as already
+    // resolved and walk into the teardown early.
+    _claimBase.store(_publishCount.load(std::memory_order_relaxed) +
+                         _abandonedClaims.load(std::memory_order_relaxed),
+                     std::memory_order_release);
+    _sealed.store(false, std::memory_order_relaxed);
+    _next.store(-1, std::memory_order_release);
+
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
 
     // Resolved once, here, because they depend on the health config, which is
@@ -493,8 +601,7 @@ class EventBus : public ISubsystem
       // consumer stalled before it has had any time at all -- which a consumer
       // thread hid by being faster than the first sweep, and a consumer
       // stepped from outside does not.
-      _healthBook[i] = HealthBook{};
-      _healthBook[i].lastChange = startedAt;
+      _healthBook[i].reset(startedAt);
       auto& slot = _consumers[i];
       slot.next = -1;
       slot.failed.store(false, std::memory_order_relaxed);
@@ -608,7 +715,7 @@ class EventBus : public ISubsystem
     {
       _monitorThread.emplace([this]
                              {
-        const auto period = _healthCfg.stallThreshold / 2;
+        const auto period = monitorPeriod(_healthCfg.stallThreshold);
         while (_running.load(std::memory_order_acquire))
         {
           checkHealth();
@@ -620,6 +727,105 @@ class EventBus : public ISubsystem
   void stop() override { doStop(/*joinMonitor=*/true); }
 
  private:
+  // Where the sequence line goes when the bus stops. Deep enough in the
+  // negatives that no run of refused claims can walk it back into the valid
+  // range: claimBlocking and publishBatch put back what they took, and what is
+  // left is a transient +1 per publisher in flight.
+  static constexpr int64_t kSequenceLineClosed = std::numeric_limits<int64_t>::min() / 2;
+  // Anything below this can only be a closed line: an open one starts at -1
+  // and counts up, and a closed one sits at kSequenceLineClosed with at most a
+  // handful of transient claims on top of it, each of which puts itself back.
+  static constexpr int64_t kSequenceLineClosedFloor = std::numeric_limits<int64_t>::min() / 4;
+
+  // A claim that will never be stamped. Every sequence handed out under a
+  // run's sequence line is resolved exactly once -- published, or given up on
+  // here -- because that is what lets stop() count publishers out of the ring
+  // without the publish path counting itself in. See awaitPublishersQuiescent.
+  void abandonClaims(size_t count) noexcept
+  {
+    _abandonedClaims.fetch_add(static_cast<uint64_t>(count), std::memory_order_release);
+  }
+
+  // The resolution a publisher owes for the sequence it holds, taken by the
+  // destructor if it leaves through an exception from the event's constructor.
+  // One predictable branch on the way out of publish(); the store it makes on
+  // the normal path is the one the publish path already made.
+  struct ClaimGuard
+  {
+    EventBus* bus;
+    size_t count;
+
+    ~ClaimGuard()
+    {
+      if (count != 0)
+      {
+        bus->abandonClaims(count);
+      }
+    }
+
+    void resolvePublished() noexcept
+    {
+      bus->_publishCount.fetch_add(static_cast<uint64_t>(count), std::memory_order_release);
+      count = 0;
+    }
+  };
+
+  // Close the sequence line and record what the run handed out.
+  //
+  // A publisher reads _running once, on the way in, and nothing stops it from
+  // being preempted between that read and its claim -- so a flag cannot keep a
+  // late publisher out of a ring that is being torn down, however carefully it
+  // is ordered. The claim itself can: one exchange puts the sequence line out
+  // of reach, and from then on every fetch_add on it comes back negative and
+  // the publisher walks away without having touched a slot. It is the
+  // modification order of _next that splits publishers into the ones already
+  // inside the ring and the ones that never will be, and the exchange returns
+  // the boundary: every claim this run ever made is at or below it.
+  void sealSequenceLine() noexcept
+  {
+    const int64_t lastClaim = _next.exchange(kSequenceLineClosed, std::memory_order_acq_rel);
+    _runLastClaim.store(lastClaim, std::memory_order_relaxed);
+    _sealed.store(true, std::memory_order_release);
+  }
+
+  uint64_t resolvedClaims() const noexcept
+  {
+    const uint64_t published = _publishCount.load(std::memory_order_acquire);
+    const uint64_t abandoned = _abandonedClaims.load(std::memory_order_acquire);
+    return published + abandoned - _claimBase.load(std::memory_order_acquire);
+  }
+
+  // Wait until nobody is inside the ring any more.
+  //
+  // The sequence line is sealed above, so the run's claims are exactly
+  // lastClaim + 1 of them, and each is resolved once -- by the publish that
+  // stamped it or by the publisher that gave up on it. When that many
+  // resolutions have been counted, every publisher that ever held a sequence
+  // has left the slots alone for good, and the acquire on the counters carries
+  // its writes with it. Nothing new was added to the publish path to make this
+  // work: the successful resolution is the counter publish() already bumped.
+  //
+  // This never waits on a publisher that is waiting on us. _running is already
+  // false when it is called, and both gates re-read it on every turn, so a
+  // publisher parked at the wrap gate or the reclaim fence gives up rather
+  // than waiting for progress that stop() is no longer going to produce.
+  void awaitPublishersQuiescent()
+  {
+    BusyBackoff bo;
+    while (!_sealed.load(std::memory_order_acquire))
+    {
+      bo.pause();
+    }
+    const int64_t lastClaim = _runLastClaim.load(std::memory_order_acquire);
+    const uint64_t claims =
+        lastClaim >= 0 ? static_cast<uint64_t>(lastClaim) + 1 : uint64_t{0};
+    BusyBackoff resolveBo;
+    while (resolvedClaims() < claims)
+    {
+      resolveBo.pause();
+    }
+  }
+
   // joinMonitor=false is the path taken when checkHealth() (running ON the
   // monitor thread) trips DeadConsumerPolicy::STOP_BUS: resetting the monitor
   // jthread from within its own body would join self and terminate. The
@@ -637,6 +843,11 @@ class EventBus : public ISubsystem
       }
       return;
     }
+
+    // Before anything is joined: a consumer draining on its way out waits for
+    // the same seal, and the sooner it is in place the less either of them
+    // spins.
+    sealSequenceLine();
 
     if (joinMonitor)
     {
@@ -660,6 +871,11 @@ class EventBus : public ISubsystem
       _wakeSet->wake();
     }
 
+    // Everything below rewrites the ring, and a publisher that claimed its
+    // sequence before the seal may still be constructing into a slot the
+    // teardown is about to destroy.
+    awaitPublishersQuiescent();
+
     const uint32_t n = _consumerCount.load(std::memory_order_acquire);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -676,7 +892,7 @@ class EventBus : public ISubsystem
       {
         if (!_consumers[i].failed.load(std::memory_order_relaxed))
         {
-          _consumers[i].drainer(this, i);
+          _consumers[i].drainer(this, i, _runLastClaim.load(std::memory_order_relaxed));
         }
       }
     }
@@ -691,16 +907,17 @@ class EventBus : public ISubsystem
     }
     _cachedMinConsumed.store(-1, std::memory_order_relaxed);
 
-    // The ring is empty again, so the sequence line goes back to where a fresh
-    // bus starts. A consumer thread always resumes from sequence 0; leaving
-    // the producer counter and the gating lines at the previous run's
+    // The gating lines go back to where a fresh bus starts. A consumer thread
+    // always resumes from sequence 0; leaving them at the previous run's
     // positions describes a ring that no longer exists, and start() after
     // stop() -- the other half of the ISubsystem contract, taken on every
-    // reconnect -- then accepts publishes, hands back valid sequence numbers
-    // and delivers nothing at all. Consumer threads are joined above, so this
-    // races nothing but a publish concurrent with the stop, which is already
-    // unordered against it.
-    _next.store(-1, std::memory_order_relaxed);
+    // reconnect -- would then accept publishes, hand back valid sequence
+    // numbers and deliver nothing at all. The sequence line itself is NOT
+    // reopened here: it stays closed until start() reopens it, because a
+    // publisher preempted between reading _running and taking its claim is
+    // still out there and the closed line is the only thing that turns it
+    // away. Consumer threads are joined above and the publishers have been
+    // waited out, so this races nobody.
     _cachedMin.store(-1, std::memory_order_relaxed);
     for (uint32_t i = 0; i < n; ++i)
     {
@@ -717,18 +934,33 @@ class EventBus : public ISubsystem
   // Publish a contiguous batch: one sequence reservation, one wrap/reclaim
   // wait for the whole range, then a single release fence covering all slot
   // stamps instead of one release store per event. Blocking, like publish().
-  // Returns the last sequence, or -1 if the bus is stopped.
+  // Returns the last sequence, or -1 if the bus is stopped or the batch is
+  // outside the bound below.
   int64_t publishBatch(const Event* evs, size_t count)
   {
     FLOX_PROFILE_SCOPE("Disruptor::publishBatch");
 
     static_assert(CapacityPow2 >= 2);
-    assert(count > 0 && count <= CapacityPow2 / 2 && "batch must fit the ring with room to spare");
+
+    // The bound is a refusal, not an assertion. An assert is nothing at all
+    // under NDEBUG -- which every build type in this tree carries, Release and
+    // RelWithDebInfo alike -- and past the bound the call does not merely
+    // publish more than it promised: a range wider than the ring reserves
+    // slots it wraps back onto, so the wrap gate waits on sequences that are
+    // inside this very batch and that only this publisher can stamp. That is a
+    // publisher which never returns. Half the ring is the documented bound
+    // because the other half is what the consumers are still reading.
+    if (count == 0 || count > CapacityPow2 / 2)
+    {
+      return -1;
+    }
 
     if (!_running.load(std::memory_order_acquire))
     {
       return -1;
     }
+
+    PublishSeam::beforeClaim();
 
     const int64_t lastSeq = _next.fetch_add(static_cast<int64_t>(count),
                                             std::memory_order_acq_rel) +
@@ -736,8 +968,15 @@ class EventBus : public ISubsystem
     const int64_t firstSeq = lastSeq - static_cast<int64_t>(count) + 1;
     if (firstSeq < 0)
     {
+      // The sequence line is closed (or, never seen, overflowed): no claim was
+      // made, so put back what the reservation took and leave without touching
+      // a slot.
+      _next.fetch_sub(static_cast<int64_t>(count), std::memory_order_acq_rel);
       return -1;
     }
+
+    // The range is ours from here, and stop() is counting it.
+    ClaimGuard claim{this, count};
 
     // Wrap gating for the whole range (required consumers).
     const int64_t wrap = lastSeq - static_cast<int64_t>(CapacityPow2);
@@ -833,11 +1072,13 @@ class EventBus : public ISubsystem
       }
     }
 
-    _publishCount.fetch_add(count, std::memory_order_relaxed);
     if (_wakeOnPublish)
     {
       wakeWaiters();
     }
+    // Last, so that a stop() waiting the ring out also waits out the wake-up
+    // this publisher is making through the bus's own condition variable.
+    claim.resolvePublished();
     return lastSeq;
   }
 
@@ -853,6 +1094,18 @@ class EventBus : public ISubsystem
   {
     return do_publish(std::move(ev), timeout);
   }
+
+#ifdef FLOX_UNIT_TEST
+  // Test-only, and a member for the same reason the seam above exists: from
+  // outside, a publish refused by the closed sequence line and one refused by
+  // the _running flag look exactly alike, so a test that means to hold the
+  // line accountable has to be able to see the line. True once stop() has
+  // closed it and until start() reopens it.
+  bool sequenceLineClosed() const noexcept
+  {
+    return _next.load(std::memory_order_acquire) < kSequenceLineClosedFloor;
+  }
+#endif
 
   Stats stats() const
   {
@@ -1021,9 +1274,9 @@ class EventBus : public ISubsystem
   }
 
   template <typename L>
-  static void drainConsumerSlot(EventBus* self, uint32_t i)
+  static void drainConsumerSlot(EventBus* self, uint32_t i, int64_t resolvedThrough)
   {
-    self->drainSlot<L>(i, static_cast<L*>(self->_consumers[i].listener));
+    self->drainSlot<L>(i, static_cast<L*>(self->_consumers[i].listener), resolvedThrough);
   }
 
   // The whole consume loop, monomorphic in the subscriber type. For
@@ -1226,8 +1479,11 @@ class EventBus : public ISubsystem
   // Taken on the way down when the bus was told to drain on stop: the events
   // are already in the ring and the producer is gone, so the only question is
   // whether the listener gets them.
+  // resolvedThrough: every sequence at or below it has been resolved -- either
+  // stamped into the ring or given up on -- so an unstamped one is a gap the
+  // drain steps over rather than the head of the ring.
   template <typename L>
-  void drainSlot(uint32_t i, L* l)
+  void drainSlot(uint32_t i, L* l, int64_t resolvedThrough)
   {
     ConsumerSlot& slot = _consumers[i];
     const bool required = slot.required;
@@ -1255,7 +1511,20 @@ class EventBus : public ISubsystem
       const size_t idx = size_t(want) & Mask;
       if (_published[idx].load(std::memory_order_acquire) != want)
       {
-        break;
+        if (want > resolvedThrough)
+        {
+          break;  // the ring ends here
+        }
+        // A sequence claimed and then given up on when the bus stopped: it
+        // will never be stamped. Stopping at it would strand every event
+        // another publisher had already put behind it, and those were accepted
+        // publishes. The slot holds an older event this consumer has already
+        // been given -- it could not have reached `want` otherwise -- so there
+        // is nothing here to deliver, only a number to step over.
+        slot.seq.store(want, std::memory_order_release);
+        _gating[i].v.store(required ? want : INT64_MAX, std::memory_order_release);
+        seq = want;
+        continue;
       }
       if (_constructed[idx].load(std::memory_order_acquire) == 1)
       {
@@ -1324,7 +1593,14 @@ class EventBus : public ISubsystem
     }
     if (_drainOnStop)
     {
-      drainSlot<L>(i, l);
+      // Everything published before the bus stopped is owed to this listener,
+      // and a publisher that was inside the ring when stop() was called is
+      // still writing some of it. Waiting for the ring to go quiet before the
+      // drain is what makes "publish() accepted it" mean "the listener got
+      // it": the drain would otherwise stop at the first slot that publisher
+      // had not stamped yet and call the rest of the run absent.
+      awaitPublishersQuiescent();
+      drainSlot<L>(i, l, _runLastClaim.load(std::memory_order_acquire));
     }
   }
 
@@ -1351,6 +1627,11 @@ class EventBus : public ISubsystem
     {
       if (!_running.load(std::memory_order_relaxed))
       {
+        // The gate will not open again: nothing is going to consume past this
+        // point. The sequence is given up on rather than written, because the
+        // slot it names still holds an event a consumer has not read -- that
+        // is why the gate was closed -- and stop() is what destroys it.
+        abandonClaims(1);
         return false;
       }
       cachedMin = minGating();
@@ -1375,6 +1656,7 @@ class EventBus : public ISubsystem
       {
         if (!_running.load(std::memory_order_relaxed))
         {
+          abandonClaims(1);
           return false;
         }
         reclaimBo.pause();
@@ -1475,6 +1757,10 @@ class EventBus : public ISubsystem
       return {PublishResult::STOPPED, -1};
     }
 
+    // The answer above is now as old as this call is slow, and everything that
+    // keeps a late publisher out of a torn-down ring happens below it.
+    PublishSeam::beforeClaim();
+
     int64_t seq = -1;
     if (timeout.has_value())
     {
@@ -1494,6 +1780,11 @@ class EventBus : public ISubsystem
     }
 
     const size_t idx = size_t(seq) & Mask;
+
+    // The sequence is ours from here: it is at or below the boundary a stop()
+    // seals, so stop() waits for the resolution this guard owes before it
+    // destroys a single slot.
+    ClaimGuard claim{this, 1};
 
     // Destroy old event if present - only if not already reclaimed
     // The _constructed flag ensures only one thread destroys
@@ -1517,11 +1808,13 @@ class EventBus : public ISubsystem
 
     _published[idx].store(seq, std::memory_order_release);
 
-    _publishCount.fetch_add(1, std::memory_order_relaxed);
     if (_wakeOnPublish)
     {
       wakeWaiters();
     }
+    // Last, so that a stop() waiting the ring out also waits out the wake-up
+    // this publisher is making through the bus's own condition variable.
+    claim.resolvePublished();
     return {PublishResult::SUCCESS, seq};
   }
 
@@ -1594,13 +1887,57 @@ class EventBus : public ISubsystem
   std::mutex _readyMutex;
   std::atomic<uint32_t> _active{0};
 
-  // Health checker bookkeeping. Touched only by the single health-checker
-  // thread (see checkHealth), so plain members are fine.
+  // Health checker bookkeeping. Written by the single health checker (see
+  // checkHealth) and read by whoever supervises the bus: consumerHealth(),
+  // healthSnapshot() and consumerHealthReport() are advertised as callable at
+  // any time, from any thread, so these fields are typed for the threads that
+  // read them and not only for the one that writes them.
+  //
+  // The three fields are also one update. A state on its own does not say
+  // whether a consumer is making progress; the sequence and the instant it
+  // last moved do, and a report that takes the sequence from one sweep and the
+  // instant from another describes progress that never happened. A version
+  // counter around the writer's stores -- odd while a sweep is writing -- lets
+  // a reader retry until it has a whole update. It costs the reader a retry it
+  // almost never takes and the writer two stores per changed consumer, and
+  // neither is anywhere near the publish path.
   struct HealthBook
   {
-    int64_t lastSeen{-1};
-    std::chrono::steady_clock::time_point lastChange{};
-    ConsumerHealth state{ConsumerHealth::HEALTHY};
+    std::atomic<uint32_t> version{0};
+    std::atomic<int64_t> lastSeen{-1};
+    // The time_point's representation, because an atomic needs a trivially
+    // copyable arithmetic type and steady_clock::time_point is reassembled
+    // from this without loss.
+    std::atomic<int64_t> lastChangeTicks{0};
+    std::atomic<ConsumerHealth> state{ConsumerHealth::HEALTHY};
+
+    static int64_t ticksOf(std::chrono::steady_clock::time_point tp) noexcept
+    {
+      return static_cast<int64_t>(tp.time_since_epoch().count());
+    }
+    static std::chrono::steady_clock::time_point timeOf(int64_t ticks) noexcept
+    {
+      return std::chrono::steady_clock::time_point{
+          std::chrono::steady_clock::duration{ticks}};
+    }
+
+    // Single writer: the health checker. Everything a reader must see as one
+    // update goes between the two odd/even version stores.
+    void write(int64_t seen, int64_t changeTicks, ConsumerHealth st) noexcept
+    {
+      const uint32_t v = version.load(std::memory_order_relaxed);
+      version.store(v + 1, std::memory_order_relaxed);
+      std::atomic_thread_fence(std::memory_order_release);
+      lastSeen.store(seen, std::memory_order_relaxed);
+      lastChangeTicks.store(changeTicks, std::memory_order_relaxed);
+      state.store(st, std::memory_order_release);
+      version.store(v + 2, std::memory_order_release);
+    }
+
+    void reset(std::chrono::steady_clock::time_point at) noexcept
+    {
+      write(-1, ticksOf(at), ConsumerHealth::HEALTHY);
+    }
   };
   std::array<HealthBook, MaxConsumers> _healthBook{};
   HealthConfig _healthCfg{};
@@ -1626,6 +1963,16 @@ class EventBus : public ISubsystem
   std::mutex _parkMx;
   std::condition_variable _parkCv;
   BackoffMode _backoffMode{config::defaultBackoffMode};
+
+  // Claim accounting. The run's claims are known exactly from the sequence
+  // line stop() seals; these count them back out, so that stop() can tell an
+  // empty ring from one a publisher is still inside without the publish path
+  // announcing itself on the way in. _publishCount doubles as the successful
+  // half -- it is a counter the publish path already kept.
+  alignas(64) std::atomic<uint64_t> _abandonedClaims{0};
+  alignas(64) std::atomic<uint64_t> _claimBase{0};
+  alignas(64) std::atomic<int64_t> _runLastClaim{-1};
+  alignas(64) std::atomic<bool> _sealed{false};
 
   // Monitoring counters (relaxed ordering -- advisory only)
   alignas(64) std::atomic<uint64_t> _publishCount{0};
