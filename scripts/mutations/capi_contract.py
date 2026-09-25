@@ -526,7 +526,12 @@ MUTATIONS: list[Mutation] = [
   }""",
         )],
         gtest_target="test_quickjs",
-        gtest_filter="JsEngineTest.AbiVersionPairIsExposedAndAgrees",
+        # Both ABI tests: the pair-is-exposed one cannot see this, the
+        # refusal one can -- it drives registerFloxBindings against a
+        # library reporting another version (tests/test_quickjs.cpp
+        # defines flox_capi_abi_version itself) and asserts nothing is
+        # registered.
+        gtest_filter="JsEngineTest.*Abi*",
     ),
 
     # ═══════════════════════════════════════════════════════════════════
@@ -658,6 +663,26 @@ MUTATIONS: list[Mutation] = [
         py_tests=["python/tests/test_order_type_names.py", "python/tests/test_conditional_orders.py"],
         extra_py_objects=["CMakeFiles/flox.dir/src/backtest/simulated_executor.cpp.o"],
         sweep_rebuild_py=True,
+        equivalent_reason=(
+            "not observable from any binding, checked rather than assumed. fillsAsLimit "
+            "has three call sites and none of them decides whether a take-profit limit "
+            "fills: the fill paths are gated on !fillsAsMarket, so a fired tp_limit rests "
+            "and fills identically with and without this edit -- measured, with a book "
+            "(TakeProfitLimitTests), with a queue model and bar steps, and against a plain "
+            "limit and a stop limit as controls, all four identical. What the three call "
+            "sites do gate is driveQueueFromBarStep, the queue tracker's registration, and "
+            "maybeEmitMarketPositionChanges -- event streams, not fills. Those are emitted "
+            "from onBookSnapshot/onTrade, and no binding can drive a book-fed "
+            "SimulatedExecutor from a strategy: Runner.set_executor and "
+            "BacktestRunner.set_executor take the hook-style Executor or a VenueExecutor, "
+            "never a SimulatedExecutor, and VenueExecutor exposes no set_queue_model. "
+            "Separately, and worth its own task: on unmutated code a resting *triggered* "
+            "take-profit limit already emits no market-position event where an identical "
+            "plain limit emits one (probe: BacktestRunner.run_tape over a tape with book "
+            "snapshots, on_market_position_change fires for limit_sell, never for "
+            "take_profit_limit), so the event stream this mutation would break is not "
+            "reaching take-profit limits today either"
+        ),
     ),
 
     # ═══════════════════════════════════════════════════════════════════
@@ -679,7 +704,7 @@ MUTATIONS: list[Mutation] = [
             new="""  FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);""",
         )],
         gtest_target="test_capi_contract",
-        gtest_filter="CapiContractTest.EveryHandleReturningFunctionOutsideTheCreateRuleCarriesAnOwnershipNote",
+        gtest_filter="CapiContractTest.*Ownership*",
     ),
     Mutation(
         name="ownership-note-vague-neither-owned-nor-borrowed",
@@ -697,7 +722,7 @@ MUTATIONS: list[Mutation] = [
   FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);""",
         )],
         gtest_target="test_capi_contract",
-        gtest_filter="CapiContractTest.EveryHandleReturningFunctionOutsideTheCreateRuleCarriesAnOwnershipNote",
+        gtest_filter="CapiContractTest.*Ownership*",
     ),
     Mutation(
         name="ownership-note-wrong-borrowed-marked-owned",
@@ -717,7 +742,7 @@ MUTATIONS: list[Mutation] = [
   FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay);""",
         )],
         gtest_target="test_capi_contract",
-        gtest_filter="CapiContractTest.EveryHandleReturningFunctionOutsideTheCreateRuleCarriesAnOwnershipNote",
+        gtest_filter="CapiContractTest.*Ownership*",
     ),
 
     # ═══════════════════════════════════════════════════════════════════
@@ -764,9 +789,12 @@ MUTATIONS: list[Mutation] = [
             type=_LEGACY_EXEC_TYPE.get(order_type, order_type), symbol=int(sym),""",
             ),
         ],
+        # BundleConditionalOrderTests drives _run_strategy_against_tape with a
+        # strategy that emits a take-profit signal, and pack_bundle/replay_bundle
+        # over the same pair -- the path every other bundled fixture misses by
+        # only ever calling market_buy().
         py_tests=["python/tests/test_bundle.py"],
         sweep_rebuild_py=True,
-        equivalent_reason="",
     ),
 
     # ═══════════════════════════════════════════════════════════════════
@@ -799,7 +827,15 @@ MUTATIONS: list[Mutation] = [
         sweep_rebuild_py=True,
         sweep_rebuild_gtest_targets=["test_quickjs"],
         sweep_rebuild_node=True,
-        equivalent_reason="",
+        equivalent_reason=(
+            "out of scope, recorded as a follow-up: trace_handlers.h is the .floxrun "
+            "trace writer's own table, not a language binding. Its strings are a "
+            "recorded file format, so changing them is a reader-compatibility "
+            "question this task did not open -- the task note says so explicitly. "
+            "Pinning the writer's names here would freeze the legacy spelling in a "
+            "test and make the follow-up harder, so this mutation is left alive "
+            "deliberately rather than covered"
+        ),
     ),
 ]
 
@@ -810,12 +846,25 @@ MUTATIONS: list[Mutation] = [
 # check_abi_version` line codon/flox/backtest.codon (or any of the other 21
 # modules) carries alongside `from C import ...`.
 #
-# This is deliberately NOT in MUTATIONS above: there is no `codon` compiler
-# on this machine (`which codon` finds nothing), and the harness's own rule
-# is "a mutation that does not compile is not a mutation" -- there is no
-# way here to prove the mutated module still builds, so it cannot be run
-# honestly. Answering "which test would catch it" from reading rather than
-# running: none would. `tests/test_capi_abi_check.cpp` is C++-only.
+# This is deliberately NOT in MUTATIONS above -- untestable as a mutation
+# here, for a stated reason: there is no `codon` compiler on this machine
+# (`which codon` finds nothing), and the harness's own rule is "a mutation
+# that does not compile is not a mutation" -- there is no way here to
+# prove the mutated module still builds, so it cannot be run honestly.
+#
+# What it can have instead is a test that reads the modules, which is what
+# python/tests/test_abi_version.py::
+# test_every_codon_module_with_c_declarations_runs_the_abi_check now does:
+# every codon/flox/*.codon that carries a `from C import` must also carry
+# `from flox.abi import check_abi_version`, the import whose side effect
+# is the check (abi.codon calls check_abi_version() at module level). Drop
+# that line from any one module and the test names the module. It is a
+# text-level pin, not a behavioural one -- it cannot tell that the check
+# still runs, only that the module still asks for it -- and it is what is
+# available without a toolchain.
+#
+# Answering "which test would catch it" as of the first pass, from reading
+# rather than running: none would. `tests/test_capi_abi_check.cpp` is C++-only.
 # `scripts/check_codon_examples_coverage.py` (the one Codon-aware CI gate
 # that inspects source rather than running a binary) audits
 # codon/examples/*.codon against what CI executes -- it never reads

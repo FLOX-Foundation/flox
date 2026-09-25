@@ -32,6 +32,43 @@
 #define FLOX_TEST_HAS_ABI_CHECK 1
 #endif
 
+// A stand-in for the library's own flox_capi_abi_version.
+//
+// The handshake this file tests only ever does anything when the binding
+// and the library it loaded disagree, and a single build tree cannot
+// produce that: one header, one compiler, one number. The executable's own
+// definition of the symbol satisfies the reference libflox_capi leaves
+// undefined here, so the version "the library reports" becomes something
+// a test can set -- which is what makes the refusal path reachable at all,
+// and what tells a check that reads flox_capi_abi_version() apart from one
+// that reads the FLOX_CAPI_ABI_VERSION macro and calls it the same thing.
+namespace
+{
+uint32_t g_reportedAbiVersion = FLOX_CAPI_ABI_VERSION;
+
+// Sets what the library reports for the duration of a test.
+class ReportedAbiVersion
+{
+ public:
+  explicit ReportedAbiVersion(uint32_t version) : _saved(g_reportedAbiVersion)
+  {
+    g_reportedAbiVersion = version;
+  }
+  ~ReportedAbiVersion() { g_reportedAbiVersion = _saved; }
+
+  ReportedAbiVersion(const ReportedAbiVersion&) = delete;
+  ReportedAbiVersion& operator=(const ReportedAbiVersion&) = delete;
+
+ private:
+  uint32_t _saved;
+};
+}  // namespace
+
+extern "C" uint32_t flox_capi_abi_version(void)
+{
+  return g_reportedAbiVersion;
+}
+
 namespace
 {
 
@@ -92,6 +129,81 @@ TEST(CapiAbiCheckTest, ANullMessagePointerIsNotAnError)
 {
   EXPECT_TRUE(flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, nullptr));
   EXPECT_FALSE(flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION + 1, nullptr));
+}
+
+// ── What the check reads, and what it says ────────────────────────────
+
+// The double has to actually be the symbol the check calls, or every test
+// below it proves nothing.
+TEST(CapiAbiCheckTest, TheReportedVersionIsWhatTheCheckReads)
+{
+  EXPECT_EQ(flox_capi_abi_version(), static_cast<uint32_t>(FLOX_CAPI_ABI_VERSION));
+  {
+    ReportedAbiVersion reported(FLOX_CAPI_ABI_VERSION + 7);
+    EXPECT_EQ(flox_capi_abi_version(), static_cast<uint32_t>(FLOX_CAPI_ABI_VERSION + 7));
+  }
+  EXPECT_EQ(flox_capi_abi_version(), static_cast<uint32_t>(FLOX_CAPI_ABI_VERSION));
+}
+
+// The whole point of the handshake: the number on the other side comes
+// from the library that was actually loaded, not from the macro the
+// binding was compiled with. A check that compares the macro against
+// itself agrees with the correct one in every same-tree build and is
+// silent in the one case the handshake exists for.
+TEST(CapiAbiCheckTest, ReadsTheLibrarysVersionRatherThanItsOwnMacro)
+{
+  ReportedAbiVersion reported(FLOX_CAPI_ABI_VERSION + 7);
+
+  std::string message;
+  EXPECT_FALSE(flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &message))
+      << "the check agreed with a library reporting a different version, so it "
+         "is not reading flox_capi_abi_version()";
+  EXPECT_NE(message.find(std::to_string(FLOX_CAPI_ABI_VERSION + 7)), std::string::npos)
+      << "the message does not carry the version the library reported: " << message;
+}
+
+// Both numbers appear in the refusal either way round; which is which is
+// the entire content of the message. Assert the labels, not the digits.
+TEST(CapiAbiCheckTest, RefusalMessageSaysWhichNumberIsWhich)
+{
+  const std::string compiled = std::to_string(FLOX_CAPI_ABI_VERSION + 1);
+  const std::string runtime = std::to_string(FLOX_CAPI_ABI_VERSION);
+
+  std::string message;
+  ASSERT_FALSE(flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION + 1, &message));
+  EXPECT_NE(message.find("built against version " + compiled), std::string::npos)
+      << "the compiled-against version is not the one labelled as such: " << message;
+  EXPECT_NE(message.find("reports version " + runtime), std::string::npos)
+      << "the library's version is not the one labelled as such: " << message;
+}
+
+// The same message, with the two numbers the other way round: a swap that
+// reads plausibly in either direction is only caught by pinning both.
+TEST(CapiAbiCheckTest, RefusalMessageKeepsTheLabelsWhenTheSkewIsTheOtherWay)
+{
+  ReportedAbiVersion reported(FLOX_CAPI_ABI_VERSION + 5);
+
+  std::string message;
+  ASSERT_FALSE(flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &message));
+  EXPECT_NE(message.find("built against version " + std::to_string(FLOX_CAPI_ABI_VERSION)),
+            std::string::npos)
+      << message;
+  EXPECT_NE(message.find("reports version " + std::to_string(FLOX_CAPI_ABI_VERSION + 5)),
+            std::string::npos)
+      << message;
+}
+
+// abiVersionMismatchMessage is what a binding hands its host on refusal;
+// it goes through the same comparison and must see the same skew.
+TEST(CapiAbiCheckTest, TheConvenienceMessageSeesTheSameSkew)
+{
+  ReportedAbiVersion reported(FLOX_CAPI_ABI_VERSION + 3);
+
+  const std::string message = flox::capi::abiVersionMismatchMessage(FLOX_CAPI_ABI_VERSION);
+  EXPECT_FALSE(message.empty()) << "a mismatch produced no message";
+  EXPECT_NE(message.find("reports version " + std::to_string(FLOX_CAPI_ABI_VERSION + 3)),
+            std::string::npos)
+      << message;
 }
 
 #endif  // FLOX_TEST_HAS_ABI_CHECK

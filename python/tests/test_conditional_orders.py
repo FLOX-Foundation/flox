@@ -111,6 +111,38 @@ class TakeProfitTests(unittest.TestCase):
         self.assertEqual(fills[0]["price"], 101.3)
 
 
+class TakeProfitLimitTests(unittest.TestCase):
+    def test_trigger_converts_to_resting_limit(self) -> None:
+        # The limit-style half of the pair: firing is not filling. A
+        # take-profit limit that fires posts its own limit and waits for
+        # the book, and a fill that arrives before the book does means
+        # the order took the market-style path instead.
+        d = _Sim()
+        d.sim.submit_order(8, "sell", 101.0, 1.0, type="tp_limit",
+                           trigger=101.3, symbol=1)
+        d.trade(101.25)
+        self.assertEqual(d.fills(), [], "below trigger must not fire")
+        d.trade(101.5)  # trigger fires (101.5 >= 101.3); limit 101.0 goes live
+        self.assertEqual(d.fills(), [], "resting limit needs book liquidity")
+
+        d.sim.on_book_snapshot(1, [(101.2, 5.0)], [(101.4, 5.0)])
+        d.trade(101.2)
+        fills = d.fills()
+        self.assertEqual(len(fills), 1, fills)
+        self.assertGreaterEqual(fills[0]["price"], 101.0)
+        self.assertEqual(fills[0]["side"], "sell")
+
+    def test_it_does_not_fill_at_the_print_that_armed_it(self) -> None:
+        # Same order, book already in place: the print that crosses the
+        # trigger is what fires it, not what it is entitled to.
+        d = _Sim()
+        d.sim.on_book_snapshot(1, [(101.2, 5.0)], [(101.4, 5.0)])
+        d.sim.submit_order(9, "sell", 101.0, 1.0, type="tp_limit",
+                           trigger=101.3, symbol=1)
+        d.trade(101.0)
+        self.assertEqual(d.fills(), [], "fired below its trigger")
+
+
 class TrailingStopTests(unittest.TestCase):
     def test_fixed_offset_ratchets_and_fires_on_pullback(self) -> None:
         d = _Sim()

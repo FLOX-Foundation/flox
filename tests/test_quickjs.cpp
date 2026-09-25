@@ -4,16 +4,50 @@
 #include "js_strategy.h"
 
 #include "flox/capi/bridge_strategy.h"
+#include "flox/capi/flox_capi.h"
 
 #include <gtest/gtest.h>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <thread>
 #include <vector>
 
 using namespace flox;
+
+// A stand-in for the library's own flox_capi_abi_version, so a test can
+// construct the header/library skew registerFloxBindings refuses. One
+// build tree has one version, and the refusal path is unreachable without
+// this; the executable's definition satisfies the reference libflox_capi
+// leaves undefined, including the one inside js_bindings.cpp.
+namespace
+{
+uint32_t g_reportedAbiVersion = FLOX_CAPI_ABI_VERSION;
+
+class ReportedAbiVersion
+{
+ public:
+  explicit ReportedAbiVersion(uint32_t version) : _saved(g_reportedAbiVersion)
+  {
+    g_reportedAbiVersion = version;
+  }
+  ~ReportedAbiVersion() { g_reportedAbiVersion = _saved; }
+
+  ReportedAbiVersion(const ReportedAbiVersion&) = delete;
+  ReportedAbiVersion& operator=(const ReportedAbiVersion&) = delete;
+
+ private:
+  uint32_t _saved;
+};
+}  // namespace
+
+extern "C" uint32_t flox_capi_abi_version(void)
+{
+  return g_reportedAbiVersion;
+}
 
 // ============================================================
 // Unit tests — engine basics
@@ -2319,4 +2353,53 @@ TEST(JsEngineTest, AbiVersionPairIsExposedAndAgrees)
                       ', library reports ' + __flox_capi_abi_version());
     }
   )")) << engine.getErrorMessage();
+}
+
+// An engine that loaded the wrong library gets no surface at all: the
+// refusal is the registration not happening, not a flag a script could
+// read past. Pinning the returned false alone would leave a binding free
+// to compute the refusal and register everything anyway.
+TEST(JsEngineTest, AbiMismatchRegistersNothing)
+{
+  ReportedAbiVersion reported(FLOX_CAPI_ABI_VERSION + 7);
+
+  FloxJsEngine engine;
+  JSContext* ctx = engine.context();
+  EXPECT_FALSE(registerFloxBindings(ctx)) << "registration accepted a skewed library";
+
+  for (const char* name : {"__flox_emit_market_buy", "__flox_capi_abi_version", "console"})
+  {
+    JSValue value = engine.getGlobalProperty(name);
+    EXPECT_TRUE(JS_IsUndefined(value)) << name << " was registered despite the refusal";
+    JS_FreeValue(ctx, value);
+  }
+
+  JSValue pending = JS_GetException(ctx);
+  EXPECT_FALSE(JS_IsNull(pending)) << "the refusal left no exception for the host";
+  const char* text = JS_ToCString(ctx, pending);
+  const std::string message = text != nullptr ? text : "";
+  if (text != nullptr)
+  {
+    JS_FreeCString(ctx, text);
+  }
+  JS_FreeValue(ctx, pending);
+
+  EXPECT_NE(message.find("built against version " + std::to_string(FLOX_CAPI_ABI_VERSION)),
+            std::string::npos)
+      << message;
+  EXPECT_NE(message.find("reports version " + std::to_string(FLOX_CAPI_ABI_VERSION + 7)),
+            std::string::npos)
+      << message;
+}
+
+// The matched case still has to come up, or the test above would pass on
+// a binding that refuses everything.
+TEST(JsEngineTest, MatchedAbiRegistersTheSurface)
+{
+  FloxJsEngine engine;
+  EXPECT_TRUE(registerFloxBindings(engine.context()));
+
+  JSValue fn = engine.getGlobalProperty("__flox_emit_market_buy");
+  EXPECT_TRUE(JS_IsFunction(engine.context(), fn));
+  JS_FreeValue(engine.context(), fn);
 }
