@@ -9,6 +9,7 @@
 
 #include <napi.h>
 
+#include "bindings_common.h"
 #include "error_translator.h"
 #include "flox/capi/flox_capi.h"
 
@@ -125,7 +126,9 @@ class TWAPWrap : public Napi::ObjectWrap<TWAPWrap>
         opts.Has("limitPrice") ? opts.Get("limitPrice").As<Napi::Number>().DoubleValue() : 0.0;
     int64_t duration_ns = opts.Get("durationNs").As<Napi::Number>().Int64Value();
     uint32_t slice_count = opts.Get("sliceCount").As<Napi::Number>().Uint32Value();
-    int64_t start_time_ns = opts.Get("startTimeNs").As<Napi::Number>().Int64Value();
+    // A clock reading, not a duration: read it the way every other ns
+    // argument in the addon is read.
+    int64_t start_time_ns = toInt64Ns(opts.Get("startTimeNs"));
     _h = flox_exec_twap_create(target_qty, side, symbol, type, limit_price,
                                duration_ns, slice_count, start_time_ns);
     if (!_h)

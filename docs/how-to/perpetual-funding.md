@@ -154,6 +154,13 @@ for event in market_data:
 
 - The schedule's internal cursor (`last_tick_ns`) advances on every
   tick. To restart a backtest, call `reset()`.
+- The first `tick` seeds that cursor from the timestamp it is given, so a
+  fixed-interval schedule opening on a real exchange timestamp settles at
+  most the boundary that just passed -- not every boundary since 1970
+  (61,362 of them at an 8h cadence on a 2026 date). The cadence from the
+  second tick on is unchanged, and a schedule driven from a small base
+  behaves exactly as before. `reset()` clears the seed as well as the
+  cursor.
 - Per-day settlement venues (BitMEX-style daily funding) need a
   custom interval. The interval is fixed at construction and has no
   setter: build the schedule with the static factory

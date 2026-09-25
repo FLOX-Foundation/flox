@@ -17,8 +17,11 @@ inline Napi::Value barsToJs(Napi::Env env, const FloxBar* bars, uint32_t n)
   for (uint32_t i = 0; i < n; i++)
   {
     auto o = Napi::Object::New(env);
-    o.Set("startTimeNs", (double)bars[i].start_time_ns);
-    o.Set("endTimeNs", (double)bars[i].end_time_ns);
+    // A wall-clock nanosecond reading does not survive a double: the gap
+    // between two representable doubles is 256 ns at 1.76e18. Same reason
+    // TradeData.timestampNs is a BigInt (see toInt64Ns in bindings_common.h).
+    o.Set("startTimeNs", Napi::BigInt::New(env, static_cast<int64_t>(bars[i].start_time_ns)));
+    o.Set("endTimeNs", Napi::BigInt::New(env, static_cast<int64_t>(bars[i].end_time_ns)));
     o.Set("open", (double)bars[i].open_raw / 1e8);
     o.Set("high", (double)bars[i].high_raw / 1e8);
     o.Set("low", (double)bars[i].low_raw / 1e8);
@@ -59,17 +62,37 @@ struct TradeArrays
 // the return value once control reaches JS.
 inline TradeArrays extractTrades(const Napi::CallbackInfo& info)
 {
-  auto ts = info[0].As<Napi::Float64Array>();
   auto px = info[1].As<Napi::Float64Array>();
   auto qty = info[2].As<Napi::Float64Array>();
   auto ib = info[3].As<Napi::Uint8Array>();
-  size_t n = ts.ElementLength();
-  if (!requireSameLength(info.Env(), "aggregate", {n, px.ElementLength(), qty.ElementLength(), ib.ElementLength()}))
+  TradeArrays empty{{}, px.Data(), qty.Data(), ib.Data(), 0};
+
+  // The timestamp column arrives as either type. A Float64Array cannot carry
+  // a wall-clock nanosecond reading exactly, so a caller with real timestamps
+  // passes a BigInt64Array; the double column stays for the callers already
+  // written against it. Before this the argument was cast to Float64Array
+  // whatever it was, which read the int64 bit patterns back as doubles.
+  if (info[0].IsTypedArray() &&
+      info[0].As<Napi::TypedArray>().TypedArrayType() == napi_bigint64_array)
   {
-    return {{}, px.Data(), qty.Data(), ib.Data(), 0};
+    auto ts = info[0].As<Napi::BigInt64Array>();
+    size_t n = ts.ElementLength();
+    if (!requireSameLength(info.Env(), "aggregate",
+                           {n, px.ElementLength(), qty.ElementLength(), ib.ElementLength()}))
+    {
+      return empty;
+    }
+    return {std::vector<int64_t>(ts.Data(), ts.Data() + n), px.Data(), qty.Data(), ib.Data(), n};
   }
 
-  // Convert float64 timestamps to int64
+  auto ts = info[0].As<Napi::Float64Array>();
+  size_t n = ts.ElementLength();
+  if (!requireSameLength(info.Env(), "aggregate",
+                         {n, px.ElementLength(), qty.ElementLength(), ib.ElementLength()}))
+  {
+    return empty;
+  }
+
   std::vector<int64_t> tsVec(n);
   for (size_t i = 0; i < n; i++)
   {

@@ -54,10 +54,11 @@ console.log('=== BacktestRunner.runBars passes nanoseconds through unmodified ==
     'BTC');
 
   check(seenBars.length === 1, `exactly one bar delivered (got ${seenBars.length})`);
-  check(seenBars[0]?.startTimeNs === Number(START_NS),
-        `startTimeNs unmodified (got ${seenBars[0]?.startTimeNs}, want ${Number(START_NS)})`);
-  check(seenBars[0]?.endTimeNs === Number(END_NS),
-        `endTimeNs unmodified (got ${seenBars[0]?.endTimeNs}, want ${Number(END_NS)})`);
+  // Bar timestamps cross as BigInt -- see test_bar_timestamp_bigint.js.
+  check(seenBars[0]?.startTimeNs === START_NS,
+        `startTimeNs unmodified (got ${seenBars[0]?.startTimeNs}, want ${START_NS})`);
+  check(seenBars[0]?.endTimeNs === END_NS,
+        `endTimeNs unmodified (got ${seenBars[0]?.endTimeNs}, want ${END_NS})`);
 }
 
 console.log('\n=== BacktestRunner.runOhlcv passes nanoseconds through unmodified ===');

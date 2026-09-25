@@ -35,14 +35,14 @@ for (var i = 0; i < n; i++) {
   var sv = slow.update(b.close);
   if (!slow.ready) continue;
 
-  // bar.ts is in milliseconds (safe integer range for JS float64)
-  var tsMs = b.ts;
+  // bar.ts is a nanosecond BigInt, on this path and on every other one.
+  var tsNs = b.ts;
 
   if (fv > sv && pos <= 0) {
-    signals.buy(tsMs, pos === 0 ? 0.01 : 0.02);
+    signals.buy(tsNs, pos === 0 ? 0.01 : 0.02);
     pos = 1;
   } else if (fv < sv && pos >= 0) {
-    signals.sell(tsMs, pos === 0 ? 0.01 : 0.02);
+    signals.sell(tsNs, pos === 0 ? 0.01 : 0.02);
     pos = -1;
   }
 }

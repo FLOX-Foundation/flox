@@ -23,8 +23,8 @@ from C import flox_emit_close_position(cobj, u32) -> u64
 from C import flox_position_raw(cobj, u32) -> i64
 from C import flox_get_order_status(cobj, u64) -> i32
 
-# Multi-TF alignment helpers. FloxBar is a 72-byte struct;
-# fields are written through a byte buffer, see _floxbar_to_bardata.
+# Multi-TF alignment helpers. FloxBar is written into a byte buffer the
+# caller allocates; see _floxbar_to_bardata for how it is read back.
 from C import flox_strategy_last_closed_bar(cobj, u32, u8, u64, cobj) -> u8
 from C import flox_strategy_last_n_closed_bars(cobj, u32, u8, u64, cobj, u32) -> u32
 from C import flox_strategy_get_bar_ring_capacity(cobj) -> u32
@@ -34,8 +34,13 @@ from flox.types import SCALE, Price, Quantity, TradeData, BarData, BUY, SELL
 from flox.types import TIF_GTC, TIF_IOC, TIF_FOK, TIF_POST_ONLY
 from flox.context import SymbolContext
 
-
-_FLOXBAR_SIZE = 72  # 8 * i64 + u32 + 4 bytes padding
+# FloxBar's size and field offsets come from flox/layout.codon, generated
+# from the IDL spec and checked against offsetof by
+# tests/test_capi_event_layout.cpp.
+from flox.layout import _FLOXBAR_SIZE, _FLOXBAR_START_NS, _FLOXBAR_END_NS
+from flox.layout import _FLOXBAR_OPEN_RAW, _FLOXBAR_HIGH_RAW, _FLOXBAR_LOW_RAW
+from flox.layout import _FLOXBAR_CLOSE_RAW, _FLOXBAR_VOLUME_RAW
+from flox.layout import _FLOXBAR_BUY_VOLUME_RAW
 
 # FloxStrategyCallbacks: nine function pointers plus user_data, 8 bytes each
 # on every 64-bit target this ships on. codon/flox/dispatch.codon fills it.
@@ -49,14 +54,14 @@ _SYMBOL_NAME_CAP = 128
 
 def _floxbar_to_bardata(buf: Ptr[byte], symbol: int, bar_type: int,
                         bar_type_param: int, symbol_name: str = "") -> BarData:
-    start_ns = int(Ptr[i64](buf + 0)[0])
-    end_ns = int(Ptr[i64](buf + 8)[0])
-    o = int(Ptr[i64](buf + 16)[0])
-    h = int(Ptr[i64](buf + 24)[0])
-    l = int(Ptr[i64](buf + 32)[0])
-    c = int(Ptr[i64](buf + 40)[0])
-    v = int(Ptr[i64](buf + 48)[0])
-    bv = int(Ptr[i64](buf + 56)[0])
+    start_ns = int(Ptr[i64](buf + _FLOXBAR_START_NS)[0])
+    end_ns = int(Ptr[i64](buf + _FLOXBAR_END_NS)[0])
+    o = int(Ptr[i64](buf + _FLOXBAR_OPEN_RAW)[0])
+    h = int(Ptr[i64](buf + _FLOXBAR_HIGH_RAW)[0])
+    l = int(Ptr[i64](buf + _FLOXBAR_LOW_RAW)[0])
+    c = int(Ptr[i64](buf + _FLOXBAR_CLOSE_RAW)[0])
+    v = int(Ptr[i64](buf + _FLOXBAR_VOLUME_RAW)[0])
+    bv = int(Ptr[i64](buf + _FLOXBAR_BUY_VOLUME_RAW)[0])
     return BarData.from_raw(symbol, bar_type, bar_type_param,
                             o, h, l, c, v, bv, start_ns, end_ns, 0,
                             symbol_name)

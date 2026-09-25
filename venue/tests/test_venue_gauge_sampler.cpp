@@ -49,14 +49,14 @@ Amount usd(double v) { return amountOf(Volume::fromDouble(v)); }
 
 // Sample live venue state into the observability Gauges struct.
 Gauges sampleGauges(const Ledger& led, const CrossMarginManager& cm,
-                    const MatchingEngine<MatchingBook>& spot, double lastFundingRate)
+                    const MatchingEngine<MatchingBook>& spot, int64_t lastFundingRateRaw)
 {
   Gauges g;
   g.insuranceFundRaw = led.total(VENUE, USD);
   g.openInterestRaw = cm.openInterestRaw();
   g.openPositions = cm.openPositionCount();
   g.restingOrders = spot.restingOrderCount();
-  g.fundingRate = lastFundingRate;
+  g.fundingRateRaw = lastFundingRateRaw;
   return g;
 }
 
@@ -101,7 +101,7 @@ void test_sampler()
   spot.submit(InboundCommand{b}, 1);
   CHECK(spot.restingOrderCount() == 2);
 
-  const Gauges g = sampleGauges(led, cm, spot, /*fundingRate*/ 0.00013);
+  const Gauges g = sampleGauges(led, cm, spot, /*fundingRateRaw*/ 13'000);
   Metrics metrics;
   const std::string page = prom::render(metrics, g);
 
@@ -109,7 +109,7 @@ void test_sampler()
   CHECK(contains(page, "fme_open_interest_raw 600000000000"));     // 6000 * 1e8
   CHECK(contains(page, "fme_open_positions 2"));
   CHECK(contains(page, "fme_resting_orders 2"));
-  CHECK(contains(page, "fme_funding_rate"));
+  CHECK(contains(page, "fme_funding_rate 0.00013000"));
 }
 
 }  // namespace

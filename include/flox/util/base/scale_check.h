@@ -150,6 +150,23 @@ constexpr int64_t narrowDoubleToI64(double v) noexcept
   return static_cast<int64_t>(v);
 }
 
+// A double that was MEANT to be a fixed-point raw: a rate an operator typed, a
+// schedule expressed in basis points, a number that arrived as JSON. The
+// decimal never survived the trip into binary -- 0.0003 is stored as
+// 0.00029999999999999997 -- so truncating the scaled value drops the last raw
+// off nearly every rate a human writes. Rounding to nearest returns the raw
+// that was meant, and rounds a rate and its negation to mirror images of each
+// other, which a rate that is paid in one direction and received in the other
+// has to do.
+constexpr int64_t roundDoubleToI64(double v) noexcept
+{
+  if (!(v == v))
+  {
+    return 0;
+  }
+  return narrowDoubleToI64(v < 0.0 ? v - 0.5 : v + 0.5);
+}
+
 #if defined(__SIZEOF_INT128__)
 // Checked narrowing of a 128-bit intermediate down to int64. In checked
 // builds an out-of-range value trips FLOX_SCALE_CHECK; in all builds it

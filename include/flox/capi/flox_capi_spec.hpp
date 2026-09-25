@@ -74,11 +74,11 @@ extern "C"
   typedef struct
   {
     int64_t bid_price_raw;  // best bid, or 0 if absent
-    int64_t bid_qty_raw;
+    int64_t bid_qty_raw;    // size resting at the best bid, 0 when the book cannot say
     int64_t ask_price_raw;  // best ask, or 0 if absent
-    int64_t ask_qty_raw;
-    int64_t mid_raw;     // mid price, or 0
-    int64_t spread_raw;  // spread, or 0
+    int64_t ask_qty_raw;    // size resting at the best ask, 0 when the book cannot say
+    int64_t mid_raw;        // mid price, or 0
+    int64_t spread_raw;     // spread, or 0
   } FloxBookSnapshot;
 
   typedef struct
@@ -313,6 +313,23 @@ extern "C"
   int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol);
   FLOX_EXPORT(group = "context_queries")
   int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol);
+  /* The _opt trio answers the question the three above cannot: they return 0
+   * both when the side is empty and when the best quote is a price of exactly
+   * 0.0, and a book quoting through zero reaches that price. Here the return
+   * value is the presence flag -- 1 with the raw price written to price_out,
+   * 0 with price_out untouched -- so "no quote" has its own answer. price_out
+   * may be NULL when only the flag is wanted. The three int64_t forms stay as
+   * they are for callers that cannot see below zero. */
+  FLOX_EXPORT(group = "context_queries")
+  uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  FLOX_EXPORT(group = "context_queries")
+  uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  FLOX_EXPORT(group = "context_queries")
+  uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  /* Defined by a header that declares the _opt trio, so a binding can compile
+   * against either. */
+  // flox::export_macro(group="feature_flags")
+  #define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1
   FLOX_EXPORT(group = "context_queries")
   void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext* out);
   FLOX_EXPORT(group = "context_queries")
@@ -2354,6 +2371,22 @@ extern "C"
   // The signal pointer passed to `allow` aliases the same FloxSignal that
   // would otherwise be delivered to on_signal — fields are read-only;
   // mutations are not propagated.
+  //
+  // What a gate owes the caller when it cannot answer — this applies to
+  // KillSwitch.check and OrderValidator.validate below as much as to
+  // RiskManager.allow, and every binding implements it the same way:
+  //
+  //   The policy, one for every binding: a host-language throw and a
+  //   non-boolean return both DENY the order, and both are reported. Neither
+  //   ever lets the order through, and neither escapes through the C
+  //   boundary. A gate that plainly returns false is a decision, not a
+  //   failure, and is not reported.
+  //
+  // A binding therefore catches its own host-language exception inside the
+  // bridge — an exception crossing a C function pointer is undefined
+  // behaviour — records it somewhere the caller can read synchronously, and
+  // returns 0. Returning anything other than 0 or 1 from this callback is a
+  // binding bug; the engine reads any non-zero value as allow.
   //
   // Lifecycle: created via flox_risk_manager_create, attached to a
   // runner/engine via flox_runner_set_risk_manager /

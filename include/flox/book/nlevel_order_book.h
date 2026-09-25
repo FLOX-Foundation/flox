@@ -337,7 +337,6 @@ class NLevelOrderBook : public IOrderBook
       _minBid = _minAsk = MAX_LEVELS;
       _maxBid = _maxAsk = 0;
       _bestBidIdx = _bestAskIdx = MAX_LEVELS;
-      _bestBidTick = _bestAskTick = -1;
     }
     else
     {
@@ -373,7 +372,6 @@ class NLevelOrderBook : public IOrderBook
         if (_bestBidIdx >= MAX_LEVELS || i > _bestBidIdx)
         {
           _bestBidIdx = i;
-          _bestBidTick = _baseIndex + static_cast<int64_t>(i);
         }
       }
       else if (had)
@@ -381,9 +379,6 @@ class NLevelOrderBook : public IOrderBook
         if (i == _bestBidIdx)
         {
           _bestBidIdx = prevNonZeroBid(i);
-          _bestBidTick = (_bestBidIdx < MAX_LEVELS)
-                             ? (_baseIndex + static_cast<int64_t>(_bestBidIdx))
-                             : -1;
         }
         if (i == _minBid)
         {
@@ -425,7 +420,6 @@ class NLevelOrderBook : public IOrderBook
         if (_bestAskIdx >= MAX_LEVELS || i < _bestAskIdx)
         {
           _bestAskIdx = i;
-          _bestAskTick = _baseIndex + static_cast<int64_t>(i);
         }
       }
       else if (had)
@@ -433,9 +427,6 @@ class NLevelOrderBook : public IOrderBook
         if (i == _bestAskIdx)
         {
           _bestAskIdx = nextNonZeroAsk(i);
-          _bestAskTick = (_bestAskIdx < MAX_LEVELS)
-                             ? (_baseIndex + static_cast<int64_t>(_bestAskIdx))
-                             : -1;
         }
         if (i == _minAsk)
         {
@@ -451,22 +442,22 @@ class NLevelOrderBook : public IOrderBook
 
   inline std::optional<Price> bestBid() const override
   {
-    const int64_t t = _bestBidTick;
-    if (t < 0)
+    const auto t = bestBidTick();
+    if (!t)
     {
       return std::nullopt;
     }
-    return std::optional<Price>{Price::fromRaw(_tickSize.raw() * t)};
+    return std::optional<Price>{Price::fromRaw(_tickSize.raw() * *t)};
   }
 
   inline std::optional<Price> bestAsk() const override
   {
-    const int64_t t = _bestAskTick;
-    if (t < 0)
+    const auto t = bestAskTick();
+    if (!t)
     {
       return std::nullopt;
     }
-    return std::optional<Price>{Price::fromRaw(_tickSize.raw() * t)};
+    return std::optional<Price>{Price::fromRaw(_tickSize.raw() * *t)};
   }
 
   inline Quantity bidAtPrice(Price p) const override
@@ -631,26 +622,31 @@ class NLevelOrderBook : public IOrderBook
 
   inline bool isCrossed() const
   {
-    if (_bestBidTick < 0 || _bestAskTick < 0)
+    const auto bid = bestBidTick();
+    const auto ask = bestAskTick();
+    if (!bid || !ask)
     {
       return false;
     }
-    return _bestBidTick >= _bestAskTick;
+    return *bid >= *ask;
   }
 
   inline std::optional<Price> spread() const
   {
-    if (_bestBidTick < 0 || _bestAskTick < 0)
+    const auto bid = bestBidTick();
+    const auto ask = bestAskTick();
+    if (!bid || !ask)
     {
       return std::nullopt;
     }
-    int64_t spreadTicks = _bestAskTick - _bestBidTick;
-    return Price::fromRaw(_tickSize.raw() * spreadTicks);
+    return Price::fromRaw(_tickSize.raw() * (*ask - *bid));
   }
 
   inline std::optional<Price> mid() const
   {
-    if (_bestBidTick < 0 || _bestAskTick < 0)
+    const auto bidTick = bestBidTick();
+    const auto askTick = bestAskTick();
+    if (!bidTick || !askTick)
     {
       return std::nullopt;
     }
@@ -660,7 +656,7 @@ class NLevelOrderBook : public IOrderBook
     // Halve the tick *sum* instead, so the division runs once and only an odd
     // sum can cost anything, and at most half a raw unit.
     const int64_t tick = _tickSize.raw();
-    const int64_t tickSum = _bestBidTick + _bestAskTick;
+    const int64_t tickSum = *bidTick + *askTick;
     const int64_t wholeTicks = tickSum / 2;
     const int64_t oddTick = tickSum - wholeTicks * 2;
     return Price::fromRaw(tick * wholeTicks + (tick * oddTick) / 2);
@@ -722,7 +718,6 @@ class NLevelOrderBook : public IOrderBook
     _maxBid = _maxAsk = 0;
     _baseIndex = 0;
     _bestBidIdx = _bestAskIdx = MAX_LEVELS;
-    _bestBidTick = _bestAskTick = -1;
   }
 
  private:
@@ -759,6 +754,36 @@ class NLevelOrderBook : public IOrderBook
     const int64_t ts = _tickSize.raw();
     const int64_t tick = _baseIndex + static_cast<int64_t>(i);
     return Price::fromRaw(ts * tick);
+  }
+
+  // The tick of the best quote on each side, and the single place where "this
+  // side is empty" is decided. Emptiness is a property of the ladder index --
+  // _bestBidIdx / _bestAskIdx outside [0, MAX_LEVELS) -- never of the tick:
+  // a tick below zero is an ordinary price. WTI settled at -37.63 in April
+  // 2020, day-ahead power clears below zero on a windy afternoon, and a
+  // calendar spread is negative whenever the market is in contango. Reading a
+  // negative tick as an empty side reported no quote at all on those books,
+  // while getBidLevels and bidAtPrice -- which walk the index -- reported the
+  // levels that were there. Deriving the tick from the index keeps every
+  // accessor on one answer.
+  std::optional<int64_t> bestBidTick() const
+  {
+    const auto i = bestBidIndex();
+    if (!i)
+    {
+      return std::nullopt;
+    }
+    return _baseIndex + static_cast<int64_t>(*i);
+  }
+
+  std::optional<int64_t> bestAskTick() const
+  {
+    const auto i = bestAskIndex();
+    if (!i)
+    {
+      return std::nullopt;
+    }
+    return _baseIndex + static_cast<int64_t>(*i);
   }
 
   // Side matters here for the same reason it matters in ticks(): a price is
@@ -892,7 +917,6 @@ class NLevelOrderBook : public IOrderBook
     _minBid = _minAsk = MAX_LEVELS;
     _maxBid = _maxAsk = 0;
     _bestBidIdx = _bestAskIdx = MAX_LEVELS;
-    _bestBidTick = _bestAskTick = -1;
 
     for (size_t i = 0; i < MAX_LEVELS; ++i)
     {
@@ -909,7 +933,6 @@ class NLevelOrderBook : public IOrderBook
         if (_bestBidIdx >= MAX_LEVELS || i > _bestBidIdx)
         {
           _bestBidIdx = i;
-          _bestBidTick = newBase + static_cast<int64_t>(i);
         }
       }
       if (!_asks[i].isZero())
@@ -925,7 +948,6 @@ class NLevelOrderBook : public IOrderBook
         if (_bestAskIdx >= MAX_LEVELS || i < _bestAskIdx)
         {
           _bestAskIdx = i;
-          _bestAskTick = newBase + static_cast<int64_t>(i);
         }
       }
     }
@@ -1035,7 +1057,6 @@ class NLevelOrderBook : public IOrderBook
   size_t _minBid{MAX_LEVELS}, _maxBid{0}, _minAsk{MAX_LEVELS}, _maxAsk{0};
 
   size_t _bestBidIdx{MAX_LEVELS}, _bestAskIdx{MAX_LEVELS};
-  int64_t _bestBidTick{-1}, _bestAskTick{-1};
 };
 
 }  // namespace flox

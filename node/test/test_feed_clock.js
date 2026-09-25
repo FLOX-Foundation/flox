@@ -122,7 +122,10 @@ const SECOND_NS = 1_000_000_000;
   check('out-of-band tick never fires', oob.fired === false);
   check('out-of-band triggeredBy echoes the symbol', oob.triggeredBy === UNREGISTERED);
   const after = c.tick(SECOND_NS + 2, BTC);
-  check('out-of-band tick does not affect registered last-seen', after.lastTsNs[BTC] === SECOND_NS + 2);
+  // lastTsNs is a clock reading and crosses as a BigInt -- see
+  // test_ns_timestamp_round_trip.js.
+  check('out-of-band tick does not affect registered last-seen',
+        after.lastTsNs[BTC] === BigInt(SECOND_NS + 2));
 }
 
 console.log('node feed_clock test ok');

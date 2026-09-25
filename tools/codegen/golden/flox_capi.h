@@ -91,6 +91,9 @@ extern "C"
   // ABI version
 #define FLOX_CAPI_ABI_VERSION 3
 
+  // Feature Flags
+#define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1
+
   // Signal type codes (FloxSignal.order_type)
 #define FLOX_SIGNAL_TYPE_MARKET 0
 #define FLOX_SIGNAL_TYPE_LIMIT 1
@@ -1167,6 +1170,9 @@ extern "C"
   int64_t flox_best_bid_raw(FloxStrategyHandle s, uint32_t symbol);
   int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol);
   int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol);
+  uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
   void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext* out);
   int32_t flox_get_order_status(FloxStrategyHandle s, uint64_t order_id);
 

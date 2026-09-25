@@ -6,11 +6,60 @@
 # license information.
 
 #!/usr/bin/env python3
-import os, json, struct, socket, traceback
-from hyperliquid.utils.signing import sign_l1_action
-from eth_account import Account
+"""Hyperliquid signing daemon.
 
-SOCK = "/dev/shm/hl_sign.sock"
+The request body carries a raw private key, so the only transport this
+daemon offers is a Unix socket no other user on the box can open. It has
+never listened on TCP and must not start: loopback authenticates neither
+end, and whoever binds the port first harvests the key.
+"""
+import os, sys, json, struct, socket, traceback
+
+# Imported lazily-ish: the listener setup below has to stay importable
+# without the signing SDK installed so it can be tested on its own.
+try:
+    from hyperliquid.utils.signing import sign_l1_action
+    from eth_account import Account
+except ImportError as exc:  # pragma: no cover - exercised by main()
+    sign_l1_action = None
+    Account = None
+    _IMPORT_ERROR = exc
+else:
+    _IMPORT_ERROR = None
+
+DEFAULT_SOCK = "/dev/shm/hl_sign.sock"
+SOCK_ENV = "FLOX_HL_SIGNER_SOCKET"
+
+# A signing request is a few hundred bytes. The length header comes from the
+# peer, so it is a request for an allocation, not a fact.
+MAX_REQUEST = 1 << 20
+
+def socket_path():
+    return os.environ.get(SOCK_ENV) or DEFAULT_SOCK
+
+def create_listener(path, backlog=128):
+    """Bind and listen on `path`, private to this user for its whole life.
+
+    bind() creates the socket node with 0777 & ~umask, so chmod-after-bind
+    leaves a window in which the node exists with whatever the ambient umask
+    allowed. The umask is narrowed around bind() instead, and the chmod stays
+    as a belt-and-braces assertion; both run before listen(), so no client can
+    connect until the mode is right.
+    """
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    old_umask = os.umask(0o177)
+    try:
+        srv.bind(path)
+    finally:
+        os.umask(old_umask)
+    os.chmod(path, 0o600)
+    srv.listen(backlog)
+    return srv
 
 def recv_all(fd, n):
     buf = bytearray()
@@ -24,6 +73,8 @@ def recv_all(fd, n):
 def recv_msg(fd):
     hdr = recv_all(fd, 4)
     (n,) = struct.unpack("!I", hdr)
+    if n == 0 or n > MAX_REQUEST:
+        raise ValueError("request length %d out of bounds" % n)
     return recv_all(fd, n)
 
 def send_msg(fd, b):
@@ -51,14 +102,12 @@ def handle(req_bytes):
     return json.dumps({"r": r, "s": s, "v": v}).encode("utf-8")
 
 def main():
-    try:
-        if os.path.exists(SOCK):
-            os.unlink(SOCK)
-        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        srv.bind(SOCK)
-        os.chmod(SOCK, 0o600)
-        srv.listen(128)
+    if _IMPORT_ERROR is not None:
+        raise SystemExit("hl_signerd needs the hyperliquid SDK and eth_account: %s" % _IMPORT_ERROR)
 
+    path = socket_path()
+    srv = create_listener(path)
+    try:
         while True:
             fd, _ = srv.accept()
             try:
@@ -66,12 +115,15 @@ def main():
                 resp = handle(req)
                 send_msg(fd, resp)
             except Exception:
-                tb = traceback.format_exc().encode()
-                send_msg(fd, json.dumps({"error": tb.decode()}).encode())
+                # The traceback goes to the operator, not down the socket: the
+                # client bounds the reply it will accept, and a stack trace is
+                # both larger than that bound and more than the caller needs.
+                traceback.print_exc(file=sys.stderr)
+                send_msg(fd, json.dumps({"error": "signing failed"}).encode())
             finally:
                 fd.close()
     finally:
-        try: os.unlink(SOCK)
+        try: os.unlink(path)
         except FileNotFoundError: pass
 
 if __name__ == "__main__":

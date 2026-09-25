@@ -53,9 +53,20 @@ There is no separate configuration store: the journaled command stream is the
 source of truth for instrument configuration as well. Listing, band changes,
 trigger-reference switches and halts arrive as `ListInstrument` / `SetBands` /
 `SetTriggerRef` / `AdminCmd` records; `InstrumentRegistry::apply` rebuilds the
-registry from the same stream the engines replay. Structural knobs the control
-plane cannot express (assets, scales, margin parameters, fee schedule) are
-startup configuration supplied when a shard is constructed.
+registry from the same stream the engines replay -- `SequencedShard::setRegistry`
+is what wires it: set before `start()`, and every record the shard applies (the
+snapshot's config section, each replayed segment, and every command sequenced
+afterwards) is offered to `apply()`. Without it a restarted venue came up with
+an engine that knew all of its state and a registry that knew no instruments,
+while the control plane validated every operator request against that empty
+registry. The registry is then written on the shard's consumer thread, so a
+deployment serving a `ControlApi` against the same registry has to reach it
+from that thread too. Structural knobs the control
+plane cannot express (assets, scales, margin parameters, fee schedule, the
+allocation rule `matchPolicy`) are startup configuration supplied when a shard
+is constructed -- the shard, the router and `replayWindow` all build their
+engine from that `SymbolConfig`, so a pro-rata instrument is configured rather
+than hand-wired (see [Matching](matching.md)).
 
 ## Trading sessions and the funding calendar
 

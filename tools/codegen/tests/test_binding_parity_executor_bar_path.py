@@ -52,24 +52,23 @@ C_FUNCTIONS = [
 ]
 
 EXPECTED_MANIFEST_ENTRIES = {
-    "pybind11": [
-        "SimulatedExecutor.on_bar_ohlc",
-        "SimulatedExecutor.begin_bar_callback_window",
-        "SimulatedExecutor.end_bar_callback_window",
-        "SimulatedExecutor.reset",
-    ],
-    "napi": [
-        "SimulatedExecutor.onBarOhlc",
-        "SimulatedExecutor.beginBarCallbackWindow",
-        "SimulatedExecutor.endBarCallbackWindow",
-        "SimulatedExecutor.reset",
-    ],
-    "quickjs": [
-        "__flox_simulated_executor_on_bar_ohlc",
-        "__flox_simulated_executor_begin_bar_callback_window",
-        "__flox_simulated_executor_end_bar_callback_window",
-        "__flox_simulated_executor_reset",
-    ],
+    # pybind11 wraps the C++ engine directly, so the four C entry points are
+    # allowlisted under the binding with the reason every other direct
+    # wrapper carries; the gate holds the group required.
+    "pybind11": {"allowlisted": C_FUNCTIONS},
+    # NAPI calls the C entry points, so they must be reachable from node/src
+    # (the gate checks the source) and must not be allowlisted away.
+    "napi": {"referenced": C_FUNCTIONS},
+    "quickjs": {
+        "mapped": {
+            "flox_simulated_executor_on_bar_ohlc": "__flox_simulated_executor_on_bar_ohlc",
+            "flox_simulated_executor_begin_bar_callback_window":
+                "__flox_simulated_executor_begin_bar_callback_window",
+            "flox_simulated_executor_end_bar_callback_window":
+                "__flox_simulated_executor_end_bar_callback_window",
+            "flox_simulated_executor_reset": "__flox_simulated_executor_reset",
+        }
+    },
 }
 
 
@@ -161,7 +160,9 @@ def test_the_shipped_codon_module_exposes_the_bar_path() -> None:
 
 
 def test_the_manifest_requires_the_bar_path_from_every_binding() -> None:
+    manifest = yaml.safe_load(MANIFEST.read_text())
     group = _manifest_group("simulated_executor")
+    allowlists = manifest.get("allowlist_functions") or {}
 
     problems: list[str] = []
     for binding, expected in EXPECTED_MANIFEST_ENTRIES.items():
@@ -172,16 +173,30 @@ def test_the_manifest_requires_the_bar_path_from_every_binding() -> None:
         if entry.get("status") != "required":
             problems.append(f"{binding}: status is {entry.get('status')!r}, not 'required'")
             continue
-        declared = list(entry.get("functions") or [])
-        missing = [name for name in expected if name not in declared]
-        if missing:
-            problems.append(f"{binding}: missing {', '.join(missing)}")
+        if "allowlisted" in expected:
+            listed = allowlists.get(binding) or {}
+            for name in expected["allowlisted"]:
+                reason = listed.get(name)
+                if not isinstance(reason, str) or not reason.strip():
+                    problems.append(f"{binding}: {name} has no allowlist entry with a reason")
+        if "referenced" in expected:
+            listed = allowlists.get(binding) or {}
+            for name in expected["referenced"]:
+                if name in listed:
+                    problems.append(f"{binding}: {name} is allowlisted away instead of wrapped")
+            src = "".join(p.read_text() for p in (REPO / "node" / "src").rglob("*.h"))
+            for name in expected["referenced"]:
+                if name not in src:
+                    problems.append(f"{binding}: {name} is not referenced under node/src")
+        if "mapped" in expected:
+            declared = entry.get("functions") or {}
+            for c_name, js_name in expected["mapped"].items():
+                if declared.get(c_name) != js_name:
+                    problems.append(f"{binding}: {c_name} is not mapped to {js_name}")
 
     assert problems == [], (
         "tools/codegen/binding_parity.yaml does not require the bar path:\n  "
         + "\n  ".join(problems)
-        + "\nThe simulated_executor group lists class names only, so a binding "
-        "can drop every method on SimulatedExecutor and stay green."
     )
 
 

@@ -1941,9 +1941,11 @@ class PyBacktestRunner
   // Run against a venue stack: the runner feeds the stack's executor
   // market data and harvests its fills, so the run uses that venue's
   // FILL MECHANICS -- queue model and depth, iceberg refresh latency,
-  // venue availability and rate limits. Fees still come from
-  // BacktestConfig (Fill carries no maker/taker flag), and funding and
-  // liquidation are driven by explicit calls, not the replay loop.
+  // venue availability and rate limits -- and that venue's FEE LADDER:
+  // the stack's FeeSchedule prices every fill at the tier its 30-day
+  // notional resolves to, with Fill::isMaker picking the side. Funding
+  // and liquidation are still driven by explicit calls, not the replay
+  // loop.
   // Takes the whole stack because the executor alone does not expose the
   // clock, and without advancing it ack latency and queue timing would
   // never progress. Pass None to revert to the built-in executor.
@@ -2977,10 +2979,11 @@ inline void bindStrategy(py::module_& m)
            "Run against a VenueStack: the runner feeds the stack executor "
            "market data and harvests its fills, so the run uses the venue's "
            "fill mechanics (queue model, iceberg latency, venue "
-           "availability, rate limits). Fees still come from BacktestConfig, "
-           "and funding and liquidation are driven by explicit calls rather "
-           "than the replay loop. Pass None to revert to the built-in "
-           "executor.")
+           "availability, rate limits) and its fee ladder -- each fill is "
+           "billed at the tier the stack's 30-day notional resolves to "
+           "instead of the flat fee_rate. Funding and liquidation are still "
+           "driven by explicit calls rather than the replay loop. Pass None "
+           "to revert to the built-in executor.")
       .def("add_execution_listener", &PyBacktestRunner::add_execution_listener,
            py::arg("listener"), py::keep_alive<1, 2>())
       .def("set_risk_manager", &PyBacktestRunner::set_risk_manager,

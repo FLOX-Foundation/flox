@@ -20,12 +20,6 @@
 namespace flox::venue
 {
 
-enum class MatchPolicy : uint8_t
-{
-  PriceTimeFifo = 0,
-  ProRata = 1,  // thick-level proportional distribution (crossProRata)
-};
-
 struct MatchOutcome
 {
   Quantity filled{};

@@ -42,6 +42,17 @@ enum class PegRef : uint8_t
   Mid,
 };
 
+// How a price level is allocated between the makers resting on it. It lives
+// here, next to the instrument's other wire-level choices, because it is
+// instrument CONFIGURATION: SymbolConfig carries it, and the config is the
+// only route a deployment has into a shard, a journal or a gateway. The
+// Matcher that acts on it is one reader of the answer, not its owner.
+enum class MatchPolicy : uint8_t
+{
+  PriceTimeFifo = 0,
+  ProRata = 1,  // thick-level proportional distribution (crossProRata)
+};
+
 // Which values of an order's enum-typed fields actually exist.
 //
 // Every one of them crosses the wire as a single byte, and a byte carries 256
@@ -1406,6 +1417,20 @@ struct TradingStatusChanged
 // use, so a rate travels as a raw int64 like every other wire number and never
 // as a double. 0.0001 (1bp per interval) = 10'000 raw.
 inline constexpr int64_t kFundingRateScale = Price::Scale;
+
+// The one conversion from the rate a journaled ApplyFunding carries into the
+// raw the venue publishes, hashes and settles on. The body stays a double --
+// it is what a rate calculator produces and what an operator types, it is
+// blittable, and it round-trips through the journal bit for bit -- so the
+// arithmetic has to become integer exactly once, here, at the boundary.
+//
+// Round to nearest, not truncate. 0.0003 is stored as 0.00029999999999999997,
+// so truncating the scaled value publishes a rate of 0.00029999 where 0.03%
+// was set, and charges a raw less than is owed on every interval forever.
+inline int64_t fundingRateRawOf(double rate)
+{
+  return roundDoubleToI64(rate * static_cast<double>(kFundingRateScale));
+}
 
 // Derivatives state of the instrument, emitted when the engine LEARNS it: on a
 // sequenced SetMark and on a sequenced ApplyFunding. Both are journaled, so the

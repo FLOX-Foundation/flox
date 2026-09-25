@@ -49,6 +49,36 @@ class HyperliquidOrderExecutorT
                             std::string accountAddress, std::optional<std::string> vaultAddress,
                             bool mainnet);
 
+  // Transport-injecting overload of the rate-limited constructor. The
+  // rate-limited constructor below builds its own CurlTransport and fetches
+  // the asset map from api.hyperliquid.xyz before it returns, so the limiter
+  // could not be exercised without a network; this one takes both the
+  // transport and the budget.
+  //
+  // Defined here rather than in the .cpp on purpose: an explicit
+  // instantiation of a class template does not instantiate its member
+  // templates, so a constructor template defined in the .cpp is not available
+  // to any other translation unit.
+  template <typename P = Policies, typename = std::enable_if_t<P::RateLimitType::enabled>>
+  HyperliquidOrderExecutorT(std::unique_ptr<ITransport> transport, std::string restUrl,
+                            std::string privateKeyHex, SymbolRegistry* registry,
+                            OrderTracker* orderTracker, std::shared_ptr<ILogger> logger,
+                            std::string accountAddress, std::optional<std::string> vaultAddress,
+                            bool mainnet, RateLimitConfig rateLimitConfig)
+      : _url(std::move(restUrl)),
+        _privateKey(std::move(privateKeyHex)),
+        _accountAddress(std::move(accountAddress)),
+        _vaultAddress(std::move(vaultAddress)),
+        _mainnet(mainnet),
+        _registry(registry),
+        _orderTracker(orderTracker),
+        _logger(std::move(logger)),
+        _transport(std::move(transport))
+  {
+    _policies.rateLimit.init(std::move(rateLimitConfig));
+    loadAssetIds();
+  }
+
   ~HyperliquidOrderExecutorT();
 
   template <typename P = Policies, typename = std::enable_if_t<P::RateLimitType::enabled>>
@@ -88,7 +118,17 @@ class HyperliquidOrderExecutorT
   void loadAssetIds();
   int assetIdFor(std::string_view coin);
 
+  // What the rate-limit gate runs once the venue budget allows the request:
+  // inline on the caller when a token was there, on the policy's sender
+  // thread when the WAIT policy had to wait for one. A deferred send runs
+  // after its entry point returned, so it re-reads the tracker instead of
+  // borrowing state from the caller's frame.
+  void sendSubmitOrder(const Order& order);
+  void sendCancelOrder(OrderId localId);
+  void sendReplaceOrder(OrderId oldLocalId, const Order& n);
+
   void publishRejection(const Order& order, const std::string& reason);
+  void publishRateLimited(const Order& order);
   void publishSubmitted(const Order& order);
   void publishFill(const Order& order, Quantity fillQty, Price fillPrice);
 

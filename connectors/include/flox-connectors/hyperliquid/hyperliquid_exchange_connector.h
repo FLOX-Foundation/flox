@@ -28,16 +28,20 @@ namespace flox
 
 struct HyperliquidConfig
 {
-  // The connector is WS-only; it never reads restEndpoint, so validity gates
-  // on the WS endpoint alone. Order signing credentials live on the executor
-  // (passed to its ctor), not here -- the config no longer carries a dead
-  // privateKey field.
+  // The connector is WS-only, so validity gates on the WS endpoint alone.
+  // Order signing credentials live on the executor (passed to its ctor), not
+  // here, and the REST endpoint the executor posts to is likewise its own
+  // constructor argument -- neither has ever been read off this struct.
   bool isValid() const { return !wsEndpoint.empty(); }
 
   std::string wsEndpoint{"wss://api.hyperliquid.xyz/ws"};
-  std::string restEndpoint{"https://api.hyperliquid.xyz/exchange"};
   std::vector<std::string> symbols;
   int reconnectDelayMs{2000};
+  // Window after which a symbol that stopped ticking is reported through
+  // emitStaleData. 0 disables the check: the right window is a property of
+  // the instrument's liquidity, not of the venue, so there is no default the
+  // connector can pick for you.
+  int staleDataTimeoutMs{0};
 };
 
 class HyperliquidExchangeConnector : public IExchangeConnector
@@ -65,6 +69,12 @@ class HyperliquidExchangeConnector : public IExchangeConnector
   // testable offline by feeding raw frames without a live socket. Same seam
   // BybitExchangeConnector exposes.
   void handleMessage(std::string_view payload);
+
+  // Transport close. Called from the websocket onClose handler; public for
+  // the same reason as handleMessage.
+  void handleDisconnect(int code, std::string_view reason);
+
+  void pollFeedHealth(MonoNanos now) override;
 
  private:
   HyperliquidConfig _config;

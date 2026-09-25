@@ -75,11 +75,10 @@ void BacktestRunner::setSimulatedExecutor(SimulatedExecutor* executor, Simulated
   {
     // Deliberately no applyConfig(): the stack arrives already configured
     // for its venue, and applyConfig() would overwrite that with
-    // BacktestConfig's flat defaults. Note this covers only what the
-    // executor owns -- queue model, depth, latency, rate limits. Fees are
-    // charged downstream from BacktestConfig; the stack's FeeSchedule is
-    // never consulted, so its 30-day volume tiering does not apply (the
-    // per-side split does, via Fill::isMaker).
+    // BacktestConfig's flat defaults. Fees come from the stack's own
+    // FeeSchedule, which the venue wiring hands to the executor and which
+    // result() forwards to BacktestResult, so each fill is billed at the
+    // tier the account's 30-day notional resolves to.
     installOrderEventCallback(*executor);
     if (clock != nullptr)
     {
@@ -99,6 +98,14 @@ void BacktestRunner::advanceClocks(UnixNanos ns)
 
 void BacktestRunner::setStrategy(IStrategy* strategy)
 {
+  if (strategy == nullptr)
+  {
+    // Every other use of _strategy is already null-checked, so a runner with
+    // no strategy replays the data and reports an empty result. Refusing the
+    // null here keeps that behaviour instead of dereferencing it.
+    FLOX_LOG_ERROR("BacktestRunner: setStrategy(nullptr) ignored");
+    return;
+  }
   _strategy = strategy;
   strategy->setSignalHandler(this);
   // Without this wire `ctx.position` / `ctx.is_long()` / `ctx.is_flat()`
@@ -598,9 +605,21 @@ BacktestState BacktestRunner::state() const
                        .lastEventType = _lastEventType};
 }
 
+// A result built off a venue executor prices its fills through that venue's
+// fee ladder; a plain run has no schedule attached and keeps charging the
+// flat BacktestConfig rate.
+void BacktestRunner::attachFeeSchedule(BacktestResult& res) const
+{
+  if (const FeeSchedule* fees = sim().feeSchedule(); fees != nullptr)
+  {
+    res.setFeeSchedule(*fees);
+  }
+}
+
 BacktestResult BacktestRunner::result() const
 {
   BacktestResult res(_config, sim().fills().size());
+  attachFeeSchedule(res);
   for (const auto& fill : sim().fills())
   {
     res.recordFill(fill);
@@ -611,6 +630,7 @@ BacktestResult BacktestRunner::result() const
 BacktestResult BacktestRunner::extractResult()
 {
   BacktestResult res(_config, sim().fills().size());
+  attachFeeSchedule(res);
   auto fills = sim().extractFills();
   for (auto& fill : fills)
   {

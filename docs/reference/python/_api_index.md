@@ -584,7 +584,7 @@ Resample with replacement from observed values. Pass three lists of measured lat
 - `open(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]`
 - `resample(self, symbol: str, target: str, interval: str) -> None`
 - `run(self, signals: SignalBuilder, default_symbol: typing.SupportsInt | typing.SupportsIndex = 0) -> Stats`
-- `ts(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]`
+- `ts(self, symbol: str = '') -> numpy.typing.NDArray[numpy.int64]`
 - `volume(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]`
 - *property* `symbols: list`
 

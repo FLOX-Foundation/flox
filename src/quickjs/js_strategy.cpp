@@ -535,18 +535,28 @@ void FloxJsStrategy::loadStdlib()
       }
     }
 
+    // A bar timestamp is a nanosecond BigInt wherever it comes from, so
+    // everything that orders or compares one works in BigInt. A script may
+    // still hand over a plain Number, and Array.prototype.sort insists on a
+    // Number back from its comparator (a BigInt difference makes it treat
+    // every pair as equal) -- both conversions live here.
+    function __floxToNs(ts) {
+      return typeof ts === "bigint" ? ts : BigInt(Math.trunc(Number(ts)));
+    }
+    function __floxCmpNs(a, b) { return a < b ? -1 : (a > b ? 1 : 0); }
+
     class SignalBuilder {
       constructor() { this._entries = []; }
-      _add(tsMs, side, qty, price, orderType, symbol) {
-        this._entries.push({ tsMs, side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });
+      _add(ts, side, qty, price, orderType, symbol) {
+        this._entries.push({ tsNs: __floxToNs(ts), side, qty, price: price || 0, orderType: orderType || 0, symbol: symbol || "" });
       }
-      buy(tsMs, qty, symbol) { this._add(tsMs, 0, qty, 0, 0, symbol); }
-      sell(tsMs, qty, symbol) { this._add(tsMs, 1, qty, 0, 0, symbol); }
-      limitBuy(tsMs, price, qty, symbol) { this._add(tsMs, 0, qty, price, 1, symbol); }
-      limitSell(tsMs, price, qty, symbol) { this._add(tsMs, 1, qty, price, 1, symbol); }
+      buy(ts, qty, symbol) { this._add(ts, 0, qty, 0, 0, symbol); }
+      sell(ts, qty, symbol) { this._add(ts, 1, qty, 0, 0, symbol); }
+      limitBuy(ts, price, qty, symbol) { this._add(ts, 0, qty, price, 1, symbol); }
+      limitSell(ts, price, qty, symbol) { this._add(ts, 1, qty, price, 1, symbol); }
       get length() { return this._entries.length; }
       clear() { this._entries = []; }
-      sorted() { return this._entries.slice().sort(function(a, b) { return a.tsMs - b.tsMs; }); }
+      sorted() { return this._entries.slice().sort(function(a, b) { return __floxCmpNs(a.tsNs, b.tsNs); }); }
     }
 
     class Engine {
@@ -561,7 +571,7 @@ void FloxJsStrategy::loadStdlib()
         var key = this._canon(symbol);
         var bars = __flox_load_csv(path);
         if (!this._symbols[key]) { this._symbols[key] = bars; this._symbolOrder.push(key); }
-        else { this._symbols[key] = this._symbols[key].concat(bars).sort(function(a,b){return a.ts-b.ts;}); }
+        else { this._symbols[key] = this._symbols[key].concat(bars).sort(function(a,b){return __floxCmpNs(__floxToNs(a.ts), __floxToNs(b.ts));}); }
       }
       get barCount() {
         var total = 0;
@@ -579,16 +589,16 @@ void FloxJsStrategy::loadStdlib()
         };
         var defaultKey = this._symbolOrder.length > 0 ? this._symbolOrder[0] : "__default__";
 
-        // Build merged bar timeline. bar.ts is in ms (safe integer range).
+        // Build merged bar timeline. bar.ts is a nanosecond BigInt.
         var merged = [];
         for (var i = 0; i < this._symbolOrder.length; i++) {
           var key = this._symbolOrder[i];
           var bars = this._symbols[key];
           for (var j = 0; j < bars.length; j++) {
-            merged.push({ tsMs: bars[j].ts, key: key, bar: bars[j] });
+            merged.push({ tsNs: __floxToNs(bars[j].ts), key: key, bar: bars[j] });
           }
         }
-        merged.sort(function(a, b) { return a.tsMs - b.tsMs; });
+        merged.sort(function(a, b) { return __floxCmpNs(a.tsNs, b.tsNs); });
 
         var sorted = signals.sorted();
         var sigIdx = 0;
@@ -599,10 +609,10 @@ void FloxJsStrategy::loadStdlib()
           var sid = getSid(ref.key);
           // Advance clock (ns) and fill pending orders at this bar's close.
           // Signals are submitted AFTER onBar to match Python Engine semantics.
-          executor.advanceClock(ref.tsMs * 1000000);
+          executor.advanceClock(ref.tsNs);
           executor.onBar(sid, ref.bar.close);
-          // Submit signals timestamped at or before this bar (ms comparison)
-          while (sigIdx < sorted.length && sorted[sigIdx].tsMs <= ref.tsMs) {
+          // Submit signals timestamped at or before this bar (ns comparison)
+          while (sigIdx < sorted.length && sorted[sigIdx].tsNs <= ref.tsNs) {
             var sig = sorted[sigIdx];
             var sigKey = this._canon(sig.symbol) in this._symbols ? this._canon(sig.symbol) : defaultKey;
             var ssid = getSid(sigKey);

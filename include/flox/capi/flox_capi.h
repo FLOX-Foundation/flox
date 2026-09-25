@@ -26,6 +26,13 @@
  * 3: FloxBar grew close_reason. */
 #define FLOX_CAPI_ABI_VERSION 3
 
+/* Declared by a header that carries flox_best_bid_raw_opt and its two
+ * siblings, so a binding can compile against a header with or without them.
+ * Adding a function does not move FLOX_CAPI_ABI_VERSION: the version marks a
+ * struct whose shape changed, a function whose signature changed, or a code
+ * space that gained a meaning, and an addition is none of those. */
+#define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1
+
 /* ============================================================
  * Calling contract
  * ============================================================
@@ -1256,6 +1263,19 @@ extern "C"
   int64_t flox_best_bid_raw(FloxStrategyHandle s, uint32_t symbol);
   int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol);
   int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol);
+
+  /* The _opt trio answers the question the three above cannot: they return 0
+   * both when the side is empty and when the best quote is a price of exactly
+   * 0.0, and a book quoting through zero reaches that price. Here the return
+   * value is the presence flag -- 1 with the raw price written to price_out,
+   * 0 with price_out untouched -- so "no quote" has its own answer. price_out
+   * may be NULL when only the flag is wanted. The three int64_t forms above
+   * are unchanged and stay for callers that cannot see below zero.
+   * FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE marks a header that declares them. */
+  uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+
   void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext* out);
   int32_t flox_get_order_status(FloxStrategyHandle s, uint64_t order_id);
 

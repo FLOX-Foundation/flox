@@ -129,7 +129,8 @@ class SymbolRouter
 
   MatchingEngine<Book>& addSymbol(SymbolConfig cfg, EventSink sink, Book book = Book{})
   {
-    auto eng = std::make_unique<MatchingEngine<Book>>(cfg, std::move(sink), std::move(book));
+    auto eng = std::make_unique<MatchingEngine<Book>>(cfg, std::move(sink), std::move(book),
+                                                      cfg.matchPolicy);
     auto& ref = *eng;
     engines_.emplace(cfg.id, std::move(eng));
     return ref;

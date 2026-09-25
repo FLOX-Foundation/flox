@@ -80,7 +80,10 @@ public:
    Maintains `_minBid`, `_maxBid`, `_minAsk`, `_maxAsk` for efficient best-level scans.
 
 4. **Cached Best Bid/Ask**
-   Tracks `_bestBidTick` and `_bestAskTick` for O(1) best price queries without scanning.
+   Tracks `_bestBidIdx` and `_bestAskIdx` for O(1) best price queries without
+   scanning; an index outside `[0, MAX_LEVELS)` is what "this side is empty"
+   means, and the tick of the best quote is derived from it. See
+   [Negative prices](#negative-prices).
 
 5. **No Dynamic Allocation**
    Uses `std::array` of fixed size; fully cache-friendly and allocation-free after construction.
@@ -106,6 +109,27 @@ std::optional<Price> mid() const;
 it agrees exactly with `SymbolContext::mid()` and with the Python and C surfaces
 that read it. An odd sum of tick indices truncates by at most half a raw unit,
 since `Price` is an integer underneath.
+
+## Negative prices
+
+A price below zero is a quote like any other. WTI settled at -37.63 in April
+2020, day-ahead power clears below zero on a windy afternoon, and a calendar
+spread is negative whenever the market is in contango. `bestBid`, `bestAsk`,
+`mid`, `spread` and `isCrossed` report such a book exactly as they report a
+positive one, and a bid at exactly 0.0 is a quote, not an absence.
+
+"No quote" is signalled by the `std::optional` itself: `bestBid`, `bestAsk`,
+`mid` and `spread` return `nullopt`, and `isCrossed` returns `false`, when the
+side is empty -- an untouched book, a `clear()`, an empty `SNAPSHOT`, or the
+last level on the side pulled by a `DELTA`. No price value is spent as a
+sentinel for it, so no price can be mistaken for one.
+
+On the C surface, `flox_book_best_bid` and its siblings answer the same way:
+the return value is the presence flag and the price arrives through the out
+parameter. The strategy-side `flox_best_bid_raw` family has no such channel and
+returns 0 for both answers; use `flox_best_bid_raw_opt`, `flox_best_ask_raw_opt`
+and `flox_mid_price_raw_opt` where a book can quote through zero. See the
+[C API reference](../capi/flox_capi.md#context-queries).
 
 ## Depth Consumption
 

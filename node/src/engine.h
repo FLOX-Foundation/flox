@@ -9,6 +9,7 @@
 #include "flox/common.h"
 #include "flox/error/flox_error.h"
 
+#include "bindings_common.h"
 #include "error_translator.h"
 
 #include <algorithm>
@@ -272,22 +273,22 @@ class SignalBuilderWrap : public Napi::ObjectWrap<SignalBuilderWrap>
 
   Napi::Value Buy(const Napi::CallbackInfo& info)
   {
-    add(info[0].As<Napi::Number>().Int64Value(), 0, info[1].As<Napi::Number>().DoubleValue(), 0, 0, getSym(info, 2));
+    add(toInt64Ns(info[0]), 0, info[1].As<Napi::Number>().DoubleValue(), 0, 0, getSym(info, 2));
     return info.This();
   }
   Napi::Value Sell(const Napi::CallbackInfo& info)
   {
-    add(info[0].As<Napi::Number>().Int64Value(), 1, info[1].As<Napi::Number>().DoubleValue(), 0, 0, getSym(info, 2));
+    add(toInt64Ns(info[0]), 1, info[1].As<Napi::Number>().DoubleValue(), 0, 0, getSym(info, 2));
     return info.This();
   }
   Napi::Value LimitBuy(const Napi::CallbackInfo& info)
   {
-    add(info[0].As<Napi::Number>().Int64Value(), 0, info[2].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), 1, getSym(info, 3));
+    add(toInt64Ns(info[0]), 0, info[2].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), 1, getSym(info, 3));
     return info.This();
   }
   Napi::Value LimitSell(const Napi::CallbackInfo& info)
   {
-    add(info[0].As<Napi::Number>().Int64Value(), 1, info[2].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), 1, getSym(info, 3));
+    add(toInt64Ns(info[0]), 1, info[2].As<Napi::Number>().DoubleValue(), info[1].As<Napi::Number>().DoubleValue(), 1, getSym(info, 3));
     return info.This();
   }
   Napi::Value Length(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), _signals.size()); }
@@ -505,13 +506,17 @@ class EngineWrap : public Napi::ObjectWrap<EngineWrap>
   }
 
   Napi::Value BarCount(const Napi::CallbackInfo& info) { return Napi::Number::New(info.Env(), resolve(info).bars.size()); }
+  // The bars hold int64 nanoseconds and parseCsv reads them from text, so a
+  // present-day reading arrives here exact; a Float64Array gave it back
+  // quantised to 256 ns. The sibling accessors stay Float64Array -- they
+  // carry prices and volumes, which are doubles either way.
   Napi::Value Timestamps(const Napi::CallbackInfo& info)
   {
     auto& bars = resolve(info).bars;
-    auto buf = Napi::Float64Array::New(info.Env(), bars.size());
+    auto buf = Napi::BigInt64Array::New(info.Env(), bars.size());
     for (size_t i = 0; i < bars.size(); ++i)
     {
-      buf[i] = static_cast<double>(bars[i].timestamp_ns);
+      buf[i] = bars[i].timestamp_ns;
     }
     return buf;
   }

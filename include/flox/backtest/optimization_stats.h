@@ -261,7 +261,7 @@ class OptimizationStatistics
                                   << " Sortino=" << best->sortinoRatio()
                                   << " Calmar=" << best->calmarRatio()
                                   << " Return=" << best->totalReturn()
-                                  << " DD=" << (best->maxDrawdownPct() * 100) << "%"
+                                  << " DD=" << best->maxDrawdownPct() << "%"
                                   << " WinRate=" << (best->winRate() * 100) << "%"
                                   << " Trades=" << best->totalTrades()
                                   << " Params=" << best->parameters.toString());
@@ -299,7 +299,7 @@ class OptimizationStatistics
            << res.sortinoRatio() << " | "
            << res.calmarRatio() << " | "
            << res.totalReturn() << " | "
-           << (res.maxDrawdownPct() * 100) << "% | "
+           << res.maxDrawdownPct() << "% | "
            << (res.winRate() * 100) << "% | "
            << res.totalTrades() << " | "
            << res.parameters.toString() << " |\n";

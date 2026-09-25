@@ -110,6 +110,18 @@ RejectReason MatchingEngine<Book>::validate(const NewOrder& o) const
   {
     return RejectReason::LastLookUnsupported;
   }
+  // A peg needs a tick for the same kind of reason. The never-cross clamp
+  // keeps a tracking order strictly inside the price it tracks, and the tick
+  // is the only distance it has to step back by; tickSize 0 means "unchecked"
+  // everywhere else in the config, but here it makes the clamp land on the
+  // opposite touch itself -- and repeg() re-rests the order through
+  // addResting, which runs no matching pass, so the instrument quotes
+  // bid == ask and nobody can trade out of it. Refused at admission, where a
+  // refusal still costs nothing and the owner gets a reason it can act on.
+  if (o.peg != PegRef::None && cfg_.tickSize.isZero())
+  {
+    return RejectReason::PegRequiresTick;
+  }
   if (!cfg_.minQty.isZero() && o.quantity < cfg_.minQty)
   {
     return RejectReason::InvalidQuantity;
