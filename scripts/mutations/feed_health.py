@@ -154,6 +154,14 @@ class Mutation:
     # expected -- whoever sees EQUIVALENT here is pointed at the argument in
     # `why`.
     equivalent: bool = False
+    # A mutant that is NOT equivalent -- the behaviour really does change --
+    # but whose difference no test in this suite can observe, with the reason
+    # written into `why`. Surviving is then the honest outcome rather than a
+    # hole: closing it needs something the test process does not have (another
+    # uid) or a seam the code does not expose. It stays in the list so the
+    # argument travels with the mutant, and so the day a seam appears the
+    # survival stops being expected.
+    untestable: bool = False
 
 
 MUTATIONS: list[Mutation] = [
@@ -400,7 +408,7 @@ MUTATIONS: list[Mutation] = [
         new="""        state.lastSeq = -1;
         resubscribeBook(instId);""",
         target=BGI,
-        test="BitgetBookIntegrity.InvalidBookSuppressesDeltasUntilAFreshSnapshot",
+        test="BitgetBookIntegrity.ASoundBookInvalidatedByAChecksumStopsPublishingDeltas",
     ),
     Mutation(
         name="bitget-checksum-over-parsed-levels",
@@ -645,7 +653,12 @@ static socket_t connect_unix(const char* path, int timeout_ms = 50)
     Mutation(
         name="hl-signer-owner-check-removed",
         why=("the socket's owner is no longer checked, so a 0600 socket belonging to another "
-             "user is trusted with the key"),
+             "user is trusted with the key. UNTESTABLE from this suite: every socket a test "
+             "can create is owned by the uid running it, and chown to another uid needs "
+             "privileges no test process has (and a test that had them would be running as "
+             "root, where the check reads differently again). The remaining coverage is the "
+             "0600/0666/0660 and symlink cases, which pin every other clause of the same "
+             "check"),
         file=HL_SIGNER,
         old="""  if (st.st_uid != ::geteuid())
   {
@@ -655,6 +668,7 @@ static socket_t connect_unix(const char* path, int timeout_ms = 50)
 """,
         new="",
         target=HLS,
+        untestable=True,
     ),
     Mutation(
         name="hl-signer-reply-bound-raised",
@@ -670,7 +684,12 @@ static socket_t connect_unix(const char* path, int timeout_ms = 50)
         name="hl-signer-request-built-before-transport-check",
         why=("the request -- private key and all -- is serialised before the transport is "
              "known to be trustworthy, so the key sits in a heap buffer on every call, "
-             "including the ones that refuse to send"),
+             "including the ones that refuse to send. UNTESTABLE: both versions refuse the "
+             "same calls and send the same bytes on the same transports, so every observable "
+             "output is identical; the difference is only which bytes were briefly in this "
+             "process's heap, which no in-process test can read back reliably (the allocation "
+             "is freed and may be reused before any assertion runs). Narrowing the window is "
+             "a code change, not a test"),
         file=HL_SIGNER,
         old="""  if (!is_private_signer_socket(path.c_str()))
   {
@@ -687,16 +706,20 @@ static socket_t connect_unix(const char* path, int timeout_ms = 50)
     return std::nullopt;
   }""",
         target=HLS,
+        untestable=True,
     ),
     Mutation(
         name="adv-hl-signer-accepts-a-root-owned-socket",
         why=("a socket owned by root is trusted as well as one owned by this user, so any "
              "process that can drop a 0600 socket at the configured path as root -- or any "
-             "root-owned daemon that is not the signer -- receives the key"),
+             "root-owned daemon that is not the signer -- receives the key. UNTESTABLE from "
+             "this suite for the same reason as the clause above: a root-owned socket cannot "
+             "be created without root, and the tests run unprivileged by design"),
         file=HL_SIGNER,
         old="  if (st.st_uid != ::geteuid())",
         new="  if (st.st_uid != ::geteuid() && st.st_uid != 0)",
         target=HLS,
+        untestable=True,
     ),
 
     # ---- the signing daemon ------------------------------------------------
@@ -939,6 +962,11 @@ def run_mutation(m: Mutation) -> tuple[str, str]:
                 detail = "no observable difference; see `why`"
                 print(f"  sweep: all {len(SWEEP)} connector test binaries GREEN "
                       f"-- EXPECTED, this mutant is equivalent")
+            elif m.untestable:
+                verdict = "UNTESTABLE"
+                detail = "real change, unobservable from a test; see `why`"
+                print(f"  sweep: all {len(SWEEP)} connector test binaries GREEN "
+                      f"-- EXPECTED, no test in this suite can observe this one")
             else:
                 verdict = "GREEN"
                 detail = f"{len(SWEEP)} connector test binaries all green"
@@ -998,8 +1026,9 @@ def main() -> int:
 
     survived = [m.name for m, verdict, _ in results if verdict == "GREEN"]
     equivalent = [m.name for m, verdict, _ in results if verdict == "EQUIVALENT"]
+    untestable = [m.name for m, verdict, _ in results if verdict == "UNTESTABLE"]
     unexpectedly_killed = [m.name for m, verdict, _ in results
-                           if m.equivalent and verdict == "RED"]
+                           if (m.equivalent or m.untestable) and verdict == "RED"]
     broken = [m.name for m, verdict, _ in results if verdict == "NOCOMPILE"]
     if survived:
         print(f"\n{len(survived)} mutation(s) survived every connector test: "
@@ -1007,9 +1036,13 @@ def main() -> int:
     if equivalent:
         print(f"\n{len(equivalent)} mutation(s) survived because they are equivalent, which is "
               f"the expected outcome: {', '.join(equivalent)}")
+    if untestable:
+        print(f"\n{len(untestable)} mutation(s) survived because no test can observe them, "
+              f"which is the expected outcome: {', '.join(untestable)}")
     if unexpectedly_killed:
-        print(f"\n{len(unexpectedly_killed)} mutation(s) marked equivalent were killed -- the "
-              f"code no longer matches the argument in `why`: {', '.join(unexpectedly_killed)}")
+        print(f"\n{len(unexpectedly_killed)} mutation(s) marked equivalent or untestable were "
+              f"killed -- the code no longer matches the argument in `why`: "
+              f"{', '.join(unexpectedly_killed)}")
     if broken:
         print(f"\n{len(broken)} mutation(s) did not compile and prove nothing: "
               f"{', '.join(broken)}")

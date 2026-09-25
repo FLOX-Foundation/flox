@@ -321,6 +321,60 @@ TEST(HlSignerTransport, OnlyTrustsAPrivateUnixSocket)
   ::unsetenv("FLOX_HL_SIGNER_SOCKET");
 }
 
+// A symlink is not a socket, however private the thing it points at is: the
+// path is checked with lstat so a link this user owns, pointing at a socket
+// someone else controls, is refused rather than followed. The link here points
+// at a socket the test owns, which is exactly the case a check that follows
+// symlinks accepts.
+TEST(HlSignerTransport, RefusesASymlinkStandingInForTheSignerSocket)
+{
+  const std::string real = tempSocketPath("sign_real.sock");
+  const std::string link = tempSocketPath("sign_link.sock");
+  ::unlink(link.c_str());
+
+  FramedServer priv;
+  ASSERT_TRUE(priv.listenUnix(real, 0600));
+  ASSERT_EQ(::symlink(real.c_str(), link.c_str()), 0) << "could not create the test symlink";
+
+  ::setenv("FLOX_HL_SIGNER_SOCKET", link.c_str(), 1);
+  const std::string body = validSignatureReply();
+  priv.serveOnce({static_cast<uint32_t>(body.size()), body});
+
+  const auto sig = hl_sign_with_sdk(params());
+
+  priv.stop();
+  ::unlink(link.c_str());
+  ::unsetenv("FLOX_HL_SIGNER_SOCKET");
+
+  EXPECT_FALSE(sig.has_value()) << "a symlinked signer path must not be trusted";
+  EXPECT_FALSE(priv.accepted()) << "the signer connected through a path it never checked";
+  EXPECT_EQ(priv.request().find(kSecretKey), std::string::npos)
+      << "the private key was written through a symlink whose target was never verified";
+}
+
+// Group access is access. A 0660 socket hands the key to every member of its
+// group, which on a shared host is not the same set of people as "this user":
+// the daemon creates it 0600 and anything wider is refused.
+TEST(HlSignerTransport, RefusesAGroupAccessibleSocket)
+{
+  const std::string path = tempSocketPath("sign_group.sock");
+  ::setenv("FLOX_HL_SIGNER_SOCKET", path.c_str(), 1);
+
+  FramedServer group;
+  ASSERT_TRUE(group.listenUnix(path, 0660));
+  const std::string body = validSignatureReply();
+  group.serveOnce({static_cast<uint32_t>(body.size()), body});
+
+  const auto sig = hl_sign_with_sdk(params());
+
+  group.stop();
+  ::unsetenv("FLOX_HL_SIGNER_SOCKET");
+
+  EXPECT_FALSE(sig.has_value()) << "a group-accessible signer socket must not be trusted";
+  EXPECT_EQ(group.request().find(kSecretKey), std::string::npos)
+      << "the private key was written to a socket every member of its group can open";
+}
+
 // The finding: the reply's 4-byte length header goes straight into
 // std::string::resize with no ceiling, so the peer picks the allocation size.
 // A signature response is a few hundred bytes; anything far above that is a

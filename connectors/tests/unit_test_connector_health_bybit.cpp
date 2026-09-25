@@ -178,8 +178,12 @@ TEST(BybitFeedHealth, DeltaWithNoBaselineEmitsTheSequenceGapEvent)
 
   h.connector->handleMessage(bookFrame("delta", 50, 900));
 
-  EXPECT_EQ(h.seenGaps().size(), 1u)
-      << "a baseline-less delta is a gap and must reach emitSequenceGap";
+  const auto gaps = h.seenGaps();
+  ASSERT_EQ(gaps.size(), 1u) << "a baseline-less delta is a gap and must reach emitSequenceGap";
+  EXPECT_EQ(gaps[0].expected, 0u)
+      << "there was no update id to have expected, and 1 is a real id: reporting it says a "
+         "specific frame was skipped when none was";
+  EXPECT_EQ(gaps[0].received, 50u);
 }
 
 // Control (green today): whatever the health surface ends up doing, the gap

@@ -40,6 +40,7 @@
 #include <flox/book/bus/trade_bus.h>
 #include <flox/book/events/book_update_event.h>
 #include <flox/common.h>
+#include <flox/log/abstract_logger.h>
 #include <flox/log/atomic_logger.h>
 
 #include <gtest/gtest.h>
@@ -65,6 +66,40 @@ std::shared_ptr<AtomicLogger> makeLogger(const char* basename)
   opts.basename = basename;
   return std::make_shared<AtomicLogger>(opts);
 }
+
+// Keeps every line the connector logs. resubscribeBook() is a private method
+// with no counter of its own, and the socket it would write to is not
+// connected in an offline test -- but the connector treats a failed
+// resubscribe send as a reportable condition and logs it, which is the one
+// observable trace that the resync was actually asked for.
+class RecordingLogger final : public ILogger
+{
+ public:
+  void info(std::string_view) override {}
+  void warn(std::string_view line) override { record(line); }
+  void error(std::string_view line) override { record(line); }
+
+  size_t countContaining(std::string_view needle)
+  {
+    std::lock_guard<std::mutex> lk(_m);
+    size_t n = 0;
+    for (const auto& line : _lines)
+    {
+      n += line.find(needle) != std::string::npos ? 1u : 0u;
+    }
+    return n;
+  }
+
+ private:
+  void record(std::string_view line)
+  {
+    std::lock_guard<std::mutex> lk(_m);
+    _lines.emplace_back(line);
+  }
+
+  std::mutex _m;
+  std::vector<std::string> _lines;
+};
 
 uint32_t crc32(std::string_view s)
 {
@@ -179,7 +214,7 @@ struct Harness
   std::mutex m;
   std::vector<std::pair<uint64_t, uint64_t>> gaps;
 
-  explicit Harness(const char* logName)
+  explicit Harness(const char* logName, std::shared_ptr<ILogger> injected = nullptr)
   {
     bookBus.subscribe(&sub);
     bookBus.start();
@@ -195,8 +230,9 @@ struct Harness
     cfg.publicEndpoint = "wss://unused.invalid";
     cfg.symbols = {{"BTCUSDT", InstrumentType::Future, BitgetConfig::BookDepth::Depth15}};
 
-    connector = std::make_unique<BitgetExchangeConnector>(cfg, &bookBus, &tradeBus, nullptr,
-                                                          &registry, makeLogger(logName));
+    connector = std::make_unique<BitgetExchangeConnector>(
+        cfg, &bookBus, &tradeBus, nullptr, &registry,
+        injected ? std::move(injected) : std::static_pointer_cast<ILogger>(makeLogger(logName)));
     connector->setErrorCallbacks(
         [](std::string_view)
         {
@@ -223,10 +259,32 @@ struct Harness
     std::lock_guard<std::mutex> lk(m);
     return gaps.size();
   }
+
+  std::vector<std::pair<uint64_t, uint64_t>> seenGaps()
+  {
+    std::lock_guard<std::mutex> lk(m);
+    return gaps;
+  }
 };
 
 const std::vector<Level> kBids{{"100.5", "1.5"}, {"100.4", "2"}};
 const std::vector<Level> kAsks{{"100.6", "1"}, {"100.7", "3"}};
+
+// A book deeper than 20 levels a side. The checksum rule covers the first 25,
+// so every level here is inside it and no two prefixes of it hash alike: a
+// checksum taken over a different number of levels does not match.
+std::vector<Level> deepLevels(int firstCents, int step)
+{
+  std::vector<Level> levels;
+  for (int i = 0; i < 25; ++i)
+  {
+    const int cents = firstCents + i * step;
+    levels.push_back({std::to_string(cents / 100) + "." + (cents % 100 < 10 ? "0" : "") +
+                          std::to_string(cents % 100),
+                      std::to_string(i + 1)});
+  }
+  return levels;
+}
 
 }  // namespace
 
@@ -297,10 +355,102 @@ TEST(BitgetBookIntegrity, SequenceGapIsDetectedAndReported)
   h.bookBus.flush();
 
   EXPECT_EQ(h.connector->bookGapCount(), 1u) << "seq 12..14 were dropped by the venue";
-  EXPECT_EQ(h.gapCount(), 1u) << "a book sequence gap must reach emitSequenceGap";
+  const auto gaps = h.seenGaps();
+  ASSERT_EQ(gaps.size(), 1u) << "a book sequence gap must reach emitSequenceGap";
+  EXPECT_EQ(gaps[0].first, 12u) << "the expected seq is the one after the last good frame";
+  EXPECT_EQ(gaps[0].second, 15u) << "the received seq is the one that broke continuity";
 
   const auto bids = h.sub.bestBids();
   ASSERT_EQ(bids.size(), 2u) << "the delta after the gap must not be applied";
+}
+
+// A book invalidated by a bad checksum must stay invalid even when it had been
+// valid a frame earlier. Without that the deltas that follow are applied on
+// top of levels the venue has already said are wrong -- and the earlier valid
+// snapshot is what makes the difference observable, because a connector whose
+// books start out invalid suppresses them either way.
+TEST(BitgetBookIntegrity, ASoundBookInvalidatedByAChecksumStopsPublishingDeltas)
+{
+  Harness h("bitget_checksum_invalidates.log");
+
+  h.connector->handleMessage(
+      bookFrame("snapshot", 1, kBids, kAsks, true, bitgetChecksum(kBids, kAsks)));
+  h.bookBus.flush();
+  ASSERT_EQ(h.sub.bestBids().size(), 1u) << "the sound snapshot must publish";
+
+  const int32_t wrong = bitgetChecksum(kBids, kAsks) ^ 0x5A5A5A5A;
+  h.connector->handleMessage(bookFrame("snapshot", 2, kBids, kAsks, true, wrong));
+  h.connector->handleMessage(bookFrame("update", 3, {{"100.55", "1"}}, {}, false, 0));
+  h.bookBus.flush();
+
+  EXPECT_EQ(h.connector->bookChecksumFailureCount(), 1u);
+  EXPECT_EQ(h.sub.bestBids().size(), 1u)
+      << "the delta after a failed checksum must not be published: the book it would extend is "
+         "the one the venue said is wrong";
+}
+
+// The checksum covers the first 25 levels of each side, not the first 20. A
+// book deeper than 20 levels hashes differently under the two rules, so a
+// connector counting 20 fails a correct checksum on every books-channel frame
+// and resyncs forever.
+TEST(BitgetBookIntegrity, ChecksumCoversTwentyFiveLevelsPerSide)
+{
+  Harness h("bitget_checksum_depth.log");
+
+  const std::vector<Level> bids = deepLevels(10050, -1);
+  const std::vector<Level> asks = deepLevels(10060, 1);
+  ASSERT_GT(bids.size(), 20u) << "the fixture has to reach past the 20th level to tell the "
+                                 "two rules apart";
+
+  h.connector->handleMessage(
+      bookFrame("snapshot", 1, bids, asks, true, bitgetChecksum(bids, asks)));
+  h.bookBus.flush();
+
+  EXPECT_EQ(h.connector->bookChecksumFailureCount(), 0u)
+      << "a correct 25-level checksum on a deep book must verify";
+  ASSERT_EQ(h.sub.bestBids().size(), 1u) << "a sound deep book must be published";
+  EXPECT_DOUBLE_EQ(h.sub.bestBids()[0], 100.5);
+}
+
+// A failed checksum must also ask for a fresh snapshot: invalidating the book
+// without re-subscribing leaves the symbol dark until the next full reconnect.
+// The socket is not connected in an offline test, so the resubscribe send
+// fails -- and the connector reports that failure, which is the trace this
+// checks for.
+TEST(BitgetBookIntegrity, AChecksumFailureAsksForAFreshSnapshot)
+{
+  auto logger = std::make_shared<RecordingLogger>();
+  Harness h("bitget_checksum_resubscribe.log", logger);
+
+  const int32_t wrong = bitgetChecksum(kBids, kAsks) ^ 0x5A5A5A5A;
+  h.connector->handleMessage(bookFrame("snapshot", 1, kBids, kAsks, true, wrong));
+  h.bookBus.flush();
+
+  ASSERT_EQ(h.connector->bookChecksumFailureCount(), 1u);
+  EXPECT_EQ(logger->countContaining("resubscribe send failed for BTCUSDT"), 1u)
+      << "an invalidated book must be re-subscribed, or no snapshot ever comes back";
+}
+
+// A delta's checksum covers the merged book, which this connector never
+// builds -- it forwards frames. Failing a delta against it would invalidate a
+// healthy book and force a resync loop on every frame the venue stamps, so a
+// delta is checked on "seq" alone.
+TEST(BitgetBookIntegrity, ADeltaIsNotFailedAgainstItsOwnChecksum)
+{
+  Harness h("bitget_checksum_delta.log");
+
+  h.connector->handleMessage(
+      bookFrame("snapshot", 1, kBids, kAsks, true, bitgetChecksum(kBids, kAsks)));
+  // A checksum over the merged book: it cannot match this frame's own two
+  // levels, and it must not be treated as if it should.
+  h.connector->handleMessage(bookFrame("update", 2, {{"100.55", "1"}}, {}, true, 12345));
+  h.bookBus.flush();
+
+  EXPECT_EQ(h.connector->bookChecksumFailureCount(), 0u)
+      << "a delta must not be failed against a checksum of a book the connector does not keep";
+  const auto bids = h.sub.bestBids();
+  ASSERT_EQ(bids.size(), 2u) << "the delta must still be published";
+  EXPECT_DOUBLE_EQ(bids[1], 100.55);
 }
 
 // Control (green today): contiguous frames are published in order and count
