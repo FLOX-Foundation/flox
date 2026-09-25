@@ -94,6 +94,29 @@ inline bool orderTypeCodeFromName(const std::string& name, uint8_t* out)
   return false;
 }
 
+// The accepted Space A names, comma-separated, for an error message.
+inline std::string orderTypeNameList()
+{
+  std::string out;
+  for (std::size_t i = 0; i < kOrderTypeNameCount; ++i)
+  {
+    if (i != 0)
+    {
+      out += ", ";
+    }
+    out += kOrderTypeNamesLower[i];
+  }
+  return out;
+}
+
+// The one wording every binding uses when it refuses an order-type
+// string. It names what it was handed and what it accepts, because the
+// caller typed one of those and needs to see the other.
+inline std::string unknownOrderTypeMessage(const std::string& name)
+{
+  return "unknown order type '" + name + "'; expected one of: " + orderTypeNameList();
+}
+
 // Space B (FloxSignal.order_type, e.g. the Signal.orderType JS/Python
 // string seen by onSignal / storage-sink / gate hooks).
 inline constexpr const char* kSignalTypeNames[] = {

@@ -33428,6 +33428,10 @@
         },
         {
           "kind": "function",
+          "name": "capi_abi_version"
+        },
+        {
+          "kind": "function",
           "name": "cci"
         },
         {
@@ -33521,6 +33525,14 @@
         {
           "kind": "function",
           "name": "obv"
+        },
+        {
+          "kind": "function",
+          "name": "order_type_code"
+        },
+        {
+          "kind": "function",
+          "name": "order_type_name"
         },
         {
           "kind": "function",

@@ -12,6 +12,7 @@
 #include "flox/backtest/simulated_executor.h"
 #include "flox/backtest/venue_availability.h"
 #include "flox/common.h"
+#include "order_type_bindings.h"
 
 #include <cstring>
 #include <memory>
@@ -526,33 +527,12 @@ class PySimulatedExecutor
   const std::vector<Fill>& rawFills() const { return _executor.fills(); }
 
  private:
+  // The canonical table, not a copy of it: see
+  // python/order_type_bindings.h. An unrecognised name raises instead of
+  // quietly becoming a market order.
   static OrderType parseOrderType(const std::string& s)
   {
-    if (s == "limit")
-    {
-      return OrderType::LIMIT;
-    }
-    if (s == "stop_market")
-    {
-      return OrderType::STOP_MARKET;
-    }
-    if (s == "stop_limit")
-    {
-      return OrderType::STOP_LIMIT;
-    }
-    if (s == "take_profit_market")
-    {
-      return OrderType::TAKE_PROFIT_MARKET;
-    }
-    if (s == "take_profit_limit")
-    {
-      return OrderType::TAKE_PROFIT_LIMIT;
-    }
-    if (s == "trailing_stop")
-    {
-      return OrderType::TRAILING_STOP;
-    }
-    return OrderType::MARKET;
+    return flox_py::parseOrderTypeStrict(s);
   }
 
   SimulatedClock _clock;
@@ -701,11 +681,14 @@ inline void bindBacktest(py::module_& m)
   py::class_<PySimulatedExecutor>(m, "SimulatedExecutor")
       .def(py::init<>())
       .def("submit_order", &PySimulatedExecutor::submitOrder,
-           "Submit an order to the simulated exchange. tif: gtc|ioc|fok|gtd|post_only. "
+           "Submit an order to the simulated exchange. type: one of "
+           "flox_py.ORDER_TYPE_NAMES (market|limit|stop_market|stop_limit|"
+           "tp_market|tp_limit|trailing_stop|iceberg); anything else raises "
+           "ValueError. tif: gtc|ioc|fok|gtd|post_only. "
            "reduce_only: only reduce existing position. expires_at_ns: GTD deadline. "
            "account_id: optional STP account identifier (default 0). "
            "trigger: trigger price for stop_market / stop_limit / "
-           "take_profit_market / take_profit_limit (falls back to `price` "
+           "tp_market / tp_limit (falls back to `price` "
            "when unset, which is unambiguous for the market-style "
            "conditionals). trailing_offset / trailing_bps: fixed-price or "
            "bps offset for trailing_stop (set exactly one).",

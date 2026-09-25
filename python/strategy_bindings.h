@@ -21,6 +21,7 @@
 #include "flox/book/events/trade_event.h"
 #include "flox/capi/bridge_strategy.h"
 #include "flox/capi/flox_capi.h"
+#include "flox/capi/order_type_names.hpp"
 #include "flox/engine/symbol_registry.h"
 #include "flox/error/flox_error.h"
 #include "flox/replay/abstract_event_reader.h"
@@ -917,28 +918,10 @@ struct PyStrategyHost
     return pe;
   }
 
-  static const char* orderTypeName(uint8_t t)
-  {
-    switch (t)
-    {
-      case 0:
-        return "limit";
-      case 1:
-        return "market";
-      case 2:
-        return "stop_market";
-      case 3:
-        return "stop_limit";
-      case 4:
-        return "take_profit_market";
-      case 5:
-        return "take_profit_limit";
-      case 6:
-        return "trailing_stop";
-      default:
-        return "unknown";
-    }
-  }
+  // The canonical table, not a copy of it. The copy that used to sit
+  // here spelled codes 4 and 5 "take_profit_market"/"take_profit_limit"
+  // and had no case 7, so an iceberg fill read back "unknown".
+  static const char* orderTypeName(uint8_t t) { return flox::capi::orderTypeNameLower(t); }
 
   static const char* orderStatusName(uint8_t s)
   {

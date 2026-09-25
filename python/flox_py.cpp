@@ -33,6 +33,7 @@
 #include "optimizer_bindings.h"
 #include "order_group_bindings.h"
 #include "order_journey_tracer_bindings.h"
+#include "order_type_bindings.h"
 #include "pool_tape_bindings.h"
 #include "portfolio_risk_bindings.h"
 #include "position_bindings.h"
@@ -708,6 +709,8 @@ struct PyBar
 PYBIND11_MODULE(_flox_py, m)
 {
   m.doc() = "Flox -- Python bindings";
+
+  flox_py::bindOrderTypes(m);
 
   PYBIND11_NUMPY_DTYPE(PyBar, timestamp_ns, open_raw, high_raw, low_raw, close_raw, volume_raw);
 
