@@ -48,6 +48,18 @@ class TickRoundingTest : public ::testing::Test
     u->update.asks.assign(asks.begin(), asks.end());
     return std::move(u);
   }
+
+  pool::Handle<BookUpdateEvent> makeDelta(const std::vector<BookLevel>& bids,
+                                          const std::vector<BookLevel>& asks)
+  {
+    auto opt = pool.acquire();
+    assert(opt);
+    auto& u = *opt;
+    u->update.type = BookUpdateType::DELTA;
+    u->update.bids.assign(bids.begin(), bids.end());
+    u->update.asks.assign(asks.begin(), asks.end());
+    return std::move(u);
+  }
 };
 
 }  // namespace
@@ -133,6 +145,89 @@ TEST_F(TickRoundingTest, EveryOffsetInsideATickSnapsAwayFromTheQuote)
     EXPECT_EQ(ask->raw(), Price::fromDouble(201.0).raw()) << "offset " << offset;
     EXPECT_EQ(bid->raw(), Price::fromDouble(100.0).raw()) << "offset " << offset;
   }
+}
+
+// The snapshot path sizes its tick window from the same snap the write loop
+// below it uses. Feeding that scan the wrong side moves each bound by one
+// tick, which is invisible until the window is tight: here the quotes span
+// exactly MAX_LEVELS ticks, so the window has no slack at all and a bound that
+// is off by one puts the ask one tick past the end of the book.
+TEST_F(TickRoundingTest, SnapshotWindowIsSizedFromTheSideAwareSnap)
+{
+  NLevelOrderBook<512> book{Price::fromDouble(1.0)};
+
+  // floor(100.5) = 100 and ceil(610.5) = 611: 512 ticks inclusive, exactly the
+  // level count, so the window anchors at 100 and the ask sits on its last
+  // slot.
+  auto update = makeSnapshot({{Price::fromDouble(100.5), Quantity::fromDouble(1.0)}},
+                             {{Price::fromDouble(610.5), Quantity::fromDouble(2.0)}});
+  book.applyBookUpdate(*update);
+
+  auto bid = book.bestBid();
+  auto ask = book.bestAsk();
+  ASSERT_TRUE(bid.has_value());
+  ASSERT_TRUE(ask.has_value()) << "the ask fell outside a window sized the wrong way";
+  EXPECT_EQ(bid->raw(), Price::fromDouble(100.0).raw());
+  EXPECT_EQ(ask->raw(), Price::fromDouble(611.0).raw());
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(100.5)).raw(), Quantity::fromDouble(1.0).raw());
+  EXPECT_EQ(book.askAtPrice(Price::fromDouble(610.5)).raw(), Quantity::fromDouble(2.0).raw());
+}
+
+// A price is looked up at the tick it was stored at, so the query has to snap
+// the way the write did. Rounding a query to the nearest tick reads the slot
+// next to the one holding the level -- which is empty, so the book answers
+// "no size here" about a level it is holding.
+TEST_F(TickRoundingTest, PriceQueriesSnapTheSameWayTheWriteDid)
+{
+  NLevelOrderBook<512> book{Price::fromDouble(1.0)};
+
+  auto update = makeSnapshot({{Price::fromDouble(99.6), Quantity::fromDouble(3.0)}},
+                             {{Price::fromDouble(100.4), Quantity::fromDouble(4.0)}});
+  book.applyBookUpdate(*update);
+
+  // Asked at the quoted price, the book reports the size it stored.
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(99.6)).raw(), Quantity::fromDouble(3.0).raw());
+  EXPECT_EQ(book.askAtPrice(Price::fromDouble(100.4)).raw(), Quantity::fromDouble(4.0).raw());
+
+  // Asked at the tick each price is nearest to, it reports nothing: that slot
+  // was never written.
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(100.0)).raw(), 0);
+  EXPECT_EQ(book.askAtPrice(Price::fromDouble(100.0)).raw(), 0);
+
+  // And the ticks the levels really landed on answer as well.
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(99.0)).raw(), Quantity::fromDouble(3.0).raw());
+  EXPECT_EQ(book.askAtPrice(Price::fromDouble(101.0)).raw(), Quantity::fromDouble(4.0).raw());
+}
+
+// The delta path has its own scan, and it decides whether the window has to
+// move before the level is written. A level whose conservative snap lands one
+// tick past the end of the window needs that move; a scan that snaps the other
+// way concludes the level already fits, the window stays where it is, and the
+// write silently drops it.
+TEST_F(TickRoundingTest, DeltaReanchorsOnTheSideAwareSnap)
+{
+  NLevelOrderBook<512> book{Price::fromDouble(1.0)};
+
+  // Bids only, near enough to the middle of the fresh window that the snapshot
+  // leaves the anchor at tick zero: the window is ticks 0..511.
+  auto snapshot = makeSnapshot({{Price::fromDouble(300.0), Quantity::fromDouble(1.0)}}, {});
+  book.applyBookUpdate(*snapshot);
+  ASSERT_TRUE(book.bestBid().has_value());
+  ASSERT_FALSE(book.bestAsk().has_value());
+
+  // ceil(511.5) = 512, one past the last slot; floor(511.5) = 511, the last
+  // slot. The book has to re-anchor for this one.
+  auto delta = makeDelta({}, {{Price::fromDouble(511.5), Quantity::fromDouble(2.0)}});
+  book.applyBookUpdate(*delta);
+
+  auto ask = book.bestAsk();
+  ASSERT_TRUE(ask.has_value()) << "the delta level was dropped instead of re-anchored";
+  EXPECT_EQ(ask->raw(), Price::fromDouble(512.0).raw());
+  EXPECT_EQ(book.askAtPrice(Price::fromDouble(511.5)).raw(), Quantity::fromDouble(2.0).raw());
+
+  auto bid = book.bestBid();
+  ASSERT_TRUE(bid.has_value()) << "the re-anchor lost the side that was already there";
+  EXPECT_EQ(bid->raw(), Price::fromDouble(300.0).raw());
 }
 
 // Control: prices that already sit on a tick are unchanged by any rounding

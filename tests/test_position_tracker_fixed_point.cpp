@@ -30,6 +30,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <type_traits>
 
 using namespace flox;
@@ -174,6 +175,107 @@ TEST(PositionTrackerFixedPoint, RealizedPnlIsMoneyTyped)
   EXPECT_TRUE((std::is_same_v<Volume, std::remove_cvref_t<Total>>))
       << "getTotalRealizedPnl returns a price type; realised PnL is a notional";
 }
+
+// An average price need not be representable at 1e-8, so one division has to
+// round -- and which way it rounds is a decision, not an accident. Truncation
+// is the one that never invents basis the account did not pay: a long's
+// average entry is reported at or below what it really was, so realised PnL is
+// never flattered. Every sequence above is built from a single repeated price,
+// where the remainder is zero and the direction of that division is invisible;
+// these two put a real remainder under it, one either side of the half.
+TEST(PositionTrackerFixedPoint, AverageEntryPriceTruncatesTheUnrepresentableTail)
+{
+  // 1.0 at 100.00000000 and 2.0 at 100.00000001: the true average is
+  // 100.000000006666..., which is 10'000'000'000 truncated and
+  // 10'000'000'001 rounded either up or to nearest.
+  {
+    PositionTracker tracker(1, CostBasisMethod::FIFO);
+    fill(tracker, Side::BUY, 10'000'000'000, 100'000'000);
+    fill(tracker, Side::BUY, 10'000'000'001, 200'000'000);
+    EXPECT_EQ(tracker.getAvgEntryPrice(SYM).raw(), 10'000'000'000);
+  }
+
+  // 2.0 at 100.00000000 and 1.0 at 100.00000001: 100.000000003333..., which
+  // truncates and rounds-to-nearest to 10'000'000'000 but rounds up to
+  // 10'000'000'001.
+  {
+    PositionTracker tracker(1, CostBasisMethod::FIFO);
+    fill(tracker, Side::BUY, 10'000'000'000, 200'000'000);
+    fill(tracker, Side::BUY, 10'000'000'001, 100'000'000);
+    EXPECT_EQ(tracker.getAvgEntryPrice(SYM).raw(), 10'000'000'000);
+  }
+
+  // The same tail under the AVERAGE basis, where it is folded back into the
+  // stored lot rather than computed on demand.
+  {
+    PositionTracker tracker(1, CostBasisMethod::AVERAGE);
+    fill(tracker, Side::BUY, 10'000'000'000, 100'000'000);
+    fill(tracker, Side::BUY, 10'000'000'001, 200'000'000);
+    EXPECT_EQ(tracker.getAvgEntryPrice(SYM).raw(), 10'000'000'000);
+  }
+}
+
+// A short under the AVERAGE basis. The sign flip on realisation belongs to the
+// direction of the position, not to the cost-basis method, and the two are
+// independent settings: the tests above cover AVERAGE with a long and a short
+// under FIFO, and neither says anything about this combination.
+TEST(PositionTrackerFixedPoint, AverageModeShortRealisesWithTheRightSign)
+{
+  const int64_t magnitude = (kClosePriceRaw - kOpenPriceRaw) * 100;
+
+  // Sold high, covered low: a profit.
+  {
+    PositionTracker tracker(1, CostBasisMethod::AVERAGE);
+    for (int i = 0; i < 1000; ++i)
+    {
+      fill(tracker, Side::SELL, kClosePriceRaw, 10'000'000);  // 0.1
+    }
+    EXPECT_EQ(tracker.getPosition(SYM).raw(), -10'000'000'000);
+    EXPECT_EQ(tracker.getAvgEntryPrice(SYM).raw(), kClosePriceRaw);
+
+    fill(tracker, Side::BUY, kOpenPriceRaw, 10'000'000'000);  // 100.0
+    EXPECT_EQ(tracker.getPosition(SYM).raw(), 0);
+    EXPECT_EQ(tracker.getRealizedPnl(SYM).raw(), magnitude);
+    EXPECT_GT(tracker.getRealizedPnl(SYM).raw(), 0);
+  }
+
+  // Sold low, covered high: the same magnitude, the other sign.
+  {
+    PositionTracker tracker(2, CostBasisMethod::AVERAGE);
+    for (int i = 0; i < 1000; ++i)
+    {
+      fill(tracker, Side::SELL, kOpenPriceRaw, 10'000'000);
+    }
+    fill(tracker, Side::BUY, kClosePriceRaw, 10'000'000'000);
+    EXPECT_EQ(tracker.getPosition(SYM).raw(), 0);
+    EXPECT_EQ(tracker.getRealizedPnl(SYM).raw(), -magnitude);
+    EXPECT_LT(tracker.getRealizedPnl(SYM).raw(), 0);
+  }
+}
+
+// The price difference on realisation is guarded against int64 overflow, and
+// the guard is not decorative: a feed that hands the book a negative price --
+// a sign-flipped field, a spread instrument, a parser that lost a minus -- can
+// make `close - entry` exceed the range it is computed in. Saturating keeps
+// the sign of the real answer; wrapping turns a profit into a loss, which is
+// the one outcome a risk check must never be handed.
+//
+// Only meaningful where the checks compile out into saturation. With
+// FLOX_SCALE_CHECKS on, the same input asserts instead, which is the other
+// correct answer and not something a test can assert about.
+#if !FLOX_SCALE_CHECKS
+TEST(PositionTrackerFixedPoint, RealisationSaturatesAtTheInt64Boundary)
+{
+  PositionTracker tracker(1, CostBasisMethod::FIFO);
+
+  fill(tracker, Side::BUY, -9'000'000'000'000'000'000, 100'000'000);  // 1.0
+  fill(tracker, Side::SELL, 9'000'000'000'000'000'000, 100'000'000);
+
+  EXPECT_EQ(tracker.getPosition(SYM).raw(), 0);
+  EXPECT_EQ(tracker.getRealizedPnl(SYM).raw(), std::numeric_limits<int64_t>::max());
+  EXPECT_GT(tracker.getRealizedPnl(SYM).raw(), 0) << "a wrapped difference reports a loss";
+}
+#endif
 
 // Control: the same arithmetic at a magnitude a double still holds exactly.
 // Green before the fix and after it -- if this one ever goes red the change

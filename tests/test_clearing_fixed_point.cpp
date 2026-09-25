@@ -237,6 +237,73 @@ TEST(ClearingFixedPoint, TotalUnrealisedPnlIsExactAcrossManyLegs)
   EXPECT_EQ(moneyRaw(a.marginUnrealisedPnl()), kLegPnlRaw * kLegs);
 }
 
+// A notional whose raw has bits below what a double mantissa reaches:
+// 50'000'000'000.00000123, which a double round-trip returns as
+// 50'000'000'000.00000000.
+constexpr int64_t kUnroundtrippableRaw = 5'000'000'000'000'000'123;
+
+// The window subtracts the raw each fill was recorded with, not a value
+// derived from it a second time. Recomputing the amount to remove -- through
+// a double, or from anything but the stored raw -- leaves a residue behind
+// every eviction, and the residue never leaves: it is still there when the
+// window is empty and the total must read exactly zero.
+TEST(ClearingFixedPoint, EvictionRemovesExactlyWhatWasRecorded)
+{
+  auto a = makeAccount(1, 0);
+
+  a.recordFill(0, Volume::fromRaw(kUnroundtrippableRaw));
+  a.recordFill(1, Volume::fromRaw(7));
+  // Cutoff lands on zero, so only the first fill leaves the window.
+  a.recordFill(Account::kThirtyDaysNs, Volume::fromRaw(11));
+  EXPECT_EQ(a.rollingNotional30d().raw(), 18);
+
+  // Cutoff now passes both survivors; only the fill recorded here is left.
+  a.recordFill(2 * Account::kThirtyDaysNs, Volume::fromRaw(29));
+  EXPECT_EQ(a.rollingNotional30d().raw(), 29);
+}
+
+// The counter is a sum of what was recorded, so it is negative exactly when
+// what was recorded sums to a negative -- a busted or corrected fill booked as
+// a negative adjustment. Clamping that to zero does not repair anything: it
+// discards the correction and every later fill is then counted against a base
+// the account never had.
+TEST(ClearingFixedPoint, RollingTotalIsNotClampedAtZero)
+{
+  auto a = makeAccount(1, 0);
+
+  a.recordFill(1, Volume::fromRaw(100'000'000));   // 1.0
+  a.recordFill(2, Volume::fromRaw(-250'000'000));  // a 2.5 correction
+  EXPECT_EQ(a.rollingNotional30d().raw(), -150'000'000);
+
+  a.recordFill(3, Volume::fromRaw(400'000'000));  // 4.0
+  EXPECT_EQ(a.rollingNotional30d().raw(), 250'000'000)
+      << "a clamped total loses the correction and over-counts from here on";
+}
+
+// The per-symbol breakdown is the same sum, split. It accumulates the raws,
+// like the aggregate it has to agree with.
+TEST(ClearingFixedPoint, RollingNotionalBySymbolIsExact)
+{
+  constexpr SymbolId ETH = 2;
+  auto a = makeAccount(1, 0);
+
+  a.recordFill(0, Volume::fromRaw(kUnroundtrippableRaw), BTC);
+  a.recordFill(1, Volume::fromRaw(7), BTC);
+  a.recordFill(2, Volume::fromRaw(250'000'000), ETH);  // 2.5
+  a.recordFill(3, Volume::fromRaw(125'000'000), ETH);  // 1.25
+
+  const auto rows = a.rollingNotionalBySymbol30d();
+  ASSERT_EQ(rows.size(), 2u);
+  EXPECT_EQ(rows[0].first, BTC);
+  EXPECT_EQ(rows[0].second.raw(), kUnroundtrippableRaw + 7);
+  EXPECT_EQ(rows[1].first, ETH);
+  EXPECT_EQ(rows[1].second.raw(), 375'000'000);
+
+  // And the split agrees with the aggregate, to the raw.
+  EXPECT_EQ(a.rollingNotional30d().raw(),
+            rows[0].second.raw() + rows[1].second.raw());
+}
+
 // Margin and liquidation are computed from these four numbers, and they are
 // the last place in the engine that should be leaving fixed point. A double
 // quantity and a double entry price cannot even represent the fills that
