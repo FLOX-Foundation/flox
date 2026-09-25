@@ -54,11 +54,15 @@ inline bool isLoggingEnabled() { return loggingEnabled.load(std::memory_order_ac
 // consumer loop, where a reconnect burst formats thousands of messages
 // nobody will read.
 #define FLOX_LOG(...) FLOX_LOG_LEVEL(::flox::LogLevel::Info, __VA_ARGS__)
-#define FLOX_LOG_LEVEL(lvl, ...)                                 \
-  if (!::flox::isLoggingEnabled() || (lvl) < ::flox::logLevel()) \
-    ;                                                            \
-  else                                                           \
-    ::flox::LogStream(lvl) << __VA_ARGS__
+// The level is bound in the if's initializer so that the expression passed as
+// `lvl` is evaluated exactly once, whatever the caller writes there -- the
+// guard and the LogStream would otherwise both evaluate it.
+#define FLOX_LOG_LEVEL(lvl, ...)                                         \
+  if (const ::flox::LogLevel floxLogLevel_ = (lvl);                      \
+      !::flox::isLoggingEnabled() || floxLogLevel_ < ::flox::logLevel()) \
+    ;                                                                    \
+  else                                                                   \
+    ::flox::LogStream(floxLogLevel_) << __VA_ARGS__
 #define FLOX_LOG_INFO(...) FLOX_LOG_LEVEL(::flox::LogLevel::Info, __VA_ARGS__)
 #define FLOX_LOG_WARN(...) FLOX_LOG_LEVEL(::flox::LogLevel::Warn, __VA_ARGS__)
 #define FLOX_LOG_ERROR(...) FLOX_LOG_LEVEL(::flox::LogLevel::Error, __VA_ARGS__)
