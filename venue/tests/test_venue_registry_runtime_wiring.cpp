@@ -44,6 +44,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -250,3 +251,161 @@ TEST(VenueRegistryRuntimeWiring, ApplyKnowsAccountRiskLimits)
 }
 
 TEST(VenueRegistryRuntimeWiring, WalRebuildsTheRegistryOnRestart) { walRebuildsTheRegistry(); }
+
+// Recovery through a CHECKPOINT rather than through a full replay.
+//
+// A checkpoint rotates the journal: the records written before it live in a
+// segment recovery never reads again, and the only surviving copy of the
+// configuration they carried is the snapshot's own config section. So the
+// shard has to offer that section to the registry too -- otherwise an
+// instrument listed before the oldest surviving segment comes back unknown
+// to the registry while the engine holds its whole state, and the control
+// plane validates every operator request against the gap.
+TEST(VenueRegistryRuntimeWiring, CheckpointRecoveryRebuildsTheRegistryFromTheSnapshot)
+{
+  const std::string base = tmpPath("venue_registry_snapshot", ".bin");
+  cleanFiles(base);
+
+  {
+    auto shard =
+        std::make_unique<SequencedShard<>>(cfg(), base, MatchingBook{}, Journal::Sync::Off);
+    shard->setOwnThreads(false);
+    shard->start();
+    shard->submit(InboundCommand{ListInstrument{SYM, {}, px(0.01), {}, px(50.0), px(150.0)}});
+    shard->submit(InboundCommand{SetBands{SYM, {}, px(90.0), px(110.0)}});
+    shard->submit(InboundCommand{SetTriggerRef{SYM, TriggerRef::Mark}});
+    shard->submit(InboundCommand{AdminCmd{SYM, AdminAction::Halt}});
+    shard->flush();
+    // The rotation: everything above is now behind the checkpoint boundary.
+    ASSERT_TRUE(shard->checkpointNow());
+    shard->flush();
+    shard->stop();
+  }
+
+  InstrumentRegistry recovered;
+  auto shard = std::make_unique<SequencedShard<>>(cfg(), base, MatchingBook{}, Journal::Sync::Off);
+  shard->setOwnThreads(false);
+  shard->setRegistry(&recovered);
+  shard->start();
+
+  ASSERT_GT(shard->recoveredFromSnapshotRecords(), 0u)
+      << "the snapshot was not the route back: this test says nothing about the config section";
+
+  ASSERT_TRUE(recovered.has(SYM))
+      << "recovery through a checkpoint left the registry empty: the configuration the snapshot "
+         "carries is the only surviving copy of what the rotated-away segment said";
+  const VenueConfig* c = recovered.get(SYM);
+  ASSERT_NE(c, nullptr);
+  EXPECT_EQ(c->minPrice, px(90.0));
+  EXPECT_EQ(c->maxPrice, px(110.0));
+  EXPECT_EQ(c->triggerRef, TriggerRef::Mark);
+  EXPECT_TRUE(c->halted) << "the registry came up resumed while the engine came up halted";
+
+  shard->stop();
+  shard.reset();
+  cleanFiles(base);
+}
+
+// A registry wired to a RUNNING shard.
+//
+// Replay at start() is half the contract. The other half is the live stream:
+// a registry that is only rebuilt at start goes stale on the first command
+// sequenced afterwards, and it is the live registry -- not the one from
+// start-up -- that the control plane validates the NEXT operator request
+// against. No restart, no checkpoint: the record and the registry move
+// together or the registry is wrong.
+TEST(VenueRegistryRuntimeWiring, ALiveCommandReachesTheRegistryWithoutARestart)
+{
+  const std::string base = tmpPath("venue_registry_live", ".bin");
+  cleanFiles(base);
+
+  InstrumentRegistry live;
+  auto shard = std::make_unique<SequencedShard<>>(cfg(), base, MatchingBook{}, Journal::Sync::Off);
+  shard->setOwnThreads(false);
+  shard->setRegistry(&live);
+  shard->start();
+  ASSERT_FALSE(live.has(SYM)) << "nothing was replayed: the registry starts empty";
+
+  shard->submit(InboundCommand{ListInstrument{SYM, {}, px(0.01), {}, px(50.0), px(150.0)}});
+  shard->flush();
+  ASSERT_TRUE(live.has(SYM))
+      << "a command the running shard sequenced never reached the registry: the registry the "
+         "control plane validates against is the one from start-up";
+
+  shard->submit(InboundCommand{SetBands{SYM, {}, px(90.0), px(110.0)}});
+  shard->submit(InboundCommand{AdminCmd{SYM, AdminAction::Halt}});
+  shard->flush();
+  const VenueConfig* c = live.get(SYM);
+  ASSERT_NE(c, nullptr);
+  EXPECT_EQ(c->minPrice, px(90.0));
+  EXPECT_EQ(c->maxPrice, px(110.0));
+  EXPECT_TRUE(c->halted);
+
+  shard->stop();
+  shard.reset();
+  cleanFiles(base);
+}
+
+namespace
+{
+
+// A book that refuses the Nth resting order. The shard is templated on the
+// book, so the throw is injected through the type rather than through a hook
+// added to production code for a test's benefit.
+class BookThatRefuses : public MatchingBook
+{
+ public:
+  BookThatRefuses() = default;
+  explicit BookThatRefuses(int throwOnNth) : throwOnNth_(throwOnNth) {}
+
+  [[nodiscard]] BookAddResult addResting(Side side, const RestingOrder& o)
+  {
+    if (++adds_ == throwOnNth_)
+    {
+      throw std::runtime_error("the book refused the order");
+    }
+    return MatchingBook::addResting(side, o);
+  }
+
+ private:
+  int throwOnNth_ = 0;
+  int adds_ = 0;
+};
+
+}  // namespace
+
+// Write-ahead, stated as something observable.
+//
+// The journal is appended BEFORE the command is applied, and the order is the
+// whole point: the engine is not transactional, so an apply that throws
+// part-way leaves memory holding half a command. What makes that survivable
+// is that the durable record is already complete -- a restart replays it and
+// arrives at the state the live shard could not finish reaching. Applying
+// first inverts that: the failure is now a command the engine (and anyone
+// subscribed to it) saw and the journal never recorded, and the recovered
+// venue silently disagrees with the one that was running.
+//
+// The observable difference is the record count after a refused apply: one
+// under write-ahead, none if the apply goes first.
+TEST(VenueRegistryRuntimeWiring, TheJournalHoldsTheRecordAnApplyThenThrewOn)
+{
+  const std::string base = tmpPath("venue_registry_writeahead", ".bin");
+  cleanFiles(base);
+
+  auto shard = std::make_unique<SequencedShard<BookThatRefuses>>(cfg(), base, BookThatRefuses{1},
+                                                                 Journal::Sync::Off);
+  shard->setOwnThreads(false);
+  shard->start();
+
+  shard->submit(InboundCommand{limit(1, Side::SELL, 100.0, 1.0, 1)});
+  shard->flush();
+
+  EXPECT_TRUE(shard->failed()) << "the shard kept serving after an apply threw";
+  EXPECT_EQ(shard->journaled(), 1u)
+      << "the record was not written ahead of the apply: a command the engine saw, and may have "
+         "published events for, is missing from the history a restart would replay";
+
+  shard->stop();
+  shard.reset();
+  cleanFiles(base);
+}

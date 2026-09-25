@@ -318,3 +318,54 @@ TEST(VenueMatchPolicyReach, ShardSnapshotsDoNotCrossPolicies)
 {
   policyIsPartOfTheShardConfigHash();
 }
+
+// Recovery through a checkpoint, on the shard's own rule.
+//
+// Before a snapshot generation is accepted it is replayed end to end into a
+// scratch engine, and that probe is built from the same configuration the
+// shard runs. It has to be: configHash folds the allocation rule, so a probe
+// built under price-time refuses every generation a pro-rata shard ever
+// published -- the shard falls back a generation, then another, and comes up
+// on a full-history replay while its checkpoints sit on disk unused. Nothing
+// about that is visible from the outside except the record count.
+TEST(VenueMatchPolicyReach, ProRataShardRecoversThroughItsOwnSnapshot)
+{
+  VenueConfig c = cfg();
+  c.matchPolicy = MatchPolicy::ProRata;
+
+  const std::string base = tmpPath("venue_match_policy_probe", ".bin");
+  cleanFiles(base);
+
+  {
+    auto writer = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off);
+    writer->setOwnThreads(false);
+    writer->start();
+    writer->submit(InboundCommand{limit(1, Side::SELL, 100.0, 2.0, 1)});
+    writer->submit(InboundCommand{limit(2, Side::SELL, 100.0, 3.0, 1)});
+    writer->flush();
+    ASSERT_TRUE(writer->checkpointNow());
+    writer->flush();
+    writer->stop();
+  }
+
+  FillListener sink;
+  auto restarted = std::make_unique<SequencedShard<>>(c, base, MatchingBook{}, Journal::Sync::Off);
+  restarted->setOwnThreads(false);
+  ASSERT_TRUE(restarted->subscribeOutbound(&sink));
+  restarted->start();
+  EXPECT_GT(restarted->recoveredFromSnapshotRecords(), 0u)
+      << "the shard turned down its own snapshot: the validating probe is built under an "
+         "allocation rule the shard does not run, so no generation it writes can ever validate";
+
+  // And the recovered shard is still pro-rata: the buyer meets the level the
+  // snapshot restored and every maker on it is allocated a share.
+  restarted->submit(InboundCommand{limit(9, Side::BUY, 100.0, 2.5, 2)});
+  restarted->flush();
+  EXPECT_EQ(sink.fills.trades(), 2) << "the recovered shard matched under price-time";
+  EXPECT_EQ(sink.fills.forMaker(1), qty(1.0));
+  EXPECT_EQ(sink.fills.forMaker(2), qty(1.5));
+
+  restarted->stop();
+  restarted.reset();
+  cleanFiles(base);
+}

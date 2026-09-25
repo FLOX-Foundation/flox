@@ -21,6 +21,7 @@
  * can act on, or the peg rests strictly inside the touch -- it must not
  * quietly lock the book instead.
  */
+#include "flox-venue/engine/pegs.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
 
@@ -119,6 +120,20 @@ void arrangeAskThenRepeg(Venue& v)
   v.eng.submit(InboundCommand{limit(3, Side::SELL, 105.0, 5.0, 3)}, 3);
 }
 
+// The mirror of the sequence above on the other side: a bid-pegged sell with
+// a bid to track. Nothing about the clamp is side-specific -- a sell pulled
+// onto the bid locks the book exactly the way a buy pulled onto the ask does
+// -- so the refusal must not be either.
+void arrangeBidThenRepeg(Venue& v)
+{
+  v.eng.submit(InboundCommand{limit(1, Side::SELL, 106.0, 5.0, 1)}, 1);
+  NewOrder peg = limit(2, Side::SELL, 0.0, 4.0, 2);
+  peg.peg = PegRef::Bid;
+  peg.pegOffsetRaw = 0;
+  v.eng.submit(InboundCommand{peg}, 2);
+  v.eng.submit(InboundCommand{limit(3, Side::BUY, 100.0, 5.0, 3)}, 3);
+}
+
 }  // namespace
 
 // Control: with a tick the clamp has a distance, the repriced peg stops one
@@ -193,4 +208,98 @@ TEST(VenuePegZeroTick, ZeroTickPegIsRefusedWithAReason)
   {
     EXPECT_NE(r->reason, RejectReason::None) << "a refusal with no reason tells the owner nothing";
   }
+}
+
+// Which reason, not just that there is one. TickSizeViolation says "your
+// price is off the grid" and sends the owner back with a rounded price, and
+// no rounding can help here: what is missing belongs to the instrument, not
+// to the order. The owner has to be told to give the instrument a tick, so
+// the refusal has to name the thing that is missing.
+TEST(VenuePegZeroTick, ZeroTickPegIsRefusedWithPegRequiresTick)
+{
+  Venue v(cfg(0.0));
+  arrangeAskThenRepeg(v);
+
+  const OrderRejected* r = v.rejectOf(2);
+  ASSERT_NE(r, nullptr) << "the peg was not refused at all";
+  EXPECT_EQ(r->reason, RejectReason::PegRequiresTick)
+      << "a reason that tells the owner to round a price cannot be acted on: the instrument, "
+         "not the order, is what has no tick";
+}
+
+// The instrument has no tick on either side of the book. A refusal that reads
+// the order's side refuses half the pegs that lock the book and lets the
+// other half through.
+TEST(VenuePegZeroTick, ZeroTickSellPegIsRefusedTheSameWay)
+{
+  Venue v(cfg(0.0));
+  arrangeBidThenRepeg(v);
+
+  const OrderRejected* r = v.rejectOf(2);
+  ASSERT_NE(r, nullptr) << "a sell peg on a tick-less instrument was admitted";
+  EXPECT_EQ(r->reason, RejectReason::PegRequiresTick);
+
+  // And it is not resting: the book that a bid-pegged sell would have been
+  // clamped onto still has a spread.
+  ASSERT_TRUE(v.eng.book().bestBid().has_value());
+  if (v.eng.book().bestAsk().has_value())
+  {
+    EXPECT_LT(v.eng.book().bestBid().value(), v.eng.book().bestAsk().value())
+        << "a zero-tick sell peg was re-rested at the opposite touch: the book is locked";
+  }
+}
+
+// ---- the clamp itself ---------------------------------------------------
+//
+// PegBook::targetRaw is a pure decision over a Market struct, which is the
+// second line of defence behind the admission refusal above: a peg restored
+// from a snapshot an older build wrote never passes through validate(), so
+// the clamp has to hold on its own. Asserted on the function directly for
+// that reason -- through the engine these branches are unreachable, and an
+// unreachable defence is one nobody would notice breaking.
+
+// With no tick declared there is still a smallest step that leaves the peg
+// strictly inside the touch: one raw unit. Stepping back by the tick itself
+// -- zero -- puts the order ON the opposite touch, and repeg() re-rests it
+// there through a path that runs no matching pass.
+TEST(VenuePegZeroTick, ClampStepsBackOneRawUnitWhenThereIsNoTick)
+{
+  PegBook::Market m;
+  m.hasAsk = true;
+  m.askRaw = 10'500'000'000;
+  m.tickRaw = 0;
+
+  const int64_t buy = PegBook::targetRaw(Side::BUY, PegRef::Ask, 0, m);
+  EXPECT_EQ(buy, m.askRaw - 1) << "a buy peg with no tick was clamped onto the ask itself";
+  EXPECT_LT(buy, m.askRaw);
+
+  PegBook::Market n;
+  n.hasBid = true;
+  n.bidRaw = 9'900'000'000;
+  n.tickRaw = 0;
+
+  const int64_t sell = PegBook::targetRaw(Side::SELL, PegRef::Bid, 0, n);
+  EXPECT_EQ(sell, n.bidRaw + 1) << "a sell peg with no tick was clamped onto the bid itself";
+  EXPECT_GT(sell, n.bidRaw);
+}
+
+// Tick alignment goes DOWN, which for a negative target is not what integer
+// division does: truncation rounds toward zero, so a target below zero would
+// be aligned UP -- the one direction the never-cross clamp must never be
+// handed a value from. A negative target is reachable through a large
+// negative offset, which no admission check refuses.
+TEST(VenuePegZeroTick, ClampAlignsDownForATargetBelowZero)
+{
+  PegBook::Market m;
+  m.hasBid = true;
+  m.bidRaw = 0;
+  m.tickRaw = 10;
+
+  // Reference 0, offset -25: the aligned-down target is -30, not -20.
+  EXPECT_EQ(PegBook::targetRaw(Side::BUY, PegRef::Bid, -25, m), -30)
+      << "a negative target was aligned up: truncating division rounds toward zero";
+
+  // Exactly on a tick is left alone, whichever side of zero it is on.
+  EXPECT_EQ(PegBook::targetRaw(Side::BUY, PegRef::Bid, -30, m), -30);
+  EXPECT_EQ(PegBook::targetRaw(Side::BUY, PegRef::Bid, 25, m), 20);
 }

@@ -50,6 +50,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -312,4 +313,108 @@ TEST(VenueControlPositionVerbs, TheThreeVerbsAreListedAsBuiltins)
                                     { return ControlApi::ok(); }))
         << name << " can be registered by a deployment, shadowing the built-in that owns it";
   }
+}
+
+// A correction carries no fill behind it, so the record IS the explanation.
+// A reason the venue does not recognize is an operator typo, and mapping it
+// onto "manual" writes a plausible word onto a correction nobody
+// characterized -- a later reader cannot then tell a routine reconciliation
+// from a mistake, and the wrong word is durable.
+TEST(VenueControlPositionVerbs, AdjustPositionRefusesAnUnknownReason)
+{
+  Desk d("venue_cpv_badreason");
+  const uint64_t before = d.journaled();
+
+  const std::string reply = d.ask(
+      R"({"method":"adjustPosition","symbol":7,"account":1,"qtyDelta":-2.0,)"
+      R"("reason":"reconcilliation"})");
+  EXPECT_NE(reply.find("bad_reason"), std::string::npos)
+      << "an unrecognized reason was accepted: a typo becomes 'operator judgement' in a record "
+         "nothing can tell from a real manual correction";
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before) << "a refused correction was journaled";
+  EXPECT_EQ(d.shard->engine().positionQty(OWNER), qty(5).raw());
+
+  // An empty reason is the same refusal, not a default.
+  const std::string blank =
+      d.ask(R"({"method":"adjustPosition","symbol":7,"account":1,"qtyDelta":-2.0})");
+  EXPECT_NE(blank.find("bad_reason"), std::string::npos);
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before);
+}
+
+// qty is a SIZE. Which way the close goes is decided by the position, so a
+// signed request would let an operator name a direction that contradicts it,
+// and the record has no way to carry the disagreement to whoever reads it.
+TEST(VenueControlPositionVerbs, ForceClosePositionRefusesASignedQty)
+{
+  Desk d("venue_cpv_signedqty");
+  ASSERT_EQ(d.shard->engine().positionQty(OWNER), qty(5).raw());
+  const uint64_t before = d.journaled();
+
+  const std::string reply =
+      d.ask(R"({"method":"forceClosePosition","symbol":7,"account":1,"qty":-2.0})");
+  EXPECT_NE(reply.find("bad_field"), std::string::npos)
+      << "a negative size was accepted on a field whose sign the record cannot express";
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before) << "a refused close was journaled";
+  EXPECT_EQ(d.shard->engine().positionQty(OWNER), qty(5).raw());
+
+  // The same size without the sign is the request that was meant, and it is
+  // taken -- so the refusal above is about the sign and nothing else.
+  const std::string good =
+      d.ask(R"({"method":"forceClosePosition","symbol":7,"account":1,"qty":2.0})");
+  EXPECT_EQ(good, ControlApi::ok());
+  ASSERT_EQ(d.forwarded.size(), 1u);
+  const auto* fc = std::get_if<ForceClosePosition>(&d.forwarded.front());
+  ASSERT_NE(fc, nullptr);
+  EXPECT_EQ(fc->qtyRaw, qty(2.0).raw());
+}
+
+// A request that names none of the three limit groups asks for nothing. Its
+// symbol-wide sibling refuses the same shape, and it has to: forwarded, the
+// record is a no-op that the journal keeps forever and a replay re-applies,
+// and the operator gets an "ok" for a limit that was never set.
+TEST(VenueControlPositionVerbs, SetAccountRiskLimitsRefusesARequestNamingNoLimits)
+{
+  Desk d("venue_cpv_emptymask");
+  const uint64_t before = d.journaled();
+
+  const std::string reply =
+      d.ask(R"({"method":"setAccountRiskLimits","symbol":7,"account":1})");
+  EXPECT_NE(reply.find("no_limits_named"), std::string::npos)
+      << "a request naming no limit was accepted and journaled as a no-op";
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), before) << "an empty limit record reached the journal";
+  EXPECT_EQ(d.shard->engine().accountRiskLimits(OWNER), nullptr);
+}
+
+// The top of maxOpenOrders' own range. The field is a uint32_t, so
+// UINT32_MAX is a value it can hold and a value an owner can legitimately
+// name; one past it is not, and is refused rather than truncated into a cap
+// far tighter than the one asked for.
+TEST(VenueControlPositionVerbs, SetAccountRiskLimitsTakesTheTopOfTheMaxOpenOrdersRange)
+{
+  Desk d("venue_cpv_maxopenorders");
+  const uint64_t before = d.journaled();
+
+  const std::string reply = d.ask(
+      R"({"method":"setAccountRiskLimits","symbol":7,"account":1,"maxOpenOrders":4294967295})");
+  EXPECT_EQ(reply, ControlApi::ok())
+      << "the largest value the field can hold was refused as out of range";
+  ASSERT_EQ(d.forwarded.size(), 1u);
+  const auto* r = std::get_if<SetAccountRiskLimits>(&d.forwarded.front());
+  ASSERT_NE(r, nullptr);
+  EXPECT_NE(r->fields & AccountRiskLimitField::AccountRiskMaxOpenOrders, 0);
+  EXPECT_EQ(r->maxOpenOrders, (std::numeric_limits<uint32_t>::max)());
+  EXPECT_EQ(d.journaled(), before + 1);
+
+  // One past the top does not fit, and is refused rather than wrapped.
+  d.forwarded.clear();
+  const uint64_t afterFirst = d.journaled();
+  const std::string tooBig = d.ask(
+      R"({"method":"setAccountRiskLimits","symbol":7,"account":1,"maxOpenOrders":4294967296})");
+  EXPECT_NE(tooBig.find("bad_field"), std::string::npos);
+  EXPECT_TRUE(d.forwarded.empty());
+  EXPECT_EQ(d.journaled(), afterFirst);
 }
