@@ -43,6 +43,9 @@
  * reach inside a composite -- flox_venue_stack_account and its siblings
  * -- return a BORROWED handle: it stays valid while the composite lives,
  * it must not be destroyed, and calling _destroy on it does nothing.
+ * The name alone does not settle it: a handle-returning function whose
+ * name does not end in _create says owned or borrowed in a comment on
+ * its own declaration, and every such function carries one.
  *
  * Exceptions. None escape. The engine underneath is C++ and throws;
  * unwinding out of a frame with C linkage is undefined behaviour, so
@@ -1019,6 +1022,10 @@ extern "C"
   // Amm Curve
   // ============================================================
 
+  /* flox_curve_constant_product, flox_curve_raydium_cp and
+   * flox_curve_uniswap_v3 do not end in _create, but they follow the
+   * _create half of the ownership rule: each returns a handle the caller
+   * OWNS and must pass to flox_curve_destroy. NULL on bad input. */
   FloxCurveHandle flox_curve_constant_product(const char* reserve0, const char* reserve1,
                                               uint64_t fee_num, uint64_t fee_den);
   FloxCurveHandle flox_curve_raydium_cp(const char* reserve0, const char* reserve1,
@@ -1035,6 +1042,8 @@ extern "C"
   uint8_t flox_curve_balance(FloxCurveHandle curve, size_t i, char* out, size_t out_len);
   uint8_t flox_curve_sqrt_price(FloxCurveHandle curve, char* out, size_t out_len);
   uint8_t flox_curve_liquidity(FloxCurveHandle curve, char* out, size_t out_len);
+  /* Owned: a fresh copy the caller destroys with flox_curve_destroy,
+   * independent of the curve it was cloned from. */
   FloxCurveHandle flox_curve_clone(FloxCurveHandle curve);
   void flox_curve_destroy(FloxCurveHandle curve);
 
@@ -1148,6 +1157,9 @@ extern "C"
   int flox_backtest_runner_run_replay_source(FloxBacktestRunnerHandle runner,
                                              FloxReplaySourceHandle source,
                                              FloxBacktestStats* stats_out);
+  /* Owned: a snapshot of the last run, detached from the runner. The
+   * caller destroys it with flox_backtest_result_destroy; the runner may
+   * be destroyed first. NULL when no run has finished yet. */
   FloxBacktestResultHandle flox_backtest_runner_take_result(FloxBacktestRunnerHandle runner);
   void flox_backtest_runner_set_risk_manager(FloxBacktestRunnerHandle runner,
                                              FloxRiskManagerHandle rm);
@@ -1201,6 +1213,9 @@ extern "C"
                                                                           const char* exchange_name,
                                                                           const char* instrument_type);
   void flox_binary_log_recorder_hook_destroy(FloxBinaryLogRecorderHookHandle hook);
+  /* Borrowed: a view of a member of the hook. It stays valid while the
+   * hook lives and must not be passed to flox_market_data_recorder_destroy,
+   * which is a no-op on it. */
   FloxMarketDataRecorderHandle flox_binary_log_recorder_hook_as_recorder(FloxBinaryLogRecorderHookHandle hook);
   void flox_binary_log_recorder_hook_add_symbol(FloxBinaryLogRecorderHookHandle hook,
                                                 uint32_t symbol_id, const char* name,
@@ -1506,6 +1521,10 @@ extern "C"
                                     int64_t price_raw, int64_t qty_raw, int64_t fee_raw,
                                     uint32_t symbol_id, uint8_t side, uint8_t liquidity);
   void flox_run_recorder_close(FloxRunRecorderHandle handle);
+  /* Owned, but the partner is flox_run_reader_close rather than a
+   * _destroy: the reader loads the whole trace up front, and closing it
+   * frees both the file and those buffers. NULL when the path cannot be
+   * read. */
   FloxRunReaderHandle flox_run_reader_open(const char* path);
   void flox_run_reader_close(FloxRunReaderHandle handle);
   uint64_t flox_run_reader_strategy_id(FloxRunReaderHandle handle, char* out, uint64_t max_bytes);
@@ -2081,10 +2100,15 @@ extern "C"
   uint8_t flox_pool_tape_swap(FloxPoolTapeHandle tape, int64_t ts_ns, uint8_t base_for_quote,
                               const char* amount_in);
   void flox_pool_tape_destroy(FloxPoolTapeHandle tape);
+  /* Owned: the replay runs the tape and keeps the rebuilt state. Destroy
+   * it with flox_pool_replay_destroy; the tape it was built from is
+   * unaffected. */
   FloxPoolReplayHandle flox_pool_tape_replay(FloxPoolTapeHandle tape, size_t base_idx,
                                              size_t quote_idx, uint8_t base_dec, uint8_t quote_dec);
   size_t flox_pool_replay_drift_count(FloxPoolReplayHandle replay);
   size_t flox_pool_replay_trade_count(FloxPoolReplayHandle replay);
+  /* Borrowed: the replay owns this curve. It stays valid while the replay
+   * lives and flox_curve_destroy on it is a no-op. */
   FloxCurveHandle flox_pool_replay_curve(FloxPoolReplayHandle replay);
   void flox_pool_replay_destroy(FloxPoolReplayHandle replay);
 
@@ -2527,6 +2551,12 @@ extern "C"
 
   FloxVenueStackHandle flox_venue_stack_create(uint8_t venue, uint64_t account_id, double equity);
   void flox_venue_stack_destroy(FloxVenueStackHandle h);
+  /* flox_venue_stack_executor, flox_venue_stack_account,
+   * flox_venue_stack_liquidation, flox_venue_stack_fees,
+   * flox_venue_stack_funding and flox_venue_stack_venue reach inside the
+   * stack and return BORROWED handles: each stays valid while the stack
+   * lives, must not be destroyed, and the matching _destroy on it does
+   * nothing. */
   FloxSimulatedExecutorHandle flox_venue_stack_executor(FloxVenueStackHandle h);
   FloxAccountHandle flox_venue_stack_account(FloxVenueStackHandle h);
   FloxLiquidationEngineHandle flox_venue_stack_liquidation(FloxVenueStackHandle h);
