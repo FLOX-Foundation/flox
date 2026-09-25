@@ -16,8 +16,14 @@
 #include <flox/log/log.h>
 #include <flox/util/rate_limiter.h>
 
+#include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <cstddef>
+#include <deque>
 #include <functional>
+#include <mutex>
+#include <optional>
 #include <thread>
 
 namespace flox
@@ -33,15 +39,45 @@ struct NoRateLimitPolicy
   static constexpr bool enabled = false;
 
   void init(const RateLimitConfig&) {}
-  [[nodiscard]] bool tryAcquire(OrderId) { return true; }
-  [[nodiscard]] bool tryAcquire(OrderId, const std::function<void()>&) { return true; }
+
+  template <typename Action, typename OnRejected>
+  void gate(OrderId, Action&& action, OnRejected&&)
+  {
+    action();
+  }
 };
 
-/// Active rate limiting with configurable behavior
+/// Active rate limiting with configurable behavior.
+///
+/// Every send path of every executor goes through gate(): it owns the decision
+/// of whether the request may leave, and when. A path that consults nothing is
+/// a path the venue budget does not cover, which is how a single trailing stop
+/// used to spend a whole endpoint quota by itself.
+///
+/// Threading model. A request that holds a token is sent inline on the calling
+/// thread -- ordering and latency are unchanged, and nothing is queued. Only
+/// RateLimitPolicy::WAIT defers, onto this policy's own sender thread: the
+/// action is queued, gate() returns, and the sender sends it once the bucket
+/// really has a token. WAIT used to sleep_for on the calling thread (the
+/// strategy / event-bus consumer thread, so one contended submit stopped the
+/// engine from processing market data) and then proceed whether or not the
+/// retry found a token, which sent over the budget -- the one thing a
+/// client-side limiter exists to prevent.
+///
+/// The handoff is bounded: past kMaxDeferred queued requests the submit is
+/// refused through onRejected instead of queueing without limit. Deferred
+/// actions run after gate() returned, so they must own everything they touch;
+/// both callbacks are stored by value.
 class ActiveRateLimitPolicy
 {
  public:
   static constexpr bool enabled = true;
+
+  ActiveRateLimitPolicy() = default;
+  ActiveRateLimitPolicy(const ActiveRateLimitPolicy&) = delete;
+  ActiveRateLimitPolicy& operator=(const ActiveRateLimitPolicy&) = delete;
+
+  ~ActiveRateLimitPolicy() { shutdown(); }
 
   void init(RateLimitConfig config)
   {
@@ -52,28 +88,32 @@ class ActiveRateLimitPolicy
     }
   }
 
-  [[nodiscard]] bool tryAcquire(OrderId orderId) { return tryAcquire(orderId, {}); }
-
-  // onRejected fires whenever this call returns false -- REJECT and CALLBACK
-  // both deny the request, and until this existed neither told the caller
-  // anything beyond a log line: a rate-limited cancelOrder() silently never
-  // reached the transport while OrderTracker kept reporting the order
-  // active. Callers wire onRejected to publish a REJECTED_RATE_LIMIT event
-  // on their OrderExecutionBus, matching what SimulatedExecutor already
-  // does for the backtest path.
-  [[nodiscard]] bool tryAcquire(OrderId orderId, const std::function<void()>& onRejected)
+  // onRejected fires whenever the request is refused -- REJECT and CALLBACK
+  // both deny it, and so does a full deferral queue. Until this existed none
+  // of them told the caller anything beyond a log line: a rate-limited
+  // cancelOrder() silently never reached the transport while OrderTracker kept
+  // reporting the order active. Callers wire onRejected to publish a
+  // REJECTED_RATE_LIMIT event on their OrderExecutionBus, matching what
+  // SimulatedExecutor already does for the backtest path.
+  template <typename Action, typename OnRejected>
+  void gate(OrderId orderId, Action&& action, OnRejected&& onRejected)
   {
+    // Fail-open: an invalid config leaves no limiter, and an unlimited
+    // executor is the documented outcome of a misconfiguration, not a mute
+    // one.
     if (!_limiter)
     {
-      return true;
+      action();
+      return;
     }
 
     if (_limiter->tryAcquire())
     {
-      return true;
+      action();
+      return;
     }
 
-    auto waitTime = _limiter->timeUntilAvailable();
+    const auto waitTime = _limiter->timeUntilAvailable();
 
     switch (_config.policy)
     {
@@ -82,34 +122,173 @@ class ActiveRateLimitPolicy
                       << orderId << " wait="
                       << std::chrono::duration_cast<std::chrono::milliseconds>(waitTime).count()
                       << "ms");
-        if (onRejected)
-        {
-          onRejected();
-        }
-        return false;
+        onRejected();
+        return;
 
       case RateLimitPolicy::WAIT:
-        std::this_thread::sleep_for(waitTime);
-        (void)_limiter->tryAcquire();
-        return true;
+        defer(orderId, std::function<void()>(std::forward<Action>(action)),
+              std::function<void()>(std::forward<OnRejected>(onRejected)));
+        return;
 
       case RateLimitPolicy::CALLBACK:
         if (_config.onRateLimited)
         {
           _config.onRateLimited(orderId, waitTime);
         }
-        if (onRejected)
-        {
-          onRejected();
-        }
-        return false;
+        onRejected();
+        return;
     }
-    return false;
   }
 
  private:
+  struct Deferred
+  {
+    OrderId orderId{};
+    std::function<void()> action;
+    std::function<void()> onRejected;
+  };
+
+  // Deep enough that a burst against a venue budget rides through, shallow
+  // enough that a venue which stops draining is noticed instead of being
+  // absorbed into memory.
+  static constexpr std::size_t kMaxDeferred = 1024;
+
+  // Upper bound on one sleep, so a stop is noticed promptly even when the
+  // bucket says to wait for a long time.
+  static constexpr auto kMaxSleepSlice = std::chrono::milliseconds(50);
+
+  void defer(OrderId orderId, std::function<void()> action, std::function<void()> onRejected)
+  {
+    {
+      std::unique_lock<std::mutex> lock(_mutex);
+      if (_stopping)
+      {
+        lock.unlock();
+        onRejected();
+        return;
+      }
+      if (_deferred.size() >= kMaxDeferred)
+      {
+        lock.unlock();
+        FLOX_LOG_WARN("[RateLimit] Deferral queue full, rejecting orderId=" << orderId);
+        onRejected();
+        return;
+      }
+      if (!_sender.joinable())
+      {
+        // Started on the first deferral: a WAIT-configured executor that never
+        // hits its budget pays for no thread.
+        _sender = std::thread(
+            [this]
+            {
+              senderLoop();
+            });
+      }
+      _deferred.push_back(Deferred{orderId, std::move(action), std::move(onRejected)});
+    }
+    _cv.notify_one();
+  }
+
+  void senderLoop()
+  {
+    for (;;)
+    {
+      Deferred item;
+      {
+        std::unique_lock<std::mutex> lock(_mutex);
+        _cv.wait(lock,
+                 [this]
+                 {
+                   return _stopping || !_deferred.empty();
+                 });
+        if (_stopping)
+        {
+          return;
+        }
+        item = std::move(_deferred.front());
+        _deferred.pop_front();
+      }
+
+      if (!waitForToken())
+      {
+        item.onRejected();
+        continue;
+      }
+
+      item.action();
+    }
+  }
+
+  // Returns once this call has taken a token, or false if the request must be
+  // refused instead. The budget is re-checked after every sleep rather than
+  // assumed: several deferred requests wake into the same refill and only the
+  // one that actually takes the token may send.
+  bool waitForToken()
+  {
+    for (;;)
+    {
+      if (_limiter->tryAcquire())
+      {
+        return true;
+      }
+
+      const auto wait = _limiter->timeUntilAvailable();
+      if (wait == RateLimiter::Duration::max())
+      {
+        // A bucket that never refills cannot be waited out.
+        return false;
+      }
+
+      const auto slice = std::min<std::chrono::nanoseconds>(wait, kMaxSleepSlice);
+      std::unique_lock<std::mutex> lock(_mutex);
+      if (_stopping)
+      {
+        return false;
+      }
+      _cv.wait_for(lock, slice,
+                   [this]
+                   {
+                     return _stopping;
+                   });
+      if (_stopping)
+      {
+        return false;
+      }
+    }
+  }
+
+  void shutdown()
+  {
+    {
+      std::lock_guard<std::mutex> lock(_mutex);
+      _stopping = true;
+    }
+    _cv.notify_all();
+    if (_sender.joinable())
+    {
+      _sender.join();
+    }
+
+    std::deque<Deferred> leftovers;
+    {
+      std::lock_guard<std::mutex> lock(_mutex);
+      leftovers.swap(_deferred);
+    }
+    for (auto& item : leftovers)
+    {
+      FLOX_LOG_WARN("[RateLimit] Dropping deferred orderId=" << item.orderId << " on shutdown");
+      item.onRejected();
+    }
+  }
+
   RateLimitConfig _config{};
   std::optional<RateLimiter> _limiter;
+
+  std::mutex _mutex;
+  std::condition_variable _cv;
+  std::deque<Deferred> _deferred;
+  bool _stopping{false};
+  std::thread _sender;
 };
 
 // ============================================================================

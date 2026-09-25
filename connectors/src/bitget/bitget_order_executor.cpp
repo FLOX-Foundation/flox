@@ -343,15 +343,21 @@ void BitgetOrderExecutorT<Policies>::publishRateLimited(const Order& order)
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
-  if (!_policies.rateLimit.tryAcquire(order.id,
-                                      [this, &order]
-                                      {
-                                        publishRateLimited(order);
-                                      }))
-  {
-    return;
-  }
+  _policies.rateLimit.gate(
+      order.id,
+      [this, order]
+      {
+        sendSubmitOrder(order);
+      },
+      [this, order]
+      {
+        publishRateLimited(order);
+      });
+}
 
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
+{
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
@@ -528,6 +534,11 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
 {
+  // Looked up before the rate-limit gate so a refused cancel can still be
+  // reported against the order it targeted instead of vanishing with no event
+  // while the tracker keeps reporting the order active. The send path reads
+  // the tracker again: a deferred cancel runs later, and the order it names
+  // may have moved on in the meantime.
   auto st = _orderTracker->get(id);
   if (!st)
   {
@@ -535,15 +546,26 @@ void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
     return;
   }
 
-  // Looked up before the rate-limit check so a rejected cancel can still be
-  // reported against the order it targeted instead of vanishing
-  // with no event while the tracker keeps reporting the order active.
-  if (!_policies.rateLimit.tryAcquire(id,
-                                      [this, &st]
-                                      {
-                                        publishRateLimited(st->localOrder);
-                                      }))
+  Order target = st->localOrder;
+  _policies.rateLimit.gate(
+      id,
+      [this, id]
+      {
+        sendCancelOrder(id);
+      },
+      [this, target]
+      {
+        publishRateLimited(target);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendCancelOrder(OrderId id)
+{
+  auto st = _orderTracker->get(id);
+  if (!st)
   {
+    FLOX_LOG_ERROR("[BitgetOE] cancelOrder: unknown id=" << id);
     return;
   }
 
@@ -619,12 +641,26 @@ void BitgetOrderExecutorT<Policies>::replaceOrder(OrderId oldId, const Order& ne
     return;
   }
 
-  if (!_policies.rateLimit.tryAcquire(oldId,
-                                      [this, &st]
-                                      {
-                                        publishRateLimited(st->localOrder);
-                                      }))
+  Order target = st->localOrder;
+  _policies.rateLimit.gate(
+      oldId,
+      [this, oldId, newOrd]
+      {
+        sendReplaceOrder(oldId, newOrd);
+      },
+      [this, target]
+      {
+        publishRateLimited(target);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldId, const Order& newOrd)
+{
+  auto st = _orderTracker->get(oldId);
+  if (!st)
   {
+    FLOX_LOG_ERROR("[BitgetOE] replaceOrder: unknown id=" << oldId);
     return;
   }
 

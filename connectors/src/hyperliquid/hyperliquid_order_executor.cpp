@@ -416,11 +416,21 @@ void HyperliquidOrderExecutorT<Policies>::publishFill(const Order& order, Quanti
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
-  if (!_policies.rateLimit.tryAcquire(order.id))
-  {
-    return;
-  }
+  _policies.rateLimit.gate(
+      order.id,
+      [this, order]
+      {
+        sendSubmitOrder(order);
+      },
+      [order]
+      {
+        FLOX_LOG_WARN("[HL] client-side rate limit refused orderId=" << order.id);
+      });
+}
 
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
+{
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
@@ -617,11 +627,21 @@ void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::cancelOrder(OrderId localId)
 {
-  if (!_policies.rateLimit.tryAcquire(localId))
-  {
-    return;
-  }
+  _policies.rateLimit.gate(
+      localId,
+      [this, localId]
+      {
+        sendCancelOrder(localId);
+      },
+      [localId]
+      {
+        FLOX_LOG_WARN("[HL] client-side rate limit refused cancel of orderId=" << localId);
+      });
+}
 
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::sendCancelOrder(OrderId localId)
+{
   auto orderState = _orderTracker->get(localId);
   if (!orderState)
   {
@@ -712,11 +732,21 @@ void HyperliquidOrderExecutorT<Policies>::cancelOrder(OrderId localId)
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::replaceOrder(OrderId oldLocalId, const Order& n)
 {
-  if (!_policies.rateLimit.tryAcquire(oldLocalId))
-  {
-    return;
-  }
+  _policies.rateLimit.gate(
+      oldLocalId,
+      [this, oldLocalId, n]
+      {
+        sendReplaceOrder(oldLocalId, n);
+      },
+      [oldLocalId]
+      {
+        FLOX_LOG_WARN("[HL] client-side rate limit refused replace of orderId=" << oldLocalId);
+      });
+}
 
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldLocalId, const Order& n)
+{
   auto orderState = _orderTracker->get(oldLocalId);
   if (!orderState)
   {

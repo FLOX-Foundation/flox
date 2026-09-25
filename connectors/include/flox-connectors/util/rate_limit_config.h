@@ -23,7 +23,7 @@ namespace flox
 enum class RateLimitPolicy
 {
   REJECT,   ///< Immediately reject the order
-  WAIT,     ///< Block and wait until tokens available
+  WAIT,     ///< Defer the request to the executor's sender thread until a token is there
   CALLBACK  ///< Call user-provided callback with wait time
 };
 

@@ -88,6 +88,15 @@ class HyperliquidOrderExecutorT
   void loadAssetIds();
   int assetIdFor(std::string_view coin);
 
+  // What the rate-limit gate runs once the venue budget allows the request:
+  // inline on the caller when a token was there, on the policy's sender
+  // thread when the WAIT policy had to wait for one. A deferred send runs
+  // after its entry point returned, so it re-reads the tracker instead of
+  // borrowing state from the caller's frame.
+  void sendSubmitOrder(const Order& order);
+  void sendCancelOrder(OrderId localId);
+  void sendReplaceOrder(OrderId oldLocalId, const Order& n);
+
   void publishRejection(const Order& order, const std::string& reason);
   void publishSubmitted(const Order& order);
   void publishFill(const Order& order, Quantity fillQty, Price fillPrice);
