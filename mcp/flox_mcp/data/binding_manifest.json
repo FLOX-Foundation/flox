@@ -23772,6 +23772,11 @@
         },
         {
           "kind": "method",
+          "name": "latencyModel",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "maybeEmitMarketPositionChanges",
           "parent": "SimulatedExecutor"
         },
@@ -23872,6 +23877,11 @@
         },
         {
           "kind": "method",
+          "name": "sampleOrderLatency",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "sampleReplaceAckLatency",
           "parent": "SimulatedExecutor"
         },
@@ -23943,6 +23953,11 @@
         {
           "kind": "method",
           "name": "setIcebergSizeRandomisationPct",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "setLatencyModel",
           "parent": "SimulatedExecutor"
         },
         {

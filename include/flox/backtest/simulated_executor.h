@@ -13,6 +13,7 @@
 #include "flox/backtest/backtest_config.h"
 #include "flox/backtest/bracket_order.h"
 #include "flox/backtest/latency_distribution.h"
+#include "flox/backtest/latency_model.h"
 #include "flox/backtest/order_queue_tracker.h"
 #include "flox/backtest/rate_limit_policy.h"
 #include "flox/backtest/venue_availability.h"
@@ -24,6 +25,7 @@
 
 #include <array>
 #include <functional>
+#include <memory>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -105,6 +107,17 @@ class SimulatedExecutor : public IOrderExecutor
   // Returns false if `name` is not a known profile, so callers can
   // surface a typo instead of silently running default latencies.
   bool applyLatencyProfile(const char* name);
+
+  // Wire latency model (BacktestConfig::latency). Its orderDelay() is drawn
+  // once per submitted order and holds that order out of matching until the
+  // delay has elapsed on the simulated clock; the fill is then stamped at
+  // the time it matched. Adds to the venue's submit-ack latency rather than
+  // replacing it. Passing nullptr removes the model.
+  void setLatencyModel(std::shared_ptr<LatencyModel> model) noexcept
+  {
+    _latency = std::move(model);
+  }
+  const std::shared_ptr<LatencyModel>& latencyModel() const noexcept { return _latency; }
 
   // Self-trade prevention. When set, submitOrder consults pending
   // resting orders and applies the configured mode if the incoming
@@ -402,13 +415,17 @@ class SimulatedExecutor : public IOrderExecutor
   int64_t sampleReplaceAckLatency();
   void forgetPendingReplace(OrderId orderId);
 
-  // Submit ack: when cfg.submitAckLatencyNs > 0, SUBMITTED fires
-  // immediately, ACCEPTED defers until the sampled deadline. The
-  // order is held aside until ACCEPTED, then runs through the
-  // existing book-add / queue-tracker / try-fill path.
-  void enqueuePendingSubmission(const Order& order);
+  // Submit ack: when the order's total deferral (wire latency plus
+  // cfg.submitAckLatencyNs) is positive, SUBMITTED fires immediately and
+  // ACCEPTED defers by `delayNs`. The order is held aside until ACCEPTED,
+  // then runs through the existing book-add / queue-tracker / try-fill path.
+  void enqueuePendingSubmission(const Order& order, int64_t delayNs);
   void finalizePendingSubmissions();
   int64_t sampleSubmitAckLatency();
+  // Order-side wire delay from the attached LatencyModel; 0 when none is
+  // attached. Negative draws are clamped -- an order cannot arrive before it
+  // was sent.
+  int64_t sampleOrderLatency();
   void finishSubmission(Order accepted, bool fromAck);
 
   Order* findPendingOrder(OrderId orderId);
@@ -547,6 +564,7 @@ class SimulatedExecutor : public IOrderExecutor
   VenueAvailability* _venue{nullptr};
   // Non-owning; the VenueStack (or the caller) outlives the executor.
   FeeSchedule* _fees{nullptr};
+  std::shared_ptr<LatencyModel> _latency{};
   enum class BufferedAction : uint8_t
   {
     SUBMIT = 0,
