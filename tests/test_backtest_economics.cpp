@@ -108,7 +108,7 @@ TEST(BacktestEconomics, IsolatedLiquidationReturnsSurvivingMarginToTheAccount)
   EXPECT_DOUBLE_EQ(engine.insuranceFundBalance(), 1'000'000.0);
 
   // 2,000.00 posted - 100.00 realised loss = 1,900.00 back to the account.
-  EXPECT_DOUBLE_EQ(account.equity(), 1900.00);
+  EXPECT_DOUBLE_EQ(account.equity().toDouble(), 1900.00);
 }
 
 // The same remainder, net of the liquidation fee the engine charges. At 25 bps
@@ -133,7 +133,7 @@ TEST(BacktestEconomics, IsolatedLiquidationReturnsMarginNetOfTheLiquidationFee)
 
   ASSERT_EQ(out.liquidationsCount, 1u);
   EXPECT_DOUBLE_EQ(out.insuranceFundDelta, 0.0);
-  EXPECT_NEAR(account.equity(), 1875.250000, 1e-9);
+  EXPECT_NEAR(account.equity().toDouble(), 1875.250000, 1e-9);
 }
 
 // Control, green today: the cross-margin walk of the same economic position
@@ -158,7 +158,7 @@ TEST(BacktestEconomics, CrossLiquidationKeepsTheSurvivingBalanceControl)
   ASSERT_EQ(out.liquidationsCount, 1u);
   EXPECT_EQ(account.positionCount(), 0u);
   EXPECT_DOUBLE_EQ(out.insuranceFundDelta, 0.0);
-  EXPECT_DOUBLE_EQ(account.equity(), 1900.00);
+  EXPECT_DOUBLE_EQ(account.equity().toDouble(), 1900.00);
 }
 
 // Guard, green today and it has to stay green: the remainder is only ever
@@ -186,7 +186,7 @@ TEST(BacktestEconomics, IsolatedLiquidationSendsANegativeRemainderToInsurance)
   ASSERT_EQ(out.liquidationsCount, 1u);
   EXPECT_DOUBLE_EQ(out.insuranceFundDelta, -1000.00);
   EXPECT_DOUBLE_EQ(engine.insuranceFundBalance(), 999'000.00);
-  EXPECT_DOUBLE_EQ(account.equity(), 0.00);
+  EXPECT_DOUBLE_EQ(account.equity().toDouble(), 0.00);
 }
 
 // ===========================================================================
@@ -464,7 +464,7 @@ TEST(BacktestEconomics, VenueFeeScheduleResolvesTheVolumeTierControl)
   stack.account().recordFill(/*tsNs=*/1'767'225'600'000'000'000LL,
                              /*notional=*/500'000'000.0);
 
-  EXPECT_DOUBLE_EQ(stack.account().rollingNotional30d(), 500'000'000.0);
+  EXPECT_DOUBLE_EQ(stack.account().rollingNotional30d().toDouble(), 500'000'000.0);
   EXPECT_EQ(stack.fees().currentTierIndex(), 8u);
 
   const auto [makerBps, takerBps] = stack.fees().currentBps(1'767'225'600'000'000'000LL);
