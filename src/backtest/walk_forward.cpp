@@ -21,13 +21,90 @@ WalkForwardRunner::WalkForwardRunner(const BacktestConfig& backtestConfig,
 {
 }
 
-void WalkForwardRunner::setStrategyFactory(StrategyFactory factory)
+void WalkForwardRunner::setParameterGrid(std::vector<std::vector<double>> axes)
 {
-  _factory = std::move(factory);
+  _grid = std::move(axes);
+}
+
+std::vector<std::vector<double>> WalkForwardRunner::gridPoints() const
+{
+  std::vector<std::vector<double>> points;
+  points.emplace_back();
+  if (!_factoryTakesParams)
+  {
+    if (!_grid.empty())
+    {
+      FLOX_LOG_ERROR(
+          "WalkForwardRunner: a parameter grid is set but the "
+          "strategy factory takes only a fold index, so no "
+          "parameter can reach the strategy; the grid is ignored");
+    }
+    return points;
+  }
+  for (const auto& axis : _grid)
+  {
+    if (axis.empty())
+    {
+      // An axis with no candidates would multiply the product by zero and
+      // leave nothing to evaluate. Treat it as "this parameter is not being
+      // searched" rather than cancelling the whole fold.
+      FLOX_LOG_WARN("WalkForwardRunner: empty parameter axis skipped");
+      continue;
+    }
+    std::vector<std::vector<double>> next;
+    next.reserve(points.size() * axis.size());
+    for (const auto& point : points)
+    {
+      for (double value : axis)
+      {
+        std::vector<double> extended = point;
+        extended.push_back(value);
+        next.push_back(std::move(extended));
+      }
+    }
+    points.swap(next);
+  }
+  return points;
 }
 
 namespace
 {
+
+struct GridSelection
+{
+  std::vector<double> params;
+  BacktestStats stats{};
+};
+
+// Evaluate every grid point on the train window and keep the best. Ranking is
+// on net PnL -- what the window actually kept after fees -- because that is
+// the number the fold reports and the one a walk-forward run is judged on. A
+// tie goes to the earlier grid point, so the selection is deterministic and
+// does not depend on the order the points happen to be visited in.
+template <typename RunWindowFn>
+GridSelection selectInSample(WalkForwardRunner::ParameterizedStrategyFactory& factory,
+                             const std::vector<std::vector<double>>& points,
+                             std::size_t foldIndex, RunWindowFn&& runWindow)
+{
+  GridSelection best;
+  bool haveBest = false;
+  for (const auto& point : points)
+  {
+    IStrategy* strategy = factory(foldIndex, point);
+    if (strategy == nullptr)
+    {
+      continue;
+    }
+    const BacktestStats stats = runWindow(strategy);
+    if (!haveBest || stats.netPnl > best.stats.netPnl)
+    {
+      best.params = point;
+      best.stats = stats;
+      haveBest = true;
+    }
+  }
+  return best;
+}
 
 BacktestStats runWindow(const BacktestConfig& cfg,
                         IStrategy* strategy,
@@ -86,6 +163,7 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
   }
   const std::size_t step = _wfConfig.step == 0 ? _wfConfig.testSize : _wfConfig.step;
   const std::size_t n = bars.size();
+  const std::vector<std::vector<double>> points = gridPoints();
 
   std::size_t foldIdx = 0;
 
@@ -108,13 +186,20 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
       f.testStartNs = bars[split].ts_ns;
       f.testEndNs = bars[f.testEndBar - 1].ts_ns;
 
-      IStrategy* trainStrat = _factory(f.foldIndex);
-      f.trainStats = runWindow(_backtestConfig, trainStrat, bars,
-                               f.trainStartBar, f.trainEndBar);
+      const GridSelection winner = selectInSample(
+          _factory, points, f.foldIndex,
+          [&](IStrategy* strategy)
+          {
+            return runWindow(_backtestConfig, strategy, bars, f.trainStartBar,
+                             f.trainEndBar);
+          });
+      f.trainStats = winner.stats;
 
-      IStrategy* testStrat = _factory(f.foldIndex);
-      f.testStats = runWindow(_backtestConfig, testStrat, bars,
-                              f.testStartBar, f.testEndBar);
+      // Out of sample on the winning point, built fresh so the test window
+      // starts from clean strategy state.
+      IStrategy* testStrat = _factory(f.foldIndex, winner.params);
+      f.testStats = runWindow(_backtestConfig, testStrat, bars, f.testStartBar,
+                              f.testEndBar);
 
       folds.push_back(f);
     }
@@ -141,13 +226,20 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
       f.testStartNs = bars[f.testStartBar].ts_ns;
       f.testEndNs = bars[f.testEndBar - 1].ts_ns;
 
-      IStrategy* trainStrat = _factory(f.foldIndex);
-      f.trainStats = runWindow(_backtestConfig, trainStrat, bars,
-                               f.trainStartBar, f.trainEndBar);
+      const GridSelection winner = selectInSample(
+          _factory, points, f.foldIndex,
+          [&](IStrategy* strategy)
+          {
+            return runWindow(_backtestConfig, strategy, bars, f.trainStartBar,
+                             f.trainEndBar);
+          });
+      f.trainStats = winner.stats;
 
-      IStrategy* testStrat = _factory(f.foldIndex);
-      f.testStats = runWindow(_backtestConfig, testStrat, bars,
-                              f.testStartBar, f.testEndBar);
+      // Out of sample on the winning point, built fresh so the test window
+      // starts from clean strategy state.
+      IStrategy* testStrat = _factory(f.foldIndex, winner.params);
+      f.testStats = runWindow(_backtestConfig, testStrat, bars, f.testStartBar,
+                              f.testEndBar);
 
       folds.push_back(f);
     }
@@ -182,6 +274,7 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
   }
   const std::size_t step = _wfConfig.step == 0 ? _wfConfig.testSize : _wfConfig.step;
   const std::size_t n = bars.size();
+  const std::vector<std::vector<double>> points = gridPoints();
 
   std::size_t foldIdx = 0;
 
@@ -204,13 +297,20 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
       f.testStartNs = barEndNs(bars[split]);
       f.testEndNs = barEndNs(bars[f.testEndBar - 1]);
 
-      IStrategy* trainStrat = _factory(f.foldIndex);
-      f.trainStats = runWindowBars(_backtestConfig, trainStrat, bars,
-                                   f.trainStartBar, f.trainEndBar);
+      const GridSelection winner = selectInSample(
+          _factory, points, f.foldIndex,
+          [&](IStrategy* strategy)
+          {
+            return runWindowBars(_backtestConfig, strategy, bars, f.trainStartBar,
+                                 f.trainEndBar);
+          });
+      f.trainStats = winner.stats;
 
-      IStrategy* testStrat = _factory(f.foldIndex);
-      f.testStats = runWindowBars(_backtestConfig, testStrat, bars,
-                                  f.testStartBar, f.testEndBar);
+      // Out of sample on the winning point, built fresh so the test window
+      // starts from clean strategy state.
+      IStrategy* testStrat = _factory(f.foldIndex, winner.params);
+      f.testStats = runWindowBars(_backtestConfig, testStrat, bars, f.testStartBar,
+                                  f.testEndBar);
 
       folds.push_back(f);
     }
@@ -237,13 +337,20 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
       f.testStartNs = barEndNs(bars[f.testStartBar]);
       f.testEndNs = barEndNs(bars[f.testEndBar - 1]);
 
-      IStrategy* trainStrat = _factory(f.foldIndex);
-      f.trainStats = runWindowBars(_backtestConfig, trainStrat, bars,
-                                   f.trainStartBar, f.trainEndBar);
+      const GridSelection winner = selectInSample(
+          _factory, points, f.foldIndex,
+          [&](IStrategy* strategy)
+          {
+            return runWindowBars(_backtestConfig, strategy, bars, f.trainStartBar,
+                                 f.trainEndBar);
+          });
+      f.trainStats = winner.stats;
 
-      IStrategy* testStrat = _factory(f.foldIndex);
-      f.testStats = runWindowBars(_backtestConfig, testStrat, bars,
-                                  f.testStartBar, f.testEndBar);
+      // Out of sample on the winning point, built fresh so the test window
+      // starts from clean strategy state.
+      IStrategy* testStrat = _factory(f.foldIndex, winner.params);
+      f.testStats = runWindowBars(_backtestConfig, testStrat, bars, f.testStartBar,
+                                  f.testEndBar);
 
       folds.push_back(f);
     }

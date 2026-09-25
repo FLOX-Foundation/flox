@@ -25987,7 +25987,22 @@
         },
         {
           "kind": "method",
+          "name": "gridPoints",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
+          "name": "parameterGrid",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
           "name": "run",
+          "parent": "WalkForwardRunner"
+        },
+        {
+          "kind": "method",
+          "name": "setParameterGrid",
           "parent": "WalkForwardRunner"
         },
         {

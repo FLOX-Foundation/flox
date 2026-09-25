@@ -172,10 +172,49 @@ fires; `on_trade` does not — same convention as
 `BacktestRunner.run_bars`. `bar_type` (default `0` = Time) and
 `bar_type_param` are forwarded for non-time bar aggregations.
 
+## Optimising per fold (C++)
+
+Give the C++ runner a parameter grid and a factory that takes parameters, and
+each fold becomes a walk-forward optimisation: every grid point is run on the
+train slice, the points are ranked, and the test slice runs on the winner.
+
+```cpp
+WalkForwardRunner runner(backtestConfig, wfConfig);
+
+// One axis of candidate values per parameter; the runner walks the
+// cartesian product, last axis varying fastest.
+runner.setParameterGrid({{10.0, 20.0, 50.0}, {1.5, 2.0}});
+
+runner.setStrategyFactory(
+    [&](std::size_t foldIndex, const std::vector<double>& params) -> IStrategy*
+    {
+      // params[0] from the first axis, params[1] from the second.
+      return makeStrategy(params[0], static_cast<int>(params[1]));
+    });
+
+const auto folds = runner.run(bars);
+// folds[i].trainStats is the winning point's in-sample result;
+// folds[i].testStats is that same point, out of sample.
+```
+
+Points are ranked on `net_pnl` — what the window kept after fees — and a tie
+goes to the earlier grid point, so the selection is deterministic. The
+factory is called once per grid point on the train slice and once more with
+the winning point, so the out-of-sample run starts from clean strategy state.
+Returning `nullptr` skips a point.
+
+A factory that takes only a fold index keeps the older behaviour: one
+strategy per window, no search. Setting a grid alongside that shape is
+reported in the log and ignored — nothing could carry a parameter into the
+strategy.
+
 ## What walk-forward does not do
 
-It does not optimise hyperparameters per fold. If you need that, run
-[grid search](grid-search.md) on each fold's train slice yourself,
-pick the best params, then evaluate on test. That pattern is the
-standard "walk-forward optimisation" but it is opinionated enough that
-the runner stays out of it — compose the primitives.
+The per-fold optimisation above is C++ only. The Python and Node runners
+still take a fold-index factory and run one strategy per window; to optimise
+from a binding, run [grid search](grid-search.md) on each fold's train slice
+yourself and evaluate the winner on test.
+
+The runner also has no pluggable objective: the in-sample ranking is
+`net_pnl`. Rank on Sharpe or drawdown by composing the grid-search primitives
+instead.
