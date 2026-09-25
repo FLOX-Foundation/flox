@@ -39,6 +39,11 @@ verify_one emit-capi  "$TOOL/golden/flox_capi.h"
 verify_one emit-codon "$TOOL/golden/flox_capi.codon"
 verify_one emit-llms  "$TOOL/golden/flox_capi.md"
 
+# Generated in place rather than into golden/: these two are the files the
+# C++ test and the Codon binding actually read.
+verify_one emit-layout-h     "$REPO/include/flox/capi/flox_capi_layout.h"
+verify_one emit-layout-codon "$REPO/codon/flox/layout.codon"
+
 PYTHONPATH="$TOOL" "$PY" -m flox_codegen.cli check \
   --expected "$LIVE" \
   --actual "$TOOL/golden/flox_capi.h" \
