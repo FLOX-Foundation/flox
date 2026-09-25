@@ -2,6 +2,11 @@
 # Mirrors include/flox/backtest/rate_limit_policy.h and the
 # pybind11 / NAPI / QuickJS surfaces.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_rate_limit_policy_create() -> cobj
 from C import flox_rate_limit_policy_destroy(cobj)
 from C import flox_rate_limit_policy_add_bucket(cobj, cobj, i64, u32, u32, u32, u32)

@@ -5,6 +5,11 @@
 # breach enumeration uses the breach_at accessor for the most recent
 # snapshot.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_portfolio_risk_create(cobj, f64) -> cobj
 from C import flox_portfolio_risk_destroy(cobj)
 from C import flox_portfolio_risk_update(cobj, cobj, cobj, u8)

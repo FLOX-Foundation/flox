@@ -6,6 +6,11 @@
 # group is a passive state machine; the strategy records submit /
 # fill / cancel events and reads back state + recommended actions.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_order_group_create(u64, u8) -> cobj
 from C import flox_order_group_destroy(cobj)
 from C import flox_order_group_add_market_leg(cobj, u32, u8, i64) -> u32

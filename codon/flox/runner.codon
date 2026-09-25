@@ -29,6 +29,11 @@
 #   runner.start()
 #   runner.on_trade(btc, price, qty, True, ts_ns)
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_registry_create() -> cobj
 from C import flox_registry_destroy(cobj)
 from C import flox_registry_add_symbol(cobj, cobj, cobj, float) -> u32

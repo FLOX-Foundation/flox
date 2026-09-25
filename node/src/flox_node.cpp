@@ -2,6 +2,7 @@
 
 #include <napi.h>
 
+#include "abi.h"
 #include "account.h"
 #include "aggregators.h"
 #include "amm_curve.h"
@@ -40,6 +41,13 @@
 
 Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
+  // Before anything else: a binding that loaded against the wrong
+  // library must not register a surface that reads wrong numbers.
+  if (!node_flox::registerAbi(env, exports))
+  {
+    return exports;
+  }
+
   node_flox::registerEngine(env, exports);
   node_flox::registerIndicators(env, exports);
   node_flox::registerBacktest(env, exports);

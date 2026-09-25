@@ -43,7 +43,14 @@ namespace flox
 FloxJsStrategy::FloxJsStrategy(const std::string& scriptPath, SymbolRegistry& registry)
     : _registry(registry)
 {
-  registerFloxBindings(_engine.context());
+  if (!registerFloxBindings(_engine.context()))
+  {
+    // The C ABI handshake failed: the engine would be driving a library
+    // that disagrees with the header it was built against, and the
+    // strategy would read wrong numbers rather than fail.
+    throw std::runtime_error("Failed to register flox bindings: " +
+                             _engine.getErrorMessage());
+  }
   loadStdlib();
   try
   {

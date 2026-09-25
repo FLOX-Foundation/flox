@@ -20,6 +20,7 @@
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/simulated_clock.h"
 #include "flox/backtest/simulated_executor.h"
+#include "flox/capi/abi_check.hpp"
 #include "flox/common.h"
 #include "flox/error/flox_error.h"
 #include "funding_schedule_bindings.h"
@@ -709,6 +710,27 @@ struct PyBar
 PYBIND11_MODULE(_flox_py, m)
 {
   m.doc() = "Flox -- Python bindings";
+
+  // The C ABI handshake flox_capi.h asks every caller to run once at
+  // startup. The extension compiles src/capi/flox_capi.cpp into itself
+  // today, so the two halves match by construction; an install that ever
+  // links a separately-built libflox would not, and the structs on that
+  // boundary have no reserved tail, so the skew would read as wrong
+  // numbers rather than a failed load. Refusing the import is the only
+  // point at which that is still cheap to notice.
+  {
+    std::string abiMessage;
+    if (!flox::capi::checkAbiVersion(FLOX_CAPI_ABI_VERSION, &abiMessage))
+    {
+      throw py::import_error(abiMessage);
+    }
+  }
+  m.attr("CAPI_ABI_VERSION") = static_cast<uint32_t>(FLOX_CAPI_ABI_VERSION);
+  m.def("capi_abi_version", []()
+        { return flox_capi_abi_version(); },
+        "C ABI version the loaded flox library reports. Equal to\n"
+        "CAPI_ABI_VERSION, which the extension was compiled against --\n"
+        "the import fails outright when they disagree.");
 
   flox_py::bindOrderTypes(m);
 

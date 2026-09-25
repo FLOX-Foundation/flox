@@ -33,6 +33,20 @@ export interface FloxError extends Error {
   readonly helpUrl: string;
 }
 
+// ── C ABI version ─────────────────────────────────────────────────────
+
+/**
+ * C ABI version this addon was compiled against. The addon compares it
+ * against {@link capiAbiVersion} when it loads and throws from
+ * `require` when the two disagree -- the structs on that boundary carry
+ * no reserved tail, so a skew reads as wrong numbers rather than a
+ * failed load.
+ */
+export const CAPI_ABI_VERSION: number;
+
+/** C ABI version the loaded flox library reports. */
+export function capiAbiVersion(): number;
+
 // ── Common types ──────────────────────────────────────────────────────
 
 /** Side of an order or trade. */

@@ -7,6 +7,11 @@
 # top-level summary that drives "did the tapes match" decisions in
 # CI scripts.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_tape_diff_create(cobj, cobj, u32, int) -> cobj
 from C import flox_tape_diff_destroy(cobj)
 from C import flox_tape_diff_left_count(cobj) -> int

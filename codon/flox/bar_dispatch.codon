@@ -3,6 +3,11 @@
 # the QuickJS BarDispatchRecorder class. All four bindings must
 # produce the same dispatch sequence on the same input.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_bar_dispatch_recorder_create() -> cobj
 from C import flox_bar_dispatch_recorder_destroy(cobj)
 from C import flox_bar_dispatch_recorder_add_time_seconds(cobj, u32) -> u32

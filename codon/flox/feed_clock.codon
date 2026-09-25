@@ -3,6 +3,11 @@
 # pybind11 / NAPI / QuickJS facades. Wraps the C ABI
 # flox_feed_clock_* exports.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_feed_clock_create(cobj, u32, u8, i64, u32, i64) -> cobj
 from C import flox_feed_clock_destroy(cobj)
 from C import flox_feed_clock_symbol_count(cobj) -> u32

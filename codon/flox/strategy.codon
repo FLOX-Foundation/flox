@@ -1,6 +1,11 @@
 # flox/strategy.codon -- Strategy base class for Codon.
 # Mirrors C++ flox::Strategy. Override on_trade/on_book_update to implement logic.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_strategy_create_p(u32, Ptr[u32], u32, cobj, cobj) -> cobj
 from C import flox_registry_get_symbol_name(cobj, u32, cobj, int, cobj, int) -> u8
 from C import flox_strategy_destroy(cobj)

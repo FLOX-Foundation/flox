@@ -5,6 +5,11 @@
 # extraction is left to the Python and Node bindings, where the
 # struct layout is easier to mirror.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_delta_book_encoder_create(u32) -> cobj
 from C import flox_delta_book_encoder_destroy(cobj)
 from C import flox_delta_book_encoder_reset(cobj, u32)

@@ -9,6 +9,11 @@ import math
 
 # ── C API: batch indicator functions ─────────────────────────────────
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_indicator_sma(Ptr[f64], int, int, Ptr[f64])
 from C import flox_indicator_ema(Ptr[f64], int, int, Ptr[f64])
 from C import flox_indicator_rma(Ptr[f64], int, int, Ptr[f64])

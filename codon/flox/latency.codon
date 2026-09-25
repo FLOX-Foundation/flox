@@ -4,6 +4,11 @@
 # is a sampling primitive: feed_delay / order_delay / fill_delay /
 # sample / reset.
 
+# The C ABI handshake runs when this module is imported: see
+# flox/abi.codon. Every module that declares a `from C import`
+# pulls it in, so no entry point into the binding skips it.
+from flox.abi import check_abi_version
+
 from C import flox_latency_constant_create(int, int, int) -> cobj
 from C import flox_latency_gaussian_create(f64, f64, f64, f64, f64, f64, int) -> cobj
 from C import flox_latency_exponential_create(f64, f64, f64, int) -> cobj
