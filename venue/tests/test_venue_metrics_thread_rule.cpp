@@ -190,7 +190,39 @@ struct Driver
 // ---------------------------------------------------------------------------
 // (1) The thread rule. A /metrics scrape samples the engine from the
 // connection thread that answered it, exactly as perimeter.md instructs, while
-// the consumer keeps matching. Under ThreadSanitizer this is a race today.
+// the consumer keeps matching.
+//
+// HOW LONG, AND WHY. A race is a probability, not an event, and the numbers
+// below are the ones that turned each flaw from sometimes-visible into
+// always-visible on this host, measured by putting the flaw back:
+//
+//   one pass, one sampler, 2000 rounds   an unlocked sampler: caught 0 of 3
+//   12 passes, 4 samplers, 1000 rounds   an unlocked sampler: caught 15 of 15
+//                                        a relaxed unlock:    caught 15 of 15
+//
+// The sampler thread is fresh on every pass, because a thread that has been
+// running for a while has already lost every interleaving it was going to
+// lose. Four samplers rather than one, because the narrowest flaw here -- an
+// unlock that publishes nothing, where the machine happens to publish the
+// bytes anyway -- only shows when threads alternate INSIDE the critical
+// section, and one reader never alternates with itself.
+//
+// None of this rests on ThreadSanitizer, which reports these particular races
+// on neither the mutated nor the honest tree: the consumer and the sampler
+// still meet on other locks, and an ordering through any one of them launders
+// the rest. What catches them is the row that does not balance, and that shows
+// in an ordinary release build.
+
+namespace
+{
+constexpr int kConcurrentPasses = 12;
+constexpr uint32_t kRoundsPerPass = 1000;
+constexpr int kSamplers = 4;
+// The admission table is retuned far more often than a hold is answered: one
+// row and a bare setter are cheap, so the pass has to be long enough for the
+// sampler to land inside a write.
+constexpr uint32_t kRetunesPerPass = 6000;
+}  // namespace
 
 TEST(VenueMetricsThreadRule, AMetricsThreadMaySampleTheAccessorsWhileOrdersFlow)
 {
@@ -210,63 +242,76 @@ TEST(VenueMetricsThreadRule, AMetricsThreadMaySampleTheAccessorsWhileOrdersFlow)
   ASSERT_EQ(d.eng.lastLookStats().size(), kMakers);
   ASSERT_EQ(d.eng.admissionProfiles().size(), kProfiles);
 
-  std::atomic<bool> stop{false};
   std::atomic<uint64_t> polls{0};
   std::atomic<uint64_t> inconsistent{0};
   std::atomic<uint64_t> sunk{0};
 
-  // What a deployment actually runs: sample the three accessors and fold them
-  // into a page. Nothing here writes to the engine.
-  std::thread metricsThread(
-      [&]
+  for (int pass = 0; pass < kConcurrentPasses; ++pass)
+  {
+    std::atomic<bool> stop{false};
+    const uint64_t pollsAtStart = polls.load(std::memory_order_relaxed);
+
+    // What a deployment actually runs: sample the three accessors and fold
+    // them into a page. Nothing here writes to the engine.
+    const auto sample = [&]
+    {
+      while (!stop.load(std::memory_order_relaxed))
       {
-        while (!stop.load(std::memory_order_relaxed))
+        uint64_t fold = 0;
+        for (const auto& [maker, st] : d.eng.lastLookStats())
         {
-          uint64_t fold = 0;
-          for (const auto& [maker, st] : d.eng.lastLookStats())
+          (void)maker;
+          // Invariants of one consistent row. Every hold this test takes is
+          // answered, and LastLook::record writes `held` and then exactly one
+          // of accepted/rejected, so a row at rest always balances. A reader
+          // that lands between those two writes sees it not balance -- which
+          // is the whole of the finding, visible without a sanitizer.
+          if (st.held != st.accepted + st.rejected)
           {
-            (void)maker;
-            // Invariants of one consistent row. Every hold this test takes is
-            // answered, and LastLook::record writes `held` and then exactly one
-            // of accepted/rejected, so a row at rest always balances. A reader
-            // that lands between those two writes sees it not balance -- which
-            // is the whole of the finding, visible without a sanitizer.
-            if (st.held != st.accepted + st.rejected)
-            {
-              inconsistent.fetch_add(1, std::memory_order_relaxed);
-            }
-            if (st.rejectedAdverse + st.rejectedFavourable > st.rejected)
-            {
-              inconsistent.fetch_add(1, std::memory_order_relaxed);
-            }
-            fold += st.held + st.accepted + st.rejected;
+            inconsistent.fetch_add(1, std::memory_order_relaxed);
           }
-          for (const auto& [account, profile] : d.eng.admissionProfiles())
+          if (st.rejectedAdverse + st.rejectedFavourable > st.rejected)
           {
-            fold += account + profile.allowedTypes + profile.allowedTif + profile.deny;
+            inconsistent.fetch_add(1, std::memory_order_relaxed);
           }
-          fold += d.eng.restingOrderCount();
-          sunk.fetch_add(fold, std::memory_order_relaxed);
-          polls.fetch_add(1, std::memory_order_relaxed);
+          fold += st.held + st.accepted + st.rejected;
         }
-      });
+        for (const auto& [account, profile] : d.eng.admissionProfiles())
+        {
+          fold += account + profile.allowedTypes + profile.allowedTif + profile.deny;
+        }
+        fold += d.eng.restingOrderCount();
+        sunk.fetch_add(fold, std::memory_order_relaxed);
+        polls.fetch_add(1, std::memory_order_relaxed);
+      }
+    };
 
-  // Do not start writing until the reader is actually reading, so the two
-  // threads overlap rather than run one after the other.
-  while (polls.load(std::memory_order_relaxed) == 0)
-  {
-    std::this_thread::yield();
+    std::vector<std::thread> samplers;
+    for (int i = 0; i < kSamplers; ++i)
+    {
+      samplers.emplace_back(sample);
+    }
+
+    // Do not start writing until a sampler is actually sampling, so the
+    // threads overlap rather than run one after the other.
+    while (polls.load(std::memory_order_relaxed) == pollsAtStart)
+    {
+      std::this_thread::yield();
+    }
+
+    for (uint32_t round = 0; round < kRoundsPerPass; ++round)
+    {
+      d.episode(1 + (round % kMakers), /*confirm=*/(round % 3) == 0);
+      d.setProfile(kProfileBase + (round % kProfiles), round);
+      d.churnRestingOrders(round);
+    }
+
+    stop.store(true, std::memory_order_relaxed);
+    for (auto& t : samplers)
+    {
+      t.join();
+    }
   }
-
-  for (uint32_t round = 0; round < 2000; ++round)
-  {
-    d.episode(1 + (round % kMakers), /*confirm=*/(round % 3) == 0);
-    d.setProfile(kProfileBase + (round % kProfiles), round);
-    d.churnRestingOrders(round);
-  }
-
-  stop.store(true, std::memory_order_relaxed);
-  metricsThread.join();
 
   EXPECT_GT(polls.load(), 0u);
   EXPECT_EQ(inconsistent.load(), 0u)
@@ -275,23 +320,151 @@ TEST(VenueMetricsThreadRule, AMetricsThreadMaySampleTheAccessorsWhileOrdersFlow)
 }
 
 // ---------------------------------------------------------------------------
+// (1b) The admission table on its own.
+//
+// In the test above both sides of every round also pass through the last-look
+// lock, which orders them by accident: a setter that takes no lock of its own
+// is hidden behind somebody else's. Here the consumer does NOTHING but retune
+// accounts, so the admission table is the only thing shared and the only lock
+// that can order it is its own.
+//
+// And the sampled row is checked, not just folded into a sum. Each profile is
+// written as one of two triples whose three fields all differ, and all three
+// are set together; a row that comes back mixing one triple's allowedTypes
+// with the other's allowedTif was copied part-way through a write. That is the
+// same failure as an unbalanced LastLookStats row, in the table that had no
+// value check at all.
+
+namespace
+{
+struct Triple
+{
+  uint32_t allowedTypes;
+  uint32_t allowedTif;
+  uint8_t deny;
+};
+
+// Never all-zero (that erases the row), and no field value is shared between
+// the two, so any mixture of them is recognisable.
+constexpr uint64_t kHotAccount = kProfileBase;
+constexpr Triple kProfileA{0x000000F0u, 0x0000000Fu, AdmissionDeny::DenyResting};
+constexpr Triple kProfileB{0x0F000000u, 0x000000F0u, AdmissionDeny::DenyQuote};
+
+bool isWhole(const AdmissionProfile& p)
+{
+  const auto matches = [&p](const Triple& t)
+  { return p.allowedTypes == t.allowedTypes && p.allowedTif == t.allowedTif && p.deny == t.deny; };
+  return matches(kProfileA) || matches(kProfileB);
+}
+}  // namespace
+
+TEST(VenueMetricsThreadRule, AMetricsThreadMaySampleAdmissionProfilesWhileTheyAreRetuned)
+{
+  Driver d;
+
+  const auto put = [&d](uint64_t account, const Triple& t)
+  {
+    SetAdmissionProfile p{};
+    p.symbol = SYM;
+    p.account = account;
+    p.profile.allowedTypes = t.allowedTypes;
+    p.profile.allowedTif = t.allowedTif;
+    p.profile.deny = t.deny;
+    d.eng.submit(InboundCommand{p}, ++d.ts);
+  };
+
+  // ONE account, retuned over and over. A table of many rows spreads the
+  // writes over many cache lines and the sampler's copy over many reads, and
+  // the two stop landing on each other: measured here, sixteen rows never
+  // caught a torn row in four million writes and one row caught thousands.
+  // One account being retuned while the page is sampled is also the shape of
+  // the real thing -- a risk desk tightening one counterparty.
+  //
+  // The row exists before the sampler starts, so every concurrent write is an
+  // assignment into it and never an insert that would rehash under a reader.
+  put(kHotAccount, kProfileA);
+  ASSERT_EQ(d.eng.admissionProfiles().size(), 1u);
+
+  std::atomic<uint64_t> polls{0};
+  std::atomic<uint64_t> torn{0};
+  std::atomic<uint64_t> rows{0};
+
+  for (int pass = 0; pass < kConcurrentPasses; ++pass)
+  {
+    std::atomic<bool> stop{false};
+    const uint64_t pollsAtStart = polls.load(std::memory_order_relaxed);
+
+    const auto sample = [&]
+    {
+      while (!stop.load(std::memory_order_relaxed))
+      {
+        const auto page = d.eng.admissionProfiles();
+        for (const auto& [account, profile] : page)
+        {
+          (void)account;
+          if (!isWhole(profile))
+          {
+            torn.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+        rows.fetch_add(page.size(), std::memory_order_relaxed);
+        polls.fetch_add(1, std::memory_order_relaxed);
+      }
+    };
+
+    std::vector<std::thread> samplers;
+    for (int i = 0; i < kSamplers; ++i)
+    {
+      samplers.emplace_back(sample);
+    }
+    while (polls.load(std::memory_order_relaxed) == pollsAtStart)
+    {
+      std::this_thread::yield();
+    }
+
+    for (uint32_t round = 0; round < kRetunesPerPass; ++round)
+    {
+      put(kHotAccount, (round % 2) == 0 ? kProfileB : kProfileA);
+    }
+
+    stop.store(true, std::memory_order_relaxed);
+    for (auto& t : samplers)
+    {
+      t.join();
+    }
+  }
+
+  EXPECT_GT(polls.load(), 0u);
+  EXPECT_GT(rows.load(), 0u);
+  EXPECT_EQ(torn.load(), 0u)
+      << "a sampled admission row mixed the two profiles: it was copied while it was "
+         "being written";
+  // The table is whole and unchanged when the dust settles.
+  const auto settled = d.eng.admissionProfiles();
+  ASSERT_EQ(settled.size(), 1u);
+  EXPECT_TRUE(isWhole(settled.at(kHotAccount)));
+}
+
+// ---------------------------------------------------------------------------
 // (2) What the reader is handed. A reference into live storage is not a
 // sample: it keeps moving while the page is being built, so two series on one
 // page can come from two different moments, and nothing the reader does can
 // pin it.
 //
-// needs: const std::unordered_map<uint64_t, LastLookStats> MatchingEngine::lastLookStats() const;
-// needs: const std::unordered_map<uint64_t, AdmissionProfile> MatchingEngine::admissionProfiles() const;
-//        (by value -- a snapshot taken under the consumer-thread rule, or a copy)
+// The surface these two hold the engine to:
+//   std::unordered_map<uint64_t, LastLookStats>    lastLookStats() const;
+//   std::unordered_map<uint64_t, AdmissionProfile> admissionProfiles() const;
+// By value, and taken under the rule that keeps it coherent -- a copy made
+// while the consumer is writing is a snapshot of nothing.
 
 TEST(VenueMetricsThreadRule, TheAccessorsHandOutASnapshotNotLiveStorage)
 {
   EXPECT_FALSE(std::is_reference_v<decltype(std::declval<const MatchingEngine<MatchingBook>&>()
                                                 .lastLookStats())>)
-      << "needs: lastLookStats() returning a snapshot by value";
+      << "lastLookStats() has to hand out a snapshot, not a reference into live storage";
   EXPECT_FALSE(std::is_reference_v<decltype(std::declval<const MatchingEngine<MatchingBook>&>()
                                                 .admissionProfiles())>)
-      << "needs: admissionProfiles() returning a snapshot by value";
+      << "admissionProfiles() has to hand out a snapshot, not a reference into live storage";
 
   Driver d;
   d.primeReference();

@@ -107,6 +107,86 @@ std::string damagedCopy(const std::string& stem, const std::vector<uint8_t>& src
 // The stamp byte of a record, by its offset in the framing: [ts:8][stamp:1].
 constexpr size_t kStampByte = 8;
 
+// Zero the crc trailer of record `idx`. A hole in the file, or a page that
+// never made it to disk, reads back as zeros -- and a zero is a crc value like
+// any other, not a statement that the record was not checked.
+std::string zeroedCrcCopy(const std::string& stem, const std::vector<uint8_t>& src, size_t idx)
+{
+  auto bytes = src;
+  const size_t at = idx * kRecordSize + kRecordSize - sizeof(uint32_t);
+  for (size_t i = 0; i < sizeof(uint32_t); ++i)
+  {
+    bytes[at + i] = 0;
+  }
+  const std::string path = tmpPath(stem, ".bin");
+  writeAll(path, bytes);
+  return path;
+}
+
+std::string truncatedCopy(const std::string& stem, const std::vector<uint8_t>& src, size_t keep)
+{
+  const std::string path = tmpPath(stem, ".bin");
+  writeAll(path, std::vector<uint8_t>(src.begin(), src.begin() + static_cast<long>(keep)));
+  return path;
+}
+
+// A journal of exactly one record: the file that has no prefix to fall back
+// on, where "return what was read" and "refuse the file" are different answers.
+std::string oneRecordJournal(const std::string& stem)
+{
+  const std::string path = tmpPath(stem, ".bin");
+  std::remove(path.c_str());
+  {
+    Journal j(path, Journal::Sync::Off, Journal::OpenMode::Truncate);
+    j.append(tick(), 1);
+    j.flush();
+  }
+  return path;
+}
+
+// The largest body any command in this build occupies on disk, derived the way
+// the loader derives its own bound -- from the tag table, not from a number
+// written down twice.
+uint32_t largestBodySize()
+{
+  uint32_t m = 0;
+  for (unsigned t = 0; t < 256; ++t)
+  {
+    const uint32_t e = Journal::expectedBodySizeForTag(static_cast<uint8_t>(t));
+    m = e > m ? e : m;
+  }
+  return m;
+}
+
+// A header whose length field names a body far larger than any command this
+// build writes, plus `filler` bytes behind it. The crc is not reachable -- the
+// bytes it would cover are not there -- so the length in the header is the
+// only thing the loader has, and it is the one thing it must not size a read
+// from.
+void appendOversizedHeader(const std::string& path, size_t filler)
+{
+  std::vector<uint8_t> rec;
+  const auto put = [&rec](const void* p, size_t n)
+  {
+    const auto* b = static_cast<const uint8_t*>(p);
+    rec.insert(rec.end(), b, b + n);
+  };
+  const int64_t ts = 4242;
+  const uint8_t stamp = kRecordStamp;
+  const uint8_t tag = wireTagOf(tick());
+  const uint32_t len = largestBodySize() + (1u << 20);
+  put(&ts, sizeof ts);
+  put(&stamp, sizeof stamp);
+  put(&tag, sizeof tag);
+  put(&len, sizeof len);
+  rec.insert(rec.end(), filler, 0xAB);
+
+  std::FILE* f = std::fopen(path.c_str(), "ab");
+  ASSERT_NE(f, nullptr);
+  std::fwrite(rec.data(), 1, rec.size(), f);
+  std::fclose(f);
+}
+
 // A record this build cannot read because it was written by a build that
 // numbered the format differently -- and whose crc PASSES, so nothing about it
 // looks damaged. kRecordVersion moves by two per format change, so
@@ -139,10 +219,10 @@ void appendForeignVersionRecord(const std::string& path)
 }
 
 // ---------------------------------------------------------------------------
-// The reporting surface these tests need and the tree does not have yet.
+// The reporting surface these tests hold the loader to.
 //
-// needs: enum class Journal::Tail : uint8_t { Intact, Torn, Corrupt };
-// needs: struct Journal::LoadReport {
+// Journal::Tail : uint8_t { Intact, Torn, Corrupt };
+// Journal::LoadReport {
 //          std::vector<std::pair<int64_t, InboundCommand>> records;
 //          Tail tail;             // Intact: the read ended on a record boundary
 //                                 // Torn:   the damaged/short record is the LAST
@@ -152,12 +232,13 @@ void appendForeignVersionRecord(const std::string& path)
 //          uint64_t stopOffset;   // byte offset at which the first unrecovered
 //                                 // record begins (== file size when Intact)
 //        };
-// needs: static LoadReport Journal::loadReported(const std::string& path);
+// static LoadReport Journal::loadReported(const std::string& path);
 //
 // loadTimed keeps its signature and its throw-by-name behaviour for a foreign
 // version and an unknown tag; loadReported is the same read with the stop
-// described instead of implied. Detected by SFINAE so this file builds against
-// the tree as it stands and the assertion, not the compiler, is what fails.
+// described instead of implied. Detected by SFINAE rather than called
+// outright, so that a tree without it fails the assertion below -- naming what
+// is missing -- instead of failing to compile.
 template <class J, class = void>
 struct HasLoadReported : std::false_type
 {
@@ -295,6 +376,10 @@ void expectIntactReport(const std::string& path, size_t wantRecords)
     const auto r = J::loadReported(path);
     EXPECT_EQ(r.records.size(), wantRecords);
     EXPECT_EQ(r.tail, J::Tail::Intact);
+    // The offset is not "unused when nothing is wrong": it is how far the read
+    // got, and on a healthy file that is the whole of it. Left at zero it says
+    // the read stopped at the start of a journal it in fact read to the end.
+    EXPECT_EQ(r.stopOffset, static_cast<uint64_t>(std::filesystem::file_size(path)));
   }
   else
   {
@@ -307,7 +392,8 @@ void expectIntactReport(const std::string& path, size_t wantRecords)
 TEST(VenueJournalTornTail, ADamagedTailIsReportedAsTorn)
 {
   ASSERT_TRUE(HasLoadReported<Journal>::value)
-      << "needs: Journal::loadReported(path) -> LoadReport{records, Tail, stopOffset}";
+      << "the loader must report its stop: loadReported(path) -> "
+         "LoadReport{records, Tail, stopOffset}";
 
   const std::string src = goodJournal("venue_report_torn_src");
   const auto bytes = readAll(src);
@@ -325,7 +411,8 @@ TEST(VenueJournalTornTail, ADamagedTailIsReportedAsTorn)
 TEST(VenueJournalTornTail, AShortFinalRecordIsReportedAsTorn)
 {
   ASSERT_TRUE(HasLoadReported<Journal>::value)
-      << "needs: Journal::loadReported(path) -> LoadReport{records, Tail, stopOffset}";
+      << "the loader must report its stop: loadReported(path) -> "
+         "LoadReport{records, Tail, stopOffset}";
 
   const std::string src = goodJournal("venue_report_short_src");
   auto bytes = readAll(src);
@@ -346,7 +433,8 @@ TEST(VenueJournalTornTail, AShortFinalRecordIsReportedAsTorn)
 TEST(VenueJournalTornTail, DamageInTheMiddleIsReportedAsCorruptionAtItsOffset)
 {
   ASSERT_TRUE(HasLoadReported<Journal>::value)
-      << "needs: Journal::loadReported(path) -> LoadReport{records, Tail, stopOffset}";
+      << "the loader must report its stop: loadReported(path) -> "
+         "LoadReport{records, Tail, stopOffset}";
 
   const std::string src = goodJournal("venue_report_mid_src");
   const auto bytes = readAll(src);
@@ -369,7 +457,8 @@ TEST(VenueJournalTornTail, DamageInTheMiddleIsReportedAsCorruptionAtItsOffset)
 TEST(VenueJournalTornTail, AnUndamagedJournalReportsAnIntactTail)
 {
   ASSERT_TRUE(HasLoadReported<Journal>::value)
-      << "needs: Journal::loadReported(path) -> LoadReport{records, Tail, stopOffset}";
+      << "the loader must report its stop: loadReported(path) -> "
+         "LoadReport{records, Tail, stopOffset}";
 
   const std::string path = goodJournal("venue_report_intact");
   expectIntactReport<Journal>(path, kGood);
@@ -460,4 +549,168 @@ TEST(VenueJournalTornTail, AnUnversionedRecordWithAValidCrcIsStillNamedAsVersion
       JournalFormatError);
 
   std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// (5) The crc is a value, not a flag. A record whose stored crc reads zero --
+// a hole in the file, a page that never made it to disk -- has not been
+// checked and passed; it has not been checked at all. Believing it puts the
+// loader straight back where it started, taking a damaged header at its word.
+
+TEST(VenueJournalTornTail, AZeroedCrcTrailerOnTheLastRecordIsATornTail)
+{
+  const std::string src = goodJournal("venue_zero_crc_tail_src");
+  const auto bytes = readAll(src);
+  const std::string path = zeroedCrcCopy("venue_zero_crc_tail", bytes, kGood - 1);
+
+  std::vector<std::pair<int64_t, InboundCommand>> records;
+  EXPECT_NO_THROW({ records = Journal::loadTimed(path); });
+  EXPECT_EQ(records.size(), kGood - 1) << "a zero crc was taken as a verified record";
+  expectTornTailReport<Journal>(path, kGood - 1, (kGood - 1) * kRecordSize);
+
+  std::remove(src.c_str());
+  std::remove(path.c_str());
+}
+
+TEST(VenueJournalTornTail, AZeroedCrcTrailerInTheMiddleIsCorruption)
+{
+  const std::string src = goodJournal("venue_zero_crc_mid_src");
+  const auto bytes = readAll(src);
+  constexpr size_t kBad = 3;
+  const std::string path = zeroedCrcCopy("venue_zero_crc_mid", bytes, kBad);
+
+  EXPECT_EQ(Journal::loadTimed(path).size(), kBad);
+  expectCorruptReport<Journal>(path, kBad, kBad * kRecordSize);
+
+  std::remove(src.c_str());
+  std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// (6) A tail too short to be a header at all. The earlier short-record test
+// leaves 16 bytes of a 22-byte record, which is still more than one header, so
+// it never reaches the branch that has nothing to read. Three bytes do.
+
+TEST(VenueJournalTornTail, ATailShorterThanOneHeaderIsStillTorn)
+{
+  const std::string src = goodJournal("venue_stub_tail_src");
+  const auto bytes = readAll(src);
+  const std::string path =
+      truncatedCopy("venue_stub_tail", bytes, (kGood - 1) * kRecordSize + 3);
+
+  std::vector<std::pair<int64_t, InboundCommand>> records;
+  EXPECT_NO_THROW({ records = Journal::loadTimed(path); });
+  EXPECT_EQ(records.size(), kGood - 1);
+  // Three bytes left is not a clean shutdown: an operator reading Intact here
+  // would take a crashed venue for a stopped one.
+  expectTornTailReport<Journal>(path, kGood - 1, (kGood - 1) * kRecordSize);
+
+  std::remove(src.c_str());
+  std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// (7) The other half of "the largest intact prefix": a prefix has to be a
+// prefix OF SOMETHING. A file whose very first record is there and does not
+// verify reads as nothing at all, and handing back an empty result is not a
+// prefix -- it is the whole history gone with nothing said, which is what
+// recovery would then serve.
+
+TEST(VenueJournalTornTail, AFileWhoseFirstRecordDoesNotVerifyIsRefusedByName)
+{
+  const std::string src = oneRecordJournal("venue_first_bad_src");
+  const auto bytes = readAll(src);
+  ASSERT_EQ(bytes.size(), kRecordSize);
+  const std::string path = damagedCopy("venue_first_bad", bytes, 0, Journal::kHeaderSize + 1);
+
+  EXPECT_THROW(
+      {
+        try
+        {
+          Journal::loadTimed(path);
+        }
+        catch (const JournalFormatError& e)
+        {
+          const std::string what = e.what();
+          EXPECT_NE(what.find(path), std::string::npos) << what;
+          EXPECT_NE(what.find("record 0"), std::string::npos) << what;
+          throw;
+        }
+      },
+      JournalFormatError);
+
+  std::remove(src.c_str());
+  std::remove(path.c_str());
+}
+
+// The exception to that rule, and it has to stay an exception: a file that
+// simply ENDS inside a record of our own shape was not laid out by other
+// rules, it was an append caught by a power cut. A segment rotated and then
+// cut inside its first record must still let the shard start, on an empty
+// prefix.
+TEST(VenueJournalTornTail, ASegmentCutInsideItsFirstRecordLoadsAsAnEmptyTornPrefix)
+{
+  const std::string src = oneRecordJournal("venue_first_cut_src");
+  const auto bytes = readAll(src);
+
+  const std::string inBody =
+      truncatedCopy("venue_first_cut_body", bytes, Journal::kHeaderSize + 2);
+  std::vector<std::pair<int64_t, InboundCommand>> records;
+  EXPECT_NO_THROW({ records = Journal::loadTimed(inBody); })
+      << "a segment cut mid-append is a crash, not an unreadable file";
+  EXPECT_EQ(records.size(), 0u);
+  expectTornTailReport<Journal>(inBody, 0u, 0u);
+
+  // Cut before even a whole header: the same answer, for the same reason.
+  const std::string inHeader = truncatedCopy("venue_first_cut_header", bytes, 3);
+  EXPECT_NO_THROW({ records = Journal::loadTimed(inHeader); });
+  EXPECT_EQ(records.size(), 0u);
+  expectTornTailReport<Journal>(inHeader, 0u, 0u);
+
+  // And a shard comes up on it rather than refusing to start.
+  venue::SymbolConfig c;
+  c.id = SYM;
+  c.tickSize = Price::fromDouble(0.01);
+  c.minPrice = Price::fromDouble(50.0);
+  c.maxPrice = Price::fromDouble(150.0);
+  auto shard = std::make_unique<SequencedShard<>>(c, inBody, MatchingBook{}, Journal::Sync::Off);
+  shard->setOwnThreads(false);
+  EXPECT_NO_THROW({ shard->start(); });
+  EXPECT_TRUE(shard->ready());
+  EXPECT_EQ(shard->recoveredCommands(), 0u);
+  shard->stop();
+  shard.reset();
+
+  std::remove(src.c_str());
+  std::remove(inBody.c_str());
+  std::remove(inHeader.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// (8) The length field is the one number in the header that has to be doubted
+// before the crc can be reached, because the crc lives behind whatever it
+// says. Bounded by the largest body this build writes: a truncated record of
+// ours still names one of our lengths, so a length past that bound describes
+// no record this build could have produced.
+
+TEST(VenueJournalTornTail, AHeaderLengthPastTheLargestBodyIsNotBelieved)
+{
+  // As record 0: nothing was read, so the file is refused by name rather than
+  // coming back as an empty, plausible-looking prefix.
+  const std::string alone = tmpPath("venue_len_bound_alone", ".bin");
+  std::remove(alone.c_str());
+  writeAll(alone, {});
+  appendOversizedHeader(alone, /*filler=*/1);
+  EXPECT_THROW(Journal::loadTimed(alone), JournalFormatError)
+      << "a length no record of ours could carry was sized a read from";
+
+  // Behind a good prefix, with bytes after it: damage in the middle of a file,
+  // not a tail cut short, and the offset is where the hole starts.
+  const std::string after = goodJournal("venue_len_bound_after");
+  appendOversizedHeader(after, /*filler=*/1);
+  EXPECT_EQ(Journal::loadTimed(after).size(), kGood);
+  expectCorruptReport<Journal>(after, kGood, kGood * kRecordSize);
+
+  std::remove(alone.c_str());
+  std::remove(after.c_str());
 }
