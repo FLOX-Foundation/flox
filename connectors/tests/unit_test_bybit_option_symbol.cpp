@@ -113,6 +113,14 @@ TEST(BybitOptionSymbol, UsdtSuffixExactLengthDoesNotUB)
 // trust the same helper the bug lives in.
 TEST(BybitOptionSymbol, ExpiryIsInWallClockDomain)
 {
+  // The mapping the conversion reads is anchored by Engine::start(), before
+  // any connector runs. The connector used to anchor it lazily for itself
+  // because nothing on the startup path did; this test parses a symbol with
+  // no engine around it, so it anchors the process itself. The call is
+  // idempotent and takes no reading if some other test in this binary got
+  // there first.
+  init_timebase_mapping();
+
   auto info = parseOptionSymbol("BTC-30AUG24-50000-C", "bybit");
   ASSERT_TRUE(info.has_value());
   ASSERT_TRUE(info->expiry.has_value());

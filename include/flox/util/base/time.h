@@ -152,12 +152,28 @@ inline UnixNanos nowUnixNanos() noexcept
 inline MonoNanos nowMonoNanos() noexcept { return MonoNanos::fromRaw(nowNsMonotonic()); }
 inline int64_t nsToMsFloor(int64_t ns) noexcept { return ns / kNsPerMs; }
 
+// The distance between the two clock domains, in nanoseconds. Zero means
+// unanchored: fromUnixMs/fromUnixNs then hand back a wall-clock epoch wearing
+// a steady-clock label, which is decades adrift and the exact failure the
+// typed clocks above exist to prevent.
 inline std::atomic<int64_t>& unix_to_flox_offset_ns()
 {
   static std::atomic<int64_t> off{0};
   return off;
 }
 
+// Anchors the mapping, once per process. Engine::start() calls it before any
+// subsystem or connector runs, so no component has to remember to.
+//
+// A second call leaves an established offset alone rather than taking a fresh
+// reading. The two clocks tick in lockstep once anchored at any single
+// instant, so a second reading would only differ by however far they have
+// drifted apart since -- and applying that difference would move every
+// timestamp converted after it relative to every one converted before, which
+// is worse than a uniform error: a tape whose timestamps change meaning
+// halfway through cannot be read in time order at all. This is what makes a
+// lazy call from a connector, an embedding that starts the engine twice, or a
+// second engine in the same process harmless.
 inline void init_timebase_mapping()
 {
   using namespace std::chrono;
@@ -165,7 +181,10 @@ inline void init_timebase_mapping()
   const auto flox_ns = duration_cast<nanoseconds>(now().time_since_epoch()).count();
   const auto unix_ns = duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count();
 
-  unix_to_flox_offset_ns().store(flox_ns - unix_ns, std::memory_order_relaxed);
+  int64_t unanchored = 0;
+  unix_to_flox_offset_ns().compare_exchange_strong(unanchored, flox_ns - unix_ns,
+                                                   std::memory_order_relaxed,
+                                                   std::memory_order_relaxed);
 }
 
 inline int64_t unixMsToFloxNs(int64_t ms_epoch) noexcept
