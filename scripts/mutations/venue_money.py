@@ -172,6 +172,12 @@ MUTATIONS: list[Mutation] = [
         why="the maker and taker rates go back to two separate currentBps() calls instead of "
             "the one lookup the fix merged them into -- the exact shape the fix's own comment "
             "says it removed so the two sides of a print cannot land in different tiers",
+        equivalent_reason="FeeSchedule::currentBps mutates only through evictExpired(nowNs), "
+                          "which has nothing left to evict on a second call with the same "
+                          "timestamp, and resolveTierIndex is a pure read; with a bound "
+                          "Account there is no eviction at all. Two lookups at one "
+                          "timestamp return the same pair by construction, so no test can "
+                          "distinguish them; the idempotence they rely on is pinned instead",
         file=FEES_H,
         old="""  std::pair<int64_t, int64_t> ratesAt(int64_t nowRaw)
   {
