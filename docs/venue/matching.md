@@ -199,8 +199,9 @@ the margin requirement are changed with the sequenced `SetRiskLimits` command
 carries, so raising one cannot zero another by omission.
 
 One account's own caps are set with the sequenced `SetAccountRiskLimits`
-command: the fat-finger size and notional, the open-order cap and the position
-cap, under a field mask like `SetRiskLimits`'. Where both the symbol's and the
+command (control-plane verb `setAccountRiskLimits`): the fat-finger size and
+notional, the open-order cap and the position cap, under a field mask like
+`SetRiskLimits`'. Where both the symbol's and the
 account's limit are set, the tighter one binds. The record is journaled before
 it is applied and written into the snapshot's config section, so a replay and
 a recovered engine refuse exactly the orders the live one refused -- a limit
@@ -266,7 +267,16 @@ venue.submit(InboundCommand{a}, tsNs);
 
 It is a command, not a setter, for the same reason as everything else here: a
 correction applied directly to the engine reverts on restart and a replica
-replaying the journal never sees it.
+replaying the journal never sees it. The operator sends it through the
+control-plane verb `adjustPosition`, which forwards exactly this record:
+
+```json
+{"method":"adjustPosition","symbol":1,"account":1,"qtyDelta":-2.0,
+ "entry":98.25,"reason":"counterpartyReport","note":"LP fill 88213"}
+```
+
+`reason` is required -- the record is the only explanation a correction has --
+and `entry` omitted keeps the average entry rather than zeroing it.
 
 **It is deliberately not a trade.** No PnL is realized, no fee is charged, the
 ledger is not touched and posted margin is left alone. The discrepancy being

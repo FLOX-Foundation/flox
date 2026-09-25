@@ -127,7 +127,10 @@ reads. Nothing extra is needed.
 
 **Closing.** `ForceClosePosition` closes a position on the owner's decision,
 settling through exactly the path the engine's own sweep uses, so the events
-and the replay are identical either way. Pair it with
+and the replay are identical either way. The control-plane verb
+`forceClosePosition` sends it from outside the process
+(`{"method":"forceClosePosition","symbol":1,"account":7,"qty":2.0}`; an
+unnamed `qty` closes the whole position). Pair it with
 `SymbolConfig::externalLiquidation`, which stops the engine liquidating on its
 own: two systems closing the same position from different numbers is worse than
 either doing it alone.
