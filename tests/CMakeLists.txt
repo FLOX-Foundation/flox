@@ -291,6 +291,8 @@ add_flox_test(test_option_quote_record)
 add_flox_test(test_option_quote_io)
 
 if(FLOX_BUILD_CAPI)
+  add_flox_test(test_capi_event_layout)
+  target_link_libraries(test_capi_event_layout PRIVATE flox_capi)
   add_flox_test(test_capi_registry)
   target_link_libraries(test_capi_registry PRIVATE flox_capi)
   add_flox_test(test_capi_dex_amount)
