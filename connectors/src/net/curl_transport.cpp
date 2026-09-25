@@ -11,7 +11,6 @@
 
 #include <flox/log/log.h>
 
-#include <algorithm>
 #include <exception>
 #include <stdexcept>
 #include <string>
@@ -91,10 +90,8 @@ void CurlTransport::post(std::string_view url, std::string_view body,
                          MoveOnlyFunction<void(std::string_view)> onSuccess,
                          MoveOnlyFunction<void(std::string_view)> onError)
 {
-  long connectSec = std::max(1L, static_cast<long>(_timeoutConfig.connectTimeoutMs / 1000));
-  long requestSec = std::max(1L, static_cast<long>(_timeoutConfig.requestTimeoutMs / 1000));
-
-  postImpl(url, body, headers, std::move(onSuccess), std::move(onError), connectSec, requestSec);
+  postImpl(url, body, headers, std::move(onSuccess), std::move(onError),
+           _timeoutConfig.connectTimeoutMs, _timeoutConfig.requestTimeoutMs);
 }
 
 void CurlTransport::postWithTimeout(
@@ -103,18 +100,15 @@ void CurlTransport::postWithTimeout(
     MoveOnlyFunction<void(std::string_view)> onSuccess,
     MoveOnlyFunction<void(std::string_view)> onError, int requestTimeoutMs)
 {
-  long connectSec = std::max(1L, static_cast<long>(_timeoutConfig.connectTimeoutMs / 1000));
-  long requestSec = std::max(1L, static_cast<long>(requestTimeoutMs / 1000));
-
-  postImpl(url, body, headers, std::move(onSuccess), std::move(onError), connectSec, requestSec);
+  postImpl(url, body, headers, std::move(onSuccess), std::move(onError),
+           _timeoutConfig.connectTimeoutMs, requestTimeoutMs);
 }
 
 void CurlTransport::postImpl(
     std::string_view url, std::string_view body,
     const std::vector<std::pair<std::string_view, std::string_view>>& headers,
     MoveOnlyFunction<void(std::string_view)> onSuccess,
-    MoveOnlyFunction<void(std::string_view)> onError, long connectTimeoutSec,
-    long requestTimeoutSec)
+    MoveOnlyFunction<void(std::string_view)> onError, long connectTimeoutMs, long requestTimeoutMs)
 {
   CURL* h = _pool.acquire();
   if (!h)
@@ -133,9 +127,15 @@ void CurlTransport::postImpl(
   curl_easy_setopt(h, CURLOPT_POSTFIELDS, bodyStr.c_str());
   curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, static_cast<long>(bodyStr.size()));
 
-  // Configurable timeouts
-  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, connectTimeoutSec);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, requestTimeoutSec);
+  // Millisecond timeouts, as the configuration and postWithTimeout() have
+  // always claimed to take: the second-resolution options truncated 1500 ms to
+  // one second and raised 250 ms to the same, which is the whole resolution
+  // the order path needs. NOSIGNAL goes with them -- libcurl's signal-based
+  // timeout path has one-second granularity and is not safe to use from
+  // several threads.
+  curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, connectTimeoutMs);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, requestTimeoutMs);
 
   // Connection reuse
   curl_easy_setopt(h, CURLOPT_FORBID_REUSE, 0L);
