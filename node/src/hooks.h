@@ -109,8 +109,11 @@ inline Napi::Object orderToJs(Napi::Env env, const FloxOrder* o)
   obj.Set("filledQuantity", Napi::Number::New(env, o->filled_quantity_raw / 1e8));
   obj.Set("triggerPrice", Napi::Number::New(env, o->trigger_price_raw / 1e8));
   obj.Set("trailingOffset", Napi::Number::New(env, o->trailing_offset_raw / 1e8));
-  obj.Set("createdAtNs", Napi::Number::New(env, static_cast<double>(o->created_at_ns)));
-  obj.Set("exchangeTsNs", Napi::Number::New(env, static_cast<double>(o->exchange_ts_ns)));
+  // Clock readings, so BigInt: a double steps 256 ns at present-day
+  // magnitudes, and these are the fields a listener orders events by. The
+  // prices and sizes above are not clock readings and stay Numbers.
+  obj.Set("createdAtNs", Napi::BigInt::New(env, static_cast<int64_t>(o->created_at_ns)));
+  obj.Set("exchangeTsNs", Napi::BigInt::New(env, static_cast<int64_t>(o->exchange_ts_ns)));
   return obj;
 }
 
@@ -121,7 +124,7 @@ inline Napi::Object tradeToJs(Napi::Env env, const FloxTradeData* t)
   obj.Set("price", Napi::Number::New(env, t->price_raw / 1e8));
   obj.Set("quantity", Napi::Number::New(env, t->quantity_raw / 1e8));
   obj.Set("isBuy", Napi::Boolean::New(env, t->is_buy != 0));
-  obj.Set("exchangeTsNs", Napi::Number::New(env, static_cast<double>(t->exchange_ts_ns)));
+  obj.Set("exchangeTsNs", Napi::BigInt::New(env, static_cast<int64_t>(t->exchange_ts_ns)));
   return obj;
 }
 

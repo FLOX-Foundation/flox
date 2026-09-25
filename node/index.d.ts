@@ -309,8 +309,10 @@ export interface Order {
   filledQuantity: number;
   triggerPrice: number;
   trailingOffset: number;
-  createdAtNs: number;
-  exchangeTsNs: number;
+  /** Absolute nanosecond clock readings: a `Number` is a double and steps
+   *  256 ns at present-day magnitudes. */
+  createdAtNs: bigint;
+  exchangeTsNs: bigint;
 }
 
 /** Returned by `Executor.capabilities()` — what the venue supports. */

@@ -88,6 +88,8 @@ const ORDER_FIELDS = {
   filledQuantity: 'number',
   triggerPrice: 'number',
   trailingOffset: 'number',
+  createdAtNs: 'bigint',
+  exchangeTsNs: 'bigint',
 };
 
 function badOrderPayload(order) {
