@@ -13830,6 +13830,11 @@
         },
         {
           "kind": "method",
+          "name": "minLevel",
+          "parent": "AtomicLogger"
+        },
+        {
+          "kind": "method",
           "name": "nextArchivePath",
           "parent": "AtomicLogger"
         },

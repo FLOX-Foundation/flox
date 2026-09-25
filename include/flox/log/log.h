@@ -45,15 +45,19 @@ inline bool isLoggingEnabled() { return loggingEnabled.load(std::memory_order_ac
 #define FLOX_LOG_ON() ::flox::enableLogging(true)
 #define FLOX_LOG_OFF() ::flox::enableLogging(false)
 
-#define FLOX_LOG(...)              \
-  if (!::flox::isLoggingEnabled()) \
-    ;                              \
-  else                             \
-    ::flox::LogStream(::flox::LogLevel::Info) << __VA_ARGS__
-#define FLOX_LOG_LEVEL(lvl, ...)   \
-  if (!::flox::isLoggingEnabled()) \
-    ;                              \
-  else                             \
+// The two guards are the whole point of the macro form: neither the
+// LogStream (a std::ostringstream) nor the arguments streamed into it are
+// touched when the line is not going to be written. The level used to be
+// applied inside the sink, after the allocation and after every argument had
+// been formatted, so a filtered line cost as much as a written one -- and
+// FLOX_LOG_WARN sits on OrderTracker's unknown-order path and in the bus
+// consumer loop, where a reconnect burst formats thousands of messages
+// nobody will read.
+#define FLOX_LOG(...) FLOX_LOG_LEVEL(::flox::LogLevel::Info, __VA_ARGS__)
+#define FLOX_LOG_LEVEL(lvl, ...)                                 \
+  if (!::flox::isLoggingEnabled() || (lvl) < ::flox::logLevel()) \
+    ;                                                            \
+  else                                                           \
     ::flox::LogStream(lvl) << __VA_ARGS__
 #define FLOX_LOG_INFO(...) FLOX_LOG_LEVEL(::flox::LogLevel::Info, __VA_ARGS__)
 #define FLOX_LOG_WARN(...) FLOX_LOG_LEVEL(::flox::LogLevel::Warn, __VA_ARGS__)

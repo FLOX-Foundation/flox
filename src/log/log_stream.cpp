@@ -33,6 +33,12 @@ std::atomic<ILogger*> g_logger{nullptr};
 
 void setGlobalLogger(ILogger* logger)
 {
+  // The threshold first, then the sink: a line that slips through the macro
+  // between the two stores is still filtered by the sink itself, which is
+  // where the level is also applied. The reverse order could hand the new
+  // sink a level belonging to the old one.
+  globalMinLogLevel.store(logger != nullptr ? logger->minLevel() : defaultLogger().minLevel(),
+                          std::memory_order_release);
   g_logger.store(logger, std::memory_order_release);
 }
 

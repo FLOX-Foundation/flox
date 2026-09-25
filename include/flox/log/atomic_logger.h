@@ -59,6 +59,10 @@ class AtomicLogger final : public ILogger
   void warn(std::string_view msg) override;
   void error(std::string_view msg) override;
 
+  // The threshold this logger was built with. FLOX_LOG_* reads it through the
+  // installed sink and does not build the stream for a line below it.
+  LogLevel minLevel() const noexcept override { return _opts.levelThreshold; }
+
   void flush();
 
   // Rotations that did not produce a writable file. Nonzero means the log is
