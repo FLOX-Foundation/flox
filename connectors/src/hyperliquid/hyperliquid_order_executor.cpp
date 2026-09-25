@@ -19,8 +19,11 @@
 #include <simdjson.h>
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <iomanip>
+#include <memory>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <string>
@@ -243,10 +246,42 @@ void HyperliquidOrderExecutorT<Policies>::loadAssetIds()
   std::vector<std::pair<std::string_view, std::string_view>> hdr = {
       {"Content-Type", "application/json"}};
 
+  // The asset map has to be there before the first order is serialized -- an
+  // order for a coin that is not in the map is dropped at submit time -- and
+  // this runs from the constructor, so it is the one place in this connector
+  // that waits for a response instead of continuing on the callback. The
+  // transport answers on its own sender thread, hence the shared state and
+  // the bound: a venue that never answers must not keep the constructor for
+  // longer than a startup can tolerate.
+  struct MetaFetch
+  {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done{false};
+
+    void finish()
+    {
+      {
+        std::lock_guard<std::mutex> lock(mutex);
+        done = true;
+      }
+      cv.notify_all();
+    }
+  };
+  auto fetch = std::make_shared<MetaFetch>();
+
   _transport->post(
       "https://api.hyperliquid.xyz/info", BODY, hdr,
-      [this](std::string_view resp)
+      [this, fetch](std::string_view resp)
       {
+        // finish() runs on every exit from this callback, including the
+        // parse-error returns below.
+        struct Finish
+        {
+          std::shared_ptr<MetaFetch> f;
+          ~Finish() { f->finish(); }
+        } finish{fetch};
+
         simdjson::ondemand::parser p;
         simdjson::padded_string ps(resp);
         auto doc = p.iterate(ps);
@@ -270,10 +305,22 @@ void HyperliquidOrderExecutorT<Policies>::loadAssetIds()
         }
         _logger->info("[HL] asset map " + std::to_string(_assetIds.size()));
       },
-      [this](std::string_view e)
+      [this, fetch](std::string_view e)
       {
         _logger->warn(std::string("[HL] meta fetch err ") + std::string(e));
+        fetch->finish();
       });
+
+  static constexpr auto kMetaWait = std::chrono::seconds(15);
+  std::unique_lock<std::mutex> lock(fetch->mutex);
+  if (!fetch->cv.wait_for(lock, kMetaWait,
+                          [&fetch]
+                          {
+                            return fetch->done;
+                          }))
+  {
+    _logger->warn("[HL] meta fetch did not answer in time; asset map is empty");
+  }
 }
 
 template <typename Policies>
