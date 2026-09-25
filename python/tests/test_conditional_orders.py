@@ -102,7 +102,12 @@ class TakeProfitTests(unittest.TestCase):
         d.trade(101.5)
         fills = d.fills()
         self.assertEqual(len(fills), 1)
-        self.assertEqual(fills[0]["price"], 101.5)
+        # The print at 101.5 is what fired the order, not what the order was
+        # entitled to: a triggered take-profit may fill worse than the price
+        # that armed it, never better. It books its own 101.3.
+        self.assertNotEqual(fills[0]["price"], 101.5,
+                            "a take-profit collected the favourable print")
+        self.assertEqual(fills[0]["price"], 101.3)
 
 
 class TrailingStopTests(unittest.TestCase):

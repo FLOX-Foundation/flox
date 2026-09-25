@@ -19,9 +19,10 @@ import numpy as np
 
 
 class _BuyThenSell(flox.Strategy):
-    """Opens on bar 1, closes on bar 2, so a single closed trade pins both
+    """Emits on bar 1 and bar 2, so a single closed trade pins both
     entry_time_ns and exit_time_ns against the exact bar timestamps that
-    produced them."""
+    produced them. The two orders fill one bar later than they are emitted;
+    see the comment on the expected values below."""
 
     def __init__(self, symbols):
         super().__init__(symbols)
@@ -66,24 +67,27 @@ def test_run_bars_preserves_exact_nanosecond_timestamps() -> None:
         f"expected exactly one closed trade, got {len(trades['entry_time_ns'])}"
     )
 
-    # The runner advances its clock to a bar's end_time_ns *before*
-    # dispatching on_bar for that bar (BacktestRunner::runBars), so the
-    # buy filling during bar 1 stamps entry_time_ns with end_ns[1], and the
-    # sell filling during bar 2 stamps exit_time_ns with end_ns[2] -- both
-    # values taken from the input array with no arithmetic in between.
-    expected_entry_ns = int(end_ns[1])
-    expected_exit_ns = int(end_ns[2])
+    # An order emitted from a bar callback cannot trade on the bar the
+    # strategy was shown -- every price in it is already past -- so it is
+    # held until the next bar opens. The buy emitted on bar 1 therefore
+    # fills during bar 2, and the sell emitted on bar 2 fills during bar 3.
+    # The runner advances its clock to a bar's end_time_ns before walking
+    # that bar, so the two fills carry end_ns[2] and end_ns[3]: values taken
+    # from the input array with no arithmetic in between, which is the whole
+    # point of this test.
+    expected_entry_ns = int(end_ns[2])
+    expected_exit_ns = int(end_ns[3])
     actual_entry_ns = int(trades["entry_time_ns"][0])
     actual_exit_ns = int(trades["exit_time_ns"][0])
 
     assert actual_entry_ns == expected_entry_ns, (
-        f"entry_time_ns should be exactly {expected_entry_ns} (bar 1's "
+        f"entry_time_ns should be exactly {expected_entry_ns} (bar 2's "
         f"end_time_ns, unmodified); got {actual_entry_ns}. A timestamp "
         "under 1e12 coming back rescaled means the magnitude-based unit "
         "guess is back on a value that was already nanoseconds."
     )
     assert actual_exit_ns == expected_exit_ns, (
-        f"exit_time_ns should be exactly {expected_exit_ns} (bar 2's "
+        f"exit_time_ns should be exactly {expected_exit_ns} (bar 3's "
         f"end_time_ns, unmodified); got {actual_exit_ns}."
     )
 
