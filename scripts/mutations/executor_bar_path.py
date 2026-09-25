@@ -300,16 +300,13 @@ MUTATIONS: list[Mutation] = [
     # ── C: close_reason ──────────────────────────────────────────────────
     Mutation(
         name="c-close-reason-not-written-by-writeFloxBar",
-        why="writeFloxBar (used by flox_strategy_last_closed_bar / "
-            "_last_n_closed_bars) never sets out->close_reason, so the callback bar-ring "
-            "path -- as opposed to the batch aggregation path doAggregateC uses -- carries "
-            "a field that is always its zero-init value",
+        why="toFloxBar, the one helper both the batch aggregation and the callback bar ring "
+            "(flox_strategy_last_closed_bar / _last_n_closed_bars) go through since the "
+            "aggregator refactor, drops close_reason, so every FloxBar carries its zero-init value",
         system="c", file=CAPI_CPP,
-        old="""  out->trade_count = static_cast<uint32_t>(bar.tradeCount.raw());
-  out->close_reason = static_cast<uint8_t>(bar.reason);
-}""",
-        new="""  out->trade_count = static_cast<uint32_t>(bar.tradeCount.raw());
-}""",
+        old="""          static_cast<uint32_t>(bar.tradeCount.raw()),
+          static_cast<uint8_t>(bar.reason)};""",
+        new="""          static_cast<uint32_t>(bar.tradeCount.raw())};""",
         build_targets=["flox_capi"], purge=["flox_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         # AggregatedBarsCarryACloseReason goes through doAggregateC and cannot
@@ -319,13 +316,12 @@ MUTATIONS: list[Mutation] = [
     ),
     Mutation(
         name="c-close-reason-wrong-field-doAggregateC",
-        why="doAggregateC's bar-close branch writes trade_count's value into close_reason "
-            "instead of the bar's own reason",
+        why="toFloxBar writes trade_count's value into close_reason instead of the bar's own reason",
         system="c", file=CAPI_CPP,
-        old="""                           static_cast<uint32_t>(currentBar.tradeCount.raw()),
-                           static_cast<uint8_t>(currentBar.reason)};""",
-        new="""                           static_cast<uint32_t>(currentBar.tradeCount.raw()),
-                           static_cast<uint8_t>(currentBar.tradeCount.raw())};""",
+        old="""          static_cast<uint32_t>(bar.tradeCount.raw()),
+          static_cast<uint8_t>(bar.reason)};""",
+        new="""          static_cast<uint32_t>(bar.tradeCount.raw()),
+          static_cast<uint8_t>(bar.tradeCount.raw())};""",
         build_targets=["flox_capi"], purge=["flox_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
         gtest_filter="CapiExecutorBarOhlc.AggregatedBarsCarryACloseReason",
