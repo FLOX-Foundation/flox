@@ -1864,8 +1864,10 @@ static FloxBar toFloxBar(const Bar& bar)
 }
 
 // The batch copy of the close path. It has to agree bar for bar with
-// BarAggregator::onTrade and MultiTimeframeAggregator::processPolicy, so a
-// policy that owns its own close is branched on here with the same meaning.
+// BarAggregator::onTrade and MultiTimeframeAggregator::processPolicy, so the
+// two policy customization points -- a late trade the policy recognizes, and
+// a policy that owns its own close -- are branched on here in the same order
+// and with the same meaning.
 template <typename Policy>
 static uint32_t doAggregateC(Policy& policy, const int64_t* ts, const double* px,
                              const double* qty, const uint8_t* ib, size_t n, FloxBar* bars_out,
@@ -1901,6 +1903,14 @@ static uint32_t doAggregateC(Policy& policy, const int64_t* ts, const double* px
       policy.initBar(trade, currentBar);
       initialized = true;
       continue;
+    }
+
+    if constexpr (DetectsLateTrades<Policy>)
+    {
+      if (policy.isLate(trade, currentBar))
+      {
+        continue;
+      }
     }
 
     if (policy.shouldClose(trade, currentBar))

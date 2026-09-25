@@ -37,11 +37,11 @@ concept BarPolicy = requires(T& policy, const TradeEvent& trade, Bar& bar, TimeP
   } noexcept -> std::convertible_to<uint64_t>;
 };
 
-// Optional policy customization point. A policy that does not declare it
+// Optional policy customization points. A policy that does not declare them
 // keeps the plain close path (emit the bar as it stands, open the next one
 // from the trade); the two aggregators and the batch aggregators in the C
-// ABI and the Python bindings all branch on this concept, so a policy gains
-// the behaviour in every copy of the close path at once instead of in
+// ABI and the Python bindings all branch on these concepts, so a policy
+// gains the behaviour in every copy of the close path at once instead of in
 // whichever one was remembered.
 
 // Sink handed to closeAndReopen(). Only used to state the requirement; each
@@ -60,6 +60,16 @@ struct BarSink
 template <typename T>
 concept ClosesAndReopens = requires(const T& policy, const TradeEvent& trade, Bar& bar, BarSink sink) {
   policy.closeAndReopen(trade, bar, sink);
+};
+
+// The policy can recognize a trade that belongs to a bar that is already
+// gone. Such a trade is dropped rather than folded into the live bar; only
+// TimeBarPolicy has a notion of a bar the clock has moved past.
+template <typename T>
+concept DetectsLateTrades = requires(const T& policy, const TradeEvent& trade, const Bar& bar) {
+  {
+    policy.isLate(trade, bar)
+  } noexcept -> std::same_as<bool>;
 };
 
 // Common OHLCV update - free function, inlined

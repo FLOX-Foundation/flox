@@ -14280,6 +14280,11 @@
         },
         {
           "kind": "method",
+          "name": "lateTradeCount",
+          "parent": "BarAggregator"
+        },
+        {
+          "kind": "method",
           "name": "onTrade",
           "parent": "BarAggregator"
         },
@@ -20465,6 +20470,11 @@
         },
         {
           "kind": "method",
+          "name": "lateTradeCount",
+          "parent": "MultiTimeframeAggregator"
+        },
+        {
+          "kind": "method",
           "name": "numTimeframes",
           "parent": "MultiTimeframeAggregator"
         },
@@ -25016,6 +25026,11 @@
         {
           "kind": "method",
           "name": "initBar",
+          "parent": "TimeBarPolicy"
+        },
+        {
+          "kind": "method",
+          "name": "isLate",
           "parent": "TimeBarPolicy"
         },
         {

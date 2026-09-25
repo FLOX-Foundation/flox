@@ -58,10 +58,11 @@ add_flox_test(test_large_arena)
 add_flox_test(test_live_rate_limit_budgeter)
 add_flox_test(test_bar_aggregator)
 add_flox_test(test_bar_aggregator_semantics)
-# The guarded case in that file asserts against the interface the bound
+# The two guarded cases in that file assert against the interface the fix
 # introduces: RenkoBarPolicy::kMaxGapBricks with BarCloseReason::Gap on the
-# bar that absorbs a capped gap.
-target_compile_definitions(test_bar_aggregator_semantics PRIVATE FLOX_RENKO_GAP_BOUND_API)
+# bar that absorbs a capped gap, and BarAggregator::lateTradeCount().
+target_compile_definitions(test_bar_aggregator_semantics
+                           PRIVATE FLOX_RENKO_GAP_BOUND_API FLOX_LATE_TRADE_COUNTER_API)
 add_flox_test(test_multi_feed_clock)
 add_flox_test(test_connection_factory)
 add_flox_test(test_connector_manager)

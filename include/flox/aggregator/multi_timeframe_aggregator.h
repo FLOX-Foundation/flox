@@ -26,6 +26,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 
 namespace flox
@@ -161,6 +162,10 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
 
   SubscriberId id() const override { return reinterpret_cast<SubscriberId>(this); }
 
+  // Trades dropped because they belonged to a bar that was already gone,
+  // summed over every slot. See BarAggregator::lateTradeCount.
+  std::uint64_t lateTradeCount() const noexcept { return _lateTradeCount; }
+
   void onTrade(const TradeEvent& trade) override
   {
     for (size_t i = 0; i < _numSlots; ++i)
@@ -213,6 +218,19 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
       return;
     }
 
+    if constexpr (DetectsLateTrades<Policy>)
+    {
+      // Same rule as BarAggregator::onTrade -- a trade for a bucket that is
+      // already gone is dropped, not folded into the live bar. This is the
+      // second copy of the close path; a fix applied only to the first one
+      // left every multi-timeframe consumer with the overwritten close.
+      if (policy.isLate(trade, state.bar)) [[unlikely]]
+      {
+        ++_lateTradeCount;
+        return;
+      }
+    }
+
     if (policy.shouldClose(trade, state.bar)) [[unlikely]]
     {
       if constexpr (ClosesAndReopens<Policy>)
@@ -259,6 +277,7 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
   std::unique_ptr<SlotsArray> _slots;
   size_t _numSlots = 0;
   BarBus* _bus;
+  std::uint64_t _lateTradeCount = 0;
 };
 
 }  // namespace flox

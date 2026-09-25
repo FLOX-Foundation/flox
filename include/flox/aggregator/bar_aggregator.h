@@ -26,6 +26,7 @@
 #include "flox/engine/abstract_subsystem.h"
 #include "flox/strategy/symbol_state_map.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -39,7 +40,11 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
  public:
   BarAggregator(Policy policy, BarBus* bus) : _policy(std::move(policy)), _bus(bus) {}
 
-  void start() override { _state.clear(); }
+  void start() override
+  {
+    _state.clear();
+    _lateTradeCount = 0;
+  }
 
   void stop() override
   {
@@ -70,6 +75,16 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
       return;
     }
 
+    if constexpr (DetectsLateTrades<Policy>)
+    {
+      // Dropped, not folded in: see TimeBarPolicy::isLate.
+      if (_policy.isLate(trade, state.bar)) [[unlikely]]
+      {
+        ++_lateTradeCount;
+        return;
+      }
+    }
+
     if (_policy.shouldClose(trade, state.bar)) [[unlikely]]
     {
       if constexpr (ClosesAndReopens<Policy>)
@@ -98,6 +113,12 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
   }
 
   const Policy& policy() const noexcept { return _policy; }
+
+  // Trades dropped because they belonged to a bar that was already gone.
+  // Always 0 for a policy with no notion of a late trade. Losing feed data
+  // silently is exactly what a cross-venue merge produces, so the count is
+  // readable rather than implicit.
+  std::uint64_t lateTradeCount() const noexcept { return _lateTradeCount; }
 
  private:
   struct SymbolState
@@ -130,6 +151,7 @@ class BarAggregator : public ISubsystem, public IMarketDataSubscriber
   Policy _policy;
   BarBus* _bus;
   SymbolStateMap<SymbolState> _state;
+  std::uint64_t _lateTradeCount = 0;
 };
 
 // Convenient type aliases

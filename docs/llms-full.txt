@@ -19519,6 +19519,10 @@ TimeBarAggregator aggregator(TimeBarPolicy(std::chrono::seconds(60)), &bus);
 - Comparing to external data sources
 - Building indicators that expect regular intervals
 
+**Late trades**: a time bar is a clock construct, so a trade can arrive for a bucket that is no longer open — routine when several venue feeds are merged, or when a feed reconnects and replays. A trade whose aligned bucket is *earlier* than the live bar's `startTime` is **dropped**, and the drop is counted in `BarAggregator::lateTradeCount()` (and `MultiTimeframeAggregator::lateTradeCount()`). It is not folded into the live bar: doing that made the trade's price the live bar's close, and possibly its high or low, so the bar published for an interval reported a price that never traded inside it. Nor does it reopen the bucket it belongs to: that bar has already been published, and reopening it would break the monotonicity of `bar.startTime` that `BarSeries` and `BarMatrix` rely on.
+
+The rule is about the *bucket*, not about arrival order. A trade that arrives out of order but still falls inside the live bucket is ordinary data and is folded in like any other; only a trade from an earlier bucket is dropped. If the count keeps climbing, the feed merge upstream is delivering trades later than one bar interval and the interval — or the merge — needs to change.
+
 ## Tick Bars
 
 ```cpp

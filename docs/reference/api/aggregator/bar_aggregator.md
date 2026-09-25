@@ -65,6 +65,10 @@ TimeBarAggregator aggregator(TimeBarPolicy(std::chrono::seconds(60)), &bus);
 
 **Use cases**: Traditional OHLCV charts, backtesting, most strategies.
 
+A trade whose aligned bucket precedes the live bar is dropped and counted in `lateTradeCount()`
+rather than folded into the live bar; a trade that is merely out of order inside the live bucket
+is folded in as usual. See [Bar types](../../../explanation/bar-types.md).
+
 ### Tick Bars
 
 Close after a fixed number of trades.
@@ -254,12 +258,13 @@ The concept requires four members: `shouldClose`, `update`, `initBar`, `param()`
 `kBarType` constant. All four functions must be `noexcept`. Omitting `param()` fails the constraint
 and `BarAggregator<MyCustomPolicy>` will not instantiate.
 
-One member is optional, declared as a concept in `aggregator/aggregation_policy.h` and picked up
+Two members are optional, declared as concepts in `aggregator/aggregation_policy.h`, and picked up
 by every aggregator at once — `BarAggregator`, `MultiTimeframeAggregator`, and the batch
 aggregators behind the C ABI and the Python bindings:
 
 | Member | Concept | Effect |
 |---|---|---|
+| `bool isLate(const TradeEvent&, const Bar&) const noexcept` | `DetectsLateTrades` | Returning `true` drops the trade instead of folding it in, and increments `lateTradeCount()`. Only `TimeBarPolicy` declares it. |
 | `template <typename Emit> void closeAndReopen(const TradeEvent&, Bar&, Emit&&) const` | `ClosesAndReopens` | Replaces the default close (publish the bar as it stands, then `initBar` at the trade price). The policy publishes every bar itself through `Emit` and leaves the `Bar&` re-initialized as the one that opens next. Only `RenkoBarPolicy` declares it, because a brick's close price and the next brick's open are the same boundary and have to be computed together. |
 
 `kBarType` must be one of the existing `BarType` values — there is no `BarType::Custom`. Pick the

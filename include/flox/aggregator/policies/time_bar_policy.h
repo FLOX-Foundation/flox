@@ -40,10 +40,26 @@ class TimeBarPolicy
     // multiple venues): that trade would prematurely close the current bar
     // one event early and then open a duplicate bucket for an interval
     // that had already closed, breaking monotonicity of bar.startTime for
-    // any downstream consumer (BarSeries, BarMatrix). A late trade for an
-    // already-closed interval belongs to a bar that no longer exists; drop
-    // it into the current bar instead of using it as a spurious close.
+    // any downstream consumer (BarSeries, BarMatrix). Such a trade is not a
+    // close at all -- isLate() below says what happens to it instead.
     return alignedTradeTs > bar.startTime;
+  }
+
+  // A trade whose bucket precedes the live bar's belongs to an interval that
+  // is closed and gone -- or, when the feed started mid-interval, never
+  // existed. Folding it into the live bar made its price that bar's close,
+  // and possibly its high or low, so the bar published for an interval
+  // reported a price that never traded inside it and a trade count that
+  // included a trade from another minute. The aggregators drop it and count
+  // the drop (BarAggregator::lateTradeCount) rather than silently repairing
+  // a bar with foreign data.
+  //
+  // This is about the *bucket*, not about arrival order: a trade that
+  // arrives out of order but still lands in the live bucket is ordinary
+  // data and is folded in like any other.
+  [[nodiscard]] bool isLate(const TradeEvent& trade, const Bar& bar) const noexcept
+  {
+    return alignToInterval(fromUnixNs(trade.trade.exchangeTsNs)) < bar.startTime;
   }
 
   void update(const TradeEvent& trade, Bar& bar) noexcept
