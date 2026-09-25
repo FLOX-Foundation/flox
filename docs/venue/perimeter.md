@@ -476,6 +476,16 @@ samples venue state (open interest, position count, best bid/ask, mark age,
 feed-breaker state). `prometheus.h` renders the exposition format and
 `MetricsServer` serves it over HTTP for scraping.
 
+Every number on the page and in a control reply is rendered from its raw by
+`fixedPointToStr` (`flox-venue/fixed_point_text.h`): sign, integral part, and
+exactly as many fractional digits as the scale carries, written as digits with
+no float in between. `Gauges::fundingRateRaw` is a raw at `kFundingRateScale`
+for that reason, so the page says `fme_funding_rate 0.00030000` and a
+one-raw tick in an instrument reply says `0.00000001`. `std::to_string(double)`
+is printf("%f"): six decimals, and the C locale's separator -- which under a
+comma locale emits `0,00030000`, invalid JSON for the operator's tooling and
+an unparseable sample line for every scraper. Neither surface builds a float.
+
 ### Last look
 
 Six series, from `LastLookSample`. Four are labeled by maker:

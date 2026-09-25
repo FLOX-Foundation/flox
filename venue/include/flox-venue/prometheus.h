@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "flox-venue/fixed_point_text.h"
 #include "flox-venue/metrics.h"
 
 #include <algorithm>
@@ -230,7 +231,7 @@ inline std::string render(const Metrics& m, const Gauges& g)
   gaugeStr(out, "fme_insurance_fund_raw", "Insurance fund balance (quote, fixed-point raw)",
            i128ToStr(g.insuranceFundRaw));
   gaugeStr(out, "fme_funding_rate", "Last settled funding rate (fraction)",
-           std::to_string(g.fundingRate));
+           fixedPointToStr(g.fundingRateRaw, kFundingRateScale));
   gaugeStr(out, "fme_open_interest_raw", "Aggregate open position notional (quote raw)",
            i128ToStr(g.openInterestRaw));
   gaugeStr(out, "fme_open_positions", "Open perp positions", std::to_string(g.openPositions));

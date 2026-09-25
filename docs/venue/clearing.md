@@ -98,7 +98,16 @@ replaced, so determinism hashes and replays are unaffected.
 
 ## Fees
 
-Fees flow through `flox::FeeSchedule` (maker rebate / taker fee, volume tiers).
+Fees flow through `flox::FeeSchedule` (maker rebate / taker fee, volume tiers),
+but only the tier lookup does: the arithmetic is fixed point. The active tier's
+maker and taker rates are converted from basis points to raws at
+`kFeeRateScale` once, rounded to nearest, and the fee is
+`mulDivI64(notionalRaw, rateRaw, kFeeRateScale)` -- the same notional raw the
+reservations and the margin use, truncated toward zero, and the same number on
+the native and the portable 128-bit path. `FeeSchedule::feeFor` is not on the
+venue path; it prices a notional that has been divided down into a `double`,
+which stops being exact past 2^53 raw (about 9e7 quote units).
+
 The venue gate reserves the notional, and the taker fee is charged
 post-settlement. A taker holding exactly the notional therefore ends fee-sized
 negative instead of being pre-rejected. Conservation still holds, the venue

@@ -190,10 +190,13 @@ class Clearing
   // update afterwards on both paths, as it did when inline.
   void applyFunding(double rate, Price mark, SeqNanos now)
   {
+    // The journaled body carries a double; everything past this line is the
+    // integer raw, so the rate that is published is the rate that is settled.
+    const int64_t rateRaw = fundingRateRawOf(rate);
     // The rate is known with or without a ledger and it is what the feed
     // publishes -- record it before the early return, or a venue with no
     // bound ledger would never publish one.
-    fundingRateRaw_ = static_cast<int64_t>(rate * static_cast<double>(kFundingRateScale));
+    fundingRateRaw_ = rateRaw;
     advanceFundingSchedule(now);
     if (ledger_ == nullptr)
     {
@@ -205,7 +208,7 @@ class Clearing
     {
       const Amount notional =
           notionalRaw(mark.raw(), iabs64(p.qtyRaw), cfg_.priceScale, cfg_.qtyScale);
-      const Amount mag = static_cast<Amount>(static_cast<double>(notional) * rate);
+      const Amount mag = rateOnNotional(notional, rateRaw, kFundingRateScale);
       const Amount signedPay = (p.qtyRaw > 0) ? -mag : mag;  // long pays when rate>0
       ledger_->credit(acct, cfg_.quoteAsset, signedPay);
       ledger_->credit(venueAccount_, cfg_.quoteAsset, -signedPay);

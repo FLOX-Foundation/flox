@@ -204,3 +204,14 @@ f.resetSamples();
 `FundingScheduler` closes the loop (sample, settle at the boundary, reset).
 Settlement is zero-sum: longs pay shorts or the reverse, and the charges
 across a balanced book sum to zero.
+
+The rate is a `double` as far as the journaled `ApplyFunding` body -- that is
+what a calculator produces and what an operator types, and it replays bit for
+bit -- and becomes an integer exactly once, at the boundary of the settlement
+path: `fundingRateRawOf` rounds it to nearest at `kFundingRateScale`, so 0.0003
+means 30000 rather than the 29999 truncation used to publish. Every payment
+after that is `mulDivI64(notionalRaw, rateRaw, kFundingRateScale)`, truncated
+toward zero and mirrored between the two legs. The clearing path and the
+portfolio-margin path (`CrossMarginManager::applyFunding`) take the same
+conversion and the same multiply, so the two books cannot settle one interval
+differently.
