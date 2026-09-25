@@ -323,6 +323,12 @@ interface Bar {
     readonly volume: number;
 }
 
+/** A bar closed by one of the `flox.*Bars` aggregators. */
+interface AggregatedBar extends Bar {
+    readonly buyVolume: number;
+    readonly trades: number;
+}
+
 declare const flox: {
     register(strategy: Strategy): void;
     correlation(x: number[], y: number[]): number;
@@ -334,6 +340,19 @@ declare const flox: {
     mergeSegments(inputDir: string, outputPath: string): boolean;
     /** Read an OHLCV CSV. A ts column in s / ms / us / ns is scaled to ns. */
     loadCsv(path: string): Bar[];
+
+    /** Time bars. `intervalNs` is nanoseconds: 60000000000 is one minute. */
+    timeBars(ts: (number | bigint)[], px: number[], qty: number[], sides: (number | boolean)[], intervalNs: number | bigint): AggregatedBar[];
+    /** Tick bars. `ticksPerBar` is a trade count. */
+    tickBars(ts: (number | bigint)[], px: number[], qty: number[], sides: (number | boolean)[], ticksPerBar: number): AggregatedBar[];
+    /** Volume bars. `volumePerBar` is notional per bar. */
+    volumeBars(ts: (number | bigint)[], px: number[], qty: number[], sides: (number | boolean)[], volumePerBar: number): AggregatedBar[];
+    /** Range bars. `rangeSize` is a high-low price distance. */
+    rangeBars(ts: (number | bigint)[], px: number[], qty: number[], sides: (number | boolean)[], rangeSize: number): AggregatedBar[];
+    /** Renko bricks. `brickSize` is a price distance; may return more bars than there were trades. */
+    renkoBars(ts: (number | bigint)[], px: number[], qty: number[], sides: (number | boolean)[], brickSize: number): AggregatedBar[];
+    /** Heikin-Ashi bars. `intervalNs` is nanoseconds, as for timeBars. */
+    heikinBars(ts: (number | bigint)[], px: number[], qty: number[], sides: (number | boolean)[], intervalNs: number | bigint): AggregatedBar[];
 };
 
 // ============================================================

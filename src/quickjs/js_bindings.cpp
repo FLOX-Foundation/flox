@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -6679,9 +6680,31 @@ static JSValue doAgg(JSContext* c, JSValueConst* a, AggTimeFn fn, double param)
   return barsToJsArray(c, bars);
 }
 
+// flox.timeBars and flox.heikinBars document their interval in
+// nanoseconds; the C ABI takes seconds as a double and multiplies by 1e9
+// again on the other side. The JS argument used to be passed straight
+// through, so a script following the docs asked for 60'000'000'000
+// seconds and got a single bar covering the whole tape. Convert once,
+// here, and accept a BigInt or a Number (toInt64 takes either).
+//
+// A plain ns / 1e9 can come back one nanosecond short after the
+// truncation on the other side, so step the double up until the round
+// trip lands on the nanosecond count that was asked for.
+static double intervalNsToSeconds(int64_t interval_ns)
+{
+  double seconds = static_cast<double>(interval_ns) / 1'000'000'000.0;
+  for (int i = 0; i < 4 && interval_ns > 0 &&
+                  static_cast<int64_t>(seconds * 1'000'000'000.0) < interval_ns;
+       ++i)
+  {
+    seconds = std::nextafter(seconds, std::numeric_limits<double>::infinity());
+  }
+  return seconds;
+}
+
 static JSValue js_agg_time(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_time_bars, toDouble(c, a[4]));
+  return doAgg(c, a, flox_aggregate_time_bars, intervalNsToSeconds(toInt64(c, a[4])));
 }
 
 static JSValue js_agg_tick(JSContext* c, JSValueConst, int, JSValueConst* a)
@@ -6715,7 +6738,7 @@ static JSValue js_agg_renko(JSContext* c, JSValueConst, int, JSValueConst* a)
 
 static JSValue js_agg_heikin(JSContext* c, JSValueConst, int, JSValueConst* a)
 {
-  return doAgg(c, a, flox_aggregate_heikin_ashi_bars, toDouble(c, a[4]));
+  return doAgg(c, a, flox_aggregate_heikin_ashi_bars, intervalNsToSeconds(toInt64(c, a[4])));
 }
 
 // ============================================================

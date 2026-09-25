@@ -17295,12 +17295,17 @@ Every other helper here closes at most one bar per input trade.
 
 | Call | `param` |
 |------|---------|
-| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
+| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds — `60000000000` is one minute |
 | `flox.tickBars(ts, px, qty, sides, ticksPerBar)` | Trades per bar |
 | `flox.volumeBars(ts, px, qty, sides, volumePerBar)` | Volume per bar |
 | `flox.rangeBars(ts, px, qty, sides, rangeSize)` | High-low range |
 | `flox.renkoBars(ts, px, qty, sides, brickSize)` | Brick size |
 | `flox.heikinBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
+
+A nanosecond interval may be a `Number` or a `BigInt`. Each bar comes back
+with `ts` (the bar start, a nanosecond `BigInt`), `open`, `high`, `low`,
+`close`, `volume`, `buyVolume` and `trades`. Only closed bars are returned:
+a bar still forming when the tape ends is not one of them.
 
 ---
 

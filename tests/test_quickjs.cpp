@@ -2525,3 +2525,68 @@ TEST(JsBarTimestampUnits, EngineRunAcceptsSignalsTimestampedFromBars)
       << "buy on the first bar, sell on the second -- one closed round trip";
   EXPECT_NE(globalAsString(jsStrat, "finalCapital"), "0");
 }
+
+// `flox.timeBars(ts, px, qty, sides, intervalNs)` documents its interval in
+// nanoseconds, but handed the argument straight to
+// flox_aggregate_time_bars(..., double interval_seconds), so a script
+// following the docs asked for 60'000'000'000 seconds -- about 1900 years --
+// and got back an empty array, no error said why. flox.heikinBars took the
+// same argument through the same C entry point and was off by the same 1e9.
+// The other aggregators take a trade count, a volume or a price distance,
+// so they carry no unit to slip.
+TEST(JsBarAggregatorUnits, TimeBarsIntervalIsNanoseconds)
+{
+  // One trade every 20 seconds across two full minutes, plus one that
+  // opens a third bar. Only a closed bar is reported, so a minute interval
+  // leaves exactly two.
+  TempJsFile script(R"(
+    var ts  = [0, 20000000000, 40000000000, 60000000000, 80000000000, 100000000000, 120000000000];
+    var px  = [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0];
+    var qty = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+    var side = [0, 0, 0, 0, 0, 0, 0];
+    var MINUTE_NS = 60000000000;
+
+    var bars = flox.timeBars(ts, px, qty, side, MINUTE_NS);
+    var barCount = bars.length;
+    var firstTs = barCount > 0 ? String(bars[0].ts) : "";
+    var secondTs = barCount > 1 ? String(bars[1].ts) : "";
+    var firstOpen = barCount > 0 ? bars[0].open : 0;
+    var firstClose = barCount > 0 ? bars[0].close : 0;
+    var secondOpen = barCount > 1 ? bars[1].open : 0;
+    var secondClose = barCount > 1 ? bars[1].close : 0;
+    var firstTrades = barCount > 0 ? bars[0].trades : 0;
+
+    // The same interval spelled as a BigInt, the way a script that took it
+    // off a bar or an event would have it.
+    var bigIntBars = flox.timeBars(ts, px, qty, side, 60000000000n);
+    var bigIntCount = bigIntBars.length;
+    var bigIntFirstTs = bigIntCount > 0 ? String(bigIntBars[0].ts) : "";
+
+    var haBars = flox.heikinBars(ts, px, qty, side, MINUTE_NS);
+    var haCount = haBars.length;
+    var haFirstTs = haCount > 0 ? String(haBars[0].ts) : "";
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+
+  EXPECT_EQ(globalAsString(jsStrat, "barCount"), "2")
+      << "two closed minute bars; an interval read as seconds closes none";
+  EXPECT_EQ(globalAsString(jsStrat, "firstTs"), "0");
+  EXPECT_EQ(globalAsString(jsStrat, "secondTs"), "60000000000")
+      << "the second bar starts one minute -- one interval -- after the first";
+  EXPECT_EQ(globalAsString(jsStrat, "firstTrades"), "3")
+      << "three trades fall inside the first minute";
+  EXPECT_EQ(globalAsString(jsStrat, "firstOpen"), "100");
+  EXPECT_EQ(globalAsString(jsStrat, "firstClose"), "102");
+  EXPECT_EQ(globalAsString(jsStrat, "secondOpen"), "103");
+  EXPECT_EQ(globalAsString(jsStrat, "secondClose"), "105");
+
+  EXPECT_EQ(globalAsString(jsStrat, "bigIntCount"), "2")
+      << "a BigInt interval means the same thing as the Number";
+  EXPECT_EQ(globalAsString(jsStrat, "bigIntFirstTs"), "0");
+
+  EXPECT_EQ(globalAsString(jsStrat, "haCount"), "2")
+      << "heikinBars buckets on the same nanosecond interval";
+  EXPECT_EQ(globalAsString(jsStrat, "haFirstTs"), "0");
+}
