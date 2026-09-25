@@ -431,6 +431,7 @@ MUTATIONS: list[Mutation] = [
     # ── 19: Executor.capabilities() guard removed ───────────────────────────
     Mutation(
         name="capabilities-unguarded",
+        equivalent=True,  # nothing in the engine calls IOrderExecutor::capabilities(); the only entry point, flox_executor_get_capabilities, is exposed in neither Node nor Python, so the guard is unobservable until it is
         why="hooks.h ExecutorHost::capabilitiesBridge: the try/catch around "
             "capabilities_fn.Call({}) is removed, so a throwing capabilities() would "
             "unwind out through the C function pointer the engine calls it by (same "
@@ -620,6 +621,7 @@ MUTATIONS: list[Mutation] = [
     # side effect) -- our own, adversarial ─────────────────────────────────
     Mutation(
         name="onpartiallyfilled-event-swallowed",
+        equivalent=True,  # onPartiallyFilled, onRejected, onReplaced and onTrailingStopUpdated cannot be reached from JavaScript: the Node BacktestRunner builds its executor with queueModel NONE and exposes no setter, the C ABI attaches no pre-configured SimulatedExecutor, and emit has no replaceOrder or trailing-stop order; a listener that validates any payload is in place for the day one of them becomes reachable
         why="hooks.h ExecutionListenerHost::onPartialBridge: the fix's own note says "
             "onPartiallyFilled/onRejected/onReplaced/onTrailingStopUpdated 'used to go "
             "unconditionally to post() at a closed channel, so were never called -- now "
