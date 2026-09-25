@@ -153,9 +153,36 @@ groups:
     codon: { status: required }
 
   simulated_executor:
-    pybind11: { status: required, classes: [SimulatedExecutor] }
-    napi: { status: required, classes: [SimulatedExecutor] }
+    # The bar path (on_bar_ohlc / begin+end_bar_callback_window / reset) is
+    # listed as Class.method rather than a bare function name: today's
+    # scan_pyi / scan_dts only see top-level `def` / `export function`, so a
+    # method is invisible to them and these four entries read as missing
+    # until that scanner change (T023) lands. See
+    # tools/codegen/tests/test_binding_parity_executor_bar_path.py.
+    pybind11:
+      status: required
+      classes: [SimulatedExecutor]
+      functions:
+        - SimulatedExecutor.on_bar_ohlc
+        - SimulatedExecutor.begin_bar_callback_window
+        - SimulatedExecutor.end_bar_callback_window
+        - SimulatedExecutor.reset
+    napi:
+      status: required
+      classes: [SimulatedExecutor]
+      functions:
+        - SimulatedExecutor.onBarOhlc
+        - SimulatedExecutor.beginBarCallbackWindow
+        - SimulatedExecutor.endBarCallbackWindow
+        - SimulatedExecutor.reset
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        - __flox_simulated_executor_on_bar_ohlc
+        - __flox_simulated_executor_begin_bar_callback_window
+        - __flox_simulated_executor_end_bar_callback_window
+        - __flox_simulated_executor_reset
 
   order_book:
     pybind11: { status: required, classes: [OrderBook] }

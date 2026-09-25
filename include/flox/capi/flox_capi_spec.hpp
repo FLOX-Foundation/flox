@@ -23,9 +23,9 @@
 // ABI version of this header and of the library that ships with it. Bumped
 // whenever a struct on this boundary changes shape, a function changes
 // signature, or an existing code space gains a meaning. 2: FloxSignal grew
-// range_lower / range_upper / liquidity.
+// range_lower / range_upper / liquidity. 3: FloxBar grew close_reason.
 // flox::export_macro(group="abi_version")
-#define FLOX_CAPI_ABI_VERSION 2
+#define FLOX_CAPI_ABI_VERSION 3
 
 #ifdef __cplusplus
 extern "C"
@@ -711,6 +711,43 @@ extern "C"
   void flox_simulated_executor_cancel_all(FloxSimulatedExecutorHandle executor, uint32_t symbol);
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle executor, uint32_t symbol, double close_price);
+
+  // Open-aware form. Moves the market to the open (releasing any order held
+  // from a bar-callback window at the previous bar's open), then walks
+  // low -> high -> close so resting stops/targets match the intrabar
+  // extremes, not just the close. Use this, not the close-only
+  // flox_simulated_executor_on_bar, to drive the executor by hand to the
+  // same fills BacktestRunner::runBars produces -- runBars uses this
+  // overload internally.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle executor, uint32_t symbol,
+                                           double open_price, double high_price,
+                                           double low_price, double close_price);
+
+  // Bar-callback window. Matching an order submitted while a bar is being
+  // shown to a strategy callback is look-ahead: the market has already been
+  // walked to the bar's close by the time the callback runs. While the
+  // window is open every arriving order is held instead of matched, and the
+  // next call to flox_simulated_executor_on_bar_ohlc releases whatever is
+  // held for that symbol at its open. Call begin before invoking a
+  // hand-driven bar callback and end right after; unbalanced calls are
+  // depth-counted so a re-entrant callback cannot close a window it did not
+  // open.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle executor);
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle executor);
+
+  // Drops fills, live/held/conditional orders, queue positions, net
+  // positions, brackets, in-flight acks, market state and the visible
+  // ladder, while keeping installed configuration (slippage, queue model,
+  // latency distributions, rate limits, STP, callbacks, attached venue
+  // availability). Seeded RNGs go back to their configured seeds. Lets a
+  // caller run several hand-driven passes through one executor and have
+  // each report only its own fills.
+  FLOX_EXPORT(group = "simulated_executor")
+  void flox_simulated_executor_reset(FloxSimulatedExecutorHandle executor);
+
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle executor, uint32_t symbol, double price,
                                         uint8_t is_buy);
@@ -723,6 +760,11 @@ extern "C"
   // Bar aggregation
   // ============================================================
 
+  // close_reason: 0=Threshold, 1=Gap, 2=Forced, 3=Warmup (mirrors
+  // flox::BarCloseReason, and FloxBarData::close_reason above). Added in ABI
+  // version 3: this is a struct shape change, so any code that constructs a
+  // FloxBar via positional aggregate initialization needs the new trailing
+  // field supplied.
   typedef struct
   {
     int64_t start_time_ns;
@@ -734,6 +776,7 @@ extern "C"
     int64_t volume_raw;
     int64_t buy_volume_raw;
     uint32_t trade_count;
+    uint8_t close_reason;
   } FloxBar;
 
   FLOX_EXPORT(group = "bar_aggregation")

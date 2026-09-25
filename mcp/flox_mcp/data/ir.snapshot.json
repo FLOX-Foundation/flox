@@ -12183,6 +12183,17 @@
     },
     {
       "group": "simulated_executor",
+      "name": "flox_simulated_executor_begin_bar_callback_window",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
       "name": "flox_simulated_executor_bracket_state",
       "params": [
         {
@@ -12271,6 +12282,17 @@
     },
     {
       "group": "simulated_executor",
+      "name": "flox_simulated_executor_end_bar_callback_window",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
       "name": "flox_simulated_executor_fill_count",
       "params": [
         {
@@ -12336,6 +12358,37 @@
         {
           "name": "symbol",
           "type": "uint32_t"
+        },
+        {
+          "name": "close_price",
+          "type": "double"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_on_bar_ohlc",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
+        },
+        {
+          "name": "symbol",
+          "type": "uint32_t"
+        },
+        {
+          "name": "open_price",
+          "type": "double"
+        },
+        {
+          "name": "high_price",
+          "type": "double"
+        },
+        {
+          "name": "low_price",
+          "type": "double"
         },
         {
           "name": "close_price",
@@ -12460,6 +12513,17 @@
         {
           "name": "is_buy",
           "type": "uint8_t"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "group": "simulated_executor",
+      "name": "flox_simulated_executor_reset",
+      "params": [
+        {
+          "name": "executor",
+          "type": "FloxSimulatedExecutorHandle"
         }
       ],
       "return_type": "void"
@@ -14455,7 +14519,7 @@
     {
       "group": "abi_version",
       "name": "FLOX_CAPI_ABI_VERSION",
-      "value": "2"
+      "value": "3"
     },
     {
       "group": "signal_type",
@@ -14769,6 +14833,10 @@
         {
           "name": "trade_count",
           "type": "uint32_t"
+        },
+        {
+          "name": "close_reason",
+          "type": "uint8_t"
         }
       ],
       "name": "FloxBar"

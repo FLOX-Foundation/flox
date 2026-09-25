@@ -1824,6 +1824,38 @@ void flox_simulated_executor_on_bar(FloxSimulatedExecutorHandle h, uint32_t symb
   FLOX_CAPI_LEAVE_VOID;
 }
 
+void flox_simulated_executor_on_bar_ohlc(FloxSimulatedExecutorHandle h, uint32_t symbol,
+                                         double open_price, double high_price,
+                                         double low_price, double close_price)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.onBar(
+      symbol, Price::fromDouble(open_price), Price::fromDouble(high_price),
+      Price::fromDouble(low_price), Price::fromDouble(close_price));
+  FLOX_CAPI_LEAVE_VOID;
+}
+
+void flox_simulated_executor_begin_bar_callback_window(FloxSimulatedExecutorHandle h)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.beginBarCallbackWindow();
+  FLOX_CAPI_LEAVE_VOID;
+}
+
+void flox_simulated_executor_end_bar_callback_window(FloxSimulatedExecutorHandle h)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.endBarCallbackWindow();
+  FLOX_CAPI_LEAVE_VOID;
+}
+
+void flox_simulated_executor_reset(FloxSimulatedExecutorHandle h)
+{
+  FLOX_CAPI_ENTER_VOID(h);
+  static_cast<FloxSimulatedExecutorImpl*>(h)->executor.reset();
+  FLOX_CAPI_LEAVE_VOID;
+}
+
 void flox_simulated_executor_on_trade(FloxSimulatedExecutorHandle h, uint32_t symbol, double price, uint8_t is_buy)
 {
   FLOX_CAPI_ENTER_VOID(h);
@@ -1860,7 +1892,8 @@ static FloxBar toFloxBar(const Bar& bar)
           bar.close.raw(),
           bar.volume.raw(),
           bar.buyVolume.raw(),
-          static_cast<uint32_t>(bar.tradeCount.raw())};
+          static_cast<uint32_t>(bar.tradeCount.raw()),
+          static_cast<uint8_t>(bar.reason)};
 }
 
 // The batch copy of the close path. It has to agree bar for bar with

@@ -3065,6 +3065,11 @@
         {
           "group": "simulated_executor",
           "kind": "function",
+          "name": "flox_simulated_executor_begin_bar_callback_window"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
           "name": "flox_simulated_executor_bracket_state"
         },
         {
@@ -3100,6 +3105,11 @@
         {
           "group": "simulated_executor",
           "kind": "function",
+          "name": "flox_simulated_executor_end_bar_callback_window"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
           "name": "flox_simulated_executor_fill_count"
         },
         {
@@ -3123,6 +3133,11 @@
           "name": "flox_simulated_executor_on_bar"
         },
         {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_on_bar_ohlc"
+        },
+        {
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_on_best_levels"
@@ -3141,6 +3156,11 @@
           "group": "backtest_slippage",
           "kind": "function",
           "name": "flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "group": "simulated_executor",
+          "kind": "function",
+          "name": "flox_simulated_executor_reset"
         },
         {
           "group": "simulated_executor",
@@ -7242,6 +7262,11 @@
         },
         {
           "kind": "method",
+          "name": "begin_bar_callback_window",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "bracket_state",
           "parent": "SimulatedExecutor"
         },
@@ -7272,6 +7297,11 @@
         },
         {
           "kind": "method",
+          "name": "end_bar_callback_window",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "fill_count",
           "parent": "SimulatedExecutor"
         },
@@ -7297,6 +7327,11 @@
         },
         {
           "kind": "method",
+          "name": "on_bar_ohlc",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "on_best_levels",
           "parent": "SimulatedExecutor"
         },
@@ -7308,6 +7343,11 @@
         {
           "kind": "method",
           "name": "on_trade_qty",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
           "parent": "SimulatedExecutor"
         },
         {
@@ -10670,6 +10710,10 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_simulated_executor_begin_bar_callback_window"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_simulated_executor_bracket_state"
         },
         {
@@ -10698,6 +10742,10 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_simulated_executor_end_bar_callback_window"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_simulated_executor_fill_count"
         },
         {
@@ -10718,6 +10766,10 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_simulated_executor_on_bar_ohlc"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_simulated_executor_on_best_levels"
         },
         {
@@ -10731,6 +10783,10 @@
         {
           "kind": "c_import",
           "name": "flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_simulated_executor_reset"
         },
         {
           "kind": "c_import",
@@ -31358,6 +31414,11 @@
         },
         {
           "kind": "method",
+          "name": "beginBarCallbackWindow",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "bracketState",
           "parent": "SimulatedExecutor"
         },
@@ -31383,6 +31444,11 @@
         },
         {
           "kind": "method",
+          "name": "endBarCallbackWindow",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "fillCount",
           "parent": "SimulatedExecutor"
         },
@@ -31403,7 +31469,17 @@
         },
         {
           "kind": "method",
+          "name": "onBarOhlc",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "onTrade",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
           "parent": "SimulatedExecutor"
         },
         {
@@ -36902,6 +36978,11 @@
         },
         {
           "kind": "method",
+          "name": "begin_bar_callback_window",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "bracket_state",
           "parent": "SimulatedExecutor"
         },
@@ -36923,6 +37004,11 @@
         {
           "kind": "method",
           "name": "clear_rate_limit_policy",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "end_bar_callback_window",
           "parent": "SimulatedExecutor"
         },
         {
@@ -36957,6 +37043,11 @@
         },
         {
           "kind": "method",
+          "name": "on_bar_ohlc",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "on_best_levels",
           "parent": "SimulatedExecutor"
         },
@@ -36973,6 +37064,11 @@
         {
           "kind": "method",
           "name": "on_trade_qty",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
           "parent": "SimulatedExecutor"
         },
         {
@@ -40022,6 +40118,10 @@
         },
         {
           "kind": "global",
+          "name": "__flox_simulated_executor_begin_bar_callback_window"
+        },
+        {
+          "kind": "global",
           "name": "__flox_simulated_executor_bracket_state"
         },
         {
@@ -40042,6 +40142,10 @@
         },
         {
           "kind": "global",
+          "name": "__flox_simulated_executor_end_bar_callback_window"
+        },
+        {
+          "kind": "global",
           "name": "__flox_simulated_executor_fill_count"
         },
         {
@@ -40058,6 +40162,10 @@
         },
         {
           "kind": "global",
+          "name": "__flox_simulated_executor_on_bar_ohlc"
+        },
+        {
+          "kind": "global",
           "name": "__flox_simulated_executor_on_best_levels"
         },
         {
@@ -40067,6 +40175,10 @@
         {
           "kind": "global",
           "name": "__flox_simulated_executor_on_trade_qty"
+        },
+        {
+          "kind": "global",
+          "name": "__flox_simulated_executor_reset"
         },
         {
           "kind": "global",
@@ -42715,16 +42827,20 @@
     "simulated_executor": {
       "capi_functions": [
         "flox_simulated_executor_advance_clock",
+        "flox_simulated_executor_begin_bar_callback_window",
         "flox_simulated_executor_bracket_state",
         "flox_simulated_executor_cancel_all",
         "flox_simulated_executor_cancel_bracket",
         "flox_simulated_executor_cancel_order",
         "flox_simulated_executor_create",
         "flox_simulated_executor_destroy",
+        "flox_simulated_executor_end_bar_callback_window",
         "flox_simulated_executor_fill_count",
         "flox_simulated_executor_iceberg_hidden_remaining_raw",
         "flox_simulated_executor_on_bar",
+        "flox_simulated_executor_on_bar_ohlc",
         "flox_simulated_executor_on_trade",
+        "flox_simulated_executor_reset",
         "flox_simulated_executor_set_bracket_child_arm_mode",
         "flox_simulated_executor_set_iceberg_jitter_seed",
         "flox_simulated_executor_set_iceberg_priority_mode",
@@ -42743,20 +42859,35 @@
         "classes": [
           "SimulatedExecutor"
         ],
-        "functions": [],
+        "functions": [
+          "SimulatedExecutor.onBarOhlc",
+          "SimulatedExecutor.beginBarCallbackWindow",
+          "SimulatedExecutor.endBarCallbackWindow",
+          "SimulatedExecutor.reset"
+        ],
         "status": "required"
       },
       "pybind11": {
         "classes": [
           "SimulatedExecutor"
         ],
-        "functions": [],
+        "functions": [
+          "SimulatedExecutor.on_bar_ohlc",
+          "SimulatedExecutor.begin_bar_callback_window",
+          "SimulatedExecutor.end_bar_callback_window",
+          "SimulatedExecutor.reset"
+        ],
         "status": "required"
       },
       "quickjs": {
         "classes": [],
-        "functions": [],
-        "status": "missing_yaml"
+        "functions": [
+          "__flox_simulated_executor_on_bar_ohlc",
+          "__flox_simulated_executor_begin_bar_callback_window",
+          "__flox_simulated_executor_end_bar_callback_window",
+          "__flox_simulated_executor_reset"
+        ],
+        "status": "required"
       }
     },
     "statistics": {
