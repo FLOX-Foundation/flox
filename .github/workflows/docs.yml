@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -13,6 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     # No observed duration on a PR (main-push only); mkdocs builds are fast.
     timeout-minutes: 10
+    # gh-deploy pushes the built site to the gh-pages branch with this
+    # job's token, so it needs write on contents beyond the read default.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

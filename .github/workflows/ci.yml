@@ -20,6 +20,9 @@ on:
     # Weekly affinity tests - Sunday at 3:00 UTC
     - cron: '0 3 * * 0'
 
+permissions:
+  contents: read
+
 # Fast-fail: a new push to the same branch / PR cancels the in-progress run.
 # Build jobs (linux-*, macos, windows-*, sanitizers) depend on the quick
 # format-check job (~15s), so a formatting failure no longer leaves the
@@ -408,7 +411,7 @@ jobs:
     - name: Verify .pyi stubs are in sync with the binding
       run: python3 scripts/gen_pyi_stubs.py --check
 
-    # Build the wheel from python/pyproject.toml, install it into a
+    # Build the wheel from the root pyproject.toml, install it into a
     # throwaway venv, and assert every documented pure-Python module is
     # importable. Catches the regression where scikit-build-core only
     # collects the install component contents and silently drops new

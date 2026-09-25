@@ -264,8 +264,15 @@ LadderBook::Config indexCfg()
 // Two lookups are timed because the engine does both: contains() on an id the
 // book does not hold is validate()'s duplicate-id gate on every single new
 // order, and contains()/find() on a resting id is cancel, modify and every
-// report. Three times the fresh cost is already generous -- the promise is
-// O(1).
+// report. The bound below is ten times the fresh cost, which sounds loose for
+// an O(1) promise but is not measuring the same thing the promise is about:
+// a probe chain that grows with churn (the actual regression this test
+// exists to catch) inflates a lookup by orders of magnitude -- roughly 1600x
+// was observed for the bug this test was written against -- while ordinary
+// wall-clock noise on a shared, loaded CI runner (ctest -j4 alongside other
+// jobs) has been seen to push a single-digit-nanosecond measurement past a
+// 3x bound with no regression at all. 10x sits far below the failure mode
+// and far above anything a busy runner's scheduler can produce on its own.
 //
 // The cancels are checked as they go, not only timed: a deletion that leaves a
 // hole in its probe chain orphans whatever the chain reached past it, and the
@@ -308,10 +315,10 @@ TEST(LadderBookIdIndex, ALookupCostsTheSameAfterAMillionOrderLifecycles)
   const double agedAbsent = lookupNs(aged, kAbsentBase, kAbsentSpan, 65, 2000, false);
   const double agedPresent = lookupNs(aged, liveBase, kLive, 65, 2000, true);
 
-  EXPECT_LE(agedAbsent, 3.0 * freshAbsent)
+  EXPECT_LE(agedAbsent, 10.0 * freshAbsent)
       << "contains() on a new id: " << freshAbsent << " ns fresh, " << agedAbsent << " ns after "
       << kCycles << " lifecycles. validate() pays this on every order";
-  EXPECT_LE(agedPresent, 3.0 * freshPresent)
+  EXPECT_LE(agedPresent, 10.0 * freshPresent)
       << "contains() on a resting id: " << freshPresent << " ns fresh, " << agedPresent
       << " ns after " << kCycles << " lifecycles";
 }

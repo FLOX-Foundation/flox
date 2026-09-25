@@ -112,22 +112,42 @@ Full pattern: [Realistic backtest in one call](../how-to/realistic-backtest.md#a
 
 ## Building from source
 
-Use this if you need the current `main` branch before a release is published.
+Two ways to get here: you need the current `main` branch before a release
+is published, or `pip install flox-py` found no wheel for your platform and
+interpreter and fell back to the source distribution. Both compile the C++
+core on your machine and need the same things.
 
 ### Requirements
 
-- GCC 14+ or Clang 18+
+- GCC 14+ or Clang 18+ (the core is C++23)
 - CMake 3.22+
 - Python 3.10+
+- LZ4 headers and library — `liblz4-dev` (Debian/Ubuntu), `lz4` (Homebrew),
+  `lz4-devel` (Fedora/RHEL). Without them the build fetches and compiles
+  lz4 itself, which needs git and network access.
 
 ```bash
 git clone https://github.com/FLOX-Foundation/flox.git
 cd flox
-pip install scikit-build-core pybind11 numpy
-pip install ./python
+pip install .
 ```
 
-That's it — `scikit-build-core` handles the cmake build internally. The module installs into your environment the same way as the PyPI package.
+`pip install .` is run from the repository root, not from `python/`:
+`pyproject.toml` lives at the root because the C++ sources the extension
+links sit there. `scikit-build-core` handles the cmake build internally,
+and the module installs into your environment the same way as the PyPI
+package.
+
+The published source distribution (`flox_py-<version>.tar.gz`) carries
+those same sources, so the fallback path works the same way without a
+clone:
+
+```bash
+pip install --no-binary flox-py flox-py
+```
+
+Expect minutes, not seconds — this compiles the core library and the
+binding.
 
 ---
 

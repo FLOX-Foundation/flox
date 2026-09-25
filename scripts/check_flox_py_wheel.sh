@@ -9,7 +9,9 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$repo_root/python"
+# pyproject.toml is at the repository root (the sdist has to be able to
+# carry include/ and src/), so the build runs from there.
+cd "$repo_root"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

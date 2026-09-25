@@ -8,7 +8,14 @@ Complete reference for the `flox_py` Python module. All classes and functions ar
 pip install flox-py
 ```
 
-Or build from source:
+Or install from source — from the repository root, where `pyproject.toml`
+lives (needs CMake 3.22+, a C++23 compiler and the LZ4 headers):
+
+```bash
+pip install .
+```
+
+Or build the extension in-tree with CMake directly:
 
 ```bash
 cmake -B build -DFLOX_BUILD_PYTHON=ON -DFLOX_ENABLE_BACKTEST=ON -DCMAKE_BUILD_TYPE=Release

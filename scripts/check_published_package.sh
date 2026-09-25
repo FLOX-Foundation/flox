@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Rehearse, by hand, the install-and-import gate that node-publish.yml and
 # python-wheels.yml now run before publishing. Takes an already-built npm
-# tarball (`npm pack` output) and/or an already-built Python wheel; this
-# script does not build either -- it only proves that what would go to the
-# registry actually installs and loads on this machine.
+# tarball (`npm pack` output), an already-built Python wheel, and/or an
+# already-built Python sdist; this script does not build any of them -- it
+# only proves that what would go to the registry actually installs and
+# loads on this machine.
 #
 # This is the check that would have caught the flat prebuilds/flox_node.node
 # bug: every npm publish since 0.7.1 shipped a package whose prebuilds/
@@ -13,19 +14,26 @@
 # old workflow ever ran that require -- publish went straight from
 # download-artifact to `npm publish`.
 #
+# --sdist is the slow one: it runs a real source build (cmake configures the
+# whole project and compiles the core plus the extension), which is the only
+# thing that can tell a self-contained sdist from one that merely looks
+# populated.
+#
 # Usage:
 #   scripts/check_published_package.sh --npm-tarball PATH [--wheel PATH]
 #   scripts/check_published_package.sh --wheel PATH [--npm-tarball PATH]
+#   scripts/check_published_package.sh --sdist PATH
 #
-# At least one of --npm-tarball / --wheel is required. Exit status is
-# nonzero if any requested check fails.
+# At least one of --npm-tarball / --wheel / --sdist is required. Exit status
+# is nonzero if any requested check fails.
 set -euo pipefail
 
 npm_tarball=""
 wheel_path=""
+sdist_path=""
 
 usage() {
-  echo "usage: $0 [--npm-tarball PATH] [--wheel PATH]" >&2
+  echo "usage: $0 [--npm-tarball PATH] [--wheel PATH] [--sdist PATH]" >&2
   exit 2
 }
 
@@ -39,6 +47,10 @@ while [[ $# -gt 0 ]]; do
       wheel_path="$2"
       shift 2
       ;;
+    --sdist)
+      sdist_path="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       ;;
@@ -49,11 +61,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$npm_tarball" && -z "$wheel_path" ]]; then
+if [[ -z "$npm_tarball" && -z "$wheel_path" && -z "$sdist_path" ]]; then
   usage
 fi
 
 fail=0
+
+# The import smoke both Python checks run, kept in one place so the sdist
+# path cannot drift into proving something weaker than the wheel path.
+FLOX_PY_SMOKE='
+import sys
+import flox_py as flox
+reg = flox.SymbolRegistry()
+sid = reg.add_symbol("bybit", "BTCUSDT", 0.01)
+assert flox.SLIPPAGE_NONE == 0
+assert sid is not None
+print(sys.argv[1], "OK: import + SymbolRegistry.add_symbol() ->", sid)
+'
 
 check_npm_tarball() {
   local tarball="$1"
@@ -109,15 +133,57 @@ check_wheel() {
   echo "[wheel-check] importing flox_py and calling into the native extension..."
   # Run from a directory with no python/flox_py/ nearby so cwd resolution
   # cannot shadow the installed wheel with the source tree.
-  if ! (cd /tmp && "$work/venv/bin/python" -c "
-import flox_py as flox
-reg = flox.SymbolRegistry()
-sid = reg.add_symbol('bybit', 'BTCUSDT', 0.01)
-assert flox.SLIPPAGE_NONE == 0
-assert sid is not None
-print('[wheel-check] OK: import + SymbolRegistry.add_symbol() ->', sid)
-"); then
+  if ! (cd /tmp && "$work/venv/bin/python" -c "$FLOX_PY_SMOKE" "[wheel-check]"); then
     echo "::error::wheel failed to import or call the native extension" >&2
+    return 1
+  fi
+}
+
+check_sdist() {
+  local sdist="$1"
+  if [[ ! -f "$sdist" ]]; then
+    echo "::error::sdist not found: $sdist" >&2
+    return 1
+  fi
+  sdist="$(cd -- "$(dirname -- "$sdist")" && pwd)/$(basename -- "$sdist")"
+
+  local work
+  work=$(mktemp -d)
+  trap 'rm -rf "$work"' RETURN
+
+  # Cheap structural check first. An sdist rooted below the C++ sources --
+  # what a pyproject.toml under python/ produces -- looks like a normal
+  # archive and only fails minutes later, deep inside a cmake configure
+  # step, with nothing saying the archive was the problem. Name the missing
+  # path instead.
+  local members
+  members=$(tar tzf "$sdist" | cut -d/ -f2- | sort -u)
+  local missing=()
+  local required
+  for required in CMakeLists.txt cmake/ include/ src/ venue/ python/flox_py/; do
+    if ! grep -q "^${required}" <<<"$members"; then
+      missing+=("$required")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "::error::sdist does not carry the sources its own build configures: ${missing[*]}" >&2
+    echo "the sdist root is the directory holding pyproject.toml; everything cmake reads has to live under it" >&2
+    return 1
+  fi
+
+  local py="${PYTHON:-python3}"
+  echo "[sdist-check] building and installing $(basename "$sdist") in a clean venv (this compiles the core; minutes)..."
+  "$py" -m venv "$work/venv"
+  if ! "$work/venv/bin/pip" install "$sdist"; then
+    echo "::error::sdist failed to build or install from source" >&2
+    return 1
+  fi
+
+  echo "[sdist-check] importing flox_py and calling into the native extension..."
+  # Same reason as the wheel check: run from elsewhere so the source tree
+  # cannot shadow what was installed.
+  if ! (cd /tmp && "$work/venv/bin/python" -c "$FLOX_PY_SMOKE" "[sdist-check]"); then
+    echo "::error::sdist installed but flox_py failed to import or call the native extension" >&2
     return 1
   fi
 }
@@ -130,6 +196,12 @@ fi
 
 if [[ -n "$wheel_path" ]]; then
   if ! check_wheel "$wheel_path"; then
+    fail=1
+  fi
+fi
+
+if [[ -n "$sdist_path" ]]; then
+  if ! check_sdist "$sdist_path"; then
     fail=1
   fi
 fi

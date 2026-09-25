@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Synchronise the project version across every artifact that publishes a version:
 #   - root CMakeLists.txt   (flox C++ core)
-#   - python/pyproject.toml (flox-py PyPI package)
+#   - pyproject.toml        (flox-py PyPI package; at the root so the sdist
+#                            can carry the C++ sources -- see the layout rule there)
 #   - node/package.json     (@flox-foundation/flox npm package)
 #   - mcp/pyproject.toml    (flox-mcp PyPI package — bundled IR / docs index
 #                            must track the binding versions users install)
@@ -29,8 +30,8 @@ ROOT="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
 #    Use Perl for cross-platform in-place edit (BSD sed and GNU sed disagree on -i).
 perl -i -pe "s/^(project\(flox VERSION )[^ )]+/\${1}${VERSION}/" "$ROOT/CMakeLists.txt"
 
-# 2. python/pyproject.toml — `version = "X.Y.Z"`
-perl -i -pe "s/^(version = \")[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/python/pyproject.toml"
+# 2. pyproject.toml — `version = "X.Y.Z"`
+perl -i -pe "s/^(version = \")[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/pyproject.toml"
 
 # 3. node/package.json — JSON, edit via node so we don't break formatting on weird inputs
 node -e "
@@ -50,6 +51,6 @@ perl -i -pe "s/^(version = \")[^\"]+(\")/\${1}${VERSION}\${2}/" "$ROOT/mcp/pypro
 
 echo "Set version to ${VERSION} in:"
 echo "  CMakeLists.txt   ($(grep -E '^project\(flox VERSION' "$ROOT/CMakeLists.txt"))"
-echo "  python/pyproject ($(grep -E '^version = ' "$ROOT/python/pyproject.toml"))"
+echo "  pyproject        ($(grep -E '^version = ' "$ROOT/pyproject.toml"))"
 echo "  node/package     (\"version\": \"$(node -e "console.log(require('$ROOT/node/package.json').version)")\")"
 echo "  mcp/pyproject    ($(grep -E '^version = ' "$ROOT/mcp/pyproject.toml"))"
