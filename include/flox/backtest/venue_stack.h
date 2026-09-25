@@ -91,8 +91,10 @@ class VenueStack
   // wire the subsystems together -- the caller must have already done the
   // peer-pointer wiring the canned factories do before calling assemble():
   //   executor->setQueueModel/setVenueAvailability/setRateLimitPolicy,
-  //   fees->bindAccount, liquidation->attachAccount/setExecutor.
-  // An unwired stack has a detached fee schedule and liquidation engine.
+  //   executor->setFeeSchedule, fees->bindAccount,
+  //   liquidation->attachAccount/setExecutor.
+  // An unwired stack has a detached fee schedule and liquidation engine; a
+  // run on it falls back to the flat BacktestConfig::feeRate.
   struct AssembleArgs
   {
     std::unique_ptr<SimulatedClock> clock;

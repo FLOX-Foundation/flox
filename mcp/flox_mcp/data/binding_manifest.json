@@ -14037,6 +14037,11 @@
         },
         {
           "kind": "method",
+          "name": "setFeeSchedule",
+          "parent": "BacktestResult"
+        },
+        {
+          "kind": "method",
           "name": "totalPnl",
           "parent": "BacktestResult"
         },
@@ -14078,6 +14083,11 @@
         {
           "kind": "method",
           "name": "advanceClocks",
+          "parent": "BacktestRunner"
+        },
+        {
+          "kind": "method",
+          "name": "attachFeeSchedule",
           "parent": "BacktestRunner"
         },
         {
@@ -23652,6 +23662,11 @@
         },
         {
           "kind": "method",
+          "name": "feeSchedule",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "fills",
           "parent": "SimulatedExecutor"
         },
@@ -23888,6 +23903,11 @@
         {
           "kind": "method",
           "name": "setDefaultSlippage",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "setFeeSchedule",
           "parent": "SimulatedExecutor"
         },
         {

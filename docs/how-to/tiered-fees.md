@@ -106,6 +106,31 @@ transitions = sched.tier_transition_ts_ns()
 print(f"changed tier {len(transitions)} times during backtest")
 ```
 
+## Fees a backtest actually charges
+
+A run driven by a `VenueStack` pays that stack's ladder. The stack hands its
+`FeeSchedule` to the executor, and `BacktestRunner.result()` forwards it to
+the result, which bills every fill at the tier the account's 30-day notional
+resolves to -- `Fill.is_maker` picks the side. On the Binance UM ladder a
+VIP-8 account pays 2.1 bps taker where the Regular tier pays 4.0, so a
+200,000.00 round trip costs 42.00 instead of 80.00.
+
+The result replays the run's fills into its own copy of the ladder, so the
+tier climbs as the run trades while the stack's live 30-day counter is left
+alone; calling `result()` twice prices the run the same way both times.
+
+Precedence, highest first:
+
+| Setting | Wins when |
+|---|---|
+| `use_percentage_fee = False` | Always -- a flat `fixed_fee_per_trade` replaces the fee model outright |
+| The venue's `FeeSchedule` | A `VenueStack` (or any executor with `set_fee_schedule`) drives the run |
+| `maker_fee_rate` / `taker_fee_rate` | No ladder is attached |
+| `fee_rate` | No ladder and no per-side override |
+
+A run with no venue attached is unchanged: it charges the flat
+`BacktestConfig` rate.
+
 ## Notes
 
 - The rolling window is exactly 30 days (`30 * 24 * 3600 * 1e9` ns).

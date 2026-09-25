@@ -17,6 +17,7 @@
 #include "flox/backtest/rate_limit_policy.h"
 #include "flox/backtest/venue_availability.h"
 #include "flox/book/book_update.h"
+#include "flox/clearing/fee_schedule.h"
 #include "flox/execution/abstract_executor.h"
 #include "flox/execution/composite_order_logic.h"
 #include "flox/execution/events/order_event.h"
@@ -152,6 +153,15 @@ class SimulatedExecutor : public IOrderExecutor
   // the strategy sees a feed gap. Passing nullptr disables outages.
   void setVenueAvailability(VenueAvailability* availability) { _venue = availability; }
   VenueAvailability* venueAvailability() noexcept { return _venue; }
+
+  // Attach the venue's fee ladder. The executor does not charge fees itself
+  // -- it is the fill stream's owner, so this is where a result built from
+  // that stream finds the schedule that prices it. BacktestRunner::result
+  // hands it to BacktestResult, which then bills each fill at the tier the
+  // account's 30-day notional resolves to instead of the flat
+  // BacktestConfig::feeRate. Passing nullptr reverts to the flat rate.
+  void setFeeSchedule(FeeSchedule* fees) noexcept { _fees = fees; }
+  const FeeSchedule* feeSchedule() const noexcept { return _fees; }
 
   // Attach a rate-limit policy. Submit / cancel / replace consult the
   // policy first; an overflow emits OrderEventStatus::REJECTED_RATE_LIMIT
@@ -535,6 +545,8 @@ class SimulatedExecutor : public IOrderExecutor
   FokMode _fokMode{FokMode::AnyPrice};
 
   VenueAvailability* _venue{nullptr};
+  // Non-owning; the VenueStack (or the caller) outlives the executor.
+  FeeSchedule* _fees{nullptr};
   enum class BufferedAction : uint8_t
   {
     SUBMIT = 0,

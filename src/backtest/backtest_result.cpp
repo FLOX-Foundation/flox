@@ -33,7 +33,7 @@ void BacktestResult::recordFill(const Fill& fill)
 {
   _fills.push_back(fill);
 
-  const Volume fee = computeFee(fill.price, fill.quantity, fill.isMaker);
+  const Volume fee = computeFee(fill.price, fill.quantity, fill.isMaker, fill.timestampNs);
   _totalFees = Volume::fromRaw(_totalFees.raw() + fee.raw());
 
   Position& pos = getPosition(fill.symbol);
@@ -421,24 +421,56 @@ void BacktestResult::recordTrade(SymbolId symbol, Side side, Price entryPrice, P
   _equityCurve.push_back(pt);
 }
 
-Volume BacktestResult::computeFee(Price price, Quantity qty, bool isMaker) const
+void BacktestResult::setFeeSchedule(const FeeSchedule& schedule)
 {
-  if (_config.usePercentageFee)
-  {
-    const std::optional<double>& sideRate =
-        isMaker ? _config.makerFeeRate : _config.takerFeeRate;
-    // An untouched config leaves both sides empty and keeps charging feeRate,
-    // so results do not move. A rate that is set is used as given, sign and
-    // all: a negative one is a rebate the venue pays.
-    const double rate = sideRate.value_or(_config.feeRate);
-    const Volume notional = price * qty;
-    return Volume::fromRaw(static_cast<int64_t>(notional.toDouble() * rate *
-                                                static_cast<double>(Volume::Scale)));
-  }
-  else
+  _fees = schedule;
+  // A schedule bound to an account reads its 30-day notional from that
+  // account and writes fills back into it. Unbind the copy and carry the
+  // number over by value, so replaying the run neither depends on nor
+  // disturbs the venue's live counter. An unbound schedule already owns its
+  // rolling window, which the copy brought with it -- there is nothing to
+  // carry over in that case.
+  _feeBaseNotional30d =
+      (schedule.boundAccount() != nullptr) ? schedule.rollingNotional30d() : 0.0;
+  _feeBaseApplied = false;
+  _fees->clearAccountBinding();
+}
+
+Volume BacktestResult::computeFee(Price price, Quantity qty, bool isMaker, UnixNanos tsNs)
+{
+  if (!_config.usePercentageFee)
   {
     return Volume::fromDouble(_config.fixedFeePerTrade);
   }
+
+  const Volume notional = price * qty;
+
+  if (_fees.has_value() && _fees->tierCount() > 0)
+  {
+    if (!_feeBaseApplied)
+    {
+      // First fill of the replay: now there is a timestamp to stamp the
+      // pre-run volume with, so it sits inside the 30-day window rather than
+      // at the epoch, where the first eviction would drop it.
+      _feeBaseApplied = true;
+      if (_feeBaseNotional30d > 0.0)
+      {
+        _fees->recordFill(tsNs.raw(), _feeBaseNotional30d);
+      }
+    }
+    const double fee = _fees->feeFor(tsNs.raw(), notional.toDouble(), isMaker);
+    _fees->recordFill(tsNs.raw(), notional.toDouble());
+    return Volume::fromDouble(fee);
+  }
+
+  const std::optional<double>& sideRate =
+      isMaker ? _config.makerFeeRate : _config.takerFeeRate;
+  // An untouched config leaves both sides empty and keeps charging feeRate,
+  // so results do not move. A rate that is set is used as given, sign and
+  // all: a negative one is a rebate the venue pays.
+  const double rate = sideRate.value_or(_config.feeRate);
+  return Volume::fromRaw(static_cast<int64_t>(notional.toDouble() * rate *
+                                              static_cast<double>(Volume::Scale)));
 }
 
 namespace
