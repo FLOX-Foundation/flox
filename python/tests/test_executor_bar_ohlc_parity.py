@@ -196,7 +196,7 @@ def test_reset_makes_a_second_run_report_that_run() -> None:
     assert first
 
     executor.reset()
-    assert executor.fill_count() == 0, "reset left the previous run's fills behind"
+    assert executor.fill_count == 0, "reset left the previous run's fills behind"
 
     _drive_by_hand(executor)
     assert _fill_rows(executor) == first, "the second run did not repeat the first"
