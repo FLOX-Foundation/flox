@@ -116,6 +116,83 @@ class ReplayWriterRotationTest : public ::testing::Test
     writer.close();
   }
 
+  // Uncompressed trades under an exact byte bound. One frame is
+  // sizeof(FrameHeader) + sizeof(TradeRecord); a segment opens with a
+  // SegmentHeader and nothing else, so the arithmetic is exact and the bound
+  // can be put on a frame boundary.
+  void writeUncompressedTrades(uint64_t max_segment_bytes, size_t count)
+  {
+    WriterConfig cfg{};
+    cfg.output_dir = _dir;
+    cfg.output_filename = "tape.floxlog";
+    cfg.max_segment_bytes = max_segment_bytes;
+    cfg.compression = CompressionType::None;
+
+    BinaryLogWriter writer(cfg);
+    for (size_t i = 0; i < count; ++i)
+    {
+      TradeRecord r{};
+      r.exchange_ts_ns = kBaseNs + static_cast<int64_t>(i) * 1'000'000;
+      r.recv_ts_ns = r.exchange_ts_ns;
+      r.price_raw = Price::fromDouble(100.0).raw();
+      r.qty_raw = Quantity::fromDouble(1.0).raw();
+      r.trade_id = i + 1;
+      r.symbol_id = 1;
+      writer.writeTrade(r);
+    }
+    writer.close();
+  }
+
+  // Event counts of every non-empty segment, in the order a reader walks them.
+  std::vector<uint32_t> segmentEventCounts() const
+  {
+    std::vector<uint32_t> counts;
+    for (const auto& path : sortedSegments())
+    {
+      const uint32_t n = headerOf(path).event_count;
+      if (n > 0)
+      {
+        counts.push_back(n);
+      }
+    }
+    return counts;
+  }
+
+  // One compressed block of `index_interval` identical records, as it lands on
+  // disk. Written into a throwaway directory so the tape under test stays the
+  // only thing in _dir.
+  uint64_t measureUniformBlockBytes(uint16_t index_interval)
+  {
+    const auto probe = _dir / "probe";
+    std::filesystem::remove_all(probe);
+    std::filesystem::create_directories(probe);
+
+    {
+      WriterConfig cfg{};
+      cfg.output_dir = probe;
+      cfg.output_filename = "probe.floxlog";
+      cfg.index_interval = index_interval;
+      cfg.compression = CompressionType::LZ4;
+      BinaryLogWriter writer(cfg);
+      TradeRecord r{};
+      r.exchange_ts_ns = kBaseNs;
+      r.recv_ts_ns = kBaseNs;
+      r.price_raw = Price::fromDouble(100.0).raw();
+      r.qty_raw = Quantity::fromDouble(1.0).raw();
+      r.trade_id = 1;
+      r.symbol_id = 1;
+      for (uint16_t i = 0; i < index_interval; ++i)
+      {
+        writer.writeTrade(r);
+      }
+      writer.close();
+    }
+
+    const uint64_t bytes = firstBlockBytesOnDisk(probe / "probe.floxlog");
+    std::filesystem::remove_all(probe);
+    return bytes;
+  }
+
   // Segment paths in the order a reader walks them (by filename).
   std::vector<std::filesystem::path> sortedSegments() const
   {
@@ -299,4 +376,76 @@ TEST_F(ReplayWriterRotationTest, CompressedRotationMeasuresTheBytesThatReachTheF
   }
 
   EXPECT_EQ(countTrades(), kTrades);
+}
+
+// max_segment_bytes is a size the segment may reach, not one it may not
+// touch. maybeRotate asks whether the frame about to be written would take
+// the segment *past* the bound; a segment filled to exactly the bound is full
+// and its last frame belongs in it. Rotating one frame early is invisible at
+// the 256 MB default and wrong everywhere the bound was chosen to match
+// something -- a block device, a transfer unit, a retention quota. The
+// arithmetic is exact on the uncompressed path, so the boundary can be named:
+// header plus thirty-two frames, to the byte.
+TEST_F(ReplayWriterRotationTest, AnUncompressedSegmentMayBeFilledExactlyToTheBound)
+{
+  constexpr uint64_t kFrameBytes = sizeof(FrameHeader) + sizeof(TradeRecord);
+  constexpr uint32_t kFramesPerSegment = 32;
+  constexpr uint64_t kBound = sizeof(SegmentHeader) + kFramesPerSegment * kFrameBytes;
+
+  // Exactly enough to reach the bound: one segment, nothing rotated.
+  writeUncompressedTrades(kBound, kFramesPerSegment);
+  EXPECT_EQ(segmentEventCounts(), (std::vector<uint32_t>{kFramesPerSegment}))
+      << "a segment filled to exactly max_segment_bytes=" << kBound
+      << " rotated, so the last frame that fit was pushed into a new segment";
+
+  // One frame more: the frame that does not fit opens the next segment, and it
+  // is that frame and no earlier one.
+  std::filesystem::remove_all(_dir);
+  std::filesystem::create_directories(_dir);
+  writeUncompressedTrades(kBound, kFramesPerSegment + 1);
+  EXPECT_EQ(segmentEventCounts(), (std::vector<uint32_t>{kFramesPerSegment, 1u}))
+      << "the segment did not close on the first frame that would have taken it "
+         "past max_segment_bytes="
+      << kBound;
+}
+
+// The same boundary on the compressed path, where the unit is a block rather
+// than a frame. A compressed segment can only land on the bound when the
+// bound sits on the block grid, so the test puts it there: measure what one
+// block of identical records costs on disk, then ask for a segment of exactly
+// four of them. Reaching the bound closes the segment; requiring the segment
+// to exceed it carries a fifth block in.
+TEST_F(ReplayWriterRotationTest, ACompressedSegmentClosesOnReachingTheBoundExactly)
+{
+  constexpr uint16_t kBlockEvents = 64;
+  constexpr uint64_t kBlocksPerSegment = 4;
+
+  const uint64_t block_on_disk = measureUniformBlockBytes(kBlockEvents);
+  ASSERT_GT(block_on_disk, sizeof(CompressedBlockHeader));
+
+  const uint64_t bound = sizeof(SegmentHeader) + kBlocksPerSegment * block_on_disk;
+  const uint64_t events_per_segment = kBlocksPerSegment * kBlockEvents;
+
+  // Three full segments plus a short tail, so the run does not end on a
+  // rotation and leave an empty segment behind it.
+  const size_t trades = static_cast<size_t>(3 * events_per_segment) + 40;
+  writeUniformCompressibleTape(bound, kBlockEvents, trades);
+
+  auto paths = sortedSegments();
+  ASSERT_EQ(paths.size(), 4u) << "the bound did not land on the block grid as intended";
+
+  for (size_t i = 0; i + 1 < paths.size(); ++i)
+  {
+    const SegmentHeader header = headerOf(paths[i]);
+    EXPECT_EQ(header.index_offset, bound)
+        << "segment " << paths[i].filename() << " ended at " << header.index_offset
+        << " bytes instead of exactly max_segment_bytes=" << bound
+        << " -- reaching the bound did not close it";
+    EXPECT_EQ(header.event_count, events_per_segment)
+        << "segment " << paths[i].filename() << " carries " << header.event_count
+        << " events instead of " << events_per_segment << " (" << kBlocksPerSegment
+        << " blocks of " << kBlockEvents << ")";
+  }
+
+  EXPECT_EQ(countTrades(), trades);
 }

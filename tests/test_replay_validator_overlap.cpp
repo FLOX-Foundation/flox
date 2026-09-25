@@ -92,6 +92,19 @@ class ReplayValidatorOverlapTest : public ::testing::Test
     return nullptr;
   }
 
+  static std::vector<std::string> overlapMessages(const DatasetValidationResult& result)
+  {
+    std::vector<std::string> out;
+    for (const auto& issue : result.issues)
+    {
+      if (issue.type == IssueType::SegmentRangeOverlap)
+      {
+        out.push_back(issue.message);
+      }
+    }
+    return out;
+  }
+
   static std::string rangeText(int64_t from_s, int64_t to_s)
   {
     return "[" + std::to_string(kBaseNs + from_s * kSecond) + ", " +
@@ -257,4 +270,44 @@ TEST_F(ReplayValidatorOverlapTest, OverlapArrivesAsATypedDatasetIssue)
     EXPECT_TRUE(seg.issues.empty()) << "segment " << seg.path.filename()
                                     << " was blamed for a dataset-level finding";
   }
+}
+
+// The reference range has to move as the walk goes on, and "so far" is the
+// whole of the rule. a. [0, 50] opens it; b. [10, 90] overlaps a and reaches
+// further than a ever did; c. [60, 70] starts after a ended and runs into b
+// alone. A check that finds the furthest-reaching segment once and never
+// updates it reports the first pair and walks past the second -- which is
+// exactly the case the furthest-reaching rule was chosen over comparing
+// neighbours to catch, and it is invisible in a fixture whose first segment
+// happens to be the widest.
+TEST_F(ReplayValidatorOverlapTest, TheReferenceRangeWidensAsTheWalkGoesOn)
+{
+  writeSegment("a.floxlog", 0, 50);
+  writeSegment("b.floxlog", 10, 90);
+  writeSegment("c.floxlog", 60, 70);
+
+  DatasetValidator validator;
+  auto result = validator.validate(_dir);
+
+  ASSERT_EQ(result.total_segments, 3u);
+  EXPECT_FALSE(result.valid);
+
+  const auto overlaps = overlapMessages(result);
+  ASSERT_EQ(overlaps.size(), 2u)
+      << "c.floxlog runs into b.floxlog and not into a.floxlog, so it is only "
+         "found once the reference range has moved on from a.floxlog";
+
+  const std::string first =
+      "a.floxlog " + rangeText(0, 50) + " overlaps b.floxlog " + rangeText(10, 90);
+  const std::string second =
+      "b.floxlog " + rangeText(10, 90) + " overlaps c.floxlog " + rangeText(60, 70);
+
+  EXPECT_NE(overlaps[0].find(first), std::string::npos)
+      << "the first overlap names the wrong pair or the wrong ranges.\n  wanted: ..."
+      << first << "...\n  got:    " << overlaps[0];
+  EXPECT_NE(overlaps[1].find(second), std::string::npos)
+      << "the second overlap names the wrong pair or the wrong ranges.\n  wanted: ..."
+      << second << "...\n  got:    " << overlaps[1];
+
+  EXPECT_EQ(result.total_errors, 2u);
 }

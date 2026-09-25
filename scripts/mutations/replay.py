@@ -437,6 +437,31 @@ MUTATIONS: list[Mutation] = [
         gtest_filter="ReplayWriterRotationTest.*",
     ),
     Mutation(
+        name="rotation-requires-the-bound-to-be-exceeded",
+        why="a compressed segment closes only once it is past max_segment_bytes rather "
+            "than on reaching it, so a bound that sits on the block grid carries one "
+            "block more than it was asked for -- the difference between a size the "
+            "segment may reach and one it may not touch",
+        file=WRITER_CPP,
+        old="    if (_segment_bytes >= _config.max_segment_bytes)",
+        new="    if (_segment_bytes > _config.max_segment_bytes)",
+        targets=[ROTATION],
+        gtest_filter="ReplayWriterRotationTest."
+                     "ACompressedSegmentClosesOnReachingTheBoundExactly",
+    ),
+    Mutation(
+        name="uncompressed-rotation-fires-one-frame-early",
+        why="the uncompressed path rotates when the next frame would fill the segment "
+            "exactly instead of when it would overflow it, so every segment stops one "
+            "frame short of the size it was asked for",
+        file=WRITER_CPP,
+        old="  if (_segment_bytes + needed_bytes > _config.max_segment_bytes)",
+        new="  if (_segment_bytes + needed_bytes >= _config.max_segment_bytes)",
+        targets=[ROTATION],
+        gtest_filter="ReplayWriterRotationTest."
+                     "AnUncompressedSegmentMayBeFilledExactlyToTheBound",
+    ),
+    Mutation(
         name="rotation-drops-the-block-that-crosses-the-bound",
         why="the segment is closed before the full block is flushed and the block "
             "buffer is thrown away with it, so every rotation costs index_interval "
@@ -762,6 +787,17 @@ MUTATIONS: list[Mutation] = [
         new="    const Range& r = ranges[k];\n"
             "    widest = ranges[k - 1];\n"
             "    if (r.first < widest.last)",
+        targets=[OVERLAP],
+        gtest_filter="ReplayValidatorOverlapTest.*",
+    ),
+    Mutation(
+        name="overlap-reference-never-widens",
+        why="the furthest-reaching segment is chosen once and never updated, so every "
+            "segment is compared against the range the walk opened with; a segment "
+            "that runs into a later, wider one is walked straight past",
+        file=VALIDATOR_CPP,
+        old="    if (r.last > widest.last)",
+        new="    if (false)",
         targets=[OVERLAP],
         gtest_filter="ReplayValidatorOverlapTest.*",
     ),
