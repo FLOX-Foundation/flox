@@ -1700,3 +1700,180 @@ TEST(BacktestEconomics, AFoldThatDeclinesEveryGridPointIsEmptyRatherThanFatal)
       << "a declined fold stopped the folds after it from running";
   EXPECT_NEAR(folds[1].testStats.totalPnl, 3.00, 1e-6);
 }
+
+// ===========================================================================
+// 8. The fold-index factory -- the shape that predates the parameter grid
+// ===========================================================================
+
+namespace
+{
+
+// Both walk-forward overloads resolve their grid through the same
+// `gridPoints()`, whose first branch answers the fold-index factory: it can
+// carry no parameter, so the fold is a single unparameterised point. That
+// single point is what makes the fold run at all. Returning no points instead
+// is indistinguishable from a factory that declined everything -- since the
+// declined-fold fix, every fold is then reported empty rather than crashing,
+// which is a silent way for an entire walk-forward run to report nothing.
+//
+// A hold of 2 on a ramp of +1.00 per bar returns 2.00 in every window, train
+// and test, in both modes and on both overloads.
+constexpr int kIndexOnlyHold = 2;
+constexpr double kIndexOnlyPnl = 2.00;
+
+WalkForwardConfig indexOnlyWfConfig(WalkForwardMode mode)
+{
+  WalkForwardConfig wf;
+  wf.mode = mode;
+  wf.trainSize = 6;
+  wf.minTrainSize = 6;
+  wf.testSize = 4;
+  wf.step = 4;
+  return wf;
+}
+
+}  // namespace
+
+// A fold-index factory with no grid: every fold runs both of its windows and
+// reports the statistics of the strategy the factory built. 14 bars at
+// train 6 / test 4 / step 4 is two folds in either mode.
+TEST(BacktestEconomics, AnIndexOnlyStrategyFactoryStillRunsEveryFold)
+{
+  for (WalkForwardMode mode : {WalkForwardMode::Anchored, WalkForwardMode::Sliding})
+  {
+    const char* modeName = (mode == WalkForwardMode::Anchored) ? "anchored" : "sliding";
+
+    SymbolRegistry reg;
+    const SymbolId sym = registerBtc(reg);
+    const auto bars = priceRamp(sym, 14, 100.0, 1.0);
+
+    WalkForwardRunner runner(walkForwardConfig(), indexOnlyWfConfig(mode));
+
+    std::vector<std::unique_ptr<HoldNStrategy>> owned;
+    std::vector<std::size_t> builtForFold;
+    runner.setStrategyFactory(
+        [&](std::size_t foldIndex) -> IStrategy*
+        {
+          builtForFold.push_back(foldIndex);
+          owned.push_back(
+              std::make_unique<HoldNStrategy>(1, sym, reg, kIndexOnlyHold));
+          return owned.back().get();
+        });
+
+    const auto folds = runner.run(bars);
+    ASSERT_EQ(folds.size(), 2u) << modeName;
+
+    // One in-sample build for the single unparameterised point, then the
+    // out-of-sample build, per fold. Nothing was asked for means nothing ran.
+    EXPECT_EQ(builtForFold.size(), 4u)
+        << modeName << ": the factory was asked for " << builtForFold.size()
+        << " strategies across two folds; a fold that evaluates its single "
+           "point and then runs out of sample asks for two";
+
+    for (const auto& f : folds)
+    {
+      EXPECT_EQ(f.trainStats.totalTrades, 1u)
+          << modeName << " fold " << f.foldIndex << ": the train window ran nothing";
+      EXPECT_NEAR(f.trainStats.totalPnl, kIndexOnlyPnl, 1e-6)
+          << modeName << " fold " << f.foldIndex;
+      EXPECT_EQ(f.testStats.totalTrades, 1u)
+          << modeName << " fold " << f.foldIndex << ": the test window ran nothing";
+      EXPECT_NEAR(f.testStats.totalPnl, kIndexOnlyPnl, 1e-6)
+          << modeName << " fold " << f.foldIndex;
+    }
+  }
+}
+
+// The same for the BarEvent overload, which resolves its points through the
+// same branch. A market order submitted from a bar callback matches at the
+// next bar's open, so a hold of 2 still returns 2.00 on this ramp.
+TEST(BacktestEconomics, AnIndexOnlyFactoryRunsEveryFoldOverBarEvents)
+{
+  const std::vector<double> prices{100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0,
+                                   107.0, 108.0, 109.0, 110.0, 111.0, 112.0, 113.0};
+
+  for (WalkForwardMode mode : {WalkForwardMode::Anchored, WalkForwardMode::Sliding})
+  {
+    const char* modeName = (mode == WalkForwardMode::Anchored) ? "anchored" : "sliding";
+
+    SymbolRegistry reg;
+    const SymbolId sym = registerBtc(reg);
+    const auto bars = barEventsFromPrices(sym, prices);
+
+    WalkForwardRunner runner(walkForwardConfig(), indexOnlyWfConfig(mode));
+
+    std::vector<std::unique_ptr<HoldNBarStrategy>> owned;
+    int builds = 0;
+    runner.setStrategyFactory(
+        [&](std::size_t) -> IStrategy*
+        {
+          ++builds;
+          owned.push_back(
+              std::make_unique<HoldNBarStrategy>(1, sym, reg, kIndexOnlyHold));
+          return owned.back().get();
+        });
+
+    const auto folds = runner.run(bars);
+    ASSERT_EQ(folds.size(), 2u) << modeName;
+    EXPECT_EQ(builds, 4) << modeName << ": two builds per fold";
+
+    for (const auto& f : folds)
+    {
+      EXPECT_EQ(f.trainStats.totalTrades, 1u)
+          << modeName << " fold " << f.foldIndex << ": the train window ran nothing";
+      EXPECT_NEAR(f.trainStats.totalPnl, kIndexOnlyPnl, 1e-6)
+          << modeName << " fold " << f.foldIndex;
+      EXPECT_EQ(f.testStats.totalTrades, 1u)
+          << modeName << " fold " << f.foldIndex << ": the test window ran nothing";
+      EXPECT_NEAR(f.testStats.totalPnl, kIndexOnlyPnl, 1e-6)
+          << modeName << " fold " << f.foldIndex;
+    }
+  }
+}
+
+// A grid set alongside a fold-index factory is a configuration mistake: no
+// parameter can reach a factory that takes only a fold number. The runner
+// reports it and ignores the grid -- it does not search it (three points
+// would be four builds per fold, not two) and it does not cancel the run.
+TEST(BacktestEconomics, AGridSetOnAnIndexOnlyFactoryIsReportedAndIgnored)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto bars = priceRamp(sym, 14, 100.0, 1.0);
+
+  WalkForwardRunner runner(walkForwardConfig(),
+                           indexOnlyWfConfig(WalkForwardMode::Sliding));
+  runner.setParameterGrid(std::vector<std::vector<double>>{{1.0, 2.0, 3.0}});
+
+  std::vector<std::unique_ptr<HoldNStrategy>> owned;
+  int builds = 0;
+  runner.setStrategyFactory(
+      [&](std::size_t) -> IStrategy*
+      {
+        ++builds;
+        owned.push_back(std::make_unique<HoldNStrategy>(1, sym, reg, kIndexOnlyHold));
+        return owned.back().get();
+      });
+
+  CapturingLogger logger;
+  setGlobalLogger(&logger);
+  const auto folds = runner.run(bars);
+  setGlobalLogger(nullptr);
+
+  EXPECT_NE(logger.text().find("the grid is ignored"), std::string::npos)
+      << "the grid was dropped without a word; captured:\n"
+      << logger.text();
+
+  ASSERT_EQ(folds.size(), 2u) << "the ignored grid cancelled the run";
+  EXPECT_EQ(builds, 4) << "the grid was searched after all: " << builds
+                       << " builds instead of the two per fold an "
+                          "unparameterised point costs";
+
+  for (const auto& f : folds)
+  {
+    EXPECT_EQ(f.trainStats.totalTrades, 1u) << "fold " << f.foldIndex;
+    EXPECT_NEAR(f.trainStats.totalPnl, kIndexOnlyPnl, 1e-6) << "fold " << f.foldIndex;
+    EXPECT_EQ(f.testStats.totalTrades, 1u) << "fold " << f.foldIndex;
+    EXPECT_NEAR(f.testStats.totalPnl, kIndexOnlyPnl, 1e-6) << "fold " << f.foldIndex;
+  }
+}

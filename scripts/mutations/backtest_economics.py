@@ -600,8 +600,8 @@ MUTATIONS: list[Mutation] = [
             "grid point to the out-of-sample run: on a rising ramp the "
             "shortest hold wins instead of the longest",
         file=WALK,
-        old="    if (!haveBest || stats.netPnl > best.stats.netPnl)",
-        new="    if (!haveBest || stats.netPnl < best.stats.netPnl)",
+        old="    if (!best.selected || stats.netPnl > best.stats.netPnl)",
+        new="    if (!best.selected || stats.netPnl < best.stats.netPnl)",
         gtest_filter="BacktestEconomics.WalkForwardRunsOutOfSampleOnTheInSampleWinner",
     ),
     Mutation(
@@ -611,8 +611,8 @@ MUTATIONS: list[Mutation] = [
             "product happens to enumerate in and is no longer the "
             "deterministic rule the fix documents",
         file=WALK,
-        old="    if (!haveBest || stats.netPnl > best.stats.netPnl)",
-        new="    if (!haveBest || stats.netPnl >= best.stats.netPnl)",
+        old="    if (!best.selected || stats.netPnl > best.stats.netPnl)",
+        new="    if (!best.selected || stats.netPnl >= best.stats.netPnl)",
         gtest_filter="BacktestEconomics.WalkForwardRunsOutOfSampleOnTheInSampleWinner",
     ),
     Mutation(
@@ -620,19 +620,19 @@ MUTATIONS: list[Mutation] = [
         why="evaluates the comparison before the have-a-best flag in the "
             "same || expression",
         file=WALK,
-        old="    if (!haveBest || stats.netPnl > best.stats.netPnl)",
-        new="    if (stats.netPnl > best.stats.netPnl || !haveBest)",
+        old="    if (!best.selected || stats.netPnl > best.stats.netPnl)",
+        new="    if (stats.netPnl > best.stats.netPnl || !best.selected)",
         gtest_filter="BacktestEconomics.WalkForwardRunsOutOfSampleOnTheInSampleWinner",
         equivalent=True,
         equivalent_reason=(
             "`a || b` and `b || a` select the same branch whenever neither "
-            "operand has a side effect, and neither does here: haveBest is a "
-            "local bool and the comparison reads two values. The only thing "
-            "the original order guaranteed was that the comparison is not "
-            "reached on the first iteration, and on that iteration "
+            "operand has a side effect, and neither does here: best.selected "
+            "is a plain bool member and the comparison reads two values. The "
+            "only thing the original order guaranteed was that the comparison "
+            "is not reached on the first iteration, and on that iteration "
             "best.stats is value-initialised, so comparing against it is "
             "well-defined -- it just cannot change the outcome, because "
-            "!haveBest is still true and still selects the point."),
+            "!best.selected is still true and still selects the point."),
     ),
     Mutation(
         name="wf-skipped-grid-point-still-wins",
@@ -649,7 +649,7 @@ MUTATIONS: list[Mutation] = [
             "    if (strategy == nullptr)\n"
             "    {\n"
             "      best.params = point;\n"
-            "      haveBest = true;\n"
+            "      best.selected = true;\n"
             "      continue;\n"
             "    }",
         gtest_filter="BacktestEconomics.WalkForwardRunsOutOfSampleOnTheInSampleWinner",
@@ -676,9 +676,13 @@ MUTATIONS: list[Mutation] = [
             "ranking never reaches the test window",
         file=WALK,
         old="      IStrategy* testStrat = _factory(f.foldIndex, winner.params);\n"
-            "      f.testStats = runWindow(_backtestConfig, testStrat, bars, f.testStartBar,",
+            "      if (!testBuildDeclined(f, testStrat))\n"
+            "      {\n"
+            "        f.testStats = runWindow(_backtestConfig, testStrat, bars,",
         new="      IStrategy* testStrat = _factory(f.foldIndex, points.front());\n"
-            "      f.testStats = runWindow(_backtestConfig, testStrat, bars, f.testStartBar,",
+            "      if (!testBuildDeclined(f, testStrat))\n"
+            "      {\n"
+            "        f.testStats = runWindow(_backtestConfig, testStrat, bars,",
         occurrence=2,
         expected_occurrences=2,
         gtest_filter="BacktestEconomics.WalkForwardRunsOutOfSampleOnTheInSampleWinner",
@@ -689,16 +693,20 @@ MUTATIONS: list[Mutation] = [
             "point's, so the in-sample half of every reported fold is blank "
             "and the degradation from train to test is unmeasurable",
         file=WALK,
-        old="          });\n      f.trainStats = winner.stats;\n\n"
+        old="      f.trainStats = winner.stats;\n\n"
             "      // Out of sample on the winning point, built fresh so the test window\n"
             "      // starts from clean strategy state.\n"
             "      IStrategy* testStrat = _factory(f.foldIndex, winner.params);\n"
-            "      f.testStats = runWindow(",
-        new="          });\n      f.trainStats = BacktestStats{};\n\n"
+            "      if (!testBuildDeclined(f, testStrat))\n"
+            "      {\n"
+            "        f.testStats = runWindow(",
+        new="      f.trainStats = BacktestStats{};\n\n"
             "      // Out of sample on the winning point, built fresh so the test window\n"
             "      // starts from clean strategy state.\n"
             "      IStrategy* testStrat = _factory(f.foldIndex, winner.params);\n"
-            "      f.testStats = runWindow(",
+            "      if (!testBuildDeclined(f, testStrat))\n"
+            "      {\n"
+            "        f.testStats = runWindow(",
         occurrence=2,
         expected_occurrences=2,
         gtest_filter="BacktestEconomics.WalkForwardRunsOutOfSampleOnTheInSampleWinner",
@@ -710,9 +718,13 @@ MUTATIONS: list[Mutation] = [
             "the first grid point regardless",
         file=WALK,
         old="      IStrategy* testStrat = _factory(f.foldIndex, winner.params);\n"
-            "      f.testStats = runWindow(_backtestConfig, testStrat, bars, f.testStartBar,",
+            "      if (!testBuildDeclined(f, testStrat))\n"
+            "      {\n"
+            "        f.testStats = runWindow(_backtestConfig, testStrat, bars,",
         new="      IStrategy* testStrat = _factory(f.foldIndex, points.front());\n"
-            "      f.testStats = runWindow(_backtestConfig, testStrat, bars, f.testStartBar,",
+            "      if (!testBuildDeclined(f, testStrat))\n"
+            "      {\n"
+            "        f.testStats = runWindow(_backtestConfig, testStrat, bars,",
         occurrence=1,
         expected_occurrences=2,
         gtest_filter="BacktestEconomics.WalkForwardRunsOutOfSampleOnTheInSampleWinner",
@@ -725,22 +737,30 @@ MUTATIONS: list[Mutation] = [
             Edit(
                 file=WALK,
                 old="      IStrategy* testStrat = _factory(f.foldIndex, winner.params);\n"
-                    "      f.testStats = runWindowBars(_backtestConfig, testStrat, bars, "
-                    "f.testStartBar,",
+                    "      if (!testBuildDeclined(f, testStrat))\n"
+                    "      {\n"
+                    "        f.testStats = runWindowBars(_backtestConfig, testStrat, "
+                    "bars,",
                 new="      IStrategy* testStrat = _factory(f.foldIndex, points.front());\n"
-                    "      f.testStats = runWindowBars(_backtestConfig, testStrat, bars, "
-                    "f.testStartBar,",
+                    "      if (!testBuildDeclined(f, testStrat))\n"
+                    "      {\n"
+                    "        f.testStats = runWindowBars(_backtestConfig, testStrat, "
+                    "bars,",
                 occurrence=1,
                 expected_occurrences=2,
             ),
             Edit(
                 file=WALK,
                 old="      IStrategy* testStrat = _factory(f.foldIndex, winner.params);\n"
-                    "      f.testStats = runWindowBars(_backtestConfig, testStrat, bars, "
-                    "f.testStartBar,",
+                    "      if (!testBuildDeclined(f, testStrat))\n"
+                    "      {\n"
+                    "        f.testStats = runWindowBars(_backtestConfig, testStrat, "
+                    "bars,",
                 new="      IStrategy* testStrat = _factory(f.foldIndex, points.front());\n"
-                    "      f.testStats = runWindowBars(_backtestConfig, testStrat, bars, "
-                    "f.testStartBar,",
+                    "      if (!testBuildDeclined(f, testStrat))\n"
+                    "      {\n"
+                    "        f.testStats = runWindowBars(_backtestConfig, testStrat, "
+                    "bars,",
                 occurrence=1,
                 expected_occurrences=1,
             ),
