@@ -121,7 +121,7 @@ TEST_F(SymbolStateMapTest, ClearResetsAll)
   EXPECT_FALSE(map.contains(1));
 }
 
-// W33-T013, finding 4: getOverflow() used to emplace_back into a std::vector,
+// finding 4 behind the SymbolStateMap fix: getOverflow() used to emplace_back into a std::vector,
 // which reallocates and moves every existing element once capacity runs out
 // -- invalidating every reference operator[]/tryGet/an iterator had already
 // handed out. `State& a = map[300];` followed by enough further overflow
@@ -156,7 +156,7 @@ TEST_F(SymbolStateMapTest, OverflowReferencesStableAcrossGrowth)
   EXPECT_EQ(map[300].value, 111);
 }
 
-// W33-T013, finding 4, the two-live-references form from the review: a
+// finding 4 behind the SymbolStateMap fix, the two-live-references form from the review: a
 // reference obtained before growth must still observe writes made to it
 // after growth (i.e. it is the same object, not a stale copy).
 TEST_F(SymbolStateMapTest, OverflowReferenceUsableAfterLaterInsertions)
@@ -178,7 +178,7 @@ TEST_F(SymbolStateMapTest, OverflowReferenceUsableAfterLaterInsertions)
   EXPECT_EQ(map[300].value, 2);
 }
 
-// W33-T013, finding 9: clear() reset `initialized` unconditionally but only
+// finding 9 behind the SymbolStateMap fix: clear() reset `initialized` unconditionally but only
 // reassigned `flat` when State is move-constructible; for a State holding
 // atomics (the documented non-movable case), the old data survived under a
 // freshly-cleared flag, so the next operator[] handed back the previous
@@ -203,7 +203,7 @@ TEST_F(SymbolStateMapTest, ClearResetsNonMovableState)
          "initialized flag";
 }
 
-// W33-T013 acceptance follow-up: clear() unconditionally resetting `flat`
+// a follow-up to the SymbolStateMap fix: clear() unconditionally resetting `flat`
 // and the scratch slot is not enough on its own -- the overflow container
 // itself has to be emptied too, or a symbol that lived past kMaxSymbols
 // keeps answering with its pre-clear() state even though `initialized` (the
@@ -239,7 +239,7 @@ TEST_F(SymbolStateMapTest, ClearEmptiesOverflowStorage)
   EXPECT_EQ(map[300].value, 0);
 }
 
-// W33-T013 acceptance follow-up, the scratch-slot half: for a non-movable
+// a follow-up to the SymbolStateMap fix, the scratch-slot half: for a non-movable
 // State, an out-of-range write lands in the single shared `_overflowScratch`
 // slot (see operator[] above), not in the overflow container. clear() has to
 // reset that slot too, independently of `_overflowStorage.clear()`, or a
@@ -282,7 +282,7 @@ TEST_F(SymbolStateMapTest, ClearResetsOverflowScratchForNonMovableState)
 #endif  // NDEBUG
 
 // Const access must not create entries or mark a symbol initialized -- this
-// already held before W33-T013 (the non-const overload is the one that had
+// already held before the SymbolStateMap fix (the non-const overload is the one that had
 // the bug; see the PositionTracker tests below for where that actually bit).
 // Kept here as a direct regression guard on SymbolStateMap's own contract.
 TEST_F(SymbolStateMapTest, ConstAccessDoesNotMarkInitialized)
@@ -763,7 +763,7 @@ TEST_F(PositionTrackerTest, FlipPositionLongToShort)
   EXPECT_EQ(tracker.getAvgEntryPrice(1).toDouble(), 110.0);
 }
 
-// W33-T013, finding 5: getPosition/getAvgEntryPrice/getRealizedPnl are const,
+// finding 5 behind the SymbolStateMap fix: getPosition/getAvgEntryPrice/getRealizedPnl are const,
 // but reached SymbolStateMap through a `mutable` member -- which picks
 // SymbolStateMap's non-const operator[] regardless of the caller being
 // const, and that overload marks the symbol initialized on a plain read (and

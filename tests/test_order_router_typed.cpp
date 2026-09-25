@@ -7,7 +7,7 @@
  * license information.
  */
 
-// W33-T014, core finding 22.
+// Review finding 22 behind the execution tracker fix.
 //
 // IRoutableExecutor::submit(), OrderRouter::route() and OrderRouter::routeTo()
 // take `int64_t priceRaw, int64_t quantityRaw`. Two adjacent int64_t
@@ -15,9 +15,9 @@
 // Decimal tags exist to prevent, and the order path is the one place where a
 // swapped pair is unrecoverable. The order path must carry Price and Quantity.
 //
-// W33-T014 needs: virtual void IRoutableExecutor::submit(SymbolId, Side, Price, Quantity, OrderId) = 0;
-// W33-T014 needs: RoutingError OrderRouter::route(SymbolId, Side, Price, Quantity, OrderId, ExchangeId* = nullptr);
-// W33-T014 needs: RoutingError OrderRouter::routeTo(ExchangeId, SymbolId, Side, Price, Quantity, OrderId);
+// needs: virtual void IRoutableExecutor::submit(SymbolId, Side, Price, Quantity, OrderId) = 0;
+// needs: RoutingError OrderRouter::route(SymbolId, Side, Price, Quantity, OrderId, ExchangeId* = nullptr);
+// needs: RoutingError OrderRouter::routeTo(ExchangeId, SymbolId, Side, Price, Quantity, OrderId);
 
 #include "flox/execution/order_router.h"
 

@@ -11,7 +11,7 @@
  * The golden replay found StopBook::ids() publishing an emergency cancel's
  * conditionals in bucket order: same state on both standard libraries,
  * different event stream, and no test in the tree could see it because every
- * comparison in the suite compares state. The audit that followed (W32-T011)
+ * comparison in the suite compares state. The audit that followed
  * walked every unordered container in venue/include to the place its order
  * either dies or becomes visible. These are the property tests for the places
  * where it became visible.

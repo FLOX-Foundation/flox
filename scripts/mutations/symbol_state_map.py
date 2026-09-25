@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Mutation harness for W33-T013 (SymbolStateMap / PositionTracker).
+"""Mutation harness for the SymbolStateMap and PositionTracker fixes.
 
 A test that passes proves nothing on its own; what it has to do is fail when
-the code it covers is wrong. This script breaks each fix in W33-T013 one at a
+the code it covers is wrong. This script breaks each fix one at a
 time, in the source, and checks that the test written for it goes red -- and
 that an unmutated tree goes green before and after.
 
@@ -13,9 +13,9 @@ and the test binary runs under a timeout.
 
 Usage:
 
-    python3 scripts/mutations/w33_t013.py            # control, all mutations, control
-    python3 scripts/mutations/w33_t013.py --list
-    python3 scripts/mutations/w33_t013.py --only overflow-vector-instead-of-deque
+    python3 scripts/mutations/symbol_state_map.py            # control, all mutations, control
+    python3 scripts/mutations/symbol_state_map.py --list
+    python3 scripts/mutations/symbol_state_map.py --only overflow-vector-instead-of-deque
 
 The build directory is expected to be configured already:
 
