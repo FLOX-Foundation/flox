@@ -119,8 +119,8 @@ class ReplaySideChannelTest : public ::testing::Test
 }  // namespace
 
 // An option side-channel quote is not a book event and must publish no book
-// update at all. Today it republishes the previous book's header with both
-// sides emptied.
+// update at all: the book branch would republish the previous book event's
+// header with both sides emptied.
 TEST_F(ReplaySideChannelTest, OptionQuoteFrameEmitsNoBookUpdate)
 {
   writeBookThen(

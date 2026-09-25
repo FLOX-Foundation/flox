@@ -16,9 +16,10 @@
 // buffer's late-drop -- as silently missing ones. A validator that green-lights
 // such a dataset is telling the caller a tape is fit to replay when it is not.
 //
-// Today DatasetValidator::validate only sums the per-segment results: nothing
-// compares one segment's range against another's, and the dataset below passes
-// clean.
+// The check is dataset-level: the per-segment pass cannot see it, because each
+// segment on its own is perfectly well formed. What the caller gets back is a
+// typed issue on DatasetValidationResult, so an overlap can be told apart from
+// a CRC failure without reading the message.
 
 #include "flox/common.h"
 #include "flox/replay/binary_format_v1.h"
@@ -27,6 +28,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -78,6 +80,24 @@ class ReplayValidatorOverlapTest : public ::testing::Test
     writer.close();
   }
 
+  static const ValidationIssue* firstOverlapIssue(const DatasetValidationResult& result)
+  {
+    for (const auto& issue : result.issues)
+    {
+      if (issue.type == IssueType::SegmentRangeOverlap)
+      {
+        return &issue;
+      }
+    }
+    return nullptr;
+  }
+
+  static std::string rangeText(int64_t from_s, int64_t to_s)
+  {
+    return "[" + std::to_string(kBaseNs + from_s * kSecond) + ", " +
+           std::to_string(kBaseNs + to_s * kSecond) + "]";
+  }
+
   std::filesystem::path _dir;
 };
 
@@ -86,15 +106,10 @@ class ReplayValidatorOverlapTest : public ::testing::Test
 // The finding. Two segments covering [0 s, 60 s] and [30 s, 90 s]: each is
 // internally valid, the pair is not replayable.
 //
-// needs: a dataset-level issue the caller can name. The check here is on the
-// existing surface only (`valid` and `total_errors`), because
-// DatasetValidationResult carries no issue list of its own -- every
-// ValidationIssue hangs off a SegmentValidationResult. The interface the code
-// agent should add is `std::vector<ValidationIssue> issues;` on
-// DatasetValidationResult plus an `IssueType::SegmentRangeOverlap`, reported
-// at IssueSeverity::Error, so the caller can tell an overlap from a CRC
-// failure. This test passes either way; the point is that the dataset must
-// stop validating clean.
+// This one stays on the coarse surface -- `valid` and `total_errors` -- so it
+// says only that the dataset must stop validating clean.
+// OverlapArrivesAsATypedDatasetIssue below reads what the caller is actually
+// handed.
 TEST_F(ReplayValidatorOverlapTest, OverlappingSegmentsFailValidation)
 {
   writeSegment("a.floxlog", 0, 60);
@@ -151,4 +166,95 @@ TEST_F(ReplayValidatorOverlapTest, SingleSegmentValidatesClean)
   ASSERT_EQ(result.total_segments, 1u);
   EXPECT_EQ(result.total_errors, 0u);
   EXPECT_TRUE(result.valid);
+}
+
+// The comparison is strict, and it has to be: rotation cuts a segment between
+// two frames, so two events sharing a timestamp land either side of the seam
+// and leave a.last == b.first. That is one recording split in two, replays in
+// order, and must not be called a double recording. The other control leaves a
+// second of daylight between the segments and so never reaches this decision.
+TEST_F(ReplayValidatorOverlapTest, SegmentsTouchingAtTheSeamValidateClean)
+{
+  writeSegment("a.floxlog", 0, 60);
+  writeSegment("b.floxlog", 60, 120);
+
+  DatasetValidator validator;
+  auto result = validator.validate(_dir);
+
+  ASSERT_EQ(result.total_segments, 2u);
+  EXPECT_EQ(result.total_errors, 0u)
+      << "two segments that merely touch at a shared timestamp were called overlapping";
+  EXPECT_TRUE(result.valid);
+  EXPECT_TRUE(result.issues.empty());
+}
+
+// Each segment is compared against the one reaching furthest in time, not
+// against the one before it. [0, 90] is the widest; [30, 40] sits inside it
+// but starts after [10, 20] ended, so a predecessor comparison lets it
+// through. Both containments have to be reported.
+TEST_F(ReplayValidatorOverlapTest, ContainmentIsFoundPastAShorterSegment)
+{
+  writeSegment("a.floxlog", 0, 90);
+  writeSegment("b.floxlog", 10, 20);
+  writeSegment("c.floxlog", 30, 40);
+
+  DatasetValidator validator;
+  auto result = validator.validate(_dir);
+
+  ASSERT_EQ(result.total_segments, 3u);
+  EXPECT_FALSE(result.valid);
+
+  std::vector<std::string> overlaps;
+  for (const auto& issue : result.issues)
+  {
+    if (issue.type == IssueType::SegmentRangeOverlap)
+    {
+      overlaps.push_back(issue.message);
+    }
+  }
+  ASSERT_EQ(overlaps.size(), 2u)
+      << "a segment contained in an earlier, wider one was missed because a shorter "
+         "segment sat between them";
+
+  const bool names_c = std::any_of(overlaps.begin(), overlaps.end(),
+                                   [](const std::string& m)
+                                   { return m.find("c.floxlog") != std::string::npos; });
+  EXPECT_TRUE(names_c) << "neither reported overlap mentions the contained segment";
+  EXPECT_EQ(result.total_errors, 2u);
+}
+
+// The issue list is what the dataset check is for: a caller routing a bad tape
+// has to tell an overlap from a CRC failure, which means the finding has to
+// arrive as a typed issue and not only as a bump of total_errors. The message
+// names the wider segment first and the one that runs into it second, each
+// with its own range, because that is the order a human reads them in.
+TEST_F(ReplayValidatorOverlapTest, OverlapArrivesAsATypedDatasetIssue)
+{
+  writeSegment("a.floxlog", 0, 60);
+  writeSegment("b.floxlog", 30, 90);
+
+  DatasetValidator validator;
+  auto result = validator.validate(_dir);
+
+  ASSERT_EQ(result.issues.size(), 1u)
+      << "the overlap was counted but never put on the dataset's issue list";
+
+  const ValidationIssue* issue = firstOverlapIssue(result);
+  ASSERT_NE(issue, nullptr) << "the dataset issue is not typed SegmentRangeOverlap";
+  EXPECT_EQ(issue->severity, IssueSeverity::Error)
+      << "an unreplayable dataset was reported at a severity that leaves it valid";
+
+  const std::string expected =
+      "a.floxlog " + rangeText(0, 60) + " overlaps b.floxlog " + rangeText(30, 90);
+  EXPECT_NE(issue->message.find(expected), std::string::npos)
+      << "the issue names the two segments or their ranges wrongly.\n  wanted: ..."
+      << expected << "...\n  got:    " << issue->message;
+
+  // Per-segment issues stay on their own segment: nothing about an overlap
+  // belongs to either file on its own.
+  for (const auto& seg : result.segments)
+  {
+    EXPECT_TRUE(seg.issues.empty()) << "segment " << seg.path.filename()
+                                    << " was blamed for a dataset-level finding";
+  }
 }

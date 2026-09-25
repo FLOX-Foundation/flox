@@ -20,7 +20,7 @@
 // The contract is already written down: MergedTapeReader's own class comment
 // in include/flox/replay/merged_tape_reader.h promises "Tie-break:
 // (exchange_ts_ns, tape_index, source order)", and the multi-tape design it
-// implements adds seq as the last key for book records. Neither holds today.
+// implements adds seq as the last key for book records.
 
 #include "flox/common.h"
 #include "flox/replay/binary_format_v1.h"
@@ -118,6 +118,38 @@ class ReplayMergeStabilityTest : public ::testing::Test
         h.ask_count = 1;
         h.type = 0;
         replay::BookLevel bid{Price::fromDouble(100.0).raw(), Quantity::fromDouble(1.0).raw()};
+        replay::BookLevel ask{Price::fromDouble(101.0).raw(), Quantity::fromDouble(1.0).raw()};
+        writer.writeBook(h, std::span<const replay::BookLevel>(&bid, 1),
+                         std::span<const replay::BookLevel>(&ask, 1));
+      }
+      writer.close();
+    }
+    writeManifest(dir, /*has_book=*/true);
+  }
+
+  // A tape of book snapshots all stamped `ts_ns` and all carrying seq 0 --
+  // what a venue that publishes no sequence number leaves on every record.
+  // The recorded position is carried in the bid price, the only field of a
+  // book row that survives into the merged output per event.
+  void writeTiedBooksWithoutSeq(const std::filesystem::path& dir, int64_t ts_ns,
+                                size_t count)
+  {
+    {
+      WriterConfig cfg{};
+      cfg.output_dir = dir;
+      cfg.output_filename = "tape.floxlog";
+      BinaryLogWriter writer(cfg);
+      for (size_t i = 0; i < count; ++i)
+      {
+        BookRecordHeader h{};
+        h.exchange_ts_ns = ts_ns;
+        h.recv_ts_ns = ts_ns;
+        h.seq = 0;
+        h.symbol_id = 1;
+        h.bid_count = 1;
+        h.ask_count = 1;
+        h.type = 0;
+        replay::BookLevel bid{static_cast<int64_t>(i), Quantity::fromDouble(1.0).raw()};
         replay::BookLevel ask{Price::fromDouble(101.0).raw(), Quantity::fromDouble(1.0).raw()};
         writer.writeBook(h, std::span<const replay::BookLevel>(&bid, 1),
                          std::span<const replay::BookLevel>(&ask, 1));
@@ -327,5 +359,34 @@ TEST_F(ReplayMergeStabilityTest, DistinctTimestampsStillMergeInTimeOrder)
   for (size_t i = 1; i < rows.size(); ++i)
   {
     ASSERT_LE(rows[i - 1].exchange_ts_ns, rows[i].exchange_ts_ns);
+  }
+}
+
+// Every key can be present and the order still be wrong. A venue that
+// publishes no sequence number leaves seq at 0 on every record, so
+// (exchange_ts_ns, tape_index, seq) ties completely across a batched print and
+// the only thing left to order by is the order the events were recorded in --
+// which is a property of the sort, not of the key. The tie group is wide
+// enough to reach the quicksort partition, where an unstable sort starts
+// permuting equal elements.
+TEST_F(ReplayMergeStabilityTest, TiedBooksWithNoSeqKeepTheirRecordedOrder)
+{
+  auto tape = tapeDir("t0");
+  writeTiedBooksWithoutSeq(tape, kBaseNs, kTieWidth);
+
+  MergedTapeReaderConfig cfg{};
+  cfg.tape_dirs = {tape};
+  MergedTapeReader reader(cfg);
+
+  auto [rows, levels] = reader.readBooks();
+  ASSERT_EQ(rows.size(), kTieWidth);
+  for (size_t i = 0; i < rows.size(); ++i)
+  {
+    ASSERT_EQ(rows[i].seq, 0) << "the fixture stopped testing the all-ties case";
+    ASSERT_LT(rows[i].level_offset, levels.size());
+    // The bid level of each book carries the position it was written at.
+    ASSERT_EQ(levels[rows[i].level_offset].price_raw, static_cast<int64_t>(i))
+        << "merged book " << i << " is out of recorded order on a timestamp and a seq "
+        << "that both tie";
   }
 }

@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -81,6 +82,41 @@ class ReplaySortedFlagTest : public ::testing::Test
       writer.writeTrade(r);
     }
     writer.close();
+  }
+
+  // Same, with book records instead of trades: the ordering check has to be
+  // fed by every write path, not only the ones that write trades.
+  void writeBookSegment(const std::string& name, CompressionType compression,
+                        const std::vector<int64_t>& offsets_ns)
+  {
+    WriterConfig cfg{};
+    cfg.output_dir = _dir;
+    cfg.output_filename = name;
+    cfg.compression = compression;
+    cfg.index_interval = 8;
+
+    BinaryLogWriter writer(cfg);
+    for (int64_t off : offsets_ns)
+    {
+      BookRecordHeader h{};
+      h.exchange_ts_ns = kBaseNs + off;
+      h.recv_ts_ns = h.exchange_ts_ns;
+      h.symbol_id = 1;
+      h.bid_count = 1;
+      h.ask_count = 1;
+      h.type = 0;
+      BookLevel bid{Price::fromDouble(100.0).raw(), Quantity::fromDouble(1.0).raw()};
+      BookLevel ask{Price::fromDouble(101.0).raw(), Quantity::fromDouble(1.0).raw()};
+      writer.writeBook(h, std::span<const BookLevel>(&bid, 1),
+                       std::span<const BookLevel>(&ask, 1));
+    }
+    writer.close();
+  }
+
+  void resetDir()
+  {
+    std::filesystem::remove_all(_dir);
+    std::filesystem::create_directories(_dir);
   }
 
   SegmentHeader headerOf(const std::string& name) const
@@ -187,5 +223,171 @@ TEST_F(ReplaySortedFlagTest, InOrderSegmentsKeepEveryEventWhenTheirRangesOverlap
 
   EXPECT_EQ(reader.stats().late_dropped, 0u)
       << "the reader dropped events from a segment that was written in order";
+  EXPECT_EQ(seen, late.size() + early.size());
+}
+
+// The ordering check has to remember across whatever the writer counts in.
+// The index interval is the only period the uncompressed path has, and a
+// tracker that forgets the previous timestamp once per period misses exactly
+// the inversions that land on the seam -- a reconnect that replays a few
+// seconds of backfill arrives on no particular event number, so the seam is
+// as likely as anywhere else. Each position gets its own segment with one
+// backwards step and nothing else wrong with it.
+TEST_F(ReplaySortedFlagTest, AnInversionOnABlockBoundaryIsStillDetected)
+{
+  constexpr size_t kIndexInterval = 8;  // what writeSegment configures
+  constexpr size_t kEvents = 24;
+
+  for (size_t position : {kIndexInterval, kIndexInterval + 1, 2 * kIndexInterval,
+                          2 * kIndexInterval + 1})
+  {
+    resetDir();
+
+    std::vector<int64_t> offsets;
+    offsets.reserve(kEvents);
+    for (size_t i = 0; i < kEvents; ++i)
+    {
+      offsets.push_back(static_cast<int64_t>(i) * 10 * kSecond);
+    }
+    // One step backwards, at `position` counted from one, and nowhere else.
+    offsets[position - 1] = kSecond;
+
+    writeSegment("a.floxlog", CompressionType::None, offsets);
+
+    EXPECT_FALSE(headerOf("a.floxlog").isSorted())
+        << "a segment whose timestamps step backwards at event " << position
+        << " was flagged Sorted";
+  }
+}
+
+// A venue that prints a batch stamps every print in it with one nanosecond.
+// Non-decreasing is the promise, not strictly increasing, and withholding the
+// flag from every batched tape would put the whole of that venue's history
+// back through the reorder buffer.
+TEST_F(ReplaySortedFlagTest, RepeatedTimestampsAreStillSorted)
+{
+  writeSegment("a.floxlog", CompressionType::None,
+               {0, 0, 0, 10 * kSecond, 10 * kSecond, 20 * kSecond, 20 * kSecond,
+                20 * kSecond, 30 * kSecond, 40 * kSecond, 40 * kSecond, 50 * kSecond});
+
+  EXPECT_TRUE(headerOf("a.floxlog").isSorted())
+      << "a segment whose timestamps repeat but never go backwards was denied the flag";
+}
+
+// Books are on the same timeline as trades and go through their own write
+// path. A segment of book updates that steps backwards is unsorted whatever
+// record type carried the step.
+TEST_F(ReplaySortedFlagTest, UncompressedOutOfOrderBookSegmentIsNotFlaggedSorted)
+{
+  writeBookSegment("a.floxlog", CompressionType::None,
+                   {0, 10 * kSecond, 20 * kSecond, 5 * kSecond, 30 * kSecond});
+
+  EXPECT_FALSE(headerOf("a.floxlog").isSorted())
+      << "a segment whose book updates step backwards was flagged Sorted";
+}
+
+// The compressed path finds its inversions in flushBlock, comparing each
+// block's minimum against the previous block's maximum -- so the last block
+// only reports when it has been flushed, which happens on close. Deciding the
+// flag before that flush ships a segment that goes backwards at its tail with
+// the flag on. Thirteen events at an interval of eight leave the final block
+// partial, so it is closeInternal that flushes it.
+TEST_F(ReplaySortedFlagTest, CompressedInversionInTheFinalBlockIsStillDetected)
+{
+  std::vector<int64_t> offsets;
+  for (int i = 0; i < 8; ++i)
+  {
+    offsets.push_back((100 + i) * kSecond);
+  }
+  for (int i = 0; i < 5; ++i)
+  {
+    offsets.push_back((50 + i) * kSecond);
+  }
+  writeSegment("a.floxlog", CompressionType::LZ4, offsets);
+
+  EXPECT_FALSE(headerOf("a.floxlog").isSorted())
+      << "a compressed segment whose final block starts before the previous block ended "
+         "was flagged Sorted";
+}
+
+// A sorted segment streams on its own guarantee and must leave the walk's
+// watermark where it found it. The watermark exists to judge an *unsorted*
+// segment's events against the head of its own stream; letting a sorted
+// segment push it forward makes the next unsorted segment's lateness a
+// function of where an unrelated segment happened to end.
+TEST_F(ReplaySortedFlagTest, ASortedSegmentDoesNotMoveTheCrossSegmentWatermark)
+{
+  // a: in order, so flagged Sorted, and ending far ahead of everything in b.
+  std::vector<int64_t> ordered;
+  for (int i = 0; i <= 10; ++i)
+  {
+    ordered.push_back((1000 + i) * kSecond);
+  }
+  writeSegment("a.floxlog", CompressionType::None, ordered);
+
+  // b: one small step backwards, well inside the ten-second window, so it is
+  // unsorted and goes through the reorder buffer -- but loses nothing to it.
+  const std::vector<int64_t> stepped{0, 1 * kSecond, 2 * kSecond, 3 * kSecond,
+                                     2 * kSecond + kSecond / 2, 4 * kSecond, 5 * kSecond};
+  writeSegment("b.floxlog", CompressionType::None, stepped);
+
+  ASSERT_TRUE(headerOf("a.floxlog").isSorted());
+  ASSERT_FALSE(headerOf("b.floxlog").isSorted());
+
+  ReaderConfig cfg{};
+  cfg.data_dir = _dir;
+  BinaryLogReader reader(cfg);
+
+  size_t seen = 0;
+  reader.streamForEach(
+      [&](const ReplayEvent& ev)
+      {
+        if (ev.type == EventType::Trade)
+        {
+          ++seen;
+        }
+        return true;
+      });
+
+  EXPECT_EQ(reader.stats().late_dropped, 0u)
+      << "the sorted segment pushed the watermark forward and the next segment's "
+         "events were judged against it";
+  EXPECT_EQ(seen, ordered.size() + stepped.size());
+}
+
+// The same guarantee on the other entry point. streamForEachFrom walks its
+// segments through readSegmentStreamingFrom, whose sorted branch is a second
+// copy of the same decision; a fix applied to one copy is not a fix.
+TEST_F(ReplaySortedFlagTest, InOrderSegmentsKeepEveryEventThroughStreamForEachFrom)
+{
+  std::vector<int64_t> late;
+  std::vector<int64_t> early;
+  for (int i = 0; i <= 60; ++i)
+  {
+    late.push_back((60 + i) * kSecond);
+    early.push_back(i * kSecond);
+  }
+  writeSegment("a.floxlog", CompressionType::None, late);
+  writeSegment("b.floxlog", CompressionType::None, early);
+
+  ReaderConfig cfg{};
+  cfg.data_dir = _dir;
+  BinaryLogReader reader(cfg);
+
+  size_t seen = 0;
+  // kBaseNs is the earliest event in the dataset, so the window excludes
+  // nothing and every recorded event has to arrive.
+  reader.streamForEachFrom(kBaseNs,
+                           [&](const ReplayEvent& ev)
+                           {
+                             if (ev.type == EventType::Trade)
+                             {
+                               ++seen;
+                             }
+                             return true;
+                           });
+
+  EXPECT_EQ(reader.stats().late_dropped, 0u)
+      << "streamForEachFrom dropped events from a segment that was written in order";
   EXPECT_EQ(seen, late.size() + early.size());
 }

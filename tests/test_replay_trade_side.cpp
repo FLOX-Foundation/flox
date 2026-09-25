@@ -10,20 +10,23 @@
 // The trade-side convention of the .floxlog tape, pinned end to end.
 //
 // BinaryLogRecorderHook encodes the aggressor as a byte; ReplayConnector,
-// BacktestRunner and OhlcvReplaySource decode it again. Nothing forces the
-// four to agree, and today they do not: the recorder writes 0 for a buy while
-// both readers treat 1 as the buy. Every tape produced by the recorder
-// therefore replays with the aggressor flipped.
+// BacktestRunner and StrategyPump each decode it again, and OhlcvReplaySource
+// writes a fourth copy of the same convention for its synthetic prints.
+// Nothing in the type system forces the four to agree, and a tape whose
+// writer and reader disagree replays every print with the aggressor flipped:
+// queue position, maker/taker, and any signal that keys off trade side.
 //
 // These tests never assert a byte value. They assert that a buy recorded
-// through the hook is a buy again on every read path, and that the synthetic
-// OHLCV source encodes its buy the same way the recorder does. That leaves the
-// code agent free to settle the convention in either direction as long as it
-// settles it everywhere.
+// through the hook is a buy again on every read path, that the synthetic
+// source encodes its buy the same way the recorder does, and that the
+// published spec says the same thing as the code -- so the convention may sit
+// on either byte as long as it sits there everywhere.
 
 #include "flox/backtest/backtest_runner.h"
+#include "flox/backtest/strategy_pump.h"
 #include "flox/book/events/trade_event.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/replay/abstract_event_reader.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/binary_log_recorder_hook.h"
 #include "flox/replay/ohlcv_replay_source.h"
@@ -150,9 +153,7 @@ SymbolId registerSymbol(SymbolRegistry& reg, const std::string& name)
 }  // namespace
 
 // A buy recorded through the hook must come back out of the replay connector
-// as a buy, and a sell as a sell. Today the recorder writes 0 for the buy and
-// ReplayConnector decodes `side == 1` as the buy, so both flags arrive
-// flipped.
+// as a buy, and a sell as a sell.
 TEST_F(ReplayTradeSideTest, RecordedAggressorSurvivesTheReplayConnector)
 {
   recordTrades({true, false});
@@ -185,11 +186,44 @@ TEST_F(ReplayTradeSideTest, RecordedAggressorSurvivesTheBacktestTapePath)
   EXPECT_FALSE(strat.is_buy_seen[1]) << "a trade recorded with is_buy=false reached the strategy as a buy";
 }
 
+// StrategyPump is the third decoder of the same byte. It is the monomorphic
+// backtest path -- no runner, no order simulation, the strategy type inlined
+// into the replay loop -- and it converts the trade record itself rather than
+// borrowing BacktestRunner's conversion, so fixing the runner does nothing for
+// it. A signal that keys off the aggressor (order-flow imbalance, signed
+// volume, trade-side momentum) reads every print backwards when this copy
+// disagrees with the recorder.
+TEST_F(ReplayTradeSideTest, RecordedAggressorSurvivesTheStrategyPump)
+{
+  recordTrades({true, false});
+
+  // Any type with onTrade satisfies TradePumpable; no inheritance involved,
+  // which is the whole point of the pump.
+  struct SideRecorder
+  {
+    std::vector<bool> is_buy_seen;
+    void onTrade(const TradeEvent& ev) { is_buy_seen.push_back(ev.trade.isBuy); }
+  };
+
+  SideRecorder sink;
+  auto reader = replay::createMultiSegmentReader(_dir);
+  ASSERT_NE(reader, nullptr);
+
+  StrategyPump<SideRecorder> pump(sink);
+  const auto stats = pump.run(*reader);
+
+  ASSERT_EQ(stats.trades, 2u);
+  ASSERT_EQ(sink.is_buy_seen.size(), 2u);
+  EXPECT_TRUE(sink.is_buy_seen[0])
+      << "a trade recorded with is_buy=true reached the pumped strategy as a sell";
+  EXPECT_FALSE(sink.is_buy_seen[1])
+      << "a trade recorded with is_buy=false reached the pumped strategy as a buy";
+}
+
 // OhlcvReplaySource synthesises a buy for every bar close. Whatever byte the
 // recorder picks for a buy, the synthetic source must pick the same one --
 // otherwise a bar-driven backtest and a tape-driven backtest disagree on the
-// aggressor of the very same price move. Today the recorder writes 0 and the
-// OHLCV source writes 1.
+// aggressor of the very same price move.
 TEST_F(ReplayTradeSideTest, OhlcvSourceEncodesABuyTheWayTheRecorderDoes)
 {
   recordTrades({true});
@@ -226,9 +260,9 @@ TEST_F(ReplayTradeSideTest, OhlcvSourceEncodesABuyTheWayTheRecorderDoes)
 //       where the side byte is defined (currently "0 buy, 1 sell") -- stating
 //       that tapes written before the fix carry an inverted side and are not
 //       migrated. The check is for the word "invert" (any case) in that file;
-//       it appears nowhere in it today.
+//       tapes.
 //
-// The test passes when either holds. Today neither does.
+// The test passes when either holds.
 TEST_F(ReplayTradeSideTest, FixedTapesAreTellableFromPreFixTapes)
 {
   recordTrades({true});
@@ -290,7 +324,7 @@ TEST_F(ReplayTradeSideTest, FixedTapesAreTellableFromPreFixTapes)
 
 // Control, and the other half of the side decision: docs/spec/floxlog.md is
 // the published tape format, and its TradeRecord row states which byte means
-// buy ("0 buy, 1 sell" today). Whatever the fix settles on, the spec has to
+// buy. Whatever the recorder settles on, the spec has to
 // say the same thing -- a third-party writer follows the spec, not the
 // recorder. Green on the untouched tree (the recorder currently agrees with
 // the spec and the readers do not), and it stays green only if a fix that

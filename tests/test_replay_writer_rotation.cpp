@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 using namespace flox;
@@ -83,6 +84,67 @@ class ReplayWriterRotationTest : public ::testing::Test
       writer.writeTrade(r);
     }
     writer.close();
+  }
+
+  // A tape of byte-identical trade records. Identical records make every full
+  // block compress to the same number of bytes, so the on-disk block size can
+  // be read off the file and used as an exact bound; and they put the
+  // compressed size far below the uncompressed one, which is what separates
+  // "measured on the file" from "measured on the events".
+  void writeUniformCompressibleTape(uint64_t max_segment_bytes, uint16_t index_interval,
+                                    size_t trade_count)
+  {
+    WriterConfig cfg{};
+    cfg.output_dir = _dir;
+    cfg.output_filename = "tape.floxlog";
+    cfg.max_segment_bytes = max_segment_bytes;
+    cfg.index_interval = index_interval;
+    cfg.compression = CompressionType::LZ4;
+
+    BinaryLogWriter writer(cfg);
+    TradeRecord r{};
+    r.exchange_ts_ns = kBaseNs;
+    r.recv_ts_ns = kBaseNs;
+    r.price_raw = Price::fromDouble(100.0).raw();
+    r.qty_raw = Quantity::fromDouble(1.0).raw();
+    r.trade_id = 1;
+    r.symbol_id = 1;
+    for (size_t i = 0; i < trade_count; ++i)
+    {
+      writer.writeTrade(r);
+    }
+    writer.close();
+  }
+
+  // Segment paths in the order a reader walks them (by filename).
+  std::vector<std::filesystem::path> sortedSegments() const
+  {
+    auto paths = segments();
+    std::sort(paths.begin(), paths.end());
+    return paths;
+  }
+
+  static SegmentHeader headerOf(const std::filesystem::path& path)
+  {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.good()) << "cannot open segment " << path;
+    SegmentHeader header{};
+    in.read(reinterpret_cast<char*>(&header), sizeof(header));
+    EXPECT_EQ(in.gcount(), static_cast<std::streamsize>(sizeof(header)));
+    return header;
+  }
+
+  // Bytes the first compressed block of `path` occupies in the file.
+  static uint64_t firstBlockBytesOnDisk(const std::filesystem::path& path)
+  {
+    std::ifstream in(path, std::ios::binary);
+    EXPECT_TRUE(in.good()) << "cannot open segment " << path;
+    in.seekg(sizeof(SegmentHeader));
+    CompressedBlockHeader block{};
+    in.read(reinterpret_cast<char*>(&block), sizeof(block));
+    EXPECT_EQ(in.gcount(), static_cast<std::streamsize>(sizeof(block)));
+    EXPECT_TRUE(block.isValid());
+    return sizeof(CompressedBlockHeader) + block.compressed_size;
   }
 
   std::vector<std::filesystem::path> segments() const
@@ -173,4 +235,68 @@ TEST_F(ReplayWriterRotationTest, UncompressedWriterRotatesAtTheConfiguredBound)
   EXPECT_GT(segments().size(), 1u);
   EXPECT_LE(largestSegmentBytes(), kMaxSegmentBytes * 4);
   EXPECT_EQ(countTrades(), kTradeCount);
+}
+
+// The rule the fix states, pinned on the number it states it on: rotate on the
+// compressed byte count that reached the file, checked after the block is
+// flushed, at max_segment_bytes.
+//
+// The tape is byte-identical records, so one block costs ~60 bytes on disk and
+// 3840 bytes of events -- the two numbers a rotation could be measured on are
+// two orders of magnitude apart, and the bound sits between them. Every
+// segment closed by the bound must therefore end in [max_segment_bytes,
+// max_segment_bytes + one block): at or past the bound, because the check runs
+// after the block reached the file, and less than a block past it, because the
+// segment before that block was still under.
+//
+// Measuring the events instead of the file closes after the first block
+// (3840 >= 2048) and lands far below the bound. Checking before the flush
+// lands exactly one block above it. Adding a block of slack lands a whole
+// uncompressed block above it. All three are outside the window.
+TEST_F(ReplayWriterRotationTest, CompressedRotationMeasuresTheBytesThatReachTheFile)
+{
+  constexpr uint64_t kBound = 2048;
+  constexpr uint16_t kBlockEvents = 64;
+  // Not a multiple of the block size, so the run ends mid-block and leaves no
+  // empty trailing segment behind the last rotation.
+  constexpr size_t kTrades = 7960;
+
+  writeUniformCompressibleTape(kBound, kBlockEvents, kTrades);
+
+  auto paths = sortedSegments();
+  ASSERT_GT(paths.size(), 2u) << "the tape did not rotate often enough to pin the bound";
+
+  const uint64_t block_on_disk = firstBlockBytesOnDisk(paths.front());
+  const uint64_t block_in_events =
+      static_cast<uint64_t>(kBlockEvents) * (sizeof(FrameHeader) + sizeof(TradeRecord));
+
+  // The window only means something while these hold; say so rather than fail
+  // an assertion nobody can read.
+  ASSERT_LT(block_on_disk, kBound)
+      << "a single block already fills the segment, so no segment can hold more than one";
+  ASSERT_GT(block_in_events, kBound)
+      << "one block of events is smaller than the bound, so measuring the events "
+         "and measuring the file would rotate at the same place";
+
+  for (size_t i = 0; i + 1 < paths.size(); ++i)
+  {
+    const SegmentHeader header = headerOf(paths[i]);
+    if (header.event_count == 0)
+    {
+      continue;
+    }
+    // index_offset is where the segment's data ends and its index begins: the
+    // byte count the bound is supposed to be compared against.
+    ASSERT_GT(header.index_offset, 0u) << "segment " << paths[i] << " carries no index";
+    EXPECT_GE(header.index_offset, kBound)
+        << "segment " << paths[i].filename() << " closed at " << header.index_offset
+        << " bytes, below max_segment_bytes=" << kBound
+        << " -- the bound was measured on something other than the file";
+    EXPECT_LT(header.index_offset, kBound + block_on_disk)
+        << "segment " << paths[i].filename() << " closed at " << header.index_offset
+        << " bytes, a whole block past max_segment_bytes=" << kBound << " (block is "
+        << block_on_disk << " bytes on disk) -- the bound was checked too late";
+  }
+
+  EXPECT_EQ(countTrades(), kTrades);
 }
