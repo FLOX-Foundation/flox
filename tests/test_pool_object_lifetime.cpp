@@ -24,6 +24,7 @@
 
 #include <flox/util/memory/pool.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <memory_resource>
@@ -415,4 +416,101 @@ TEST(PoolObjectLifetime, EveryRefusedReleaseIsCounted)
 
   EXPECT_EQ(pool.releaseCount(), 1u) << "neither refusal may count as a release";
   EXPECT_EQ(pool.inUse(), 0u);
+}
+
+namespace
+{
+
+// A pooled type whose clear() touches nothing but an int. The alignment test
+// below hands the pool a pointer that is inside the slot array but not at the
+// start of a slot, and a pool that wrongly accepts it calls clear() through
+// that pointer: with a std::string in the object that is a free() of whatever
+// the misaligned bytes happen to look like, which ends the process before the
+// test can say what went wrong. An int write there is survivable, so the
+// failure is an assertion rather than a crash.
+struct PlainEvent : public pool::PoolableBase<PlainEvent>
+{
+  explicit PlainEvent(std::pmr::memory_resource*) {}
+
+  void clear() { value = 0; }
+
+  int value{0};
+};
+
+using PlainPool = pool::Pool<PlainEvent, kCapacity>;
+
+}  // namespace
+
+// A pointer into this pool's storage that is not the start of a slot is not
+// one of its objects. indexOf() answers a release with the slot it belongs
+// to, and a division alone cannot tell "slot 3" from "slot 3 plus one byte"
+// -- so the remainder is checked as well. Without that check an address
+// anywhere inside a claimed slot releases that slot: the object's owner is
+// still holding it, and the next acquirer gets the same one.
+TEST(PoolObjectLifetime, AMisalignedPointerIntoTheSlotArrayIsRefused)
+{
+  PlainPool pool;
+
+  std::vector<pool::Handle<PlainEvent>> held;
+  for (size_t i = 0; i < kCapacity; ++i)
+  {
+    auto h = pool.acquire();
+    ASSERT_TRUE(h.has_value());
+    held.push_back(std::move(*h));
+  }
+  ASSERT_EQ(pool.inUse(), kCapacity);
+  ASSERT_EQ(pool.releaseCount(), 0u);
+  ASSERT_EQ(pool.invalidReleaseCount(), 0u);
+
+  // Both addresses are inside slots this pool has handed out and is holding,
+  // which is what makes a missing alignment check decide they are live
+  // objects rather than refuse them.
+  auto* const slotOne = reinterpret_cast<std::byte*>(held[1].get());
+  auto* const slotTwo = reinterpret_cast<std::byte*>(held[2].get());
+
+  pool.release(reinterpret_cast<PlainEvent*>(slotOne + 1));
+  EXPECT_EQ(pool.invalidReleaseCount(), 1u)
+      << "a pointer one byte into slot 1 was taken as slot 1 itself";
+  EXPECT_EQ(pool.releaseCount(), 0u);
+  EXPECT_EQ(pool.inUse(), kCapacity);
+
+  pool.release(reinterpret_cast<PlainEvent*>(slotTwo + sizeof(PlainEvent) / 2));
+  EXPECT_EQ(pool.invalidReleaseCount(), 2u)
+      << "a pointer half a slot into slot 2 was taken as slot 2 itself";
+  EXPECT_EQ(pool.releaseCount(), 0u)
+      << "no slot may be released by an address that is not one of the "
+         "objects this pool handed out";
+  EXPECT_EQ(pool.inUse(), kCapacity) << "every slot is still held by a live handle";
+
+  auto stolen = pool.acquire();
+  EXPECT_FALSE(stolen.has_value())
+      << "a slot came free out of a misaligned pointer: it is about to be "
+         "handed to a second acquirer while its first one still holds it";
+  if (stolen.has_value())
+  {
+    // Already corrupt: this object has an owner in `held` whose reference
+    // count the acquire has just reset. One extra reference so the two owners
+    // do not drive it below zero at teardown, which aborts the process and
+    // takes the rest of the report with it.
+    stolen->get()->retain();
+  }
+
+  // The slots are handed out back to front, so the array's ends are the
+  // lowest and highest addresses seen rather than the first and last handle.
+  std::byte* lowest = reinterpret_cast<std::byte*>(held[0].get());
+  std::byte* highest = lowest;
+  for (const auto& h : held)
+  {
+    auto* const addr = reinterpret_cast<std::byte*>(h.get());
+    lowest = std::min(lowest, addr);
+    highest = std::max(highest, addr);
+  }
+
+  // One slot past the end of the array, and one slot below its start:
+  // correctly aligned, and neither of them a slot of this pool.
+  pool.release(reinterpret_cast<PlainEvent*>(highest + sizeof(PlainEvent)));
+  pool.release(reinterpret_cast<PlainEvent*>(lowest - sizeof(PlainEvent)));
+  EXPECT_EQ(pool.invalidReleaseCount(), 4u) << "an address outside the slot array is not a slot";
+  EXPECT_EQ(pool.releaseCount(), 0u);
+  EXPECT_EQ(pool.inUse(), kCapacity);
 }

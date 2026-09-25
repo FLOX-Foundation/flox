@@ -149,6 +149,51 @@ TEST(AtomicLoggerDefaults, TheDefaultDirectoryIsOneTheHostActuallyHas)
          "rather than run on with no file.";
 }
 
+// Which directory the default is, not merely that the logger survives it.
+// The test above is satisfied by any writable path, and "." is one: a default
+// that quietly becomes the current working directory writes flox.log into
+// whatever the process happened to be started from -- a build tree, a
+// checkout, /, a directory that moves between runs -- which is a log nobody
+// looks for and a file nobody expected. The order is the point: /dev/shm
+// where the host has it, the system temp directory otherwise, and "." only if
+// the platform cannot name a temp directory at all.
+TEST(AtomicLoggerDefaults, TheDefaultDirectoryIsShmHereAndTheTempDirectoryWhereItIsNot)
+{
+  std::error_code ec;
+  const fs::path shm{"/dev/shm"};
+  const bool hostHasShm = fs::is_directory(shm, ec);
+
+  const std::string chosen = defaultLogDirectory();
+
+  if (hostHasShm)
+  {
+    EXPECT_EQ(chosen, shm.string())
+        << "this host has /dev/shm and the default went somewhere else";
+  }
+  else
+  {
+    std::error_code tmpEc;
+    const fs::path tmp = fs::temp_directory_path(tmpEc);
+    ASSERT_FALSE(tmpEc) << "this platform names no temp directory, so there is "
+                           "nothing for the default to fall back to and this "
+                           "test cannot say what it should be";
+    ASSERT_FALSE(tmp.empty());
+    EXPECT_EQ(chosen, tmp.string())
+        << "there is no /dev/shm here, so the default has to be the system "
+           "temp directory; it was '"
+        << chosen << "'";
+    EXPECT_NE(chosen, ".")
+        << "the default fell through to the current working directory, which "
+           "is wherever the process was started and not a place anybody looks "
+           "for a log";
+  }
+
+  EXPECT_TRUE(fs::is_directory(chosen, ec))
+      << "'" << chosen << "' is not a directory on this host";
+  EXPECT_EQ(AtomicLoggerOptions{}.directory, chosen)
+      << "the options struct and the function that answers for it disagree";
+}
+
 // The green control for the macros: the existing on/off guard already keeps
 // the argument from being evaluated, so the mechanism is available and the
 // failure below is about the level, not about the macro shape.

@@ -28,10 +28,12 @@
 #include "flox/engine/symbol_registry.h"
 #include "flox/position/abstract_position_manager.h"
 #include "flox/position/multi_mode_position_tracker.h"
+#include "flox/position/position_tracker.h"
 #include "flox/strategy/strategy.h"
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <vector>
@@ -331,4 +333,152 @@ TEST(StrategyPositionRefresh, AMultiModeTrackerReachesTheContextThroughTheSnapsh
   ASSERT_TRUE(strat.entriesSeen[1].has_value());
   EXPECT_EQ(strat.entriesSeen[1]->raw(), blendedEntryRaw(3.0, 50000.0, 2.0, 51000.0).raw());
   EXPECT_EQ(strat.entriesSeen[1]->raw(), tracker.getAverageEntryPrice(sym)->raw());
+}
+
+// ------------------------------------------- the lot-based tracker
+//
+// PositionTracker keeps a deque of lots rather than a long and a short side,
+// and PositionState::snapshot() answers position and cost basis from one pass
+// over it. The cost basis weighs every lot by its magnitude -- a short lot
+// weighs what a long one of the same size weighs, which is what
+// WeightedPriceSum does for avgEntryPrice() and what a cost basis means.
+// Dropping that magnitude leaves the answer unchanged for any book whose lots
+// all point the same way, because the sign then cancels between the numerator
+// and the denominator; it shows up only where the book holds both
+// directions. The same is true of the "nothing when flat" guard: a book with
+// no lots at all is caught by the total quantity, and only a book whose lots
+// net to zero while still weighing something needs the position term.
+//
+// The fill path never builds such a book -- a closing fill closes the
+// existing lots before the remainder opens one the other way -- so these are
+// built on PositionState directly, which is the type the function belongs to.
+
+TEST(PositionStateSnapshot, EveryLotWeighsItsMagnitudeWhicheverWayItPoints)
+{
+  PositionState state;
+  state.lots = {{Quantity::fromDouble(2.0), Price::fromDouble(100.0)},
+                {Quantity::fromDouble(-1.0), Price::fromDouble(200.0)}};
+
+  const PositionSnapshot snap = state.snapshot();
+
+  EXPECT_EQ(snap.position.raw(), Quantity::fromDouble(1.0).raw())
+      << "the position is the signed sum, two long against one short";
+  ASSERT_TRUE(snap.avgEntryPrice.has_value());
+  EXPECT_EQ(snap.avgEntryPrice->raw(), state.avgEntryPrice().raw())
+      << "the snapshot reported " << snap.avgEntryPrice->toDouble()
+      << " where the weighted average of the same lots is "
+      << state.avgEntryPrice().toDouble()
+      << ": the short lot was weighed as a negative quantity instead of as "
+         "one lot of that size, so it cancelled the long lot's notional "
+         "instead of adding to it";
+  EXPECT_GT(snap.avgEntryPrice->raw(), Price::fromDouble(100.0).raw())
+      << "the cost basis lies between the two prices paid";
+  EXPECT_LT(snap.avgEntryPrice->raw(), Price::fromDouble(200.0).raw());
+}
+
+TEST(PositionStateSnapshot, LotsThatNetToZeroReportNoEntryPriceAtAll)
+{
+  PositionState state;
+  state.lots = {{Quantity::fromDouble(2.0), Price::fromDouble(100.0)},
+                {Quantity::fromDouble(-2.0), Price::fromDouble(200.0)}};
+
+  const PositionSnapshot snap = state.snapshot();
+
+  EXPECT_TRUE(snap.position.isZero());
+  EXPECT_FALSE(snap.avgEntryPrice.has_value())
+      << "the lots weigh four units between them but net to no position, and "
+         "the snapshot answered with an entry price of "
+      << (snap.avgEntryPrice ? snap.avgEntryPrice->toDouble() : 0.0)
+      << ": a flat book has no cost basis, and a number there reads as one";
+
+  // A book with no lots at all is the ordinary way to be flat -- opened and
+  // then fully closed -- and it is the total quantity, not the position, that
+  // answers for it. Both guards are needed; neither covers the other.
+  PositionState closed;
+  const PositionSnapshot empty = closed.snapshot();
+  EXPECT_TRUE(empty.position.isZero());
+  EXPECT_FALSE(empty.avgEntryPrice.has_value());
+}
+
+TEST(PositionTrackerSnapshot, AShortBookReportsANegativePositionAndTheShortsEntry)
+{
+  constexpr SymbolId sym = 200;
+  PositionTracker tracker{12, CostBasisMethod::FIFO};
+
+  tracker.onOrderFilled(makeFill(1, sym, Side::SELL, 100.0, 2.0));
+  tracker.onOrderFilled(makeFill(2, sym, Side::SELL, 200.0, 2.0));
+
+  const PositionSnapshot snap = tracker.positionSnapshot(sym);
+
+  EXPECT_EQ(snap.position.raw(), Quantity::fromDouble(-4.0).raw())
+      << "four units sold with nothing to sell is a short of four";
+  ASSERT_TRUE(snap.avgEntryPrice.has_value()) << "a short has a cost basis like any position";
+  EXPECT_EQ(snap.avgEntryPrice->raw(), Price::fromDouble(150.0).raw())
+      << "two at 100 and two at 200 average to 150; the snapshot said "
+      << snap.avgEntryPrice->toDouble();
+  EXPECT_EQ(snap.avgEntryPrice->raw(), tracker.getAverageEntryPrice(sym)->raw())
+      << "the snapshot and the query must answer one state with one number";
+  EXPECT_EQ(snap.position.raw(), tracker.getPosition(sym).raw());
+}
+
+// The same short, where a strategy reads it.
+TEST(StrategyPositionRefresh, ALotTrackersShortReachesTheContextThroughTheSnapshot)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  PositionTracker tracker{13, CostBasisMethod::FIFO};
+  CountingStrategy strat(1, std::vector<SymbolId>{sym}, reg);
+  strat.setPositionManager(&tracker);
+
+  tracker.onOrderFilled(makeFill(1, sym, Side::SELL, 100.0, 2.0));
+  tracker.onOrderFilled(makeFill(2, sym, Side::SELL, 200.0, 2.0));
+  strat.onTrade(makeTrade(sym, 140.0, 1));
+
+  ASSERT_EQ(strat.entriesSeen.size(), 1u);
+  EXPECT_EQ(strat.rawPositionsSeen[0].raw(), Quantity::fromDouble(-4.0).raw())
+      << "ctx.position must carry the sign: a short that reads as flat or "
+         "long is a strategy that never covers";
+  ASSERT_TRUE(strat.entriesSeen[0].has_value()) << "the context was given no cost basis";
+  EXPECT_EQ(strat.entriesSeen[0]->raw(), Price::fromDouble(150.0).raw())
+      << "ctx.avgEntryPrice came back as " << strat.entriesSeen[0]->toDouble();
+
+  // Cover half of it and the remaining short still reports the entry price of
+  // the lots that are left.
+  tracker.onOrderFilled(makeFill(3, sym, Side::BUY, 120.0, 2.0));
+  strat.onTrade(makeTrade(sym, 140.0, 2));
+
+  ASSERT_EQ(strat.entriesSeen.size(), 2u);
+  EXPECT_EQ(strat.rawPositionsSeen[1].raw(), Quantity::fromDouble(-2.0).raw());
+  ASSERT_TRUE(strat.entriesSeen[1].has_value());
+  EXPECT_EQ(strat.entriesSeen[1]->raw(), Price::fromDouble(200.0).raw())
+      << "FIFO covered the lot sold at 100 first, so what is left was sold at 200";
+}
+
+// positionSnapshot() and getAverageEntryPrice() do not share an
+// implementation: the query sums the products exactly in fixed point
+// (WeightedPriceSum), the snapshot accumulates them in double and divides
+// once. On a book whose average is not representable the two land a raw unit
+// apart -- two at 100 and four at 200 give 166.66666666 from the query and
+// 166.66666667 from the snapshot -- so the claim above snapshot() that it
+// produces "the same numbers the separate getters produce" is not quite true
+// today. Whatever closes that, the two answers for one state may never drift
+// further apart than the rounding of the last digit.
+TEST(PositionTrackerSnapshot, TheSnapshotAndTheQueryAgreeToTheLastRaw)
+{
+  constexpr SymbolId sym = 201;
+  PositionTracker tracker{14, CostBasisMethod::FIFO};
+
+  tracker.onOrderFilled(makeFill(1, sym, Side::SELL, 100.0, 2.0));
+  tracker.onOrderFilled(makeFill(2, sym, Side::SELL, 200.0, 4.0));
+
+  const PositionSnapshot snap = tracker.positionSnapshot(sym);
+  const auto queried = tracker.getAverageEntryPrice(sym);
+
+  ASSERT_TRUE(snap.avgEntryPrice.has_value());
+  ASSERT_TRUE(queried.has_value());
+  EXPECT_LE(std::llabs(snap.avgEntryPrice->raw() - queried->raw()), 1)
+      << "the snapshot said " << snap.avgEntryPrice->toDouble() << " and the query said "
+      << queried->toDouble() << " for the same lots";
+  EXPECT_EQ(snap.position.raw(), Quantity::fromDouble(-6.0).raw());
 }
