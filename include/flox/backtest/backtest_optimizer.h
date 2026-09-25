@@ -45,7 +45,12 @@ struct OptimizationResult
   double calmarRatio() const { return stats.calmarRatio; }
   double totalReturn() const { return stats.totalPnl; }
   double maxDrawdown() const { return stats.maxDrawdown; }
+  // Already a percent: BacktestResult scales the drawdown fraction by 100
+  // when it builds the equity curve. Print it straight into a "%" -- the
+  // report used to scale it a second time and published 10% as 1000.00%.
   double maxDrawdownPct() const { return stats.maxDrawdownPct; }
+  // A fraction, unlike maxDrawdownPct: 0.5 is a 50% win rate, so a display
+  // that wants a percent does have to scale this one.
   double winRate() const { return stats.winRate; }
   double profitFactor() const { return stats.profitFactor; }
   size_t totalTrades() const { return stats.totalTrades; }
