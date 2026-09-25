@@ -39,6 +39,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <memory>
@@ -299,4 +300,104 @@ TEST(RateLimitWaitPolicy, RejectPolicyStillRefusesAndReportsIt)
   const auto rejected = watcher.rejected();
   ASSERT_EQ(rejected.size(), 1u);
   EXPECT_EQ(rejected[0], 2u);
+}
+
+// The deferral queue is bounded, and its bound is a refusal. These two go
+// straight at the policy rather than through an executor: the numbers
+// involved are a thousand submits, and what has to be counted is exactly the
+// two things gate() promises -- the action ran, or onRejected did, once each,
+// for every request.
+TEST(RateLimitWaitPolicy, DeferralQueueIsBoundedAndOverflowIsRefused)
+{
+  // Far past the 1024-deep deferral queue, on a budget that grants one token
+  // a second, so the burst below cannot be drained while it is running.
+  constexpr int kSubmits = 1100;
+
+  std::atomic<int> sent{0};
+  std::atomic<int> refused{0};
+
+  int sentDuringBurst = 0;
+  int refusedDuringBurst = 0;
+
+  {
+    ActiveRateLimitPolicy policy;
+    policy.init(limitConfig(1, 1, RateLimitPolicy::WAIT));
+
+    for (int i = 0; i < kSubmits; ++i)
+    {
+      policy.gate(
+          static_cast<OrderId>(i + 1),
+          [&]
+          {
+            ++sent;
+          },
+          [&]
+          {
+            ++refused;
+          });
+    }
+
+    sentDuringBurst = sent.load();
+    refusedDuringBurst = refused.load();
+
+    EXPECT_LE(sentDuringBurst, 3)
+        << sentDuringBurst << " requests were sent inside a burst that the budget allows one of";
+    EXPECT_GE(refusedDuringBurst, 20)
+        << "a burst of " << kSubmits
+        << " against a 1024-deep deferral queue was absorbed whole: the queue is either unbounded "
+           "or refusing silently";
+    EXPECT_LE(refusedDuringBurst, kSubmits - 1000)
+        << "the deferral queue refused far more than its bound should allow";
+  }
+
+  // Shutdown answers everything still deferred. Between sending, refusing on
+  // overflow and refusing on shutdown, every single request is accounted for
+  // exactly once -- a dropped one would show up here as a shortfall.
+  EXPECT_EQ(sent.load() + refused.load(), kSubmits)
+      << sent.load() << " sent and " << refused.load() << " refused out of " << kSubmits;
+}
+
+// RateLimitPolicy::CALLBACK denies the request. It notifies through the
+// configured callback and refuses through onRejected; what it must not do is
+// notify and then send anyway, which spends budget the venue has not given
+// back, nor stay silent, which leaves the caller with nothing to publish.
+TEST(RateLimitWaitPolicy, CallbackPolicyNotifiesRefusesAndDoesNotSend)
+{
+  std::atomic<int> notified{0};
+  std::atomic<int> sent{0};
+  std::atomic<int> refused{0};
+
+  RateLimitConfig cfg = limitConfig(1, 1, RateLimitPolicy::CALLBACK);
+  cfg.onRateLimited = [&](OrderId, std::chrono::nanoseconds)
+  {
+    ++notified;
+  };
+
+  ActiveRateLimitPolicy policy;
+  policy.init(std::move(cfg));
+
+  policy.gate(
+      1,
+      [&]
+      {
+        ++sent;
+      },
+      [&]
+      {
+        ++refused;
+      });
+  policy.gate(
+      2,
+      [&]
+      {
+        ++sent;
+      },
+      [&]
+      {
+        ++refused;
+      });
+
+  EXPECT_EQ(sent.load(), 1) << "CALLBACK sent over the budget after notifying";
+  EXPECT_EQ(refused.load(), 1) << "CALLBACK denied the request without telling the caller";
+  EXPECT_EQ(notified.load(), 1) << "the configured rate-limit callback was not called";
 }

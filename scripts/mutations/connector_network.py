@@ -209,7 +209,7 @@ MUTATIONS: list[Mutation] = [
         why="the connect timeout goes back to second resolution, so a sub-second connect "
             "budget is truncated to zero (no limit) instead of being honoured",
         binary=CURL_T,
-        test="CurlTransportTimeout.*",
+        test="CurlTransportTimeout.ConnectTimeoutIsBoundedInMilliseconds",
         file=TRANSPORT_CPP,
         old="  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, req.connectTimeoutMs);",
         new="  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT, req.connectTimeoutMs / 1000);",
@@ -219,7 +219,7 @@ MUTATIONS: list[Mutation] = [
         why="no connect timeout is set at all, so a venue address that black-holes the SYN "
             "is bounded only by libcurl's 300 s default",
         binary=CURL_T,
-        test="CurlTransportTimeout.*",
+        test="CurlTransportTimeout.ConnectTimeoutIsBoundedInMilliseconds",
         file=TRANSPORT_CPP,
         old="  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, req.connectTimeoutMs);",
         new="  // BUG: no connect timeout is set.",
@@ -233,6 +233,16 @@ MUTATIONS: list[Mutation] = [
         file=TRANSPORT_CPP,
         old="  curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);\n",
         new="",
+        equivalent_reason=
+            "unobservable in this process on this build. CURLOPT_NOSIGNAL only decides whether "
+            "libcurl may use its signal-based (SIGALRM) timeout path, which it takes only when "
+            "it has to resolve a name through a synchronous resolver; curl-config --features on "
+            "this host reports AsynchDNS (libcurl 8.7.1), so that path does not exist here, and "
+            "every offline case connects to an IP literal, so nothing is resolved at all. The "
+            "option still has to be set -- on a libcurl built without AsynchDNS it is the "
+            "difference between millisecond timeouts and one-second ones, and between safe and "
+            "unsafe use from several sender threads -- but no test in this process can tell the "
+            "two versions apart",
     ),
     # ---------------------------------------------------------------- async post()
     Mutation(
@@ -240,7 +250,8 @@ MUTATIONS: list[Mutation] = [
         why="submit() stops queueing and performs the request on the calling thread again, "
             "so the strategy thread is held for the whole round trip",
         binary=CURL_T,
-        test="CurlTransportTimeout.PostDoesNotHoldTheCallerBeyondTheConfiguredTimeout:"
+        test="CurlTransportTimeout.PostReturnsAtOnceAndCompletesOnAnotherThread:"
+             "CurlTransportTimeout.PostDoesNotHoldTheCallerBeyondTheConfiguredTimeout:"
              "CurlTransportTimeout.OrderSubmitDoesNotHoldTheStrategyThread",
         file=TRANSPORT_CPP,
         old="    _queue.push_back(std::move(req));\n  }\n  _queueCv.notify_one();\n}",
@@ -252,7 +263,7 @@ MUTATIONS: list[Mutation] = [
         why="the handoff queue loses its bound: a venue that stops draining is absorbed into "
             "memory instead of being refused",
         binary=CURL_T,
-        test="CurlTransportTimeout.*",
+        test="CurlTransportTimeout.FullSendQueueRefusesAndStopAnswersTheRemainder",
         file=TRANSPORT_CPP,
         old="    if (_queue.size() >= _dispatchConfig.maxQueueDepth)",
         new="    if (_queue.size() >= static_cast<std::size_t>(-1))",
@@ -262,7 +273,7 @@ MUTATIONS: list[Mutation] = [
         why="a request refused by the full queue is dropped without answering onError, so the "
             "caller publishes nothing and believes the order is in flight",
         binary=CURL_T,
-        test="CurlTransportTimeout.*",
+        test="CurlTransportTimeout.FullSendQueueRefusesAndStopAnswersTheRemainder",
         file=TRANSPORT_CPP,
         old="      invokeSafely(req.onError, \"Transport send queue is full\", \"onError\");\n"
             "      return;",
@@ -273,7 +284,7 @@ MUTATIONS: list[Mutation] = [
         why="stop() drops whatever is still queued instead of failing it through onError, so "
             "an order that never left the process produces no rejection",
         binary=CURL_T,
-        test="CurlTransportTimeout.*",
+        test="CurlTransportTimeout.FullSendQueueRefusesAndStopAnswersTheRemainder",
         file=TRANSPORT_CPP,
         old="  for (auto& req : leftovers)\n  {\n"
             "    invokeSafely(req.onError, \"Transport stopped before the request was sent\", \"onError\");\n"
@@ -297,7 +308,7 @@ MUTATIONS: list[Mutation] = [
         why="the default sender count goes to two, so requests no longer leave in the order "
             "they were handed over -- a cancel can overtake the place it cancels",
         binary=CURL_T,
-        test="CurlTransportTimeout.*",
+        test="CurlTransportTimeout.TwoPostsLeaveInHandoverOrder",
         file=TRANSPORT_H,
         old="  std::size_t senderThreads{1};",
         new="  std::size_t senderThreads{2};",
@@ -307,7 +318,7 @@ MUTATIONS: list[Mutation] = [
         why="the queued Request holds a string_view of the caller's body instead of owning a "
             "copy, so the sender thread reads a buffer the caller has already destroyed",
         binary=CURL_T,
-        test="CurlTransportTimeout.*",
+        test="CurlTransportTimeout.QueuedRequestOwnsTheBodyItWasGiven",
         edits=[
             Edit(TRANSPORT_H, "    std::string url;\n    std::string body;",
                  "    std::string url;\n    std::string_view body;"),
@@ -383,7 +394,7 @@ MUTATIONS: list[Mutation] = [
         why="the deferral queue loses its bound, so a venue the strategy outruns is absorbed "
             "into memory instead of refusing the submit",
         binary=WAIT_T,
-        test="RateLimitWaitPolicy.*",
+        test="RateLimitWaitPolicy.DeferralQueueIsBoundedAndOverflowIsRefused",
         file=POLICIES_H,
         old="  static constexpr std::size_t kMaxDeferred = 1024;",
         new="  static constexpr std::size_t kMaxDeferred = static_cast<std::size_t>(-1);",
@@ -393,7 +404,7 @@ MUTATIONS: list[Mutation] = [
         why="a submit refused by a full deferral queue is dropped without calling onRejected, "
             "so nothing is published and the order simply disappears",
         binary=WAIT_T,
-        test="RateLimitWaitPolicy.*",
+        test="RateLimitWaitPolicy.DeferralQueueIsBoundedAndOverflowIsRefused",
         file=POLICIES_H,
         old="        FLOX_LOG_WARN(\"[RateLimit] Deferral queue full, rejecting orderId=\" << orderId);\n"
             "        onRejected();\n        return;",
@@ -425,7 +436,7 @@ MUTATIONS: list[Mutation] = [
         name="callback-policy-runs-the-action",
         why="RateLimitPolicy::CALLBACK notifies and then sends anyway, over the budget",
         binary=WAIT_T,
-        test="RateLimitWaitPolicy.*",
+        test="RateLimitWaitPolicy.CallbackPolicyNotifiesRefusesAndDoesNotSend",
         file=POLICIES_H,
         old="          _config.onRateLimited(orderId, waitTime);\n        }\n        onRejected();\n"
             "        return;",
@@ -437,7 +448,7 @@ MUTATIONS: list[Mutation] = [
         why="CALLBACK denies the request but never calls onRejected, so nothing reaches the "
             "execution bus and the tracker keeps reporting the order",
         binary=HL_RL_T,
-        test="HyperliquidRateLimitReject.*",
+        test="HyperliquidRateLimitReject.CallbackPolicyRefusalIsReported",
         file=POLICIES_H,
         old="          _config.onRateLimited(orderId, waitTime);\n        }\n        onRejected();\n"
             "        return;",
@@ -603,7 +614,8 @@ MUTATIONS: list[Mutation] = [
         name="bitget-cancel-bypasses-the-gate",
         why="the Bitget cancel path sends without consulting the limiter",
         binary=BITGET_RL_T,
-        test="BitgetRateLimitPaths.*",
+        test="BitgetRateLimitPaths.CancelIsThrottled:"
+             "BitgetRateLimitPaths.BurstAcrossEveryPathIsThrottled",
         file=BITGET_CPP,
         old="  Order target = st->localOrder;\n  _policies.rateLimit.gate(\n      id,\n"
             "      [this, id]\n      {\n        sendCancelOrder(id);\n      },\n"
@@ -629,7 +641,7 @@ MUTATIONS: list[Mutation] = [
         why="an instrument the registry has no tick size for goes back to the hardcoded one "
             "digit instead of everything the fixed-point type can carry",
         binary=BITGET_PRICE_T,
-        test="BitgetPlanOrderPrice.*",
+        test="BitgetPlanOrderPrice.UnsetTickKeepsFullFixedPointPrecision",
         file=BITGET_CPP,
         old="    // No usable tick in the registry: send everything the fixed-point type can\n"
             "    // carry rather than silently rounding the strategy's price away.\n"
@@ -661,7 +673,7 @@ MUTATIONS: list[Mutation] = [
         why="the plan order's triggerPrice goes back to Price::toString(), which writes six "
             "fractional digits regardless of what the instrument quotes in",
         binary=BITGET_PRICE_T,
-        test="BitgetPlanOrderPrice.*",
+        test="BitgetPlanOrderPrice.StopLimitCarriesItsLimitPrice",
         file=BITGET_CPP,
         old="      .append(trimDouble(order.triggerPrice.toDouble(), decimals))",
         new="      .append(order.triggerPrice.toString())",
@@ -682,7 +694,7 @@ MUTATIONS: list[Mutation] = [
         why="the take-profit trigger of placePosTpsl keeps the old single digit, so a target "
             "on a finely quoted instrument is rounded away",
         binary=BITGET_PRICE_T,
-        test="BitgetPlanOrderPrice.*",
+        test="BitgetPlanOrderPrice.PosTpslTakeProfitKeepsInstrumentPrecision",
         file=BITGET_CPP,
         old="        .append(trimDouble(tpPrice, decimals))",
         new="        .append(trimDouble(tpPrice, 1))",
@@ -752,7 +764,8 @@ MUTATIONS: list[Mutation] = [
             "standing in for it rather than being rejected, so the venue gets a bound the "
             "strategy never chose",
         binary=BITGET_PRICE_T,
-        test="BitgetPlanOrderPrice.*",
+        test="BitgetPlanOrderPrice.StopLimitWithoutALimitPriceIsRejected:"
+             "BitgetPlanOrderPrice.TakeProfitLimitWithoutALimitPriceIsRejected",
         edits=[
             Edit(
                 BITGET_CPP,
@@ -931,73 +944,9 @@ MUTATIONS: list[Mutation] = [
 # them. They are recorded here so a later reader knows exactly what is not
 # covered, and so a newly surviving mutation with no entry stands out.
 HOLES: dict[str, str] = {
-    # -- transport ---------------------------------------------------------
-    "post-performs-the-request-inline":
-        "a case configuring the default 30 s request timeout and asserting post() returns in "
-        "milliseconds against a silent peer; every current case configures 250-1500 ms, which "
-        "an inline request also returns inside",
-    "send-queue-unbounded":
-        "a case posting more than maxQueueDepth requests at a peer that never answers and "
-        "asserting the surplus is refused rather than queued",
-    "send-queue-overflow-dropped-silently":
-        "the same overflow case, asserting the refused request answers onError instead of "
-        "vanishing with no outcome",
-    "stop-does-not-answer-the-remainder":
-        "a case queueing requests against a stalled peer, calling stop(), and asserting every "
-        "still-queued request completes through onError",
-    "two-sender-threads":
-        "a case posting a place and then a cancel at a peer that delays the first response and "
-        "asserting they reach the wire in that order",
-    "queued-request-borrows-the-callers-body":
-        "a case posting a body out of a buffer it destroys before the sender thread runs and "
-        "asserting the peer received the original bytes; the current cases pass string "
-        "literals, which never dangle",
-    "connect-timeout-in-whole-seconds":
-        "a case pointing the transport at a non-routable address with a sub-second connect "
-        "budget and asserting it gives up inside that budget; every current case connects to "
-        "loopback, where connect is instant",
-    "connect-timeout-not-set":
-        "the same non-routable-address case, asserting the connect gives up long before "
-        "libcurl's 300 s default",
-    "nosignal-dropped":
-        "a case asserting CURLOPT_NOSIGNAL is set on the handle; nothing observable differs "
-        "in-process on a libcurl built with the threaded resolver, which is what this host has",
-    # -- limiter -----------------------------------------------------------
-    "deferral-queue-unbounded":
-        "a WAIT-policy case submitting more than kMaxDeferred orders into an empty bucket and "
-        "asserting the surplus is refused rather than absorbed",
-    "deferral-overflow-dropped-silently":
-        "the same overflow case, asserting the refused submit publishes REJECTED_RATE_LIMIT "
-        "instead of disappearing",
-    "callback-policy-runs-the-action":
-        "a case configured with RateLimitPolicy::CALLBACK asserting the over-budget request "
-        "never reaches the transport; every current case uses REJECT or WAIT",
-    "callback-policy-says-nothing":
-        "the same CALLBACK case, asserting the refusal also reaches the execution bus",
-    # -- Hyperliquid -------------------------------------------------------
-    "hl-cancel-rejection-loses-the-tracked-order":
-        "the cancel case asserts only rejected[0].id; asserting the rejected order also "
-        "carries the tracked symbol, side, price and quantity would catch it",
-    "hl-refusal-uses-the-generic-reject-status":
-        "REJECTED and REJECTED_RATE_LIMIT both dispatch to onOrderRejected, so a case "
-        "inspecting OrderEvent::status (through onOrderEvent) rather than the typed callback "
-        "would catch it",
-    # -- Bitget ------------------------------------------------------------
-    "bitget-cancel-bypasses-the-gate":
-        "a rate-limit-paths case draining the bucket and then calling cancelOrder, asserting "
-        "no further request reaches the wire",
-    "unset-tick-gives-one-digit":
-        "a plan-order case registering a symbol with no tickSize and asserting the trigger "
-        "keeps the precision the fixed-point type carries",
-    "plan-trigger-back-to-price-tostring":
-        "the STOP_LIMIT case matches the trigger on the prefix 'triggerPrice\":\"58000', which "
-        "'58000.000000' also satisfies; asserting the whole field value would catch it",
-    "pos-tpsl-take-profit-back-to-one-digit":
-        "every placePosTpsl case passes tpPrice = 0; a case with a non-zero take-profit on a "
-        "finely quoted instrument would catch it",
-    "conditional-limit-without-a-price-is-approximated":
-        "a case submitting a STOP_LIMIT with no limit price and asserting a rejection is "
-        "published rather than a request going out",
+    # Every hole the first mutation pass found has since been closed by a
+    # test; the table is kept because the next mutation that survives belongs
+    # in it, and an empty one is the honest state to hand over.
 }
 
 for _m in MUTATIONS:

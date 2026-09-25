@@ -32,12 +32,16 @@
 
 #include <flox/common.h>
 #include <flox/engine/symbol_registry.h>
+#include <flox/execution/abstract_execution_listener.h>
+#include <flox/execution/bus/order_execution_bus.h>
+#include <flox/execution/events/order_event.h>
 #include <flox/execution/order.h>
 #include <flox/execution/order_tracker.h>
 
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -95,12 +99,63 @@ SymbolId registerSymbol(SymbolRegistry& registry, const std::string& symbol, dou
   return registry.registerSymbol(info);
 }
 
+// A venue whose instrument listing carried no usable tick size. Rounding to
+// one digit here is a guess about an instrument nothing knows anything about;
+// the honest fallback is everything the fixed-point price type can hold.
+SymbolId registerSymbolWithoutTick(SymbolRegistry& registry, const std::string& symbol)
+{
+  SymbolInfo info;
+  info.exchange = "bitget";
+  info.symbol = symbol;
+  info.type = InstrumentType::Future;
+  info.tickSize = Price::fromRaw(0);
+  return registry.registerSymbol(info);
+}
+
+// Records the rejections the executor publishes, so a conditional order that
+// cannot be represented can be seen to be refused rather than approximated.
+class RejectionWatcher final : public IOrderExecutionListener
+{
+ public:
+  RejectionWatcher() : IOrderExecutionListener(13) {}
+
+  struct Rejection
+  {
+    OrderId id;
+    OrderEventStatus status;
+    std::string reason;
+  };
+
+  void onOrderEvent(const OrderEvent& ev) override
+  {
+    if (ev.status != OrderEventStatus::REJECTED &&
+        ev.status != OrderEventStatus::REJECTED_RATE_LIMIT)
+    {
+      return;
+    }
+    std::lock_guard<std::mutex> lk(_m);
+    _rejected.push_back({ev.order.id, ev.status, ev.rejectReason});
+  }
+
+  std::vector<Rejection> rejected()
+  {
+    std::lock_guard<std::mutex> lk(_m);
+    return _rejected;
+  }
+
+ private:
+  std::mutex _m;
+  std::vector<Rejection> _rejected;
+};
+
 struct Harness
 {
   std::unique_ptr<FakeTransport> owner{std::make_unique<FakeTransport>()};
   FakeTransport* transport{owner.get()};
   SymbolRegistry registry;
   OrderTracker tracker;
+  RejectionWatcher watcher;
+  OrderExecutionBus bus;
   std::unique_ptr<BitgetOrderExecutorT<NoPolicies>> executor;
 
   Harness()
@@ -109,7 +164,12 @@ struct Harness
         "k", "s", "p", "https://api.bitget.com", transport);
     executor = std::make_unique<BitgetOrderExecutorT<NoPolicies>>(std::move(client), &registry,
                                                                   &tracker, baseParams());
+    bus.subscribe(&watcher);
+    bus.start();
+    executor->setOrderBus(&bus);
   }
+
+  ~Harness() { bus.stop(); }
 };
 
 }  // namespace
@@ -139,7 +199,10 @@ TEST(BitgetPlanOrderPrice, StopLimitCarriesItsLimitPrice)
 
   EXPECT_NE(body.find(R"("planType":"normal_plan")"), std::string::npos)
       << "the plan type must be the one that carries an execution price: " << body;
-  EXPECT_NE(body.find(R"("triggerPrice":"58000)"), std::string::npos) << body;
+  // The whole field, not a prefix: "58000.000000" starts the same way, and
+  // that is exactly what a trigger formatted through Price::toString() rather
+  // than the instrument's own precision looks like.
+  EXPECT_NE(body.find(R"("triggerPrice":"58000")"), std::string::npos) << body;
   EXPECT_NE(body.find(R"("orderType":"limit")"), std::string::npos)
       << "a STOP_LIMIT sent as market is a silent downgrade to stop-market: " << body;
   EXPECT_NE(body.find(R"("price":"57900)"), std::string::npos)
@@ -257,4 +320,102 @@ TEST(BitgetPlanOrderPrice, PosTpslTriggerOnACoarseInstrumentIsUnchanged)
   ASSERT_EQ(h.transport->calls.size(), 1u);
   const std::string& body = h.transport->calls[0].body;
   EXPECT_NE(body.find(R"("stopLossTriggerPrice":"67123.5")"), std::string::npos) << body;
+}
+
+// A conditional limit order with no limit price cannot be represented: the
+// limit price is the field that distinguishes it from the market variant.
+// Standing the trigger price in for it hands the venue a bound the strategy
+// never chose, on an order whose whole purpose is to bound the fill --
+// docs/explanation/connectors.md says such an order is rejected rather than
+// sent as an approximation.
+TEST(BitgetPlanOrderPrice, StopLimitWithoutALimitPriceIsRejected)
+{
+  Harness h;
+  SymbolId sym = registerSymbol(h.registry, "BTCUSDT", 0.1);
+
+  Order order;
+  order.id = 31;
+  order.symbol = sym;
+  order.side = Side::SELL;
+  order.type = OrderType::STOP_LIMIT;
+  order.quantity = Quantity::fromDouble(1.0);
+  order.triggerPrice = Price::fromDouble(58000.0);
+  // No limit price at all.
+  order.flags.reduceOnly = 1;
+
+  h.executor->submitOrder(order);
+  h.bus.flush();
+
+  EXPECT_EQ(h.transport->calls.size(), 0u)
+      << "an unrepresentable conditional limit order was sent anyway: "
+      << (h.transport->calls.empty() ? std::string{} : h.transport->calls[0].body);
+
+  const auto rejected = h.watcher.rejected();
+  ASSERT_EQ(rejected.size(), 1u) << "the order was neither sent nor rejected";
+  EXPECT_EQ(rejected[0].id, 31u);
+  EXPECT_EQ(rejected[0].status, OrderEventStatus::REJECTED);
+  EXPECT_NE(rejected[0].reason.find("limit price"), std::string::npos) << rejected[0].reason;
+}
+
+TEST(BitgetPlanOrderPrice, TakeProfitLimitWithoutALimitPriceIsRejected)
+{
+  Harness h;
+  SymbolId sym = registerSymbol(h.registry, "BTCUSDT", 0.1);
+
+  Order order;
+  order.id = 32;
+  order.symbol = sym;
+  order.side = Side::SELL;
+  order.type = OrderType::TAKE_PROFIT_LIMIT;
+  order.quantity = Quantity::fromDouble(1.0);
+  order.triggerPrice = Price::fromDouble(71000.0);
+  order.flags.reduceOnly = 1;
+
+  h.executor->submitOrder(order);
+  h.bus.flush();
+
+  EXPECT_EQ(h.transport->calls.size(), 0u)
+      << "an unrepresentable conditional limit order was sent anyway: "
+      << (h.transport->calls.empty() ? std::string{} : h.transport->calls[0].body);
+
+  const auto rejected = h.watcher.rejected();
+  ASSERT_EQ(rejected.size(), 1u) << "the order was neither sent nor rejected";
+  EXPECT_EQ(rejected[0].id, 32u);
+}
+
+// The take-profit leg of a position-attached stop is formatted by the same
+// rule as the stop-loss leg. Only the stop-loss leg was ever exercised, so
+// the take-profit one could quietly keep the old single digit.
+TEST(BitgetPlanOrderPrice, PosTpslTakeProfitKeepsInstrumentPrecision)
+{
+  Harness h;
+  h.transport->nextResponse = kPosTpslResponse;
+  SymbolId sym = registerSymbol(h.registry, "PEPEUSDT", 0.00000001);
+
+  h.executor->placePosTpsl(sym, HoldSide::Long, 66000.12345678, 67123.45678901, 24);
+
+  ASSERT_EQ(h.transport->calls.size(), 1u);
+  const std::string& body = h.transport->calls[0].body;
+  EXPECT_NE(body.find(R"("stopSurplusTriggerPrice":"67123.45678901")"), std::string::npos)
+      << "the take-profit trigger was rounded at a precision the instrument does not use: " << body;
+  EXPECT_NE(body.find(R"("stopLossTriggerPrice":"66000.12345678")"), std::string::npos) << body;
+  EXPECT_NE(body.find(R"("planType":"profit_loss")"), std::string::npos) << body;
+}
+
+// An instrument the registry has no tick size for. One digit is a guess about
+// something nothing knows anything about, and it is the guess that silently
+// rounds a strategy's price away; the fixed-point type's own precision loses
+// nothing the strategy asked for.
+TEST(BitgetPlanOrderPrice, UnsetTickKeepsFullFixedPointPrecision)
+{
+  Harness h;
+  h.transport->nextResponse = kPosTpslResponse;
+  SymbolId sym = registerSymbolWithoutTick(h.registry, "NEWUSDT");
+
+  h.executor->placePosTpsl(sym, HoldSide::Long, 67123.45678901, 0.0, 25);
+
+  ASSERT_EQ(h.transport->calls.size(), 1u);
+  const std::string& body = h.transport->calls[0].body;
+  EXPECT_NE(body.find(R"("stopLossTriggerPrice":"67123.45678901")"), std::string::npos)
+      << "an instrument with no registered tick fell back to a hardcoded digit count: " << body;
 }

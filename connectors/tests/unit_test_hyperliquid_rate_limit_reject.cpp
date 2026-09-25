@@ -34,6 +34,8 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -132,22 +134,33 @@ class FakeTransport final : public ITransport
       R"({"status":"ok","response":{"type":"order","data":{"statuses":[{"resting":{"oid":777}}]}}})";
 };
 
+// Reads the raw OrderEvent rather than the typed callback: REJECTED and
+// REJECTED_RATE_LIMIT both arrive at onOrderRejected(), so the typed form
+// cannot tell a venue rejection from a budget refusal -- which is the whole
+// difference a listener has to act on. The order is kept too: a refusal has
+// to name the order it refused, not just its id.
 class RejectionWatcher final : public IOrderExecutionListener
 {
  public:
   RejectionWatcher() : IOrderExecutionListener(11) {}
 
-  void onOrderRejected(const Order& order, const std::string& reason) override
-  {
-    std::lock_guard<std::mutex> lk(_m);
-    _rejected.push_back({order.id, reason});
-  }
-
   struct Rejection
   {
-    OrderId id;
+    OrderEventStatus status;
+    Order order;
     std::string reason;
   };
+
+  void onOrderEvent(const OrderEvent& ev) override
+  {
+    if (ev.status != OrderEventStatus::REJECTED &&
+        ev.status != OrderEventStatus::REJECTED_RATE_LIMIT)
+    {
+      return;
+    }
+    std::lock_guard<std::mutex> lk(_m);
+    _rejected.push_back({ev.status, ev.order, ev.rejectReason});
+  }
 
   std::vector<Rejection> rejected()
   {
@@ -233,7 +246,14 @@ void rejectedSubmitIsReported()
     const auto rejected = h.watcher.rejected();
     ASSERT_EQ(rejected.size(), 1u)
         << "a submit the client-side limiter refused produced no event at all";
-    EXPECT_EQ(rejected[0].id, 2u);
+    EXPECT_EQ(rejected[0].order.id, 2u);
+    EXPECT_EQ(rejected[0].status, OrderEventStatus::REJECTED_RATE_LIMIT)
+        << "a client-side budget refusal published as a plain REJECTED is indistinguishable "
+           "from a venue rejection, and the two call for opposite reactions";
+
+    // A submit that never left the process is not an order: the tracker must
+    // not be holding one.
+    EXPECT_FALSE(h.tracker.exists(2)) << "a refused submit was recorded as a live order";
   }
   else
   {
@@ -260,7 +280,25 @@ void rejectedCancelIsReported()
     ASSERT_EQ(rejected.size(), 1u)
         << "the cancel never left the process and nothing said so -- the tracker still reports "
            "order 1 as live";
-    EXPECT_EQ(rejected[0].id, 1u);
+    EXPECT_EQ(rejected[0].order.id, 1u);
+    EXPECT_EQ(rejected[0].status, OrderEventStatus::REJECTED_RATE_LIMIT);
+
+    // The refusal has to carry the order it refused, resolved from the
+    // tracker, not a bare shell with nothing but an id: a listener that has to
+    // re-place or reconcile the cancel has no other source for the symbol,
+    // side, price and size.
+    const Order expected = makeOrder(1, h.symbol);
+    EXPECT_EQ(rejected[0].order.symbol, expected.symbol);
+    EXPECT_EQ(rejected[0].order.side, expected.side);
+    EXPECT_EQ(rejected[0].order.price.raw(), expected.price.raw());
+    EXPECT_EQ(rejected[0].order.quantity.raw(), expected.quantity.raw());
+
+    // And the order itself is untouched: a cancel that was never sent cannot
+    // have changed anything at the venue.
+    const auto state = h.tracker.get(1);
+    ASSERT_TRUE(state.has_value()) << "the refused cancel lost the order it targeted";
+    EXPECT_EQ(state->status, OrderEventStatus::SUBMITTED);
+    EXPECT_FALSE(state->isTerminal());
   }
   else
   {
@@ -284,8 +322,48 @@ void rejectedReplaceIsReported()
     h.bus.flush();
 
     EXPECT_EQ(h.transport->calls.size(), 1u);
-    EXPECT_EQ(h.watcher.rejected().size(), 1u)
-        << "a replace the limiter refused left no trace on the bus";
+    const auto rejected = h.watcher.rejected();
+    ASSERT_EQ(rejected.size(), 1u) << "a replace the limiter refused left no trace on the bus";
+    EXPECT_EQ(rejected[0].status, OrderEventStatus::REJECTED_RATE_LIMIT);
+  }
+  else
+  {
+    FAIL() << kMissingCtor;
+  }
+}
+
+// RateLimitPolicy::CALLBACK is the third way a request can be refused, and it
+// has to reach the bus like the other two. The configured callback is a
+// notification for the operator; the OrderEvent is what the strategy acts on,
+// and a policy that notifies and then says nothing to the bus leaves the
+// order in exactly the silence the gate was built to end.
+template <typename Exec>
+void callbackPolicyRefusalIsReported()
+{
+  if constexpr (kHasRateLimitedTransportCtor<Exec>)
+  {
+    std::atomic<int> notified{0};
+    RateLimitConfig cfg = limitConfig(1, 1);
+    cfg.policy = RateLimitPolicy::CALLBACK;
+    cfg.onRateLimited = [&notified](OrderId, std::chrono::nanoseconds)
+    {
+      ++notified;
+    };
+
+    Harness<Exec> h("hl_rl_callback.log", std::move(cfg));
+
+    h.executor->submitOrder(makeOrder(1, h.symbol));
+    h.executor->submitOrder(makeOrder(2, h.symbol));
+    h.bus.flush();
+
+    EXPECT_EQ(h.transport->calls.size(), 1u)
+        << "CALLBACK notified and sent the order anyway, over the budget";
+    EXPECT_EQ(notified.load(), 1) << "the configured rate-limit callback never fired";
+
+    const auto rejected = h.watcher.rejected();
+    ASSERT_EQ(rejected.size(), 1u) << "CALLBACK denied the submit and published nothing at all";
+    EXPECT_EQ(rejected[0].order.id, 2u);
+    EXPECT_EQ(rejected[0].status, OrderEventStatus::REJECTED_RATE_LIMIT);
   }
   else
   {
@@ -331,6 +409,11 @@ TEST(HyperliquidRateLimitReject, RejectedCancelIsReported)
 TEST(HyperliquidRateLimitReject, RejectedReplaceIsReported)
 {
   rejectedReplaceIsReported<HyperliquidOrderExecutorWithRateLimit>();
+}
+
+TEST(HyperliquidRateLimitReject, CallbackPolicyRefusalIsReported)
+{
+  callbackPolicyRefusalIsReported<HyperliquidOrderExecutorWithRateLimit>();
 }
 
 TEST(HyperliquidRateLimitReject, SubmitInsideTheBudgetIsNotReported)

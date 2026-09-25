@@ -142,6 +142,21 @@ TEST(BitgetRateLimitPaths, SecondSubmitIsThrottled)
   EXPECT_EQ(h.transport->urls.size(), before);
 }
 
+// cancelOrder is a send path like any other: a venue counts a cancel against
+// the same endpoint budget as the place it cancels. The drain leaves order 1
+// in the tracker, so this is a cancel that would otherwise be sent.
+TEST(BitgetRateLimitPaths, CancelIsThrottled)
+{
+  Harness h;
+  const std::size_t before = h.drain();
+  ASSERT_TRUE(h.tracker.exists(1)) << "the drain submit must leave a cancellable order";
+
+  h.executor->cancelOrder(1);
+
+  EXPECT_EQ(h.transport->urls.size(), before)
+      << "cancelOrder went out over the budget: " << h.transport->urls.back();
+}
+
 TEST(BitgetRateLimitPaths, SetLeverageIsThrottled)
 {
   Harness h;
@@ -195,6 +210,7 @@ TEST(BitgetRateLimitPaths, BurstAcrossEveryPathIsThrottled)
   Harness h;
 
   h.executor->submitOrder(h.order(1));
+  h.executor->cancelOrder(1);
   h.executor->setLeverage("BTCUSDT", 10);
   h.executor->placePosTpsl(h.symbol, HoldSide::Long, 58000.0, 0.0, 2);
   h.executor->modifyPosTpsl(h.symbol, "BG-TPSL-1", 58100.0, 1.0);
