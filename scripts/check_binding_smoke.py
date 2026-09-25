@@ -19,6 +19,11 @@ and *calls* what it finds, then classifies what comes back:
                  required argument, an empty registry, a bad path. Expected,
                  and ignored here.
 
+A binding that cannot be imported at all fails this gate too. It used to be
+reported as `SKIP (...)` and exit 0, so a wheel that did not load and an addon
+that was never built both read as "no binding-level failures" -- the gate was
+loudest exactly when it had seen nothing.
+
 Only zero-argument calls are made, and names that would submit orders, write
 files or tear down state are skipped -- see SKIP_NAMES. That is enough: every
 defect above was reachable from a no-argument or single-literal call.
@@ -27,6 +32,7 @@ Run:
     python3 scripts/check_binding_smoke.py            # both bindings
     python3 scripts/check_binding_smoke.py --python   # one of them
     python3 scripts/check_binding_smoke.py --verbose
+    python3 scripts/check_binding_smoke.py --root /path/to/tree
 """
 
 from __future__ import annotations
@@ -68,7 +74,7 @@ SKIP_NAMES = {
 }
 
 
-def python_smoke(verbose: bool) -> list[str]:
+def python_smoke(verbose: bool, root: Path) -> list[str]:
     """Reflect over flox_py and call every zero-arg method we can reach."""
     probe = r'''
 import inspect, json, sys
@@ -136,14 +142,17 @@ print(json.dumps({"checked": checked, "roots": len(roots), "problems": problems}
 '''
     r = subprocess.run([sys.executable, "-c", probe,
                         json.dumps(sorted(SKIP_NAMES)), json.dumps(list(BINDING_LEVEL))],
-                       capture_output=True, text=True, cwd=REPO)
+                       capture_output=True, text=True, cwd=root)
     line = (r.stdout or "").strip().splitlines()
     if not line:
         return [f"python probe produced no output: {r.stderr[-400:]}"]
     data = json.loads(line[-1])
     if "fatal" in data:
-        print(f"  python: SKIP ({data['fatal']})")
-        return []
+        # A binding that will not import is the largest binding-level failure
+        # there is: nothing below was exercised. This used to print SKIP and
+        # return an empty list, so a broken wheel read as "no failures".
+        print(f"  python: FAIL ({data['fatal']})")
+        return [f"python: {data['fatal']}"]
     print(f"  python: {data['roots']} objects, {data['checked']} zero-arg calls")
     if verbose:
         for p in data["problems"]:
@@ -151,12 +160,14 @@ print(json.dumps({"checked": checked, "roots": len(roots), "problems": problems}
     return [f"python: {p}" for p in data["problems"]]
 
 
-def node_smoke(verbose: bool) -> list[str]:
+def node_smoke(verbose: bool, root: Path) -> list[str]:
     """Same walk over the Node addon's exports and prototypes."""
-    node_dir = REPO / "node"
-    if not (node_dir / "index.js").is_file():
-        print("  node: SKIP (addon not built)")
-        return []
+    node_dir = root / "node"
+    entry = node_dir / "index.js"
+    if not entry.is_file():
+        # Same defect as an addon that throws on load: nothing was exercised.
+        print(f"  node: FAIL ({entry} not found — the addon was never built)")
+        return [f"node: {entry} not found — the addon was never built"]
     probe = r'''
 const path = require('path');
 const SKIP = new Set(JSON.parse(process.env.FLOX_SMOKE_SKIP));
@@ -212,8 +223,10 @@ console.log(JSON.stringify({checked, roots, problems}));
         return [f"node probe produced no output: {r.stderr[-400:]}"]
     data = json.loads(line[-1])
     if "fatal" in data:
-        print(f"  node: SKIP ({data['fatal']})")
-        return []
+        # The message carries a require stack; print the headline here and
+        # keep the whole thing for the failure list below.
+        print(f"  node: FAIL (cannot load {entry})")
+        return [f"node: cannot load {entry}: {data['fatal']}"]
     print(f"  node: {data['roots']} objects, {data['checked']} zero-arg calls")
     if verbose:
         for p in data["problems"]:
@@ -226,19 +239,22 @@ def main() -> int:
     ap.add_argument("--python", action="store_true", help="Python binding only")
     ap.add_argument("--node", action="store_true", help="Node binding only")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--root", default=str(REPO),
+                    help="repository to probe (default: the one this script lives in)")
     args = ap.parse_args()
+    root = Path(args.root).resolve()
     both = not (args.python or args.node)
 
     print("Calling the binding surface (binding-level errors only):")
     problems: list[str] = []
     if both or args.python:
-        problems += python_smoke(args.verbose)
+        problems += python_smoke(args.verbose, root)
     if both or args.node:
-        problems += node_smoke(args.verbose)
+        problems += node_smoke(args.verbose, root)
 
     if problems:
-        print("\nerror: binding-level failures — the wrapper is broken, not the "
-              "input:\n", file=sys.stderr)
+        print("\nerror: binding-level failures — the binding is broken, not "
+              "the input:\n", file=sys.stderr)
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         return 1

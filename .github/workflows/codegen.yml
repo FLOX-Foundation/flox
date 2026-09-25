@@ -64,6 +64,23 @@ jobs:
               exit 1
             fi
           done
+          # The two layout artifacts are generated in place -- the C header is
+          # included by tests/test_capi_event_layout.cpp and the Codon module
+          # is imported by codon/flox/dispatch.codon -- so they are diffed
+          # where they live rather than against a copy under golden/.
+          for pair in "emit-layout-h:include/flox/capi/flox_capi_layout.h" \
+                      "emit-layout-codon:codon/flox/layout.codon"; do
+            sub="${pair%%:*}"
+            file="${pair#*:}"
+            python -m flox_codegen.cli "$sub" \
+              --spec include/flox/capi/flox_capi_spec.hpp \
+              --out "/tmp/$(basename "$file")"
+            if ! diff -u "$file" "/tmp/$(basename "$file")"; then
+              echo "::error::$file is out of date"
+              echo "Run: bash tools/codegen/scripts/regenerate.sh"
+              exit 1
+            fi
+          done
 
       - name: Verify function, macro, and struct-field equivalence with live flox_capi.h
         env:

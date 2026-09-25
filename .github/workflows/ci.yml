@@ -83,15 +83,20 @@ jobs:
     - name: Verify node/index.d.ts class members cover every NAPI wrap method
       run: python3 scripts/check_dts_class_members.py
     - name: Verify cross-binding parity (pybind11/napi/codon/quickjs)
-      # The step used to name three bindings and the script read three keys,
-      # while the project has four: `quickjs` was in the manifest and in
-      # nobody's code path, so a group with no QuickJS implementation passed.
-      # It is read now. Most groups still carry no `quickjs` entry, and the
-      # script prints that count rather than implying it checked them; turn on
-      # --require-quickjs here once the manifest is complete.
+      # --require-quickjs is the script's default and is passed explicitly
+      # here: the flag used to exist and never be passed, which left 59 of the
+      # 73 IDL groups unchecked against the QuickJS layer while the step
+      # reported success. A flag that is never passed is not a gate.
       run: |
         pip install pyyaml
-        python3 scripts/check_binding_parity.py
+        python3 scripts/check_binding_parity.py --require-quickjs
+    - name: Run the binding-gate tests
+      # The gates are only as honest as these: each builds a miniature
+      # repository, removes one wrapper, and requires the gate to go red.
+      # Without them a gate can stop checking and stay green forever.
+      run: |
+        pip install pyyaml pytest
+        python3 -m pytest scripts/tests -q
     - name: Verify error codes have docs and pages aren't stale
       run: python3 scripts/check_error_codes.py
     - name: Verify test gating against backtest / capi headers
