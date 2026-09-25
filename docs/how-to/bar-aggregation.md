@@ -127,14 +127,18 @@ in-process with the batch aggregators and feed the result to `run_bars`.
 
     The `aggregate*` helpers return an array of objects (`startTimeNs`,
     `endTimeNs`, `open`, `high`, `low`, `close`, `volume`, `buyVolume`,
-    `tradeCount`) — already in floats, so build the typed arrays `runBars`
-    wants from them.
+    `tradeCount`) — prices and volumes in floats, the two timestamps as
+    `bigint`, so build the typed arrays `runBars` wants from them.
+
+    The timestamp column they take is a `Float64Array` or a `BigInt64Array`;
+    pass the latter when the readings are real wall-clock nanoseconds, which
+    a double cannot hold exactly.
 
     ```javascript
     const bars = flox.aggregateTimeBars(timestamps, prices, quantities, isBuy, 60);
 
-    const startNs = BigInt64Array.from(bars, (b) => BigInt(b.startTimeNs));
-    const endNs   = BigInt64Array.from(bars, (b) => BigInt(b.endTimeNs));
+    const startNs = BigInt64Array.from(bars, (b) => b.startTimeNs);
+    const endNs   = BigInt64Array.from(bars, (b) => b.endTimeNs);
     const col = (k) => Float64Array.from(bars, (b) => b[k]);
 
     bt.runBars(startNs, endNs, col('open'), col('high'), col('low'),

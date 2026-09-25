@@ -26403,6 +26403,10 @@
         },
         {
           "kind": "class",
+          "name": "HookErrorRecord"
+        },
+        {
+          "kind": "class",
           "name": "IcebergExecutor"
         },
         {
@@ -29215,6 +29219,21 @@
         },
         {
           "kind": "method",
+          "name": "hook",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
+          "name": "message",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
+          "name": "method",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
           "name": "filledQty",
           "parent": "IcebergExecutor"
         },
@@ -31115,6 +31134,11 @@
         },
         {
           "kind": "method",
+          "name": "hookErrors",
+          "parent": "Runner"
+        },
+        {
+          "kind": "method",
           "name": "onBar",
           "parent": "Runner"
         },
@@ -32520,6 +32544,11 @@
         },
         {
           "kind": "method",
+          "name": "exchangeTsNs",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
           "name": "isBuy",
           "parent": "TradeData"
         },
@@ -32535,7 +32564,17 @@
         },
         {
           "kind": "method",
+          "name": "quantity",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
           "name": "side",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
+          "name": "symbol",
           "parent": "TradeData"
         },
         {
