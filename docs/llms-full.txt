@@ -6105,14 +6105,18 @@ in-process with the batch aggregators and feed the result to `run_bars`.
 
     The `aggregate*` helpers return an array of objects (`startTimeNs`,
     `endTimeNs`, `open`, `high`, `low`, `close`, `volume`, `buyVolume`,
-    `tradeCount`) — already in floats, so build the typed arrays `runBars`
-    wants from them.
+    `tradeCount`) — prices and volumes in floats, the two timestamps as
+    `bigint`, so build the typed arrays `runBars` wants from them.
+
+    The timestamp column they take is a `Float64Array` or a `BigInt64Array`;
+    pass the latter when the readings are real wall-clock nanoseconds, which
+    a double cannot hold exactly.
 
     ```javascript
     const bars = flox.aggregateTimeBars(timestamps, prices, quantities, isBuy, 60);
 
-    const startNs = BigInt64Array.from(bars, (b) => BigInt(b.startTimeNs));
-    const endNs   = BigInt64Array.from(bars, (b) => BigInt(b.endTimeNs));
+    const startNs = BigInt64Array.from(bars, (b) => b.startTimeNs);
+    const endNs   = BigInt64Array.from(bars, (b) => b.endTimeNs);
     const col = (k) => Float64Array.from(bars, (b) => b[k]);
 
     bt.runBars(startNs, endNs, col('open'), col('high'), col('low'),
@@ -14458,7 +14462,7 @@ All callbacks are optional.
 |----------|------|-------------|
 | `open`, `high`, `low`, `close` | `number` | OHLC prices |
 | `volume`, `buyVolume` | `number` | Total / buy-side volume |
-| `startTimeNs`, `endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
+| `startTimeNs`, `endTimeNs` | `bigint` | Bar window timestamps (nanoseconds) |
 | `barType`, `barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
 | `closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine emits `Threshold` for a normal close, `Gap` for the bar that absorbs the remainder of a Renko price jump too wide to walk brick by brick, and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
 
@@ -14875,7 +14879,10 @@ for (const v of stream) {
 
 # Bar aggregation
 
-All functions take `(timestamps, prices, quantities, isBuy, param)` where `timestamps`, `prices`, `quantities` are `Float64Array` and `isBuy` is `Uint8Array`. Return an array of bar objects.
+All functions take `(timestamps, prices, quantities, isBuy, param)` where `prices` and
+`quantities` are `Float64Array` and `isBuy` is `Uint8Array`. `timestamps` is a
+`Float64Array` or a `BigInt64Array` — pass the latter for real wall-clock nanoseconds,
+which a double cannot hold exactly. Return an array of bar objects.
 
 `aggregateRenkoBars` can return more bar objects than there were input trades: a trade that
 gaps past more than one brick width closes the brick that was forming and synthesizes the
@@ -14895,8 +14902,8 @@ Each returned bar object:
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `startTimeNs` | `number` | Open time (ns) |
-| `endTimeNs` | `number` | Close time (ns) |
+| `startTimeNs` | `bigint` | Open time (ns) |
+| `endTimeNs` | `bigint` | Close time (ns) |
 | `open` | `number` | Open price |
 | `high` | `number` | High price |
 | `low` | `number` | Low price |
