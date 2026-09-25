@@ -20,6 +20,9 @@ on:
     # Weekly affinity tests - Sunday at 3:00 UTC
     - cron: '0 3 * * 0'
 
+permissions:
+  contents: read
+
 # Fast-fail: a new push to the same branch / PR cancels the in-progress run.
 # Build jobs (linux-*, macos, windows-*, sanitizers) depend on the quick
 # format-check job (~15s), so a formatting failure no longer leaves the

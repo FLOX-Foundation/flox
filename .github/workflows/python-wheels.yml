@@ -10,6 +10,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
   # Runs on both triggers this workflow has (workflow_dispatch and a `v*`
   # tag push), so a tag push cannot skip the actor restriction the way a
