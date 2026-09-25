@@ -377,4 +377,104 @@ TEST(EventBusBatch, ABatchAtTheDocumentedBoundIsPublished)
   EXPECT_EQ(a.values.back(), 131);
 }
 
+// A refused batch must leave the sequence line where it found it. Answering
+// -1 after moving the line and moving it back is not the same thing as never
+// moving it: in between, a publisher takes a sequence above the bump, and the
+// put-back hands that same sequence out again to somebody else.
+TEST(EventBusBatch, ARefusedBatchLeavesTheSequenceLineWhereItWas)
+{
+  Bus bus;  // capacity 64, so 33 is past the bound
+  RecordingListener a;
+  ASSERT_TRUE(bus.subscribe(&a, true));
+  bus.start();
+
+  const auto tooMany = makeEvents(0, 33);
+  std::atomic<bool> run{true};
+  std::atomic<uint64_t> batchesAccepted{0};
+  std::atomic<int64_t> wrongSeq{-1};
+  std::atomic<int64_t> wrongExpected{-1};
+  std::atomic<bool> publisherDone{false};
+
+  std::thread refuser(
+      [&bus, &tooMany, &run, &batchesAccepted]
+      {
+        while (run.load(std::memory_order_acquire))
+        {
+          if (bus.publishBatch(tooMany.data(), tooMany.size()) >= 0)
+          {
+            batchesAccepted.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+      });
+
+  std::thread publisher(
+      [&bus, &wrongSeq, &wrongExpected, &publisherDone]
+      {
+        BatchTestEvent ev;
+        int64_t expected = 0;
+        for (int i = 0; i < 20000; ++i)
+        {
+          ev.value = i;
+          const int64_t seq = bus.publish(ev);
+          if (seq < 0)
+          {
+            break;  // the bus stopped underneath
+          }
+          if (seq != expected)
+          {
+            wrongSeq.store(seq, std::memory_order_relaxed);
+            wrongExpected.store(expected, std::memory_order_relaxed);
+            break;
+          }
+          ++expected;
+        }
+        publisherDone.store(true, std::memory_order_release);
+      });
+
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (!publisherDone.load(std::memory_order_acquire) &&
+         std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::yield();
+  }
+  run.store(false, std::memory_order_release);
+  bus.stop();  // releases either thread if the ring stopped moving
+  refuser.join();
+  publisher.join();
+
+  EXPECT_EQ(batchesAccepted.load(std::memory_order_relaxed), 0u)
+      << "a batch past the bound was accepted";
+  EXPECT_EQ(wrongSeq.load(std::memory_order_relaxed), -1)
+      << "publish() was given sequence " << wrongSeq.load(std::memory_order_relaxed)
+      << " where " << wrongExpected.load(std::memory_order_relaxed)
+      << " was next: a refused batch moved the sequence line";
+}
+
+// The empty batch, asked on a bus that has published something. On a fresh bus
+// the reservation arithmetic happens to come back negative, so a bound that
+// never looks at the count still answers -1 there and says nothing about
+// whether it was checked.
+TEST(EventBusBatch, AnEmptyBatchIsRefusedAfterEventsHaveBeenPublished)
+{
+  Bus bus;
+  RecordingListener a;
+  ASSERT_TRUE(bus.subscribe(&a, true));
+  bus.start();
+
+  const auto evs = makeEvents(0, 5);
+  ASSERT_EQ(bus.publishBatch(evs.data(), evs.size()), 4);
+
+  EXPECT_LT(bus.publishBatch(evs.data(), 0), 0) << "an empty batch was accepted";
+  EXPECT_EQ(bus.stats().published, 5u);
+
+  BatchTestEvent one;
+  one.value = 99;
+  EXPECT_EQ(bus.publish(one), 5) << "the refused empty batch moved the sequence line";
+
+  bus.flush();
+  bus.stop();
+  ASSERT_EQ(a.values.size(), 6u);
+  EXPECT_EQ(a.values.back(), 99);
+}
+
 }  // namespace

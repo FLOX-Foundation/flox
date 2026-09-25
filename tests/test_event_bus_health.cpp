@@ -654,4 +654,116 @@ TEST(EventBusHealth, AConsumerHealthReportCarriesOneUpdate)
   check(bus);
 }
 
+// What the state in a report is worth is what the pair next to it says. A
+// consumer the sweep called STALLED had not moved for at least the stall
+// threshold when the sweep looked at it, and the instant it last moved is in
+// the same report -- so a report that says STALLED next to an instant that has
+// only just passed is two different updates read as one.
+TEST(EventBusHealth, AStalledReportIsAtLeastTheStallThresholdOld)
+{
+  constexpr auto kThreshold = std::chrono::milliseconds(4);
+  constexpr auto kHold = std::chrono::milliseconds(6);
+  constexpr auto kWindow = std::chrono::milliseconds(3500);
+  constexpr int kReaders = 6;
+
+  SmallBus bus;
+  SmallBus::HealthConfig cfg;
+  cfg.stallThreshold = kThreshold;
+  cfg.enableMonitorThread = true;
+  bus.setHealthConfig(cfg);
+
+  Held held;
+  ASSERT_TRUE(bus.subscribe(&held));
+  bus.start();
+
+  std::atomic<bool> run{true};
+
+  // Held and released on a schedule, so the sweep writes a state -- both ways
+  // round, and the way back carries a fresh pair -- often enough for a reader
+  // to be halfway through a report while it does. The readers are several for
+  // the same reason: the seam between the state and the version it is checked
+  // against is a couple of instructions wide, and the only way at it from
+  // outside is to have more than one thread standing in it.
+  std::thread toggler(
+      [&held, &run, kHold]
+      {
+        while (run.load(std::memory_order_acquire))
+        {
+          held.hold.store(true, std::memory_order_release);
+          std::this_thread::sleep_for(kHold);
+          held.hold.store(false, std::memory_order_release);
+          std::this_thread::sleep_for(kHold);
+        }
+      });
+
+  std::thread publisher(
+      [&bus, &run]
+      {
+        HealthTestEvent ev;
+        int i = 0;
+        while (run.load(std::memory_order_acquire))
+        {
+          ev.value = ++i;
+          if (bus.publish(ev) < 0)
+          {
+            break;
+          }
+        }
+      });
+
+  std::atomic<uint64_t> stalledSeen{0};
+  std::atomic<uint64_t> tooYoung{0};
+  std::atomic<int64_t> youngestUs{0};
+
+  std::vector<std::thread> readers;
+  for (int r = 0; r < kReaders; ++r)
+  {
+    readers.emplace_back(
+        [&bus, &stalledSeen, &tooYoung, &youngestUs, kWindow, kThreshold]
+        {
+          const auto until = std::chrono::steady_clock::now() + kWindow;
+          while (std::chrono::steady_clock::now() < until)
+          {
+            const auto report = bus.consumerHealthReport(0);
+            const auto now = std::chrono::steady_clock::now();
+            if (report.state != SmallBus::ConsumerHealth::STALLED)
+            {
+              continue;
+            }
+            stalledSeen.fetch_add(1, std::memory_order_relaxed);
+            const auto age = now - report.lastChange;
+            if (age >= kThreshold)
+            {
+              continue;
+            }
+            const auto us =
+                std::chrono::duration_cast<std::chrono::microseconds>(age).count();
+            if (tooYoung.fetch_add(1, std::memory_order_relaxed) == 0)
+            {
+              youngestUs.store(us, std::memory_order_relaxed);
+            }
+          }
+        });
+  }
+
+  for (auto& r : readers)
+  {
+    r.join();
+  }
+  run.store(false, std::memory_order_release);
+  held.hold.store(false, std::memory_order_release);
+  toggler.join();
+  publisher.join();
+  bus.stop();
+
+  EXPECT_GT(stalledSeen.load(std::memory_order_relaxed), 0u)
+      << "no report ever said STALLED; nothing was checked";
+  EXPECT_EQ(tooYoung.load(std::memory_order_relaxed), 0u)
+      << tooYoung.load(std::memory_order_relaxed) << " reports said STALLED next to a "
+      << "lastChange " << youngestUs.load(std::memory_order_relaxed)
+      << " us old, younger than the " << kThreshold.count()
+      << " ms it takes to be called stalled: the state and the pair came from "
+         "different updates";
+}
+
 }  // namespace
