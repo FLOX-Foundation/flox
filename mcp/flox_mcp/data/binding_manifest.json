@@ -20565,12 +20565,22 @@
         },
         {
           "kind": "method",
+          "name": "bestAskTick",
+          "parent": "NLevelOrderBook"
+        },
+        {
+          "kind": "method",
           "name": "bestBid",
           "parent": "NLevelOrderBook"
         },
         {
           "kind": "method",
           "name": "bestBidIndex",
+          "parent": "NLevelOrderBook"
+        },
+        {
+          "kind": "method",
+          "name": "bestBidTick",
           "parent": "NLevelOrderBook"
         },
         {
