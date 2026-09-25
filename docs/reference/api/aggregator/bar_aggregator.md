@@ -97,7 +97,9 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);  // $10 b
 
 A brick closes at its boundary with the crossing trade counted in it, and the next brick opens at
 that boundary. A trade that jumps several brick widths fills in the bricks a continuous price path
-would have produced. See [Bar types](../../../explanation/bar-types.md).
+would have produced, bounded by `RenkoBarPolicy::kMaxGapBricks`; the bar that absorbs the
+remainder past the bound carries `BarCloseReason::Gap`. See
+[Bar types](../../../explanation/bar-types.md).
 
 ### Range Bars
 
@@ -129,7 +131,7 @@ struct Bar {
   Quantity tradeCount;    // Number of trades in bar
   TimePoint startTime;    // Bar open time
   TimePoint endTime;      // Bar close time
-  BarCloseReason reason;  // Threshold or Forced today; see reference/api/aggregator/bar.md
+  BarCloseReason reason;  // Threshold, Gap or Forced; see reference/api/aggregator/bar.md
 };
 
 // Calculate delta (buy pressure - sell pressure)

@@ -82,9 +82,11 @@ export interface BarData {
   barType: number;
   /** Interval / threshold for the active bar policy. */
   barTypeParam: number;
-  /** 0=Threshold, 2=Forced, 3=Warmup (1 is unused). The engine reports
-   *  Threshold (normal close) or Forced (stop() flush); Warmup is set by
-   *  callers, not the engine (see docs/reference/api/aggregator/bar.md). */
+  /** 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine reports Threshold
+   *  (normal close), Gap (the bar absorbing the remainder of a Renko price
+   *  jump too wide to walk brick by brick) or Forced (stop() flush); Warmup
+   *  is set by callers, not the engine (see
+   *  docs/reference/api/aggregator/bar.md). */
   closeReason: number;
 }
 

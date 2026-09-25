@@ -88,7 +88,7 @@ All callbacks are optional.
 | `volume`, `buyVolume` | `number` | Total / buy-side volume |
 | `startTimeNs`, `endTimeNs` | `number` | Bar window timestamps (nanoseconds) |
 | `barType`, `barTypeParam` | `number` | 0=Time, 1=Tick, ... + interval/threshold |
-| `closeReason` | `number` | 0=Threshold, 2=Forced, 3=Warmup (1 is unused). The engine emits `Threshold` for a normal close and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
+| `closeReason` | `number` | 0=Threshold, 1=Gap, 2=Forced, 3=Warmup. The engine emits `Threshold` for a normal close, `Gap` for the bar that absorbs the remainder of a Renko price jump too wide to walk brick by brick, and `Forced` for a `stop()` flush; `Warmup` is never assigned by the engine itself -- it is for callers who construct their own `Bar` objects from historical data before calling `BarMatrix::warmup()`. |
 
 ### SymbolContext (`ctx`)
 

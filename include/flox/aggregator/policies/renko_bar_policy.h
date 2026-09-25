@@ -24,6 +24,17 @@ class RenkoBarPolicy
  public:
   static constexpr BarType kBarType = BarType::Renko;
 
+  // Upper bound on the number of bars one trade may publish. A trade that
+  // jumps several brick widths has to be walked in whole bricks, but the
+  // cost of a single print must not scale with how far the price moved: a
+  // brick size of 0.01 and a 1.00 -> 100000.00 print span ten million
+  // bricks, and materializing them inside one onTrade() stalls the bus and
+  // exhausts memory on the event path. Past this bound the walk stops and
+  // the last bar published absorbs the rest of the move, marked
+  // BarCloseReason::Gap and closing on the far boundary so the brick grid
+  // stays aligned with the price.
+  static constexpr std::size_t kMaxGapBricks = 1024;
+
   // brickSize in raw price units (scaled by Price::Scale)
   explicit constexpr RenkoBarPolicy(int64_t brickSizeRaw) noexcept
       : _brickSizeRaw(brickSizeRaw)
@@ -124,12 +135,22 @@ class RenkoBarPolicy
     bar.reason = BarCloseReason::Threshold;
     emit(std::as_const(bar));
 
+    const bool capped = spanned > static_cast<int64_t>(kMaxGapBricks);
+    // One bar of the budget is held back for the remainder when capping, so
+    // the total published for this trade is exactly kMaxGapBricks.
+    const int64_t walked = capped ? static_cast<int64_t>(kMaxGapBricks) - 1 : spanned;
+
     // One synthetic brick per further whole brick width the trade spanned --
     // the bricks a continuous price path would have produced. They carry no
     // volume and no trade count: no trade happened at those prices.
-    for (int64_t i = 2; i <= spanned; ++i)
+    for (int64_t i = 2; i <= walked; ++i)
     {
       emit(syntheticBrick(boundary(i - 1), boundary(i), tradeTs, BarCloseReason::Threshold));
+    }
+
+    if (capped)
+    {
+      emit(syntheticBrick(boundary(walked), boundary(spanned), tradeTs, BarCloseReason::Gap));
     }
 
     openAtBoundary(boundary(spanned), trade, bar);
