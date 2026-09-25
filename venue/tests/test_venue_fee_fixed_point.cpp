@@ -41,6 +41,7 @@
 using namespace flox;
 using namespace flox::venue;
 using flox::venue::engine::Fees;
+using flox::venue::engine::kFeeRateScale;
 
 namespace
 {
@@ -76,6 +77,15 @@ constexpr int64_t kTakerFeeRaw = 24'667'870'378'972LL;
 constexpr int64_t kBpsTenthsScale = 100'000;
 
 double bpsOf(int64_t tenths) { return static_cast<double>(tenths) / 10.0; }
+
+// A schedule written in basis points directly, for the rates whose point is
+// what happens BELOW a tenth of a bp.
+flox::FeeSchedule scheduleBps(double makerBps, double takerBps)
+{
+  flox::FeeSchedule fs;
+  fs.addTier(0.0, makerBps, takerBps);
+  return fs;
+}
 
 flox::FeeSchedule schedule(int64_t makerTenths, int64_t takerTenths)
 {
@@ -124,6 +134,16 @@ NewOrder limitOrder(OrderId id, Side side, int64_t priceRaw, int64_t qtyRaw, uin
   return o;
 }
 
+// A print of exactly one unit, so the notional raw IS the price raw and the
+// arithmetic under test is the rate, not the notional.
+Trade unitPrint(int64_t priceRaw)
+{
+  Trade t = print();
+  t.price = Price::fromRaw(priceRaw);
+  t.quantity = Quantity::fromRaw(Quantity::Scale);
+  return t;
+}
+
 std::vector<const FeeCharged*> feesIn(const std::vector<OutboundEvent>& out)
 {
   std::vector<const FeeCharged*> v;
@@ -135,6 +155,23 @@ std::vector<const FeeCharged*> feesIn(const std::vector<OutboundEvent>& out)
     }
   }
   return v;
+}
+
+// The two fees a print produces, maker first.
+std::pair<int64_t, int64_t> chargedBy(flox::FeeSchedule fs, const Trade& t, int64_t nowRaw = 0)
+{
+  Fees f;
+  f.setSchedule(std::move(fs));
+  std::vector<OutboundEvent> out;
+  EventSink sink = [&out](const OutboundEvent& e)
+  { out.push_back(e); };
+  f.emit(t, cfg(), nowRaw, sink);
+  const auto fees = feesIn(out);
+  if (fees.size() != 2)
+  {
+    return {0, 0};
+  }
+  return {fees[0]->fee.raw(), fees[1]->fee.raw()};
 }
 
 }  // namespace
@@ -318,4 +355,138 @@ TEST(VenueFeeFixedPoint, ASmallPrintIsAlreadyExactAndStaysThatWay)
   ASSERT_EQ(fees.size(), 2U);
   EXPECT_EQ(fees[0]->fee.raw(), 2'000'000);   // 0.02
   EXPECT_EQ(fees[1]->fee.raw(), 10'000'000);  // 0.10
+}
+
+// ---- the rate's own boundary ---------------------------------------------
+//
+// A tier is written in basis points by a human and arrives as a double, so it
+// crosses into fixed point exactly once, in feeRateRawOf. That crossing has a
+// rule -- ROUND HALF AWAY FROM ZERO, the rule roundDoubleToI64 implements --
+// and the rule needs inputs that can tell it apart from the alternatives,
+// which the ladders above cannot: 2.5 and 7.5 bps scale to exact integers, so
+// truncating, rounding to nearest and rounding ties to even all agree on them.
+
+// 0.57 bps is stored as a double that scales to 5699.9999999999991, and 2.51
+// to 25099.999999999996. Truncating the scaled value drops the last raw off
+// both, which is the same defect the funding rate had -- a maker rebate ladder
+// quoted in hundredths of a bp would be mispriced on nearly every tier.
+TEST(VenueFeeFixedPoint, AFeeRateBecomesARawByRoundingToNearest)
+{
+  // 2e13 notional (200000 quote units), so the rate raw reads straight off
+  // the fee: fee == notional * rateRaw / 1e8 == rateRaw * 200000.
+  const Trade t = unitPrint(200'000'00000000LL);
+  const auto [maker, taker] = chargedBy(scheduleBps(0.57, 2.51), t);
+
+  EXPECT_EQ(maker, 1'140'000'000LL);  // rate raw 5700, not 5699
+  EXPECT_EQ(taker, 5'020'000'000LL);  // rate raw 25100, not 25099
+}
+
+// An exact tie, where the rounding rule is the whole answer. 0.00025 bps
+// scales to exactly 2.5 and -0.00025 to exactly -2.5: away from zero gives 3
+// and -3, truncation gives 2 and -2, and ties-to-even gives 2 and -2 as well.
+// The documented rule is away from zero, so a rate and its negation stay
+// mirror images -- which is what a fee charged in one direction and rebated
+// in the other has to be.
+TEST(VenueFeeFixedPoint, AFeeRateTieRoundsAwayFromZero)
+{
+  const Trade t = unitPrint(200'000'00000000LL);
+  const auto [maker, taker] = chargedBy(scheduleBps(0.00025, -0.00025), t);
+
+  EXPECT_EQ(maker, 600'000LL);   // rate raw 3
+  EXPECT_EQ(taker, -600'000LL);  // rate raw -3, the exact mirror
+}
+
+// The boundary converts a configured rate; it does not police it. A ladder
+// above 100% is a configuration mistake, and silently rewriting it into a
+// different fee is how the mistake gets charged to an account and never
+// noticed. Nothing in this venue refuses such a rate today, so what it does
+// is what is pinned: it carries it.
+TEST(VenueFeeFixedPoint, AFeeRateAboveOneHundredPercentIsCarriedNotClamped)
+{
+  const Trade t = unitPrint(200'000'00000000LL);
+  const auto [maker, taker] = chargedBy(scheduleBps(/*120%*/ 12'000.0, /*250%*/ 25'000.0), t);
+
+  EXPECT_EQ(maker, 24'000'000'000'000LL);  // 1.2 x the 2e13 notional
+  EXPECT_EQ(taker, 50'000'000'000'000LL);  // 2.5 x
+}
+
+// The multiply itself truncates toward zero, the way notionalRaw does and the
+// way every other money step in this venue does. A notional of
+// 20000000003333 at 2.5 bps is 5000000000.83325 raw exactly: a remainder well
+// ABOVE half, so truncating and rounding to nearest disagree, and truncation
+// is the rule. The rebate side is the mirror: toward zero, not away from it.
+TEST(VenueFeeFixedPoint, AFeeTruncatesTowardZeroLikeEveryOtherMoneyStep)
+{
+  constexpr int64_t kOddNotionalRaw = 20'000'000'003'333LL;  // 200000.00003333 x 1
+
+  const __int128 num = static_cast<__int128>(kOddNotionalRaw) * 25'000;
+  ASSERT_GT(static_cast<int64_t>(num % kFeeRateScale) * 2, kFeeRateScale);  // remainder > half
+
+  const Trade t = unitPrint(kOddNotionalRaw);
+  const auto [maker, taker] = chargedBy(scheduleBps(2.5, -2.5), t);
+
+  EXPECT_EQ(maker, 5'000'000'000LL);
+  EXPECT_EQ(taker, -5'000'000'000LL);
+}
+
+// One print, one tier. Resolving a tier is what advances the schedule's
+// rolling window, so the two sides of a trade are priced off a single lookup
+// and cannot be charged out of different tiers -- including on the two moments
+// where a tier could move underneath them: a fill that has just pushed the
+// account over a boundary, and a fill that has just aged out of the window.
+TEST(VenueFeeFixedPoint, BothSidesOfAPrintArePricedFromOneTier)
+{
+  const Trade t = unitPrint(200'000'00000000LL);
+
+  flox::FeeSchedule laddered;
+  laddered.addTier(0.0, 1.0, 2.0);
+  laddered.addTier(1'000'000.0, 3.0, 4.0);
+  laddered.recordFill(0, 1'000'000.0);  // exactly onto the upper tier
+
+  const auto [maker, taker] = chargedBy(laddered, t, /*nowRaw*/ 0);
+  EXPECT_EQ(maker, 6'000'000'000LL);  // 3 bps, upper tier
+  EXPECT_EQ(taker, 8'000'000'000LL);  // 4 bps, the SAME tier
+
+  // The same schedule one nanosecond after that fill leaves the 30-day
+  // window: the window is trimmed before either side is priced, so both drop
+  // to the lower tier together.
+  flox::FeeSchedule aged;
+  aged.addTier(0.0, 1.0, 2.0);
+  aged.addTier(1'000'000.0, 3.0, 4.0);
+  aged.recordFill(0, 1'000'000.0);
+
+  const auto [agedMaker, agedTaker] =
+      chargedBy(aged, t, /*nowRaw*/ flox::FeeSchedule::kThirtyDaysNs + 1);
+  EXPECT_EQ(agedMaker, 2'000'000'000LL);  // 1 bp, lower tier
+  EXPECT_EQ(agedTaker, 4'000'000'000LL);  // 2 bps, the SAME tier
+}
+
+// The one property of the pricing that cannot be observed from outside
+// engine::Fees: that the tier is looked up ONCE per print rather than once per
+// side. Nothing separates the two while flox::FeeSchedule::currentBps is
+// idempotent for a fixed timestamp -- evictExpired is the only state it
+// touches and the second call has nothing left to evict, and resolveTierIndex
+// is a pure read -- so that idempotency is the precondition, and it is
+// asserted here rather than assumed. The day currentBps stops being
+// idempotent, one lookup and two stop being the same thing, and this is where
+// the reason is written down.
+//
+// needs: template <class Schedule = flox::FeeSchedule> class Fees -- an
+// injectable schedule is what would let a test count the lookups directly
+// instead of reasoning about what a lookup does.
+TEST(VenueFeeFixedPoint, TheTierLookupIsIdempotentForOneTimestamp)
+{
+  flox::FeeSchedule fs;
+  fs.addTier(0.0, 1.0, 2.0);
+  fs.addTier(1'000'000.0, 3.0, 4.0);
+  fs.recordFill(0, 1'000'000.0);
+
+  const int64_t justExpired = flox::FeeSchedule::kThirtyDaysNs + 1;
+  const auto first = fs.currentBps(justExpired);   // this call drops the fill
+  const auto second = fs.currentBps(justExpired);  // this one finds nothing to drop
+
+  EXPECT_EQ(first.first, second.first);
+  EXPECT_EQ(first.second, second.second);
+  EXPECT_EQ(first.first, 1.0);  // the lower tier, the window having been trimmed
+  EXPECT_EQ(first.second, 2.0);
 }

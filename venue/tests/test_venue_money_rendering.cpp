@@ -243,3 +243,43 @@ TEST(VenueMoneyRendering, TheIntegerFieldsAreAlreadyLocaleProof)
   EXPECT_EQ(jsonValue(reply, "ok"), "true");
   warnIfNoCommaLocale(locale);
 }
+
+// A price raw is read against the symbol's PRICE scale. SymbolConfig carries
+// a price scale and a quantity scale separately and they are ordinary runtime
+// fields, equal only by default: a symbol whose quantities are counted in
+// thousandths still quotes in hundred-millionths. Spelling a price out
+// against the other scale moves the decimal point -- the reply stays valid
+// JSON and names a different tick.
+TEST(VenueMoneyRendering, TheInstrumentPricesAreRenderedAtThePriceScale)
+{
+  SymbolConfig fineTicks = instrument();
+  fineTicks.priceScale = Price::Scale;  // 1e8
+  fineTicks.qtyScale = 1000;            // a coarse lot, and not a price scale
+
+  InstrumentRegistry reg;
+  reg.listInstrument(fineTicks);
+  ControlApi api(reg);
+  const std::string reply = api.handle(R"({"method":"get","symbol":1})");
+
+  EXPECT_EQ(jsonValue(reply, "tick"), "0.00000001") << reply;
+  EXPECT_EQ(jsonValue(reply, "minPrice"), "67123.45678901") << reply;
+  EXPECT_EQ(jsonValue(reply, "maxPrice"), "89000.00000009") << reply;
+
+  // And the other way round, so the assertion is about which scale is read
+  // and not about one of them happening to be the default: a symbol quoted in
+  // ten-thousandths answers with four decimals, whatever its lot scale is.
+  SymbolConfig coarseTicks;
+  coarseTicks.id = 2;
+  coarseTicks.priceScale = 10'000;
+  coarseTicks.qtyScale = Quantity::Scale;  // 1e8
+  coarseTicks.tickSize = Price::fromRaw(1);
+  coarseTicks.minPrice = Price::fromRaw(671'234'567LL);
+  coarseTicks.maxPrice = Price::fromRaw(890'000'009LL);
+
+  reg.listInstrument(coarseTicks);
+  const std::string coarse = api.handle(R"({"method":"get","symbol":2})");
+
+  EXPECT_EQ(jsonValue(coarse, "tick"), "0.0001") << coarse;
+  EXPECT_EQ(jsonValue(coarse, "minPrice"), "67123.4567") << coarse;
+  EXPECT_EQ(jsonValue(coarse, "maxPrice"), "89000.0009") << coarse;
+}

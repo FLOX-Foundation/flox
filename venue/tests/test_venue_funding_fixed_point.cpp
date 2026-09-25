@@ -34,6 +34,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -259,4 +260,86 @@ TEST(VenueFundingFixedPoint, ThePortfolioBookPaysTheExactRawToo)
   EXPECT_EQ(led.total(1, QUOTE), longBefore - kPaymentRaw);
   EXPECT_EQ(led.total(2, QUOTE), shortBefore + kPaymentRaw);
   EXPECT_EQ(led.total(VENUE_ACCT, QUOTE), 0);  // zero-sum across a balanced book
+}
+
+// ---- the two edges of the rate boundary ----------------------------------
+
+// A notional wider than an int64 raw. venue::Amount is a 128-bit integer
+// precisely so a notional cannot overflow, and the rate has to be applied at
+// that width rather than to a notional squeezed into an int64 on the way in:
+// a clamp there does not fail, it settles a different, smaller number.
+//
+// 100 units at a mark of 1e10 is 1e20 quote raws -- 1e12 quote units, which no
+// venue has seen and the type nonetheless carries.
+TEST(VenueFundingFixedPoint, ANotionalWiderThanAnInt64IsSettledAtFullWidth)
+{
+  const Amount wide = static_cast<Amount>(100'000'000'000LL) * 1'000'000'000LL;  // 1e20
+  ASSERT_GT(wide, static_cast<Amount>((std::numeric_limits<int64_t>::max)()));
+
+  // The arithmetic directly: 1e20 at 0.03% is 3e16, and the extra 400000 raw
+  // of notional is another 120 -- a real multiply and divide, not a clamp.
+  EXPECT_EQ(rateOnNotional(wide, kRateRaw, kFundingRateScale),
+            static_cast<Amount>(30'000'000'000'000'000LL));
+  EXPECT_EQ(rateOnNotional(wide + 400'000, kRateRaw, kFundingRateScale),
+            static_cast<Amount>(30'000'000'000'000'120LL));
+  EXPECT_EQ(rateOnNotional(-wide, kRateRaw, kFundingRateScale),
+            -static_cast<Amount>(30'000'000'000'000'000LL));
+
+  // And through the settlement path, where the payment lands in the ledger.
+  constexpr int64_t kWideMarkRaw = 1'000'000'000'000'000'000LL;  // 1e10 per unit
+  constexpr int64_t kWideQtyRaw = 10'000'000'000LL;              // 100 units
+  SymbolConfig c = perpCfg();
+  c.maxPrice = Price::fromRaw(9'000'000'000'000'000'000LL);
+
+  std::vector<OutboundEvent> out;
+  Ledger led;
+  MatchingEngine<MatchingBook> eng(c, [&out](const OutboundEvent& e)
+                                   { out.push_back(e); });
+  eng.setLedger(&led, VENUE_ACCT);
+  eng.submit(InboundCommand{seedPosition(1, kWideQtyRaw, kWideMarkRaw)}, 1 * SEC);
+  eng.submit(InboundCommand{SetMark{SYM, {}, Price::fromRaw(kWideMarkRaw)}}, 2 * SEC);
+  eng.submit(InboundCommand{ApplyFunding{SYM, {}, kRate, Price::fromRaw(kWideMarkRaw)}}, 3 * SEC);
+
+  EXPECT_EQ(led.available(1, QUOTE), -static_cast<Amount>(30'000'000'000'000'000LL));
+  EXPECT_EQ(led.available(VENUE_ACCT, QUOTE), static_cast<Amount>(30'000'000'000'000'000LL));
+}
+
+// The rate crosses into fixed point ONCE, and what is settled is the raw that
+// was published. Below about 4.5e15 raw a raw can be sent back through a
+// double and come home unchanged, so a second conversion hides; above it the
+// double no longer holds every raw and the two answers part. This rate is
+// absurd as a rate -- four billion percent an interval -- and that is the
+// point: it is the smallest magnitude at which "published" and "settled" can
+// be told apart at all, and they have to be the same number there too.
+TEST(VenueFundingFixedPoint, TheSettledRateIsTheRateThatWasPublished)
+{
+  constexpr double kHugeRate = 40000000.000000186265;
+  constexpr int64_t kHugeRateRaw = 4'000'000'000'000'019LL;
+
+  // A small position, so the payment still fits the int64 the fee side
+  // narrows to: 4 units at a mark of 250 is 1000 quote units of notional.
+  constexpr int64_t kSmallMarkRaw = 250'00000000LL;
+  constexpr int64_t kSmallNotionalRaw = 100'000'000'000LL;
+  constexpr int64_t kHugePaymentRaw = 4'000'000'000'000'019'000LL;
+
+  const __int128 num = static_cast<__int128>(kSmallNotionalRaw) * kHugeRateRaw;
+  ASSERT_EQ(static_cast<int64_t>(num % kFundingRateScale), 0);
+  ASSERT_EQ(static_cast<int64_t>(num / kFundingRateScale), kHugePaymentRaw);
+
+  std::vector<OutboundEvent> out;
+  Ledger led;
+  MatchingEngine<MatchingBook> eng(perpCfg(), [&out](const OutboundEvent& e)
+                                   { out.push_back(e); });
+  eng.setLedger(&led, VENUE_ACCT);
+  eng.submit(InboundCommand{seedPosition(1, kQtyRaw, kSmallMarkRaw)}, 1 * SEC);
+  eng.submit(InboundCommand{SetMark{SYM, {}, Price::fromRaw(kSmallMarkRaw)}}, 2 * SEC);
+  eng.submit(InboundCommand{ApplyFunding{SYM, {}, kHugeRate, Price::fromRaw(kSmallMarkRaw)}},
+             3 * SEC);
+
+  EXPECT_EQ(eng.fundingRateRaw(), kHugeRateRaw);
+  EXPECT_EQ(led.available(1, QUOTE), -static_cast<Amount>(kHugePaymentRaw));
+  // Said once more as the contract itself: the payment is the PUBLISHED raw
+  // applied to the notional, with nothing converted in between.
+  EXPECT_EQ(led.available(1, QUOTE),
+            -rateOnNotional(kSmallNotionalRaw, eng.fundingRateRaw(), kFundingRateScale));
 }
