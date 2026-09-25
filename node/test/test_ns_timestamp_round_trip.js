@@ -53,6 +53,12 @@ function exact(v) {
   return typeof v === 'bigint' ? v : BigInt(v);
 }
 
+// Values printed in failure text may be BigInts, which String() handles
+// and JSON.stringify refuses.
+function describeValue(v) {
+  return typeof v === 'string' ? JSON.stringify(v) : String(v);
+}
+
 function accepts(label, fn) {
   try {
     fn();
@@ -335,7 +341,15 @@ console.log('\n=== An order reaching a binding-supplied executor carries the sam
 }
 
 console.log('\n=== A trade reaching a market-data recorder keeps its reading ===');
-{
+
+// One buy and one sell, a single nanosecond apart. The gap matters: at
+// this magnitude a double steps 256 ns, so two readings one nanosecond
+// apart are the same number and different BigInts. Anything that can
+// tell them apart went through the exact path.
+const BUY_NS = NS;
+const SELL_NS = NS + 1n;
+
+function recordedTrades() {
   const reg = new flox.SymbolRegistry();
   const sym = reg.addSymbol('test', 'BTC', 0.01);
   const runner = new flox.Runner(reg, () => {}, false);
@@ -347,26 +361,91 @@ console.log('\n=== A trade reaching a market-data recorder keeps its reading ===
   });
   runner.addStrategy({ symbols: [sym], onTrade() {} });
   runner.start();
-  runner.onTrade(Number(sym), 100, 1, true, NS);
+  runner.onTrade(Number(sym), 100, 2.5, true, BUY_NS);
+  runner.onTrade(Number(sym), 101, 1.5, false, SELL_NS);
   runner.stop();
+  return trades;
+}
 
-  check(trades.length === 1, `the recorder saw one trade (got ${trades.length})`);
-  if (trades.length === 1) {
-    // tradeToJs calls the field exchangeTsNs; index.d.ts's TradeData
-    // calls it timestampNs. Accept whichever the addon delivers -- what
-    // is pinned here is the type and the value, not the spelling.
-    const field = ['timestampNs', 'exchangeTsNs'].find(k => trades[0][k] !== undefined);
-    check(field !== undefined,
-          `the trade carries a nanosecond field (keys were ${Object.keys(trades[0]).join(', ')})`);
-    if (field !== undefined) {
-      check(typeof trades[0][field] === 'bigint',
-            `recorder trade.${field} is a bigint (got ${typeof trades[0][field]})`);
-      check(exact(trades[0][field]) === NS,
-            `recorder trade.${field} round-trips exactly ` +
-            `(got ${exact(trades[0][field])}, want ${NS})`);
-    }
+{
+  const trades = recordedTrades();
+  check(trades.length === 2, `the recorder saw both trades (got ${trades.length})`);
+  if (trades.length === 2) {
+    check(typeof trades[0].timestampNs === 'bigint',
+          `recorder trade.timestampNs is a bigint (got ${typeof trades[0].timestampNs})`);
+    check(exact(trades[0].timestampNs) === BUY_NS,
+          `recorder trade.timestampNs round-trips exactly ` +
+          `(got ${exact(trades[0].timestampNs)}, want ${BUY_NS})`);
+    check(exact(trades[1].timestampNs) === SELL_NS,
+          `a reading one nanosecond later stays one nanosecond later ` +
+          `(got ${exact(trades[1].timestampNs)}, want ${SELL_NS})`);
     check(typeof trades[0].price === 'number',
           `recorder trade keeps price as a number (got ${typeof trades[0].price})`);
+    check(typeof trades[0].qty === 'number' && Math.abs(trades[0].qty - 2.5) < 1e-9,
+          `recorder trade.qty is the quantity fed in (got ${describeValue(trades[0].qty)})`);
+  }
+}
+
+console.log('\n=== The recorder trade mirrors isBuy into side ===');
+{
+  // side is a second spelling of isBuy, not an independent field: a
+  // recorder that keys off one and a strategy that keys off the other
+  // have to agree, or a tape records the wrong aggressor.
+  const trades = recordedTrades();
+  check(trades.length === 2, `the recorder saw both trades (got ${trades.length})`);
+  if (trades.length === 2) {
+    const [buy, sell] = trades;
+    check(buy.isBuy === true, `the buy arrives with isBuy true (got ${describeValue(buy.isBuy)})`);
+    check(buy.side === 'buy', `the buy arrives with side "buy" (got ${describeValue(buy.side)})`);
+    check(sell.isBuy === false, `the sell arrives with isBuy false (got ${describeValue(sell.isBuy)})`);
+    check(sell.side === 'sell', `the sell arrives with side "sell" (got ${describeValue(sell.side)})`);
+    for (const trade of trades) {
+      check(trade.side === (trade.isBuy ? 'buy' : 'sell'),
+            `side agrees with isBuy (isBuy ${describeValue(trade.isBuy)}, ` +
+            `side ${describeValue(trade.side)})`);
+    }
+  }
+}
+
+console.log('\n=== The recorder trade keeps its deprecated aliases for one release ===');
+{
+  // A MarketDataRecorderHook used to be handed `quantity` and
+  // `exchangeTsNs` where index.d.ts declared `qty` and `timestampNs`.
+  // The declared names are what the addon delivers now; the old two stay
+  // alongside them for one release so a recorder written against the
+  // shipped behaviour keeps working -- and `exchangeTsNs` stays a
+  // BigInt, because a reading that never fit in a double does not fit in
+  // one under its old name either.
+  const trades = recordedTrades();
+  check(trades.length === 2, `the recorder saw both trades (got ${trades.length})`);
+  if (trades.length === 2) {
+    const trade = trades[0];
+    const keys = Object.keys(trade).join(', ');
+
+    check(trade.quantity !== undefined,
+          `the trade still carries the deprecated quantity (keys were ${keys})`);
+    check(typeof trade.quantity === 'number',
+          `quantity is a number (got ${typeof trade.quantity})`);
+    check(trade.quantity === trade.qty,
+          `quantity equals qty (got ${describeValue(trade.quantity)} vs ${describeValue(trade.qty)})`);
+
+    check(trade.exchangeTsNs !== undefined,
+          `the trade still carries the deprecated exchangeTsNs (keys were ${keys})`);
+    check(typeof trade.exchangeTsNs === 'bigint',
+          `exchangeTsNs is a bigint like timestampNs (got ${typeof trade.exchangeTsNs})`);
+    check(trade.exchangeTsNs === trade.timestampNs,
+          `exchangeTsNs equals timestampNs ` +
+          `(got ${describeValue(trade.exchangeTsNs)} vs ${describeValue(trade.timestampNs)})`);
+    // exact() is only meaningful once the alias is there at all; guard
+    // it so a dropped alias reports every check rather than throwing out
+    // of BigInt(undefined) halfway down the file.
+    if (trade.exchangeTsNs !== undefined && trades[1].exchangeTsNs !== undefined) {
+      check(exact(trade.exchangeTsNs) === BUY_NS,
+            `exchangeTsNs round-trips exactly (got ${exact(trade.exchangeTsNs)}, want ${BUY_NS})`);
+      check(exact(trades[1].exchangeTsNs) === SELL_NS,
+            `the alias resolves one nanosecond too ` +
+            `(got ${exact(trades[1].exchangeTsNs)}, want ${SELL_NS})`);
+    }
   }
 }
 
@@ -440,6 +519,22 @@ console.log('\n=== index.d.ts types the readings bigint on both sides ===');
     if (declared) {
       check(declared[1].trim() === 'bigint',
             `TradeData.timestampNs is typed bigint (declared "${declared[1].trim()}")`);
+    }
+
+    // The two aliases the addon still delivers are declared optional,
+    // typed like the fields they mirror, and marked deprecated so an
+    // editor steers a new caller to the real name.
+    for (const [alias, type] of [['quantity', 'number'], ['exchangeTsNs', 'bigint']]) {
+      const aliasDecl = tradeBody.match(new RegExp(`^\\s*${alias}\\?:\\s*([^;]+);`, 'm'));
+      check(aliasDecl !== null, `TradeData.${alias} is declared optional`);
+      if (aliasDecl) {
+        check(aliasDecl[1].trim() === type,
+              `TradeData.${alias} is typed ${type} (declared "${aliasDecl[1].trim()}")`);
+        const before = tradeBody.slice(0, tradeBody.indexOf(aliasDecl[0]));
+        const comment = before.lastIndexOf('/**');
+        check(comment >= 0 && /@deprecated/.test(before.slice(comment)),
+              `TradeData.${alias} is marked @deprecated`);
+      }
     }
   }
 
