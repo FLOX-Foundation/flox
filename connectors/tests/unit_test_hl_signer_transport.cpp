@@ -375,6 +375,31 @@ TEST(HlSignerTransport, RefusesAGroupAccessibleSocket)
       << "the private key was written to a socket every member of its group can open";
 }
 
+// Every bit outside the owner's is a way in, read included: a socket another
+// user can only read still lets that user see the signing traffic, and the
+// key is in it. The mode here sets no group bits at all, so nothing but the
+// other-read bit can refuse it -- 0664 would be refused by its group bits
+// alone and would not say whether other-read is checked.
+TEST(HlSignerTransport, RefusesAnOtherReadableSocket)
+{
+  const std::string path = tempSocketPath("sign_other_read.sock");
+  ::setenv("FLOX_HL_SIGNER_SOCKET", path.c_str(), 1);
+
+  FramedServer readable;
+  ASSERT_TRUE(readable.listenUnix(path, 0604));
+  const std::string body = validSignatureReply();
+  readable.serveOnce({static_cast<uint32_t>(body.size()), body});
+
+  const auto sig = hl_sign_with_sdk(params());
+
+  readable.stop();
+  ::unsetenv("FLOX_HL_SIGNER_SOCKET");
+
+  EXPECT_FALSE(sig.has_value()) << "an other-readable signer socket must not be trusted";
+  EXPECT_EQ(readable.request().find(kSecretKey), std::string::npos)
+      << "the private key was written to a socket another user can read";
+}
+
 // The finding: the reply's 4-byte length header goes straight into
 // std::string::resize with no ceiling, so the peer picks the allocation size.
 // A signature response is a few hundred bytes; anything far above that is a

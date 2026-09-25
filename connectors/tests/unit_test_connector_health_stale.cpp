@@ -78,6 +78,22 @@ MonoNanos minusMs(MonoNanos base, uint64_t ms)
   return MonoNanos::fromRaw(base.raw() - ms * kNsPerMsU);
 }
 
+// The window arithmetic lives in IExchangeConnector, shared by all four
+// connectors, and its edges are nanoseconds wide: through a connector the
+// stamp is taken by the connector itself from the clock, so a test can only
+// bracket it. This exposes the two shared entry points directly, which is the
+// only way to hand the check a stamp and a poll instant that are an exact
+// number of nanoseconds apart. The connector-level cases above keep covering
+// that the connectors reach these two through their own paths.
+class ProbeConnector : public IExchangeConnector
+{
+ public:
+  std::string exchangeId() const override { return "probe"; }
+
+  using IExchangeConnector::checkStaleFeeds;
+  using IExchangeConnector::markFeedActivity;
+};
+
 uint64_t toMs(MonoNanos t) { return t.raw() / kNsPerMsU; }
 
 // Loopback port 1: nothing listens there, so start() runs its whole body --
@@ -651,4 +667,88 @@ TEST(ConnectorHealthStale, PolymarketPriceChangesStampActivity)
       << "a token that only receives price_change deltas must be stamped by them";
 
   connector.stop();
+}
+
+// The window is the silence a desk is willing to tolerate, so a feed that has
+// been quiet for exactly that long has reached it and is reported; the last
+// nanosecond inside it is still silent. An off-by-one here is not visible from
+// a test that only measures halves and doubles of the window, and it moves the
+// report by a whole poll interval in one direction or the other.
+TEST(ConnectorHealthStale, TheWindowBoundaryIsExactToTheNanosecond)
+{
+  constexpr uint64_t kStamp = 1'000'000'000'000ULL;
+  constexpr uint64_t kWindowNs = static_cast<uint64_t>(kWindowMs) * kNsPerMsU;
+  const SymbolId sym = 7;
+
+  {
+    ProbeConnector probe;
+    StaleRecorder rec;
+    rec.install(probe);
+
+    probe.markFeedActivity(sym, MonoNanos::fromRaw(kStamp));
+    probe.checkStaleFeeds(MonoNanos::fromRaw(kStamp + kWindowNs - 1), kWindowMs);
+    EXPECT_EQ(rec.count(), 0u) << "one nanosecond short of the window the feed is not stale yet";
+  }
+
+  {
+    ProbeConnector probe;
+    StaleRecorder rec;
+    rec.install(probe);
+
+    probe.markFeedActivity(sym, MonoNanos::fromRaw(kStamp));
+    probe.checkStaleFeeds(MonoNanos::fromRaw(kStamp + kWindowNs), kWindowMs);
+    EXPECT_EQ(rec.count(), 1u) << "a feed quiet for exactly the window has reached it";
+  }
+}
+
+// A poll instant older than the stamp it is compared against is not an
+// impossible state: the stamp is taken on the market-data thread and the poll
+// instant on the supervisor's, and the two read the clock independently, so a
+// frame handled after the poll read its own `now` leaves exactly this. The age
+// is unsigned, so subtracting the larger value does not produce a negative
+// age -- it produces an enormous one, which reports every live feed on the
+// venue as dead.
+TEST(ConnectorHealthStale, APollOlderThanTheStampReportsNothing)
+{
+  constexpr uint64_t kStamp = 1'000'000'000'000ULL;
+  const SymbolId sym = 7;
+
+  ProbeConnector probe;
+  StaleRecorder rec;
+  rec.install(probe);
+
+  probe.markFeedActivity(sym, MonoNanos::fromRaw(kStamp));
+
+  probe.checkStaleFeeds(MonoNanos::fromRaw(kStamp - 1), kWindowMs);
+  EXPECT_EQ(rec.count(), 0u) << "a poll one nanosecond before the stamp is not a dead feed";
+
+  probe.checkStaleFeeds(MonoNanos::fromRaw(kStamp - 5 * kNsPerMsU), kWindowMs);
+  EXPECT_EQ(rec.count(), 0u) << "the age is unsigned: a poll behind the stamp must not wrap";
+}
+
+// Fresh data re-arms the report because data arrived, not because the clock
+// advanced. Two frames can carry the same stamp -- every connector stamps a
+// whole batch of symbols with one reading, and a clock whose resolution is
+// coarser than the gap between two frames repeats a value -- so making the
+// re-arm conditional on a strictly later stamp silently drops the second
+// episode of any feed that recovers inside one tick.
+TEST(ConnectorHealthStale, DataReArmsTheReportEvenWithoutANewerStamp)
+{
+  constexpr uint64_t kStamp = 1'000'000'000'000ULL;
+  constexpr uint64_t kWindowNs = static_cast<uint64_t>(kWindowMs) * kNsPerMsU;
+  const SymbolId sym = 7;
+
+  ProbeConnector probe;
+  StaleRecorder rec;
+  rec.install(probe);
+
+  probe.markFeedActivity(sym, MonoNanos::fromRaw(kStamp));
+  probe.checkStaleFeeds(MonoNanos::fromRaw(kStamp + 2 * kWindowNs), kWindowMs);
+  ASSERT_EQ(rec.count(), 1u) << "the first episode must be reported";
+
+  // Same stamp as the frame before it: the feed is alive again, and the check
+  // has to be armed for the next time it stops.
+  probe.markFeedActivity(sym, MonoNanos::fromRaw(kStamp));
+  probe.checkStaleFeeds(MonoNanos::fromRaw(kStamp + 4 * kWindowNs), kWindowMs);
+  EXPECT_EQ(rec.count(), 2u) << "data re-arms the report whatever stamp it carries";
 }

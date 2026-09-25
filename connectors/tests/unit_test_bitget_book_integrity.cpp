@@ -453,6 +453,35 @@ TEST(BitgetBookIntegrity, ADeltaIsNotFailedAgainstItsOwnChecksum)
   EXPECT_DOUBLE_EQ(bids[1], 100.55);
 }
 
+// A sequence gap invalidates the book exactly as a failed checksum does: the
+// local book is behind the venue's by however many frames were dropped, and
+// every delta after it would be applied to levels that no longer describe the
+// market. Deltas stay suppressed -- including the one that continues the
+// sequence from the frame that broke it -- until a fresh snapshot re-baselines.
+TEST(BitgetBookIntegrity, ASequenceGapSuppressesDeltasUntilAFreshSnapshot)
+{
+  Harness h("bitget_seq_gap_suppresses.log");
+
+  h.connector->handleMessage(bookFrame("snapshot", 10, kBids, kAsks, false, 0));
+  h.connector->handleMessage(bookFrame("update", 11, {{"100.55", "1"}}, {}, false, 0));
+  h.connector->handleMessage(bookFrame("update", 15, {{"100.56", "1"}}, {}, false, 0));  // gap
+  h.connector->handleMessage(bookFrame("update", 16, {{"100.57", "1"}}, {}, false, 0));
+  h.bookBus.flush();
+
+  EXPECT_EQ(h.connector->bookGapCount(), 1u);
+  ASSERT_EQ(h.sub.bestBids().size(), 2u)
+      << "a delta after a gap continues a sequence, not a book: it must stay suppressed";
+
+  h.connector->handleMessage(bookFrame("snapshot", 20, kBids, kAsks, false, 0));
+  h.connector->handleMessage(bookFrame("update", 21, {{"100.58", "1"}}, {}, false, 0));
+  h.bookBus.flush();
+
+  const auto bids = h.sub.bestBids();
+  ASSERT_EQ(bids.size(), 4u) << "a fresh snapshot must re-baseline the book and let deltas apply";
+  EXPECT_DOUBLE_EQ(bids[2], 100.5);
+  EXPECT_DOUBLE_EQ(bids[3], 100.58);
+}
+
 // Control (green today): contiguous frames are published in order and count
 // no gap.
 TEST(BitgetBookIntegrity, ContiguousSequenceIsPublished)
