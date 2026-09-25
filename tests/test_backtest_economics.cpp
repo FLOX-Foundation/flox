@@ -1635,3 +1635,68 @@ TEST(BacktestEconomics, OptimizationSummaryLogsDrawdownAsPercentOnce)
          "captured:\n"
       << text;
 }
+
+// A parameterised factory may decline a grid point by returning nullptr, and
+// nothing stops it declining every point of a fold -- a window where no
+// parameter combination is admissible (not enough history yet, an instrument
+// that is not listed over that slice, a regime the strategy refuses to trade).
+// The fold then has no strategy to run either window with.
+//
+// The shape the runner already uses for "this window ran nothing" is a zeroed
+// BacktestStats: `runWindow` returns `{}` for a degenerate window, so a fold
+// that evaluated nothing must report empty train and test stats -- and it must
+// still be reported, because the folds after it are unaffected and have to
+// run.
+//
+// Today neither happens. `selectInSample` returns a default GridSelection with
+// no parameters, the out-of-sample build asks the factory once more, is
+// declined once more, and the nullptr is handed to `runWindow`, which walks it
+// into `BacktestRunner::setStrategy` -- `backtest_runner.cpp:102`, which
+// dereferences it unguarded (`strategy->setSignalHandler(this)`). The fold
+// does not come back empty; the process dies with EXC_BAD_ACCESS at address 0.
+TEST(BacktestEconomics, AFoldThatDeclinesEveryGridPointIsEmptyRatherThanFatal)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto bars = priceRamp(sym, 14, 100.0, 1.0);
+
+  WalkForwardConfig wf;
+  wf.mode = WalkForwardMode::Sliding;
+  wf.trainSize = 6;
+  wf.testSize = 4;
+  wf.step = 4;
+
+  WalkForwardRunner runner(walkForwardConfig(), wf);
+  runner.setParameterGrid(std::vector<std::vector<double>>{{1.0, 2.0, 3.0}});
+
+  // Fold 0 declines every point it is offered; fold 1 is served normally.
+  std::vector<std::unique_ptr<HoldNStrategy>> owned;
+  runner.setStrategyFactory(
+      [&](std::size_t foldIndex, const std::vector<double>& params) -> IStrategy*
+      {
+        if (foldIndex == 0)
+        {
+          return nullptr;
+        }
+        const int hold = params.empty() ? 1 : static_cast<int>(params[0]);
+        owned.push_back(std::make_unique<HoldNStrategy>(1, sym, reg, hold));
+        return owned.back().get();
+      });
+
+  const auto folds = runner.run(bars);
+
+  ASSERT_EQ(folds.size(), 2u) << "the declined fold must still be reported";
+
+  EXPECT_EQ(folds[0].trainStats.totalTrades, 0u)
+      << "the declined fold reported trades from a window it never ran";
+  EXPECT_DOUBLE_EQ(folds[0].trainStats.totalPnl, 0.0);
+  EXPECT_EQ(folds[0].testStats.totalTrades, 0u);
+  EXPECT_DOUBLE_EQ(folds[0].testStats.totalPnl, 0.0);
+
+  // The fold after it is untouched: the grid is searched, hold=3 wins, and the
+  // out-of-sample window returns 3.00 on this ramp.
+  EXPECT_NEAR(folds[1].trainStats.totalPnl, 3.00, 1e-6);
+  EXPECT_EQ(folds[1].testStats.totalTrades, 1u)
+      << "a declined fold stopped the folds after it from running";
+  EXPECT_NEAR(folds[1].testStats.totalPnl, 3.00, 1e-6);
+}
