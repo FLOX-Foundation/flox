@@ -37,6 +37,8 @@
 #include "flox/clearing/account.h"
 #include "flox/clearing/fee_schedule.h"
 #include "flox/engine/symbol_registry.h"
+#include "flox/log/abstract_logger.h"
+#include "flox/log/log_stream.h"
 #include "flox/replay/binary_format_v1.h"
 #include "flox/replay/ohlcv_replay_source.h"
 #include "flox/replay/writers/binary_log_writer.h"
@@ -44,12 +46,14 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
 #include <memory_resource>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -916,4 +920,718 @@ TEST(BacktestEconomics, WalkForwardRunsOutOfSampleOnTheInSampleWinner)
               "{1, 2, 3} in-sample and run out-of-sample on the winner (3), "
               "for a test PnL of 3.00 per fold instead of 1.00.";
   }
+}
+
+// ===========================================================================
+// 7. The gaps a mutation run over the six fixes left open
+// ===========================================================================
+//
+// Everything above pins the headline number of each fix. What follows pins
+// the rules those numbers are computed under: which window the grid is ranked
+// on, which overloads and modes carry the winner across the split, that the
+// fee ladder is re-read as the run trades its way up it, which fee wins when
+// two are configured, that the two latency components add up, and that the
+// backstops (a clamped funding jump, a clamped negative delay, a schedule
+// with no tiers, a grid point that skipped itself) still hold.
+
+namespace
+{
+
+// A bar-driven twin of HoldNStrategy: buys on the first bar of its window and
+// sells `hold` bars later. An order submitted from a bar callback is matched
+// at the open of the NEXT bar, so a window needs hold + 2 bars for the round
+// trip to close inside it.
+class HoldNBarStrategy : public Strategy
+{
+ public:
+  HoldNBarStrategy(SubscriberId id, SymbolId sym, const SymbolRegistry& reg, int hold)
+      : Strategy(id, sym, reg), _sym(sym), _hold(hold)
+  {
+  }
+
+ protected:
+  void onSymbolBar(SymbolContext& /*ctx*/, const BarEvent& /*ev*/) override
+  {
+    ++_seen;
+    if (_seen == 1)
+    {
+      emitMarketBuy(_sym, Quantity::fromDouble(1.0));
+    }
+    else if (_seen == 1 + _hold)
+    {
+      emitMarketSell(_sym, Quantity::fromDouble(1.0));
+    }
+  }
+
+ private:
+  SymbolId _sym;
+  int _hold;
+  int _seen{0};
+};
+
+constexpr int64_t kBarBaseNs = 1'767'225'600'000'000'000LL;  // 2026-01-01
+
+// An explicit price path, one close per bar. The ramps above are linear by
+// construction; a fold that has to tell the train window from the test window
+// needs the two halves to disagree.
+std::vector<OhlcvReplaySource::Bar> barsFromPrices(SymbolId sym,
+                                                   const std::vector<double>& prices)
+{
+  std::vector<OhlcvReplaySource::Bar> bars;
+  bars.reserve(prices.size());
+  for (size_t i = 0; i < prices.size(); ++i)
+  {
+    bars.push_back({kBarBaseNs + static_cast<int64_t>(i) * 1'000'000'000LL,
+                    Price::fromDouble(prices[i]).raw(), sym});
+  }
+  return bars;
+}
+
+// The same path as full OHLCV bars, flat inside each bar so a fill lands on
+// the bar's own price whichever edge of it matched.
+std::vector<BarEvent> barEventsFromPrices(SymbolId sym,
+                                          const std::vector<double>& prices)
+{
+  std::vector<BarEvent> bars;
+  bars.reserve(prices.size());
+  for (size_t i = 0; i < prices.size(); ++i)
+  {
+    const int64_t ts = kBarBaseNs + static_cast<int64_t>(i) * 60'000'000'000LL;
+    const Price p = Price::fromDouble(prices[i]);
+    BarEvent ev{};
+    ev.symbol = sym;
+    ev.barType = BarType::Time;
+    ev.barTypeParam = 60'000'000'000ull;
+    ev.bar.open = p;
+    ev.bar.high = p;
+    ev.bar.low = p;
+    ev.bar.close = p;
+    ev.bar.volume = Volume::fromDouble(100.0);
+    ev.bar.startTime = TimePoint{std::chrono::nanoseconds{ts}};
+    ev.bar.endTime = TimePoint{std::chrono::nanoseconds{ts + 60'000'000'000LL}};
+    bars.push_back(ev);
+  }
+  return bars;
+}
+
+// Records every parameter vector the runner asks for a strategy with, so a
+// test can name the point the out-of-sample window was built from and not
+// only the PnL it produced.
+//
+// `declineHoldOnce` makes the factory decline one grid point the documented
+// way, by returning nullptr -- but only on the offer that declines it. If the
+// runner comes back for the declined point anyway, the probe hands over a
+// working strategy, so the fold finishes and the test can report which point
+// was crowned instead of dying on a strategy that does not exist.
+template <typename StrategyT>
+struct WalkForwardProbe
+{
+  std::vector<std::unique_ptr<StrategyT>> owned;
+  std::vector<std::vector<double>> seen;
+  int declineHoldOnce{0};
+  bool declined{false};
+
+  auto factory(SymbolId sym, const SymbolRegistry& reg)
+  {
+    return [this, sym, &reg](std::size_t, const std::vector<double>& params) -> IStrategy*
+    {
+      seen.push_back(params);
+      const int hold = params.empty() ? 1 : static_cast<int>(params[0]);
+      if (declineHoldOnce != 0 && hold == declineHoldOnce && !declined)
+      {
+        declined = true;
+        return nullptr;
+      }
+      owned.push_back(std::make_unique<StrategyT>(1, sym, reg, hold));
+      return owned.back().get();
+    };
+  }
+};
+
+}  // namespace
+
+// The grid is ranked on the TRAIN slice. On a path that rises for six bars and
+// falls for four, the in-sample winner (the longest hold) is the worst point
+// out of sample, so a ranking that reads the test window picks hold=1 and
+// reports -1.00 on both halves -- the look-ahead the whole construction exists
+// to prevent, and invisible on a monotone ramp where every window agrees.
+TEST(BacktestEconomics, WalkForwardSlidingRanksTheGridOnTheTrainSliceOnly)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto bars = barsFromPrices(
+      sym, {100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 105.0, 104.0, 103.0, 102.0});
+
+  WalkForwardConfig wf;
+  wf.mode = WalkForwardMode::Sliding;
+  wf.trainSize = 6;
+  wf.testSize = 4;
+  wf.step = 4;
+
+  WalkForwardRunner runner(walkForwardConfig(), wf);
+  runner.setParameterGrid(std::vector<std::vector<double>>{{1.0, 2.0, 3.0}});
+  WalkForwardProbe<HoldNStrategy> probe;
+  runner.setStrategyFactory(probe.factory(sym, reg));
+
+  const auto folds = runner.run(bars);
+  ASSERT_EQ(folds.size(), 1u);
+  ASSERT_EQ(probe.seen.size(), 4u) << "three in-sample builds, then the test build";
+  ASSERT_EQ(probe.seen.back().size(), 1u);
+
+  EXPECT_DOUBLE_EQ(probe.seen.back()[0], 3.0)
+      << "out of sample on hold=" << probe.seen.back()[0]
+      << ": the point that wins on the falling test slice, not the rising "
+         "train slice's winner";
+
+  // Train slice, hold=3: 100.00 -> 103.00.
+  EXPECT_NEAR(folds[0].trainStats.totalPnl, 3.00, 1e-6)
+      << "the grid was ranked on a window other than the train slice";
+  // Test slice, the same hold=3 on the falling half: 105.00 -> 102.00.
+  EXPECT_EQ(folds[0].testStats.totalTrades, 1u);
+  EXPECT_NEAR(folds[0].testStats.totalPnl, -3.00, 1e-6)
+      << "the out-of-sample window did not run on the in-sample winner";
+}
+
+// The anchored mode carries the winner across the split too. Its train window
+// grows from bar 0 rather than sliding, but the handover is the same one, and
+// it is a separate call site.
+TEST(BacktestEconomics, WalkForwardAnchoredRunsOutOfSampleOnTheInSampleWinner)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto bars = priceRamp(sym, 10, 100.0, 1.0);
+
+  WalkForwardConfig wf;
+  wf.mode = WalkForwardMode::Anchored;
+  wf.minTrainSize = 6;
+  wf.testSize = 4;
+  wf.step = 4;
+
+  WalkForwardRunner runner(walkForwardConfig(), wf);
+  runner.setParameterGrid(std::vector<std::vector<double>>{{1.0, 2.0, 3.0}});
+  WalkForwardProbe<HoldNStrategy> probe;
+  runner.setStrategyFactory(probe.factory(sym, reg));
+
+  const auto folds = runner.run(bars);
+  ASSERT_EQ(folds.size(), 1u);
+  EXPECT_EQ(folds[0].trainStartBar, 0u);
+  EXPECT_EQ(folds[0].trainEndBar, 6u);
+
+  ASSERT_EQ(probe.seen.size(), 4u);
+  ASSERT_EQ(probe.seen.back().size(), 1u);
+  EXPECT_DOUBLE_EQ(probe.seen.back()[0], 3.0)
+      << "the anchored test window was built from the first grid point, not "
+         "from the winner";
+
+  EXPECT_NEAR(folds[0].trainStats.totalPnl, 3.00, 1e-6);
+  EXPECT_EQ(folds[0].testStats.totalTrades, 1u);
+  EXPECT_NEAR(folds[0].testStats.totalPnl, 3.00, 1e-6)
+      << "hold=3 returns 3.00 out of sample on this ramp; hold=1 returns 1.00";
+}
+
+// The BarEvent overload -- the one a run driven by real OHLCV bars takes --
+// has its own pair of call sites, one per mode. A market order submitted from
+// a bar callback matches at the next bar's open, so on a ramp of +1.00 per bar
+// a hold of n still returns n and the winner of {1, 2, 3} is 3.
+TEST(BacktestEconomics, WalkForwardOverBarEventsRunsOutOfSampleOnTheInSampleWinner)
+{
+  const std::vector<double> prices{100.0, 101.0, 102.0, 103.0, 104.0, 105.0,
+                                   106.0, 107.0, 108.0, 109.0, 110.0};
+
+  for (WalkForwardMode mode : {WalkForwardMode::Anchored, WalkForwardMode::Sliding})
+  {
+    SymbolRegistry reg;
+    const SymbolId sym = registerBtc(reg);
+    const auto bars = barEventsFromPrices(sym, prices);
+
+    WalkForwardConfig wf;
+    wf.mode = mode;
+    wf.trainSize = 6;
+    wf.minTrainSize = 6;
+    wf.testSize = 5;
+    wf.step = 5;
+
+    WalkForwardRunner runner(walkForwardConfig(), wf);
+    runner.setParameterGrid(std::vector<std::vector<double>>{{1.0, 2.0, 3.0}});
+    WalkForwardProbe<HoldNBarStrategy> probe;
+    runner.setStrategyFactory(probe.factory(sym, reg));
+
+    const auto folds = runner.run(bars);
+    const bool anchored = (mode == WalkForwardMode::Anchored);
+    ASSERT_EQ(folds.size(), 1u) << "mode=" << (anchored ? "anchored" : "sliding");
+    ASSERT_EQ(probe.seen.size(), 4u);
+    ASSERT_EQ(probe.seen.back().size(), 1u);
+
+    EXPECT_DOUBLE_EQ(probe.seen.back()[0], 3.0)
+        << "mode=" << (anchored ? "anchored" : "sliding")
+        << ": the bar-event test window was built from the first grid point";
+
+    EXPECT_NEAR(folds[0].trainStats.totalPnl, 3.00, 1e-6)
+        << "mode=" << (anchored ? "anchored" : "sliding");
+    EXPECT_EQ(folds[0].testStats.totalTrades, 1u)
+        << "mode=" << (anchored ? "anchored" : "sliding");
+    EXPECT_NEAR(folds[0].testStats.totalPnl, 3.00, 1e-6)
+        << "mode=" << (anchored ? "anchored" : "sliding")
+        << ": hold=3 returns 3.00 out of sample here, hold=1 returns 1.00";
+  }
+}
+
+// A factory returning nullptr is the documented way to decline a grid point.
+// A declined point was never run, so it has no statistics to be ranked on and
+// must not be crowned: here hold=3 declines, the win falls to hold=2, and the
+// test window has to run on 2. Crowning the declined point instead carries the
+// statistics of a window that was never run -- those of hold=2, the last point
+// actually evaluated -- onto a point that earns 3.00 out of sample.
+TEST(BacktestEconomics, WalkForwardSkipsADeclinedGridPointRatherThanCrowningIt)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto bars = priceRamp(sym, 10, 100.0, 1.0);
+
+  WalkForwardConfig wf;
+  wf.mode = WalkForwardMode::Sliding;
+  wf.trainSize = 6;
+  wf.testSize = 4;
+  wf.step = 4;
+
+  WalkForwardRunner runner(walkForwardConfig(), wf);
+  runner.setParameterGrid(std::vector<std::vector<double>>{{1.0, 2.0, 3.0}});
+  WalkForwardProbe<HoldNStrategy> probe;
+  probe.declineHoldOnce = 3;  // the point that would otherwise win
+  runner.setStrategyFactory(probe.factory(sym, reg));
+
+  const auto folds = runner.run(bars);
+  ASSERT_EQ(folds.size(), 1u);
+  ASSERT_EQ(probe.seen.size(), 4u);
+  ASSERT_EQ(probe.seen.back().size(), 1u);
+
+  EXPECT_DOUBLE_EQ(probe.seen.back()[0], 2.0)
+      << "the out-of-sample window was built from the declined point, which "
+         "was crowned on the statistics of a window it never ran";
+  EXPECT_NEAR(folds[0].trainStats.totalPnl, 2.00, 1e-6);
+  EXPECT_EQ(folds[0].testStats.totalTrades, 1u);
+  EXPECT_NEAR(folds[0].testStats.totalPnl, 2.00, 1e-6)
+      << "out of sample on hold=3, the point the factory declined; hold=2 is "
+         "the best point the fold actually evaluated";
+}
+
+// An axis with no candidates means "this parameter is not being searched", not
+// "cancel the fold". Multiplying it through would zero the cartesian product
+// and leave the fold with nothing to evaluate: no winner, empty train stats,
+// and an out-of-sample run on whatever an empty parameter vector defaults to.
+TEST(BacktestEconomics, WalkForwardSkipsAnEmptyGridAxisWithoutCancellingTheFold)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto bars = priceRamp(sym, 10, 100.0, 1.0);
+
+  WalkForwardConfig wf;
+  wf.mode = WalkForwardMode::Sliding;
+  wf.trainSize = 6;
+  wf.testSize = 4;
+  wf.step = 4;
+
+  WalkForwardRunner runner(walkForwardConfig(), wf);
+  runner.setParameterGrid(
+      std::vector<std::vector<double>>{{1.0, 2.0, 3.0}, std::vector<double>{}});
+  WalkForwardProbe<HoldNStrategy> probe;
+  runner.setStrategyFactory(probe.factory(sym, reg));
+
+  const auto folds = runner.run(bars);
+  ASSERT_EQ(folds.size(), 1u) << "the empty axis cancelled the fold";
+  ASSERT_EQ(probe.seen.size(), 4u)
+      << "the searched axis produced " << probe.seen.size()
+      << " factory calls; the empty one should have been skipped, leaving "
+         "three grid points and one test build";
+  ASSERT_EQ(probe.seen.back().size(), 1u)
+      << "the empty axis must not widen or empty the parameter vector";
+  EXPECT_DOUBLE_EQ(probe.seen.back()[0], 3.0);
+
+  EXPECT_EQ(folds[0].trainStats.totalTrades, 1u)
+      << "the fold evaluated nothing in sample";
+  EXPECT_NEAR(folds[0].trainStats.totalPnl, 3.00, 1e-6);
+  EXPECT_NEAR(folds[0].testStats.totalPnl, 3.00, 1e-6);
+}
+
+// Two grid points that earn the same net PnL in sample are a tie, and the tie
+// goes to the EARLIER point, so the selection does not depend on the order the
+// cartesian product happens to enumerate in. Here holds 1 and 3 both return
+// 1.00 on the train slice; out of sample they are 20.00 apart, so the rule is
+// worth 20.00 a fold.
+TEST(BacktestEconomics, WalkForwardBreaksAnInSampleTieToTheEarlierGridPoint)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  // Train: 100 -> 101 (hold 1: +1.00), -> 100 (hold 2: 0.00), -> 101 (hold 3:
+  // +1.00, tied with hold 1). Test: hold 1 buys 100.00 and sells 110.00, hold
+  // 3 buys 100.00 and sells 90.00.
+  const auto bars = barsFromPrices(
+      sym, {100.0, 101.0, 100.0, 101.0, 100.0, 100.0, 100.0, 110.0, 100.0, 90.0});
+
+  WalkForwardConfig wf;
+  wf.mode = WalkForwardMode::Sliding;
+  wf.trainSize = 6;
+  wf.testSize = 4;
+  wf.step = 4;
+
+  WalkForwardRunner runner(walkForwardConfig(), wf);
+  runner.setParameterGrid(std::vector<std::vector<double>>{{1.0, 2.0, 3.0}});
+  WalkForwardProbe<HoldNStrategy> probe;
+  runner.setStrategyFactory(probe.factory(sym, reg));
+
+  const auto folds = runner.run(bars);
+  ASSERT_EQ(folds.size(), 1u);
+  ASSERT_EQ(probe.seen.size(), 4u);
+  ASSERT_EQ(probe.seen.back().size(), 1u);
+  ASSERT_NEAR(folds[0].trainStats.totalPnl, 1.00, 1e-6) << "premise of this test";
+
+  EXPECT_DOUBLE_EQ(probe.seen.back()[0], 1.0)
+      << "the tie between hold=1 and hold=3 went to the later point";
+  EXPECT_EQ(folds[0].testStats.totalTrades, 1u);
+  EXPECT_NEAR(folds[0].testStats.totalPnl, 10.00, 1e-6)
+      << "out of sample on the later of the two tied points: -10.00 instead "
+         "of 10.00";
+}
+
+// The tier is resolved per fill, from the notional the run itself has traded,
+// not once at the top of the replay. Seeded at 2,400,000.00 the account opens
+// in VIP 1 (>= 250,000.00, taker 4.0 bps); the first 200,000.00 side is billed
+// there for 80.00 and pushes the rolling window to 2,600,000.00, which is VIP
+// 2 (>= 2,500,000.00, taker 3.5 bps), so the closing side costs 70.00. A
+// ladder read once bills both sides at 4.0 bps for 160.00; the flat 20 bps of
+// the config would charge 800.00.
+TEST(BacktestEconomics, AVenueLadderIsRereadAsTheRunClimbsIt)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto tape = writeFlatTape(sym, /*n=*/10, /*price=*/50'000.0, /*qty=*/4.0,
+                                  "flox_bt_econ_fee_tape_climb");
+
+  RoundTripStrategy strat(1, sym, reg, /*qty=*/4.0);
+
+  auto stack = VenueStack::binance_um_futures(42, 10'000'000.0);
+  stack.account().recordFill(1'767'225'600'000'000'000LL, 2'400'000.0);
+  ASSERT_EQ(stack.fees().currentTierIndex(), 1u) << "premise: the run opens in VIP 1";
+
+  BacktestConfig cfg;
+  cfg.initialCapital = 10'000'000.0;
+  cfg.feeRate = 0.0020;
+
+  BacktestRunner runner(cfg);
+  runner.setStrategy(&strat);
+  runner.setSimulatedExecutor(&stack.executor(), &stack.clock());
+  runner.runTape(tape);
+
+  const auto res = runner.result();
+  const auto stats = res.computeStats();
+
+  ASSERT_EQ(res.fills().size(), 2u);
+  double notional = 0.0;
+  for (const auto& f : res.fills())
+  {
+    notional += (f.price * f.quantity).toDouble();
+  }
+  ASSERT_NEAR(notional, 400'000.00, 1e-6) << "two 200,000.00 sides";
+
+  EXPECT_NEAR(stats.totalFees, 150.00, 1e-6)
+      << "the run paid " << stats.totalFees
+      << " across a tier edge it crossed itself; 80.00 at 4.0 bps then 70.00 "
+         "at 3.5 bps is 150.00";
+
+  std::filesystem::remove_all(tape);
+}
+
+// extractResult() is the move-out twin of result() and has to price the run
+// the same way. A run whose fills are extracted rather than copied is billed
+// at the flat 20 bps -- 400.00 instead of the 80.00 the stack's tier 0 charges
+// -- if the schedule is forwarded on only one of the two paths.
+TEST(BacktestEconomics, ExtractResultPricesTheRunWithTheVenueLadder)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto tape = writeFlatTape(sym, /*n=*/10, /*price=*/50'000.0, /*qty=*/2.0,
+                                  "flox_bt_econ_fee_tape_extract");
+
+  RoundTripStrategy strat(1, sym, reg, /*qty=*/2.0);
+
+  auto stack = VenueStack::binance_um_futures(42, 10'000'000.0);
+  ASSERT_EQ(stack.fees().currentTierIndex(), 0u);
+
+  BacktestConfig cfg;
+  cfg.initialCapital = 10'000'000.0;
+  cfg.feeRate = 0.0020;
+
+  BacktestRunner runner(cfg);
+  runner.setStrategy(&strat);
+  runner.setSimulatedExecutor(&stack.executor(), &stack.clock());
+  runner.runTape(tape);
+
+  auto res = runner.extractResult();
+  const auto stats = res.computeStats();
+
+  ASSERT_EQ(res.fills().size(), 2u);
+  EXPECT_NEAR(stats.totalFees, 80.00, 1e-6)
+      << "extractResult() billed the run at " << stats.totalFees
+      << "; tier 0 prices 200,000.00 of taker notional at 4.0 bps = 80.00";
+
+  std::filesystem::remove_all(tape);
+}
+
+// A caller that replaces the fee model outright -- usePercentageFee false,
+// a fixed charge per trade -- means it. The venue ladder is the default the
+// flat config rate is upgraded from, not an override of an explicit choice:
+// two fills at 7.00 are 14.00, whatever the stack's tier would have charged.
+TEST(BacktestEconomics, AnExplicitFixedFeeOutranksTheVenueLadder)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto tape = writeFlatTape(sym, /*n=*/10, /*price=*/50'000.0, /*qty=*/2.0,
+                                  "flox_bt_econ_fee_tape_fixed");
+
+  RoundTripStrategy strat(1, sym, reg, /*qty=*/2.0);
+
+  auto stack = VenueStack::binance_um_futures(42, 10'000'000.0);
+  ASSERT_GT(stack.fees().tierCount(), 0u) << "premise: there is a ladder to outrank";
+
+  BacktestConfig cfg;
+  cfg.initialCapital = 10'000'000.0;
+  cfg.feeRate = 0.0020;
+  cfg.usePercentageFee = false;
+  cfg.fixedFeePerTrade = 7.00;
+
+  BacktestRunner runner(cfg);
+  runner.setStrategy(&strat);
+  runner.setSimulatedExecutor(&stack.executor(), &stack.clock());
+  runner.runTape(tape);
+
+  const auto stats = runner.result().computeStats();
+
+  EXPECT_NEAR(stats.totalFees, 14.00, 1e-6)
+      << "the run paid " << stats.totalFees
+      << " with a fixed fee of 7.00 per trade configured; the stack's tier 0 "
+         "would have charged 80.00";
+
+  std::filesystem::remove_all(tape);
+}
+
+// A schedule with no tiers resolves to no rate at all, so consulting it would
+// price every fill at 0.00 and silently make the run free. The guard is what
+// keeps such a schedule falling through to the flat config rate: 20 bps on
+// 200,000.00 is 400.00.
+TEST(BacktestEconomics, AVenueScheduleWithNoTiersFallsBackToTheFlatRate)
+{
+  SymbolRegistry reg;
+  const SymbolId sym = registerBtc(reg);
+  const auto tape = writeFlatTape(sym, /*n=*/10, /*price=*/50'000.0, /*qty=*/2.0,
+                                  "flox_bt_econ_fee_tape_empty_ladder");
+
+  RoundTripStrategy strat(1, sym, reg, /*qty=*/2.0);
+
+  FeeSchedule empty;
+  ASSERT_EQ(empty.tierCount(), 0u);
+
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+  exec.setFeeSchedule(&empty);
+
+  BacktestConfig cfg;
+  cfg.initialCapital = 10'000'000.0;
+  cfg.feeRate = 0.0020;
+
+  BacktestRunner runner(cfg);
+  runner.setStrategy(&strat);
+  runner.setSimulatedExecutor(&exec, &clock);
+  runner.runTape(tape);
+
+  const auto res = runner.result();
+  const auto stats = res.computeStats();
+
+  ASSERT_EQ(res.fills().size(), 2u);
+  double notional = 0.0;
+  for (const auto& f : res.fills())
+  {
+    notional += (f.price * f.quantity).toDouble();
+  }
+  ASSERT_NEAR(notional, 200'000.00, 1e-6);
+
+  EXPECT_NEAR(stats.totalFees, 400.00, 1e-6)
+      << "the run paid " << stats.totalFees
+      << " against a schedule with no tiers; an empty ladder has no rate to "
+         "quote, so the flat 20 bps must still apply";
+
+  std::filesystem::remove_all(tape);
+}
+
+namespace
+{
+
+// A model whose jitter band is wider than its median, which is what a
+// realistic profile drawn around a small mean looks like: some draws come back
+// negative. An order cannot arrive before it was sent, so the executor has to
+// floor the draw at zero rather than subtract it from the venue's own ack.
+class NegativeDrawLatency final : public LatencyModel
+{
+ public:
+  explicit NegativeDrawLatency(int64_t orderNs) : _orderNs(orderNs) {}
+
+  int64_t feedDelay() override { return 0; }
+  int64_t orderDelay() override { return _orderNs; }
+  int64_t fillDelay() override { return 0; }
+
+ private:
+  int64_t _orderNs;
+};
+
+}  // namespace
+
+// The wire model and the venue's own submit-ack profile are two separate
+// delays on the same order and they add up: an order submitted at T with a
+// 5 ms model and a 3 ms ack reaches the matching engine at T + 8 ms, not at
+// T + 5 ms (the ack dropped) and not at T + 3 ms (the model dropped).
+TEST(BacktestEconomics, OrderLatencyAndSubmitAckLatencyCompose)
+{
+  constexpr int64_t kAckNs = 3'000'000;  // 3 ms
+
+  BacktestConfig cfg;
+  cfg.latency = std::make_shared<ConstantLatency>(/*feed_ns=*/0, kOrderDelayNs,
+                                                  /*fill_ns=*/0);
+  cfg.submitAckLatencyNs = kAckNs;
+  cfg.submitAckJitterNs = 0;
+
+  SimulatedClock clock;
+  clock.advanceTo(UnixNanos::fromRaw(kSubmitNs));
+  SimulatedExecutor exec(clock);
+  exec.applyConfig(cfg);
+
+  pushBook(exec, kBtc, 99.99, 10.0, 100.01, 10.0);
+  exec.submitOrder(marketBuy(1, kBtc, 1.0));
+  EXPECT_TRUE(exec.fills().empty()) << "the order filled at submit time";
+
+  clock.advanceTo(UnixNanos::fromRaw(kSubmitNs + kOrderDelayNs));
+  pushBook(exec, kBtc, 99.99, 10.0, 100.01, 10.0);
+  EXPECT_TRUE(exec.fills().empty())
+      << "the order filled after the 5 ms wire delay alone, with the venue's "
+         "3 ms submit ack dropped";
+
+  clock.advanceTo(UnixNanos::fromRaw(kSubmitNs + kOrderDelayNs + kAckNs));
+  pushBook(exec, kBtc, 99.99, 10.0, 100.01, 10.0);
+  ASSERT_EQ(exec.fills().size(), 1u) << "the order never arrived";
+  EXPECT_EQ(exec.fills()[0].timestampNs.raw(), kSubmitNs + kOrderDelayNs + kAckNs);
+}
+
+// A negative draw is floored at zero, not carried into the sum. With a 5 ms
+// submit ack and a model that draws -2 ms the order still arrives at T + 5 ms;
+// an unclamped draw would land it at T + 3 ms, two milliseconds of the venue's
+// own latency refunded by a jitter sample.
+TEST(BacktestEconomics, ANegativeOrderDelayDrawNeverOutrunsTheSubmitAck)
+{
+  constexpr int64_t kAckNs = 5'000'000;            // 5 ms
+  constexpr int64_t kNegativeDrawNs = -2'000'000;  // -2 ms
+
+  BacktestConfig cfg;
+  cfg.latency = std::make_shared<NegativeDrawLatency>(kNegativeDrawNs);
+  cfg.submitAckLatencyNs = kAckNs;
+  cfg.submitAckJitterNs = 0;
+
+  SimulatedClock clock;
+  clock.advanceTo(UnixNanos::fromRaw(kSubmitNs));
+  SimulatedExecutor exec(clock);
+  exec.applyConfig(cfg);
+
+  pushBook(exec, kBtc, 99.99, 10.0, 100.01, 10.0);
+  exec.submitOrder(marketBuy(1, kBtc, 1.0));
+  EXPECT_TRUE(exec.fills().empty()) << "the order filled at submit time";
+
+  clock.advanceTo(UnixNanos::fromRaw(kSubmitNs + kAckNs + kNegativeDrawNs));
+  pushBook(exec, kBtc, 99.99, 10.0, 100.01, 10.0);
+  EXPECT_TRUE(exec.fills().empty())
+      << "a negative draw was subtracted from the submit ack: the order "
+         "arrived 2 ms early";
+
+  clock.advanceTo(UnixNanos::fromRaw(kSubmitNs + kAckNs));
+  pushBook(exec, kBtc, 99.99, 10.0, 100.01, 10.0);
+  ASSERT_EQ(exec.fills().size(), 1u) << "the order never arrived";
+  EXPECT_EQ(exec.fills()[0].timestampNs.raw(), kSubmitNs + kAckNs);
+}
+
+// Seeding the cursor fixes the first tick; later ticks can still be handed a
+// jump -- a resumed run, a gap in the tape -- and the clamp is what keeps the
+// payment list bounded when they are. At a 1 ms cadence a leap of 200,000
+// intervals settles the last 100,000 boundaries and no more.
+TEST(BacktestEconomics, ALaterFundingTickClampsAnUnboundedJump)
+{
+  constexpr int64_t kIntervalNs = 1'000'000;  // 1 ms
+  constexpr int64_t kStartNs = 1'767'225'600'000'000'000LL;
+  constexpr size_t kMaxBoundaries = 100'000;  // FundingSchedule::kMaxBoundariesPerTick
+
+  auto schedule = FundingSchedule::constant(kIntervalNs, /*rate=*/0.0001);
+  const std::vector<SymbolId> symbols{kBtc};
+  const std::vector<double> positions{1.0};
+  const std::vector<double> marks{100'000.0};
+
+  const auto seeding = schedule.tick(kStartNs, symbols, positions, marks);
+  ASSERT_LE(seeding.size(), 1u) << "premise: the first tick is seeded";
+
+  const auto payments = schedule.tick(
+      kStartNs + 200'000LL * kIntervalNs, symbols, positions, marks);
+
+  EXPECT_EQ(payments.size(), kMaxBoundaries)
+      << "a jump of 200,000 boundaries settled " << payments.size()
+      << " of them; the clamp keeps the last 100,000";
+}
+
+namespace
+{
+
+class CapturingLogger final : public ILogger
+{
+ public:
+  void info(std::string_view msg) override
+  {
+    _text.append(msg);
+    _text.push_back('\n');
+  }
+  void warn(std::string_view msg) override { info(msg); }
+  void error(std::string_view msg) override { info(msg); }
+
+  const std::string& text() const { return _text; }
+
+ private:
+  std::string _text;
+};
+
+}  // namespace
+
+// The report file and the summary line print the same row and have to agree.
+// `generateReport` is fixed above; `printSummary` writes the drawdown into the
+// log, where a second `* 100` publishes the same 10 percent drawdown as
+// 1000% to anyone reading the run's output. The WinRate beside it is a
+// fraction and keeps its scaling.
+TEST(BacktestEconomics, OptimizationSummaryLogsDrawdownAsPercentOnce)
+{
+  const auto stats = tenPercentDrawdownStats();
+  ASSERT_NEAR(stats.maxDrawdownPct, 10.0, 1e-9) << "premise of this test";
+
+  std::vector<OptimizationResult<ReportParams>> results(1);
+  results[0].setFromStats(stats);
+
+  CapturingLogger logger;
+  setGlobalLogger(&logger);
+  ReportStats::printSummary(results);
+  setGlobalLogger(nullptr);
+
+  const std::string& text = logger.text();
+  ASSERT_NE(text.find("Best:"), std::string::npos)
+      << "printSummary logged nothing; captured:\n"
+      << text;
+  EXPECT_EQ(text.find("DD=1000%"), std::string::npos)
+      << "a 10 percent drawdown was logged as 1000%; captured:\n"
+      << text;
+  EXPECT_NE(text.find("DD=10%"), std::string::npos)
+      << "the summary line did not carry the 10 percent drawdown; captured:\n"
+      << text;
+  EXPECT_NE(text.find("WinRate=50%"), std::string::npos)
+      << "the win rate beside it is a fraction and must stay scaled; "
+         "captured:\n"
+      << text;
 }
