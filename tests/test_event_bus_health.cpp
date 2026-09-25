@@ -19,6 +19,16 @@
 
 #include "flox/util/eventing/event_bus.h"
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 namespace flox
 {
 
@@ -375,9 +385,26 @@ TEST(EventBusHealth, StopBusFromMonitorThreadDoesNotSelfJoin)
 
 // Process CPU time so far, in milliseconds. A thread that sleeps out a window
 // costs none of it; a thread that spins through it costs the whole window.
+// std::clock() is CPU time on POSIX but wall time on Windows, where a sleeping
+// process would be charged the whole window; the kernel's own per-process
+// counters answer the question there.
 double processCpuMillis()
 {
+#if defined(_WIN32)
+  FILETIME creation{}, exitTime{}, kernel{}, user{};
+  if (!GetProcessTimes(GetCurrentProcess(), &creation, &exitTime, &kernel, &user))
+  {
+    return 0.0;
+  }
+  const auto toTicks = [](const FILETIME& ft)
+  {
+    return (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+  };
+  // FILETIME counts 100 ns units.
+  return static_cast<double>(toTicks(kernel) + toTicks(user)) / 10000.0;
+#else
   return 1000.0 * static_cast<double>(std::clock()) / static_cast<double>(CLOCKS_PER_SEC);
+#endif
 }
 
 // Nothing is published in these two, and the consumer parks rather than
