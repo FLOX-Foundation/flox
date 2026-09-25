@@ -16,12 +16,15 @@
 #include <flox/log/log.h>
 
 #include <openssl/hmac.h>
+#include <zlib.h>
 
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <simdjson.h>
 
@@ -81,6 +84,63 @@ static std::string makeLoginPayload(std::string_view apiKey, std::string_view ap
   payload.append("\"sign\":\"").append(sign).append("\"}]}");
 
   return payload;
+}
+
+static std::string_view bitgetBookChannel(BitgetConfig::BookDepth depth)
+{
+  switch (depth)
+  {
+    case BitgetConfig::BookDepth::Depth1:
+      return "books1";
+    case BitgetConfig::BookDepth::Depth5:
+      return "books5";
+    case BitgetConfig::BookDepth::Depth15:
+      return "books15";
+    case BitgetConfig::BookDepth::DepthFull:
+    default:
+      return "books";
+  }
+}
+
+// Bitget's books-channel checksum, as the venue documents it: take up to the
+// first 25 levels of each side, interleave them
+// (bid0:ask0:bid1:ask1:...), join price and amount with ':', and CRC32 the
+// result. Whichever side runs out is simply skipped, the other keeps going.
+// The venue's own strings go in verbatim -- "0.5000" is not "0.5" -- which is
+// why the raw JSON text is carried down here instead of the parsed
+// fixed-point values.
+static constexpr size_t BITGET_CHECKSUM_LEVELS = 25;
+
+using RawLevel = std::pair<std::string_view, std::string_view>;
+
+static uint32_t bitgetBookChecksum(const std::vector<RawLevel>& bids,
+                                   const std::vector<RawLevel>& asks)
+{
+  std::string joined;
+  joined.reserve(BITGET_CHECKSUM_LEVELS * 2 * 24);
+
+  const size_t levels = std::min(BITGET_CHECKSUM_LEVELS, std::max(bids.size(), asks.size()));
+  for (size_t i = 0; i < levels; ++i)
+  {
+    for (const auto* side : {&bids, &asks})
+    {
+      if (i >= side->size())
+      {
+        continue;
+      }
+      if (!joined.empty())
+      {
+        joined += ':';
+      }
+      joined += (*side)[i].first;
+      joined += ':';
+      joined += (*side)[i].second;
+    }
+  }
+
+  return static_cast<uint32_t>(::crc32(::crc32(0L, Z_NULL, 0),
+                                       reinterpret_cast<const Bytef*>(joined.data()),
+                                       static_cast<uInt>(joined.size())));
 }
 
 static std::string_view bitgetWsInstType(InstrumentType type)
@@ -164,22 +224,7 @@ void BitgetExchangeConnector::start()
             sub += R"({"instType":")";
             sub += bitgetWsInstType(s.type);
             sub += R"(","channel":")";
-            switch (s.depth)
-            {
-              case BitgetConfig::BookDepth::Depth1:
-                sub += "books1";
-                break;
-              case BitgetConfig::BookDepth::Depth5:
-                sub += "books5";
-                break;
-              case BitgetConfig::BookDepth::Depth15:
-                sub += "books15";
-                break;
-              case BitgetConfig::BookDepth::DepthFull:
-              default:
-                sub += "books";
-                break;
-            }
+            sub += bitgetBookChannel(s.depth);
             sub += R"(","instId":")";
             sub += s.name;
             sub += R"("})";
@@ -208,6 +253,23 @@ void BitgetExchangeConnector::start()
         handleMessage(payload);
       });
 
+  // The public socket had no close handler at all, so a feed that went away
+  // left nothing behind but silence.
+  _wsClient->onClose(
+      [this](int code, std::string_view reason)
+      {
+        handleDisconnect(code, reason);
+      });
+
+  // Baseline for the staleness check: without it a feed that never delivers a
+  // single frame has no stamp to age out from, which is the loudest failure
+  // of the two this check exists for.
+  const MonoNanos startedAt = nowMonoNanos();
+  for (const auto& entry : _config.symbols)
+  {
+    markFeedActivity(resolveSymbolId(entry.name), startedAt);
+  }
+
   _wsClient->start();
   _pingThread = makeThread("conn.bitget.ping",
                            [this]
@@ -232,8 +294,10 @@ void BitgetExchangeConnector::start()
     _wsClientPrivate->onClose(
         [this](int code, std::string_view reason)
         {
-          _logger->warn("[Bitget] Private WS closed: code=" + std::to_string(code) +
-                        " reason=" + std::string(reason));
+          // The private stream carries order and execution reports: losing it
+          // stops fills reaching the engine, so it is the same class of event
+          // as losing the public book.
+          handleDisconnect(code, std::string("private stream: ").append(reason));
         });
 
     _wsClientPrivate->onMessage(
@@ -268,6 +332,128 @@ void BitgetExchangeConnector::stop()
     _wsClientPrivate->stop();
     _wsClientPrivate.reset();
   }
+}
+
+void BitgetExchangeConnector::handleDisconnect(int code, std::string_view reason)
+{
+  const std::string detail = "code=" + std::to_string(code) + ", reason=" + std::string(reason);
+  if (_logger)
+  {
+    _logger->info("[Bitget] WebSocket closed: " + detail);
+  }
+  emitDisconnect(detail);
+}
+
+void BitgetExchangeConnector::pollFeedHealth(MonoNanos now)
+{
+  checkStaleFeeds(now, _config.staleDataTimeoutMs);
+}
+
+// Re-subscribe one symbol's books topic so the venue re-sends a snapshot. Same
+// recovery as Bybit's: an invalidated book can only be re-baselined by a full
+// frame, and nothing but a fresh subscribe asks for one.
+void BitgetExchangeConnector::resubscribeBook(std::string_view symbolName)
+{
+  if (!_wsClient)
+  {
+    return;  // stop() already reset the socket: nothing left to resubscribe on
+  }
+
+  for (const auto& entry : _config.symbols)
+  {
+    if (entry.name != symbolName)
+    {
+      continue;
+    }
+
+    std::string arg = R"([{"instType":")";
+    arg += bitgetWsInstType(entry.type);
+    arg += R"(","channel":")";
+    arg += bitgetBookChannel(entry.depth);
+    arg += R"(","instId":")";
+    arg += entry.name;
+    arg += R"("}])";
+
+    const bool unsubOk = _wsClient->send(R"({"op":"unsubscribe","args":)" + arg + "}");
+    const bool subOk = _wsClient->send(R"({"op":"subscribe","args":)" + arg + "}");
+    if ((!unsubOk || !subOk) && _logger)
+    {
+      // Without a subscribe frame reaching the venue no snapshot comes back,
+      // so this symbol's book stays suppressed until the next full reconnect
+      // re-subscribes everything from onOpen. Log it so that window is
+      // observable instead of looking like a quiet market.
+      _logger->error("[Bitget] resubscribe send failed for " + std::string(symbolName) +
+                     " -- book stays suppressed until the next reconnect");
+    }
+    return;
+  }
+}
+
+bool BitgetExchangeConnector::verifyBookIntegrity(
+    SymbolId symbol, std::string_view instId, BookUpdateType type, int64_t seq,
+    std::optional<uint32_t> venueChecksum,
+    const std::vector<std::pair<std::string_view, std::string_view>>& bids,
+    const std::vector<std::pair<std::string_view, std::string_view>>& asks)
+{
+  auto& state = _bookSeq[symbol];
+
+  if (type == BookUpdateType::SNAPSHOT)
+  {
+    // A snapshot is the whole book, so its checksum covers exactly the levels
+    // in this frame and can be verified here. A delta's checksum covers the
+    // merged book instead, which this connector does not maintain -- it
+    // forwards frames -- so deltas are checked on "seq" alone rather than
+    // failed against a book that was never built.
+    if (venueChecksum)
+    {
+      const uint32_t computed = bitgetBookChecksum(bids, asks);
+      if (computed != *venueChecksum)
+      {
+        _bookChecksumFailureCount.fetch_add(1, std::memory_order_relaxed);
+        _logger->error("[Bitget] book checksum mismatch on " + std::string(instId) + ": computed " +
+                       std::to_string(computed) + " got " + std::to_string(*venueChecksum) +
+                       " -- dropping and resyncing");
+        state.lastSeq = -1;
+        state.invalid = true;
+        resubscribeBook(instId);
+        // The framework has one channel for "this book is no longer a valid
+        // continuation"; a checksum failure means that as surely as a gap
+        // does, so it rides the same event carrying the two CRCs.
+        emitSequenceGap(computed, *venueChecksum);
+        return false;
+      }
+    }
+
+    state.lastSeq = seq;
+    state.invalid = false;
+    return true;
+  }
+
+  if (state.invalid)
+  {
+    // Already reported when the book was invalidated; deltas racing the
+    // re-subscribe would apply onto a book known to be wrong.
+    return false;
+  }
+
+  if (seq >= 0 && state.lastSeq >= 0 && seq != state.lastSeq + 1)
+  {
+    const uint64_t expected = static_cast<uint64_t>(state.lastSeq + 1);
+    _bookGapCount.fetch_add(1, std::memory_order_relaxed);
+    _logger->warn("[Bitget] book gap on " + std::string(instId) + ": expected seq=" +
+                  std::to_string(expected) + " got seq=" + std::to_string(seq) + " -- resyncing");
+    state.lastSeq = -1;
+    state.invalid = true;
+    resubscribeBook(instId);
+    emitSequenceGap(expected, static_cast<uint64_t>(seq));
+    return false;
+  }
+
+  if (seq >= 0)
+  {
+    state.lastSeq = seq;
+  }
+  return true;
 }
 
 void BitgetExchangeConnector::pingLoop()
@@ -309,6 +495,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
   const uint64_t recvNs = nowNsMonotonic();
 
   static thread_local simdjson::dom::parser parser;
+  const MonoNanos arrivedAt = nowMonoNanos();
 
   try
   {
@@ -373,6 +560,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
       ev->update.symbol = sid;
       ev->recvNs = MonoNanos::fromRaw(recvNs);
       ev->sourceExchange = _exchangeId;
+      markFeedActivity(sid, arrivedAt);
 
       BookUpdateType updateType = BookUpdateType::SNAPSHOT;
       if (action == "update")
@@ -389,6 +577,13 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
           ev->update.instrument = info->type;
         }
       }
+
+      // The venue's own price/size strings, kept alongside the parsed levels
+      // because the checksum is defined over the text, not over the values.
+      std::vector<RawLevel> rawBids;
+      std::vector<RawLevel> rawAsks;
+      int64_t seq = -1;
+      std::optional<uint32_t> venueChecksum;
 
       for (auto d : data)
       {
@@ -410,6 +605,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
               _logger->warn("[Bitget] Invalid bid price/qty in book update");
               continue;
             }
+            rawBids.emplace_back(p, q);
             ev->update.bids.emplace_back(*priceOpt, *qtyOpt);
           }
         }
@@ -431,6 +627,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
               _logger->warn("[Bitget] Invalid ask price/qty in book update");
               continue;
             }
+            rawAsks.emplace_back(p, q);
             ev->update.asks.emplace_back(*priceOpt, *qtyOpt);
           }
         }
@@ -446,7 +643,56 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
             ev->update.exchangeTsNs = UnixNanos::fromRaw(*tsOpt * 1'000'000);
           }
         }
+
+        if (auto seqEl = d["seq"]; !seqEl.error())
+        {
+          if (int64_t v{}; seqEl.get(v) == simdjson::SUCCESS)
+          {
+            seq = v;
+          }
+          else if (std::string_view sv{}; seqEl.get(sv) == simdjson::SUCCESS)
+          {
+            if (auto parsed = util::parseInt64(sv))
+            {
+              seq = *parsed;
+            }
+          }
+        }
+
+        // The venue ships the checksum as a signed 32-bit integer; the
+        // comparison below is on the unsigned CRC, so the sign is just a
+        // reinterpretation of the same 32 bits. A checksum of 0 is the
+        // venue saying it computed none for this push (the depth-limited
+        // channels carry the field that way), not a CRC to verify against:
+        // a real CRC32 of a ladder is 0 with probability 2^-32, and that
+        // one push is merely unverified, never wrongly dropped.
+        if (auto csEl = d["checksum"]; !csEl.error())
+        {
+          int64_t v{};
+          if (csEl.get(v) != simdjson::SUCCESS)
+          {
+            v = 0;
+            if (std::string_view sv{}; csEl.get(sv) == simdjson::SUCCESS)
+            {
+              if (auto parsed = util::parseInt64(sv))
+              {
+                v = *parsed;
+              }
+            }
+          }
+          if (v != 0)
+          {
+            venueChecksum = static_cast<uint32_t>(static_cast<int32_t>(v));
+          }
+        }
       }
+
+      if (!verifyBookIntegrity(sid, inst, updateType, seq, venueChecksum, rawBids, rawAsks))
+      {
+        return;  // the book is not a valid continuation; never publish it
+      }
+
+      ev->seq = seq;
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
@@ -478,6 +724,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
 
         TradeEvent ev;
         SymbolId sid = resolveSymbolId(inst);
+        markFeedActivity(sid, arrivedAt);
         ev.trade.symbol = sid;
         ev.recvNs = MonoNanos::fromRaw(recvNs);
         if (_registry)

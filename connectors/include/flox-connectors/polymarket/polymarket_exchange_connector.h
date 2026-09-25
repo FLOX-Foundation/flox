@@ -47,6 +47,12 @@ class PolymarketExchangeConnector : public IExchangeConnector
   // testable offline by feeding raw frames without a live socket.
   void handleMessage(std::string_view payload);
 
+  // Transport close. Called from the websocket onClose handler; public for
+  // the same reason as handleMessage.
+  void handleDisconnect(int code, std::string_view reason);
+
+  void pollFeedHealth(MonoNanos now) override;
+
  private:
   // exchangeTs is the venue-supplied timestamp for this message (read once,
   // outside these functions, via a fresh re-parse so field access here stays
