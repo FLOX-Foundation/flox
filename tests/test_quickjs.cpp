@@ -3,6 +3,9 @@
 #include "js_executor.h"
 #include "js_strategy.h"
 
+#include "flox/backtest/backtest_result.h"
+#include "flox/backtest/simulated_clock.h"
+#include "flox/backtest/simulated_executor.h"
 #include "flox/capi/bridge_strategy.h"
 
 #include <gtest/gtest.h>
@@ -10,6 +13,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -2280,4 +2284,251 @@ TEST(JsIntegrationTest, CompositeBookDetectsArbitrageAcrossExchanges)
   JSValue arb = jsStrat.engine().getGlobalProperty("arb");
   EXPECT_TRUE(JS_ToBool(ctx, arb)) << "a higher bid on exchange 2 than the ask on exchange 1 is arbitrage";
   JS_FreeValue(ctx, arb);
+}
+
+// ============================================================
+// Integration tests — the executor bar path
+// ============================================================
+
+// The QuickJS projection of the bar path -- onBarOhlc, the bar-callback
+// window, reset, and closeReason on an aggregated bar -- was registered and
+// declared but never executed by a test: the whole surface could be rewired
+// or stubbed and every QuickJS case stayed green.
+//
+// The control is the C++ executor driven over the same tape in this same
+// process, so the numbers asserted against the script are the engine's own
+// answers rather than literals copied from another file. tests/
+// test_capi_executor_bar_ohlc.cpp pins that control against
+// BacktestRunner::runBars.
+TEST(JsIntegrationTest, SimulatedExecutorDrivesTheBarPath)
+{
+  constexpr int64_t kMinuteNs = 60'000'000'000LL;
+  constexpr SymbolId kSym = 1;
+
+  struct Row
+  {
+    double open, high, low, close;
+  };
+  // Bar 1 opens at 106, a price bar 0 never shows, and runs its high to 109.5
+  // over the resting sell at 109.
+  const std::vector<Row> tape = {
+      {100.0, 110.0, 90.0, 105.0}, {106.0, 109.5, 104.0, 107.0}, {103.0, 104.0, 102.0, 103.5}};
+  // Flat bar to arm the bracket, then a bar straddling both of its children.
+  const std::vector<Row> bracketTape = {{100.0, 100.0, 100.0, 100.0},
+                                        {100.0, 108.0, 92.0, 100.0}};
+
+  // ── the control, in C++ ──────────────────────────────────────────────
+  SimulatedClock clock;
+  SimulatedExecutor control(clock);
+  {
+    bool sent = false;
+    for (size_t i = 0; i < tape.size(); ++i)
+    {
+      clock.advanceTo(UnixNanos::fromRaw(static_cast<int64_t>(i + 1) * kMinuteNs));
+      control.onBar(kSym, Price::fromDouble(tape[i].open), Price::fromDouble(tape[i].high),
+                    Price::fromDouble(tape[i].low), Price::fromDouble(tape[i].close));
+      SimulatedExecutor::BarCallbackScope window(control);
+      if (!sent)
+      {
+        sent = true;
+        Order buy{};
+        buy.id = 1;
+        buy.symbol = kSym;
+        buy.side = Side::BUY;
+        buy.type = OrderType::MARKET;
+        buy.quantity = Quantity::fromDouble(1.0);
+        control.submitOrder(buy);
+
+        Order sell{};
+        sell.id = 2;
+        sell.symbol = kSym;
+        sell.side = Side::SELL;
+        sell.type = OrderType::LIMIT;
+        sell.price = Price::fromDouble(109.0);
+        sell.quantity = Quantity::fromDouble(1.0);
+        control.submitOrder(sell);
+      }
+    }
+  }
+  ASSERT_EQ(control.fills().size(), 2u);
+  const double controlBuy = control.fills()[0].price.toDouble();
+  const double controlSell = control.fills()[1].price.toDouble();
+  const double controlPnl = controlSell - controlBuy;
+
+  SimulatedClock bracketClock;
+  SimulatedExecutor bracketControl(bracketClock);
+  {
+    bool sent = false;
+    for (size_t i = 0; i < bracketTape.size(); ++i)
+    {
+      bracketClock.advanceTo(UnixNanos::fromRaw(static_cast<int64_t>(i + 1) * kMinuteNs));
+      bracketControl.onBar(kSym, Price::fromDouble(bracketTape[i].open),
+                           Price::fromDouble(bracketTape[i].high),
+                           Price::fromDouble(bracketTape[i].low),
+                           Price::fromDouble(bracketTape[i].close));
+      SimulatedExecutor::BarCallbackScope window(bracketControl);
+      if (!sent)
+      {
+        sent = true;
+        BracketOrder b{};
+        b.bracketId = 7;
+        b.symbol = kSym;
+        b.entry.side = Side::BUY;
+        b.entry.type = OrderType::MARKET;
+        b.entry.quantity = Quantity::fromDouble(1.0);
+        b.takeProfit.side = Side::SELL;
+        b.takeProfit.type = OrderType::LIMIT;
+        b.takeProfit.price = Price::fromDouble(106.0);
+        b.takeProfit.quantity = Quantity::fromDouble(1.0);
+        b.stop.side = Side::SELL;
+        b.stop.type = OrderType::STOP_MARKET;
+        b.stop.triggerPrice = Price::fromDouble(94.0);
+        b.stop.quantity = Quantity::fromDouble(1.0);
+        bracketControl.submitBracket(b);
+      }
+    }
+  }
+  const auto controlState = bracketControl.bracketStatus(7).state;
+  ASSERT_EQ(controlState, BracketState::STOP_FILLED)
+      << "the control walked the high before the low";
+
+  // ── the same drive, in JS ────────────────────────────────────────────
+  TempJsFile script(R"(
+    var MIN = 60000000000;
+    var TAPE = [[100,110,90,105],[106,109.5,104,107],[103,104,102,103.5]];
+    var BRACKET_TAPE = [[100,100,100,100],[100,108,92,100]];
+
+    function driveOn(ex, useWindow) {
+      var sent = false;
+      for (var i = 0; i < TAPE.length; i++) {
+        var b = TAPE[i];
+        ex.advanceClock((i + 1) * MIN);
+        ex.onBarOhlc(1, b[0], b[1], b[2], b[3]);
+        if (useWindow) { ex.beginBarCallbackWindow(); }
+        if (!sent) {
+          sent = true;
+          ex.submitOrder(1, "buy", 0.0, 1.0, 0, 1);     // 0 = market
+          ex.submitOrder(2, "sell", 109.0, 1.0, 1, 1);  // 1 = limit
+        }
+        if (useWindow) { ex.endBarCallbackWindow(); }
+      }
+    }
+
+    function pnlOf(ex) {
+      var r = new BacktestResult(100000.0, 0.0);
+      r.ingestExecutor(ex);
+      var s = r.stats();
+      r.destroy();
+      return s.netPnl;
+    }
+
+    var held = new SimulatedExecutor();
+    driveOn(held, true);
+    var heldFills = held.fillCount;
+    var heldPnl = pnlOf(held);
+
+    // The same tape with no window open: nothing is held, so the market buy
+    // matches inside the bar it was submitted from, at that bar's close.
+    var loose = new SimulatedExecutor();
+    driveOn(loose, false);
+    var loosePnl = pnlOf(loose);
+
+    // reset() drops the run, keeps the configuration: a repeat is the run,
+    // not the sum of both.
+    held.reset();
+    var fillsAfterReset = held.fillCount;
+    driveOn(held, true);
+    var repeatFills = held.fillCount;
+    var repeatPnl = pnlOf(held);
+
+    var bracketEx = new SimulatedExecutor();
+    var armed = false;
+    for (var i = 0; i < BRACKET_TAPE.length; i++) {
+      var b = BRACKET_TAPE[i];
+      bracketEx.advanceClock((i + 1) * MIN);
+      bracketEx.onBarOhlc(1, b[0], b[1], b[2], b[3]);
+      bracketEx.beginBarCallbackWindow();
+      if (!armed) {
+        armed = true;
+        bracketEx.submitBracket({
+          bracketId: 7, symbol: 1,
+          entrySide: "buy", entryType: "market", entryPrice: 0.0, quantity: 1.0,
+          tpSide: "sell", tpType: "limit", tpPrice: 106.0,
+          stopSide: "sell", stopType: "stop_market", stopTriggerPrice: 94.0,
+        });
+      }
+      bracketEx.endBarCallbackWindow();
+    }
+    var bracketState = bracketEx.bracketState(7);
+    var bracketFills = bracketEx.fillCount;
+
+    var bars = flox.timeBars([0, 30000000000, 61000000000, 91000000000, 121000000000],
+                             [100, 101, 102, 103, 104], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], 60);
+    var barCount = bars.length;
+    var hasCloseReason = barCount > 0 && ("closeReason" in bars[0]);
+    var allThreshold = hasCloseReason && bars.every(function (b) { return b.closeReason === 0; });
+
+    held.destroy();
+    loose.destroy();
+    bracketEx.destroy();
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto* ctx = jsStrat.engine().context();
+
+  auto num = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    double d = 0;
+    JS_ToFloat64(ctx, &d, v);
+    JS_FreeValue(ctx, v);
+    return d;
+  };
+  auto flag = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    const bool b = JS_ToBool(ctx, v) == 1;
+    JS_FreeValue(ctx, v);
+    return b;
+  };
+  auto str = [&](const char* name)
+  {
+    JSValue v = jsStrat.engine().getGlobalProperty(name);
+    const char* s = JS_ToCString(ctx, v);
+    std::string out = s ? s : "";
+    if (s)
+    {
+      JS_FreeCString(ctx, s);
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+  };
+
+  EXPECT_EQ(num("heldFills"), 2.0) << "the hand-driven JS run did not fill twice";
+  EXPECT_NEAR(num("heldPnl"), controlPnl, 1e-9)
+      << "the JS bar path realised " << num("heldPnl") << " where the C++ control, on the "
+      << "same tape, realised " << controlPnl << " (buy " << controlBuy << ", sell "
+      << controlSell << ")";
+  EXPECT_NEAR(num("loosePnl"), controlSell - tape[0].close, 1e-9)
+      << "with no window open the buy has to match at the close of the bar it was "
+         "submitted from";
+  EXPECT_NE(num("loosePnl"), num("heldPnl"))
+      << "beginBarCallbackWindow changed nothing: the order was never held";
+
+  EXPECT_EQ(num("fillsAfterReset"), 0.0) << "reset left the previous run's fills behind";
+  EXPECT_EQ(num("repeatFills"), 2.0);
+  EXPECT_NEAR(num("repeatPnl"), controlPnl, 1e-9) << "the repeat run did not repeat";
+
+  EXPECT_EQ(str("bracketState"), "stop_filled")
+      << "the walk reached the high (108) before the low (92), so the take-profit filled "
+         "instead of the stop";
+  EXPECT_EQ(num("bracketFills"), 2.0);
+
+  EXPECT_GE(num("barCount"), 1.0);
+  EXPECT_TRUE(flag("hasCloseReason"))
+      << "an aggregated bar reaches JS with no closeReason; the Python and Node "
+         "aggregator bindings both carry it";
+  EXPECT_TRUE(flag("allThreshold"))
+      << "an aggregated bar reports a close reason the aggregator never set";
 }

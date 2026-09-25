@@ -223,3 +223,115 @@ def test_aggregated_bars_carry_a_close_reason() -> None:
     # 0 = Threshold: every bar the batch path returns was closed by its own
     # threshold, and the field has to say so rather than report a leftover.
     assert [int(b["close_reason"]) for b in bars] == [0] * len(bars)
+
+
+# ── which intrabar extreme the walk reaches first ──────────────────────────
+#
+# One resting order cannot say which price arrived as the high and which as
+# the low: a bar whose range straddles it touches it either way round. Two
+# resting orders on opposite sides of the same bar do say it, as long as only
+# one of them can survive -- a bracket, where the first child to fill cancels
+# the other. The engine walks low before high (the pessimistic order for a
+# long: the protective stop is tested before the target), so the stop has to
+# be the child that fills.
+#
+# The runner cannot be handed a bracket from Python -- `BacktestRunner` owns
+# its executor and exposes no way to reach it -- so the runner comparison here
+# covers the part it can express, the entry: a plain market buy from the same
+# bar-0 callback on the same tape. The bracket state carries the rest.
+# tests/test_capi_executor_bar_ohlc.cpp holds the full runner comparison.
+
+BRACKET_ID = 7
+TAKE_PROFIT_PRICE = 106.0
+STOP_TRIGGER_PRICE = 94.0
+
+# Flat bar to arm the bracket, then a bar straddling both of its children.
+BRACKET_TAPE = [
+    (100.0, 100.0, 100.0, 100.0),
+    (100.0, 108.0, 92.0, 100.0),
+]
+
+
+def _bracket_bar_arrays():
+    start = np.array([i * MINUTE_NS for i in range(len(BRACKET_TAPE))], dtype=np.int64)
+    end = start + MINUTE_NS
+    cols = [
+        np.array([row[i] for row in BRACKET_TAPE], dtype=np.float64) for i in range(4)
+    ]
+    volume = np.full(len(BRACKET_TAPE), 1000.0, dtype=np.float64)
+    return start, end, cols[0], cols[1], cols[2], cols[3], volume
+
+
+class _BarZeroBuyStrategy(flox.Strategy):
+    """The entry leg alone, so the runner can be asked the same question."""
+
+    def __init__(self, symbols):
+        super().__init__(symbols)
+        self.bars = 0
+        self.fills: list[tuple[str, float, float]] = []
+
+    def on_bar(self, ctx, bar):  # noqa: ARG002
+        if self.bars == 0:
+            self.market_buy(1.0)
+        self.bars += 1
+
+    def on_fill(self, ctx, ev):  # noqa: ARG002
+        self.fills.append((ev.side, ev.fill_price, ev.fill_qty))
+
+
+def _runner_entry_fill() -> tuple[str, float, float]:
+    registry = flox.SymbolRegistry()
+    registry.add_symbol("backtest", "BTCUSDT", tick_size=0.01)
+    runner = flox.BacktestRunner(registry, fee_rate=0.0, initial_capital=100_000.0)
+    strategy = _BarZeroBuyStrategy([SYMBOL])
+    runner.set_strategy(strategy)
+    runner.run_bars(*_bracket_bar_arrays(), symbol="BTCUSDT")
+    assert len(strategy.fills) == 1, strategy.fills
+    return strategy.fills[0]
+
+
+def _drive_bracket(executor) -> None:
+    armed = False
+    for i, (open_, high, low, close) in enumerate(BRACKET_TAPE):
+        executor.advance_clock((i + 1) * MINUTE_NS)
+        executor.on_bar_ohlc(SYMBOL, open_, high, low, close)
+
+        executor.begin_bar_callback_window()
+        if not armed:
+            armed = True
+            executor.submit_bracket(
+                bracket_id=BRACKET_ID,
+                symbol=SYMBOL,
+                entry_side="buy",
+                entry_type="market",
+                entry_price=0.0,
+                quantity=1.0,
+                tp_side="sell",
+                tp_type="limit",
+                tp_price=TAKE_PROFIT_PRICE,
+                stop_side="sell",
+                stop_type="stop_market",
+                stop_trigger_price=STOP_TRIGGER_PRICE,
+            )
+        executor.end_bar_callback_window()
+
+
+def test_the_walk_reaches_the_low_before_the_high() -> None:
+    executor = flox.SimulatedExecutor()
+    _require_bar_api(executor)
+    _drive_bracket(executor)
+
+    assert executor.bracket_state(BRACKET_ID) == "stop_filled", (
+        "the walk reached the high (108.0) before the low (92.0), so the "
+        "take-profit filled and the stop was cancelled"
+    )
+
+    rows = _fill_rows(executor)
+    assert len(rows) == 2, f"expected the entry and one child: {rows}"
+    assert rows[0] == ("buy", 100.0, 1.0)
+    assert rows[1] == ("sell", 92.0, 1.0), (
+        "the surviving child was the take-profit at "
+        f"{TAKE_PROFIT_PRICE}, not the stop"
+    )
+    # The entry is the part the runner can be asked about, and it has to agree.
+    assert rows[0] == _runner_entry_fill()

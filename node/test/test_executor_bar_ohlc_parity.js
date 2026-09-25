@@ -204,6 +204,117 @@ if (missing.length === 0) {
   }
 }
 
+// ── which intrabar extreme the walk reaches first ──────────────────────────
+//
+// One resting order cannot say which price arrived as the high and which as
+// the low: a bar whose range straddles it touches it either way round. Two
+// resting orders on opposite sides of the same bar do say it, as long as only
+// one of them can survive -- a bracket, where the first child to fill cancels
+// the other. The engine walks low before high (the pessimistic order for a
+// long: the protective stop is tested before the target), so the stop has to
+// be the child that fills.
+//
+// The runner cannot be handed a bracket from Node -- BacktestRunner owns its
+// executor and exposes no way to reach it -- so the runner comparison here
+// covers the part it can express, the entry: a plain market buy from the same
+// bar-0 callback on the same tape. tests/test_capi_executor_bar_ohlc.cpp
+// holds the full runner comparison.
+
+const BRACKET_ID = 7;
+const TAKE_PROFIT_PRICE = 106.0;
+const STOP_TRIGGER_PRICE = 94.0;
+
+// Flat bar to arm the bracket, then a bar straddling both of its children.
+const BRACKET_TAPE = [
+  [100.0, 100.0, 100.0, 100.0],
+  [100.0, 108.0, 92.0, 100.0],
+];
+
+function bracketBarArrays() {
+  const start = new BigInt64Array(BRACKET_TAPE.map((_, i) => BigInt(i) * MINUTE_NS));
+  const end = new BigInt64Array(BRACKET_TAPE.map((_, i) => BigInt(i + 1) * MINUTE_NS));
+  const col = (k) => Float64Array.from(BRACKET_TAPE.map((row) => row[k]));
+  const volume = Float64Array.from(BRACKET_TAPE.map(() => 1000.0));
+  return [start, end, col(0), col(1), col(2), col(3), volume];
+}
+
+function runnerEntryFill() {
+  const registry = new flox.SymbolRegistry();
+  const symbol = registry.addSymbol('backtest', 'BTCUSDT', 0.01);
+  const runner = new flox.BacktestRunner(registry, 0.0, 100000.0);
+  const fills = [];
+  let bars = 0;
+  runner.setStrategy({
+    symbols: [symbol],
+    onBar(ctx, bar, emit) {
+      if (bars === 0) emit.marketBuy(1.0);
+      bars++;
+    },
+    onFill(ctx, ev) {
+      fills.push([ev.side, ev.fillPrice, ev.fillQty]);
+    },
+  });
+  runner.runBars(...bracketBarArrays(), 'BTCUSDT');
+  return fills;
+}
+
+function driveBracket(exec) {
+  let armed = false;
+  BRACKET_TAPE.forEach(([open, high, low, close], i) => {
+    exec.advanceClock(BigInt(i + 1) * MINUTE_NS);
+    exec.onBarOhlc(SYMBOL, open, high, low, close);
+
+    exec.beginBarCallbackWindow();
+    if (!armed) {
+      armed = true;
+      exec.submitBracket({
+        bracketId: BRACKET_ID,
+        symbol: SYMBOL,
+        entrySide: 'buy',
+        entryType: 'market',
+        entryPrice: 0.0,
+        quantity: 1.0,
+        tpSide: 'sell',
+        tpType: 'limit',
+        tpPrice: TAKE_PROFIT_PRICE,
+        stopSide: 'sell',
+        stopType: 'stop_market',
+        stopTriggerPrice: STOP_TRIGGER_PRICE,
+      });
+    }
+    exec.endBarCallbackWindow();
+  });
+}
+
+if (missing.length === 0) {
+  const entry = runnerEntryFill();
+  check(
+    'the runner fills the entry at the next bar open',
+    JSON.stringify(entry) === JSON.stringify([['buy', 100, 1]]),
+    JSON.stringify(entry),
+  );
+
+  const exec = new flox.SimulatedExecutor();
+  driveBracket(exec);
+
+  check(
+    'the walk reaches the low before the high',
+    exec.bracketState(BRACKET_ID) === 'stop_filled',
+    'bracketState=' + exec.bracketState(BRACKET_ID) +
+      '; the take-profit at ' + TAKE_PROFIT_PRICE + ' filled instead of the stop',
+  );
+  check('the bracket produced the entry and one child', exec.fillCount === 2,
+        'fillCount=' + exec.fillCount);
+  // Entry at 100 closed by the stop at the bar low of 92: a loss of 8. Had the
+  // take-profit at 106 been the survivor it would read +6.
+  const pnl = netPnlOf(exec);
+  check(
+    'the surviving child is the stop, not the take-profit',
+    pnl === -8.0,
+    'netPnl=' + pnl + '; +6 would mean the take-profit filled',
+  );
+}
+
 // ── close_reason on aggregated bars ────────────────────────────────────────
 
 {

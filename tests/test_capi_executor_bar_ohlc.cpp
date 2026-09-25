@@ -54,6 +54,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -282,6 +283,107 @@ std::vector<FillRow> runnerFills()
   return toRows(runner.executor().fills());
 }
 
+// ── the bracket tape: which intrabar extreme the walk reaches first ────────
+//
+// One resting order is not enough to say which price was handed in as the high
+// and which as the low: a bar whose range straddles it touches it either way
+// round. Two resting orders on opposite sides of the same bar do say it, as
+// long as only one of them can survive -- a bracket, where the first child to
+// fill cancels the other. The engine walks low before high (the pessimistic
+// order for a long: its protective stop is tested before its target), so the
+// stop at 94 has to be the one that fills and the take-profit at 106 has to be
+// the one that is cancelled. Swap the two prices on the way in and the bar is
+// walked 108 first: the take-profit fills instead, and the bracket ends in the
+// other terminal state.
+constexpr uint64_t kBracketId = 7;
+constexpr double kTakeProfitPrice = 106.0;
+constexpr double kStopTriggerPrice = 94.0;
+
+const std::vector<BarRow>& bracketTape()
+{
+  static const std::vector<BarRow> rows = {
+      // Flat bar: its callback arms the bracket, which is then held.
+      {100.0, 100.0, 100.0, 100.0, kMinuteNs},
+      // The entry is released at this open; the range then straddles both
+      // children, so the walk order alone decides which one fills.
+      {100.0, 108.0, 92.0, 100.0, 2 * kMinuteNs},
+  };
+  return rows;
+}
+
+BracketOrder bracket(SymbolId sym)
+{
+  BracketOrder b{};
+  b.bracketId = kBracketId;
+  b.symbol = sym;
+  b.entry.side = Side::BUY;
+  b.entry.type = OrderType::MARKET;
+  b.entry.quantity = Quantity::fromDouble(1.0);
+  b.takeProfit.side = Side::SELL;
+  b.takeProfit.type = OrderType::LIMIT;
+  b.takeProfit.price = Price::fromDouble(kTakeProfitPrice);
+  b.takeProfit.quantity = Quantity::fromDouble(1.0);
+  b.stop.side = Side::SELL;
+  b.stop.type = OrderType::STOP_MARKET;
+  b.stop.triggerPrice = Price::fromDouble(kStopTriggerPrice);
+  b.stop.quantity = Quantity::fromDouble(1.0);
+  return b;
+}
+
+class BracketSubmitter : public IMarketDataSubscriber
+{
+ public:
+  explicit BracketSubmitter(SimulatedExecutor& exec) : _exec(exec) {}
+
+  SubscriberId id() const override { return 0xB2B2u; }
+
+  void onBar(const BarEvent& ev) override
+  {
+    if (_sent)
+    {
+      return;
+    }
+    _sent = true;
+    _exec.submitBracket(bracket(ev.symbol));
+  }
+
+ private:
+  SimulatedExecutor& _exec;
+  bool _sent{false};
+};
+
+struct BracketOutcome
+{
+  std::vector<FillRow> fills;
+  uint8_t state{};
+
+  bool operator==(const BracketOutcome& o) const
+  {
+    return fills == o.fills && state == o.state;
+  }
+};
+
+// The reference: the same bracket over the same tape, through the runner.
+BracketOutcome runnerBracketRun()
+{
+  SymbolRegistry reg;
+  const SymbolId sym = addSymbol(reg, "BTCUSDT");
+
+  BacktestRunner runner;
+  BracketSubmitter sub(runner.executor());
+  runner.addMarketDataSubscriber(&sub);
+
+  std::vector<BarEvent> bars;
+  for (const auto& row : bracketTape())
+  {
+    bars.push_back(makeBar(sym, row));
+  }
+  runner.runBars(bars);
+
+  return {toRows(runner.executor().fills()),
+          static_cast<uint8_t>(runner.executor().bracketStatus(kBracketId).state)};
+}
+
 // ── the C entry points the hand-drive needs ────────────────────────────────
 
 void* symbolNamed(const char* name)
@@ -354,6 +456,30 @@ void driveTape(const BarApi& api, FloxSimulatedExecutorHandle exec)
                                            static_cast<uint8_t>(OrderType::MARKET), kSym);
       flox_simulated_executor_submit_order(exec, /*id=*/2, /*side=sell=*/1, 109.0, 1.0,
                                            static_cast<uint8_t>(OrderType::LIMIT), kSym);
+    }
+    api.endWindow(exec);
+  }
+}
+
+// The hand-drive for the bracket tape, spelled in C.
+void driveBracketTape(const BarApi& api, FloxSimulatedExecutorHandle exec)
+{
+  bool sent = false;
+  for (const auto& row : bracketTape())
+  {
+    flox_simulated_executor_advance_clock(exec, row.endNs);
+    api.onBarOhlc(exec, kSym, row.open, row.high, row.low, row.close);
+
+    api.beginWindow(exec);
+    if (!sent)
+    {
+      sent = true;
+      flox_simulated_executor_submit_bracket(
+          exec, kBracketId, kSym, /*entry_side=buy=*/0,
+          static_cast<uint8_t>(OrderType::MARKET), /*entry_price=*/0.0, /*quantity=*/1.0,
+          /*tp_side=sell=*/1, static_cast<uint8_t>(OrderType::LIMIT), kTakeProfitPrice,
+          /*stop_side=sell=*/1, static_cast<uint8_t>(OrderType::STOP_MARKET),
+          kStopTriggerPrice);
     }
     api.endWindow(exec);
   }
@@ -562,4 +688,139 @@ TEST(CapiExecutorBarOhlc, AggregatedBarsCarryACloseReason)
          "FloxBarData already does";
 
   expectAggregatedCloseReason<FloxBar>();
+}
+
+// ── which intrabar extreme the walk reaches first ──────────────────────────
+
+// Green control and reference: the C++ hand-drive over the bracket tape gives
+// the runner's answer, and that answer is "the stop", because low is walked
+// before high.
+TEST(CapiExecutorBarOhlc, TheCxxBracketHandDriveMatchesTheRunner)
+{
+  SimulatedClock clock;
+  SimulatedExecutor exec(clock);
+
+  bool sent = false;
+  for (const auto& row : bracketTape())
+  {
+    clock.advanceTo(UnixNanos::fromRaw(row.endNs));
+    exec.onBar(kSym, Price::fromDouble(row.open), Price::fromDouble(row.high),
+               Price::fromDouble(row.low), Price::fromDouble(row.close));
+
+    SimulatedExecutor::BarCallbackScope window(exec);
+    if (!sent)
+    {
+      sent = true;
+      exec.submitBracket(bracket(kSym));
+    }
+  }
+
+  const BracketOutcome actual{toRows(exec.fills()),
+                              static_cast<uint8_t>(exec.bracketStatus(kBracketId).state)};
+  const BracketOutcome expected = runnerBracketRun();
+  ASSERT_TRUE(actual == expected)
+      << "runner:" << describe(expected.fills) << " state=" << int(expected.state)
+      << "\nby hand:" << describe(actual.fills) << " state=" << int(actual.state);
+
+  EXPECT_EQ(actual.state, static_cast<uint8_t>(BracketState::STOP_FILLED))
+      << "the take-profit above the bar was reached before the stop below it";
+  ASSERT_EQ(actual.fills.size(), 2u) << describe(actual.fills);
+  EXPECT_DOUBLE_EQ(actual.fills[0].price, 100.0) << "the entry did not fill at the open";
+  EXPECT_DOUBLE_EQ(actual.fills[1].price, 92.0)
+      << "the stop did not print where the walk was when it triggered";
+  EXPECT_NE(actual.fills[1].price, kTakeProfitPrice);
+}
+
+// The mutation this is shaped against: on_bar_ohlc forwarding high where low
+// belongs. One resting order cannot see it -- a bar straddling it touches it
+// either way round -- so this one puts a take-profit above the bar and a stop
+// below it and lets the walk order pick the survivor.
+TEST(CapiExecutorBarOhlc, TheWalkReachesTheLowBeforeTheHigh)
+{
+  const BarApi api = loadBarApi();
+  ASSERT_TRUE(api.complete())
+      << "the C bar path is incomplete; see CapiExecutorBarOhlc.TheBarPathIsReachableFromC";
+
+  FloxSimulatedExecutorHandle exec = flox_simulated_executor_create();
+  ASSERT_NE(exec, nullptr);
+  driveBracketTape(api, exec);
+
+  const BracketOutcome actual{readFills(exec),
+                              flox_simulated_executor_bracket_state(exec, kBracketId)};
+  const BracketOutcome expected = runnerBracketRun();
+
+  EXPECT_EQ(actual.state, expected.state)
+      << "runner state=" << int(expected.state) << " C API state=" << int(actual.state);
+  EXPECT_EQ(actual.state, static_cast<uint8_t>(BracketState::STOP_FILLED))
+      << "the walk reached the high (" << bracketTape()[1].high << ") before the low ("
+      << bracketTape()[1].low << "), so the take-profit filled and the stop was cancelled";
+  EXPECT_EQ(actual.fills, expected.fills)
+      << "runner:" << describe(expected.fills) << "\nC API:" << describe(actual.fills);
+
+  ASSERT_EQ(actual.fills.size(), 2u) << describe(actual.fills);
+  EXPECT_EQ(actual.fills[1].side, 1u);
+  EXPECT_DOUBLE_EQ(actual.fills[1].price, 92.0)
+      << "the stop did not print where the walk was when it triggered";
+  EXPECT_NE(actual.fills[1].price, kTakeProfitPrice)
+      << "the child that filled was the take-profit, not the stop";
+
+  flox_simulated_executor_destroy(exec);
+}
+
+// ── the other bar that crosses the C ABI: the strategy's own ring ──────────
+
+// close_reason reaches a FloxBar by two separate writers: doAggregateC, which
+// builds the batch-aggregation result (covered above, through
+// flox_aggregate_time_bars), and writeFloxBar, which fills the bars
+// flox_strategy_last_closed_bar / _last_n_closed_bars hand back. They share
+// the struct and nothing else, so one can carry the reason while the other
+// leaves the caller's bytes untouched.
+//
+// Driven entirely through the C ABI -- registry, strategy, runner -- because
+// that is the path a binding takes, and flox_runner_on_bar is where a caller
+// says why the bar closed in the first place.
+TEST(CapiExecutorBarOhlc, AClosedBarReadBackCarriesItsCloseReason)
+{
+  FloxRegistryHandle registry = flox_registry_create();
+  ASSERT_NE(registry, nullptr);
+  const uint32_t symbol = flox_registry_add_symbol(registry, "test", "BTCUSDT", 0.01);
+
+  FloxStrategyCallbacks callbacks{};
+  const uint32_t symbols[] = {symbol};
+  FloxStrategyHandle strategy = flox_strategy_create(1, symbols, 1, registry, callbacks);
+  ASSERT_NE(strategy, nullptr);
+
+  FloxRunnerHandle runner = flox_runner_create(registry, nullptr, nullptr);
+  ASSERT_NE(runner, nullptr);
+  flox_runner_add_strategy(runner, strategy);
+  flox_runner_start(runner);
+
+  // 2 = Forced, the reason a flush gives a bar. Deliberately not 0
+  // (Threshold), which a struct nobody wrote also reports.
+  const uint8_t kForced = static_cast<uint8_t>(BarCloseReason::Forced);
+  const uint64_t param = static_cast<uint64_t>(kMinuteNs);
+  flox_runner_on_bar(runner, symbol, /*bar_type=time=*/0, param, 100.0, 101.0, 99.0, 100.5,
+                     10.0, 6.0, 0, kMinuteNs, kForced);
+
+  // Poisoned, so "never written" reads differently from "written as Threshold".
+  FloxBar last;
+  std::memset(&last, 0xFF, sizeof(last));
+  ASSERT_EQ(flox_strategy_last_closed_bar(strategy, symbol, 0, param, &last), 1u)
+      << "the bar never reached the strategy's ring";
+  EXPECT_EQ(last.close_raw, Price::fromDouble(100.5).raw()) << "wrong bar came back";
+  EXPECT_EQ(last.close_reason, kForced)
+      << "flox_strategy_last_closed_bar hands back a bar whose close_reason it "
+         "never wrote (0xFF is the caller's own poison, 0 is Threshold)";
+
+  FloxBar ring[4];
+  std::memset(ring, 0xFF, sizeof(ring));
+  const uint32_t n = flox_strategy_last_n_closed_bars(strategy, symbol, 0, param, ring, 4);
+  ASSERT_EQ(n, 1u);
+  EXPECT_EQ(ring[0].close_reason, kForced)
+      << "flox_strategy_last_n_closed_bars drops the reason its single-bar sibling carries";
+
+  flox_runner_stop(runner);
+  flox_runner_destroy(runner);
+  flox_strategy_destroy(strategy);
+  flox_registry_destroy(registry);
 }

@@ -204,7 +204,11 @@ MUTATIONS: list[Mutation] = [
       Price::fromDouble(high_price), Price::fromDouble(close_price));""",
         build_targets=["flox_capi"], purge=["flox_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
-        gtest_filter="CapiExecutorBarOhlc.ARestingOrderMatchesTheIntrabarExtreme",
+        # A single resting order cannot see this: a bar straddling it touches
+        # it whichever way round the two extremes arrive. The bracket case can
+        # -- its two children sit on opposite sides of the bar and only the
+        # one the walk reaches first survives.
+        gtest_filter="CapiExecutorBarOhlc.TheWalkReachesTheLowBeforeTheHigh",
         also_feeds=["python", "node"],
     ),
     Mutation(
@@ -308,15 +312,10 @@ MUTATIONS: list[Mutation] = [
 }""",
         build_targets=["flox_capi"], purge=["flox_capi"],
         gtest_binary=CAPI_EXECUTOR_BIN,
-        gtest_filter="CapiExecutorBarOhlc.AggregatedBarsCarryACloseReason",
+        # AggregatedBarsCarryACloseReason goes through doAggregateC and cannot
+        # see this writer; the bar-ring case reads exactly what it produces.
+        gtest_filter="CapiExecutorBarOhlc.AClosedBarReadBackCarriesItsCloseReason",
         also_feeds=["python", "node"],
-        known_uncovered_reason="writeFloxBar backs flox_strategy_last_closed_bar / "
-            "_last_n_closed_bars, not flox_aggregate_time_bars (that is doAggregateC, a "
-            "separate initializer list). AggregatedBarsCarryACloseReason -- the only test "
-            "asserting close_reason at all in tests/test_capi_executor_bar_ohlc.cpp -- goes "
-            "through doAggregateC and cannot see this. No test in the sweep (test_quickjs's "
-            "MultiTfHelpersExposeBarRing reads lastClosedBar but only checks .close) reads "
-            "close_reason off this path either.",
     ),
     Mutation(
         name="c-close-reason-wrong-field-doAggregateC",
@@ -347,13 +346,10 @@ MUTATIONS: list[Mutation] = [
         gtest_binary=CAPI_INFRA_BIN,
         gtest_filter=None,
         also_feeds=["python", "node"],
-        known_uncovered_reason="test_capi_diagnostics.cpp's abi_version test compares "
-            "flox_capi_abi_version() against the FLOX_CAPI_ABI_VERSION macro in the same "
-            "translation unit, so it is tautologically true whatever the macro says, and "
-            "that test is not even in this task's sweep. tools/codegen/tests reads "
-            "include/flox/capi/flox_capi_spec.hpp (the IDL), which this mutation does not "
-            "touch, only the compiled include/flox/capi/flox_capi.h. Nothing in the sweep "
-            "asserts the two numbers agree, or that flox_capi_abi_version() == 3.",
+        # test_capi_infra now carries CapiAbiVersion.TheNumberMovedWithTheStructShape,
+        # which anchors the number to a shape the header declares rather than
+        # comparing the macro with itself; the codegen sweep additionally
+        # compares the spec, the golden and the shipped header.
     ),
 
     # ── Python ──────────────────────────────────────────────────────────
@@ -377,7 +373,9 @@ MUTATIONS: list[Mutation] = [
         new="""    _executor.onBar(symbol, Price::fromDouble(openPrice), Price::fromDouble(lowPrice),
                     Price::fromDouble(highPrice), Price::fromDouble(closePrice));""",
         build_targets=["_flox_py"], purge=["_flox_py"],
-        pytest_nodeids=[f"{PY_TEST_FILE}::test_a_resting_order_matches_the_intrabar_extreme"],
+        # As on the C side: one resting order cannot tell the two extremes
+        # apart, the bracket case can.
+        pytest_nodeids=[f"{PY_TEST_FILE}::test_the_walk_reaches_the_low_before_the_high"],
     ),
     Mutation(
         name="py-window-begin-noop",
@@ -517,13 +515,10 @@ MUTATIONS: list[Mutation] = [
       toDouble(ctx, argv[4]), toDouble(ctx, argv[2]));""",
         build_targets=["flox_quickjs", "test_quickjs"], purge=["flox_quickjs", "test_quickjs"],
         gtest_binary=QUICKJS_BIN, gtest_filter=None,
-        known_uncovered_reason="tests/test_quickjs.cpp never calls "
-            "__flox_simulated_executor_on_bar_ohlc / _begin_bar_callback_window / "
-            "_end_bar_callback_window / _reset, or FloxJsStrategy.onBarOhlc et al, at all "
-            "(grep for onBarOhlc/beginBarCallbackWindow across tests/test_quickjs.cpp "
-            "returns nothing) -- the whole QuickJS projection of the bar path is untested "
-            "at runtime in this repository, only declared (addGlobalFunc registration and "
-            "quickjs/types/flox.d.ts).",
+        # JsIntegrationTest.SimulatedExecutorDrivesTheBarPath drives the JS
+        # SimulatedExecutor over the tape and compares the realised pnl with a
+        # C++ control run in the same process, so a swapped open/close moves a
+        # number the test reads.
     ),
     Mutation(
         name="quickjs-window-begin-noop",
@@ -545,9 +540,8 @@ MUTATIONS: list[Mutation] = [
 }""",
         build_targets=["flox_quickjs", "test_quickjs"], purge=["flox_quickjs", "test_quickjs"],
         gtest_binary=QUICKJS_BIN, gtest_filter=None,
-        known_uncovered_reason="same gap as quickjs-on-bar-ohlc-close-as-open: no test in "
-            "tests/test_quickjs.cpp calls beginBarCallbackWindow through the JS stdlib or "
-            "the raw global.",
+        # Same test: it drives the tape once with the window and once without,
+        # and the two runs have to realise different numbers.
     ),
     Mutation(
         name="quickjs-close-reason-omitted",
@@ -561,9 +555,7 @@ MUTATIONS: list[Mutation] = [
         new="""    JS_SetPropertyStr(ctx, o, "trades", JS_NewUint32(ctx, b.trade_count));""",
         build_targets=["flox_quickjs", "test_quickjs"], purge=["flox_quickjs", "test_quickjs"],
         gtest_binary=QUICKJS_BIN, gtest_filter=None,
-        known_uncovered_reason="tests/test_quickjs.cpp never reads .closeReason off an "
-            "aggregated bar (grep for closeReason there returns nothing); the only bar-ring "
-            "test (MultiTfHelpersExposeBarRing) checks .close only.",
+        # Same test reads closeReason off the bars flox.timeBars returns.
     ),
 
     # ── Codon: no Codon compiler in this environment at all ───────────────
@@ -575,12 +567,13 @@ MUTATIONS: list[Mutation] = [
         old="        flox_simulated_executor_on_bar_ohlc(self._handle, u32(symbol), open, high, low, close)",
         new="        flox_simulated_executor_on_bar_ohlc(self._handle, u32(symbol), close, high, low, open)",
         codegen_nodeids=[CODEGEN_TEST_FILE],
-        known_uncovered_reason="no Codon compiler is installed in this environment (`which "
-            "codon` finds nothing) and nothing under tests/ or tools/codegen/tests executes "
-            "a .codon file -- test_the_shipped_codon_module_exposes_the_bar_path only "
-            "greps for the literal substring 'def on_bar_ohlc(', which this mutation does "
-            "not touch. The Codon module's actual parameter wiring is unverified by any "
-            "test in this repository.",
+        equivalent_reason="untestable in this environment, not a missing test: no Codon "
+            "compiler is installed (`which codon` finds nothing) and nothing under tests/ "
+            "or tools/codegen/tests executes a .codon file, so no assertion can reach the "
+            "body of this function. The text-level test pins the surface "
+            "(test_the_shipped_codon_module_exposes_the_bar_path checks the declaration is "
+            "present), which is the most a text scan can do; verifying the wiring needs a "
+            "Codon toolchain in CI, which is its own change.",
     ),
     Mutation(
         name="codon-decode-agg-bars-offset-67",
@@ -590,9 +583,11 @@ MUTATIONS: list[Mutation] = [
         old="            close_reason=int(cp[68]),  # byte offset 68 -> u8 index 68",
         new="            close_reason=int(cp[67]),  # byte offset 68 -> u8 index 68",
         codegen_nodeids=[CODEGEN_TEST_FILE],
-        known_uncovered_reason="same as codon-on-bar-ohlc-close-as-open-backtest: no Codon "
-            "compiler, no test executes tools.codon's _decode_agg_bars. This is the exact "
-            "off-by-one the task asked to try.",
+        equivalent_reason="untestable in this environment for the same reason as "
+            "codon-on-bar-ohlc-close-as-open-backtest: no Codon compiler, nothing executes "
+            "tools.codon's _decode_agg_bars, and a byte offset inside a function body is "
+            "not something a text scan can check. It is the exact off-by-one worth "
+            "catching, and catching it needs a Codon toolchain in CI.",
     ),
     Mutation(
         name="codon-reset-noop-tools",
@@ -607,11 +602,10 @@ MUTATIONS: list[Mutation] = [
         new="""    def reset(self):
         pass""",
         codegen_nodeids=[CODEGEN_TEST_FILE],
-        known_uncovered_reason="test_the_shipped_codon_module_exposes_the_bar_path checks "
-            "backtest.codon only (CODON_MODULE = codon/flox/backtest.codon), not "
-            "tools.codon, and even for backtest.codon it only checks the substring "
-            "'def reset(self)' is present, not the body. No test reads tools.codon's "
-            "reset() at all, compiled or otherwise.",
+        equivalent_reason="untestable in this environment: no Codon compiler, and the "
+            "text-level test covers backtest.codon's declarations only (CODON_MODULE = "
+            "codon/flox/backtest.codon). A method body emptied out in tools.codon is "
+            "invisible to any text scan; reaching it needs a Codon toolchain in CI.",
     ),
 
     # ── manifest / golden: these ARE plain-text-checked ───────────────────

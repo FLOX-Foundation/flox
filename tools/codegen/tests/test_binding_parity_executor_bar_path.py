@@ -29,6 +29,7 @@ there.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -37,6 +38,8 @@ REPO = Path(__file__).resolve().parents[3]
 SPEC = REPO / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
 MANIFEST = REPO / "tools" / "codegen" / "binding_parity.yaml"
 CODON_GOLDEN = REPO / "tools" / "codegen" / "golden" / "flox_capi.codon"
+CAPI_HEADER = REPO / "include" / "flox" / "capi" / "flox_capi.h"
+CAPI_GOLDEN = REPO / "tools" / "codegen" / "golden" / "flox_capi.h"
 CODON_MODULE = REPO / "codon" / "flox" / "backtest.codon"
 
 # The C entry points the bar path needs, on top of the close-only
@@ -191,3 +194,49 @@ def test_the_manifest_keeps_codon_declared() -> None:
         "the simulated_executor group must stay `codon: required`; the gate "
         "resolves it against the generated golden"
     )
+
+
+def _abi_version(path: Path) -> int:
+    """The FLOX_CAPI_ABI_VERSION a header declares."""
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"^#define\s+FLOX_CAPI_ABI_VERSION\s+(\d+)\s*$", text, re.MULTILINE)
+    assert match, f"{path.relative_to(REPO)} declares no FLOX_CAPI_ABI_VERSION"
+    return int(match.group(1))
+
+
+def test_the_abi_number_agrees_across_the_spec_and_the_headers() -> None:
+    """The number a consumer compares before trusting a struct layout.
+
+    It lives in three files that are supposed to move together: the IDL spec,
+    the golden the spec generates, and the header shipped to consumers. The
+    only test that touched it compared the compiled macro with the function the
+    same header compiled, which is true whatever the number says -- so the
+    shipped header could be rolled back on its own and nothing said a word.
+    """
+    spec = _abi_version(SPEC)
+    golden = _abi_version(CAPI_GOLDEN)
+    live = _abi_version(CAPI_HEADER)
+
+    assert spec == golden == live, (
+        "FLOX_CAPI_ABI_VERSION disagrees: "
+        f"{SPEC.relative_to(REPO)}={spec}, {CAPI_GOLDEN.relative_to(REPO)}={golden}, "
+        f"{CAPI_HEADER.relative_to(REPO)}={live}. The shipped header is what a "
+        "consumer compiles against and what flox_capi_abi_version() returns."
+    )
+
+
+def test_the_abi_number_moved_with_the_struct_shape() -> None:
+    """`FloxBar` gained `close_reason`, which is a shape change on the
+    boundary: a header that has the field and still calls itself 2 is
+    describing a struct it does not have."""
+    text = CAPI_HEADER.read_text(encoding="utf-8")
+    end = text.find("} FloxBar;")
+    assert end > 0, "could not locate the FloxBar declaration"
+    start = text.rfind("typedef struct", 0, end)
+    assert start >= 0, "could not locate the FloxBar declaration"
+
+    if "close_reason" in text[start:end]:
+        assert _abi_version(CAPI_HEADER) >= 3, (
+            "FloxBar carries close_reason but the header reports ABI "
+            f"{_abi_version(CAPI_HEADER)}"
+        )

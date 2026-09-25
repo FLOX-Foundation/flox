@@ -559,3 +559,37 @@ TEST(CapiStreamingGraphTest, Reset)
 
   flox_streaming_graph_destroy(sg);
 }
+
+// ============================================================
+// ABI version
+// ============================================================
+
+// The ABI number is what a consumer loading the shared library compares
+// against before it trusts a struct layout, and the only test that touched it
+// compared the macro with the function the same header compiled -- true
+// whatever the number says. Anchoring it to a shape the header itself declares
+// makes the number falsifiable: FloxBar gained close_reason at 3, so a header
+// that has the field and calls itself 2 is describing a struct it does not
+// have.
+template <typename T>
+concept FloxBarCarriesCloseReason = requires(T bar) { bar.close_reason; };
+
+TEST(CapiAbiVersion, TheNumberMovedWithTheStructShape)
+{
+  EXPECT_EQ(flox_capi_abi_version(), FLOX_CAPI_ABI_VERSION);
+  EXPECT_GT(flox_capi_abi_version(), 0u);
+
+  if constexpr (FloxBarCarriesCloseReason<FloxBar>)
+  {
+    EXPECT_GE(flox_capi_abi_version(), 3u)
+        << "FloxBar carries close_reason, which is the change ABI 3 names; a "
+           "library reporting "
+        << flox_capi_abi_version()
+        << " tells a consumer to read the struct it had before the field existed";
+  }
+  else
+  {
+    EXPECT_LT(flox_capi_abi_version(), 3u)
+        << "the header claims ABI 3 or later but FloxBar has no close_reason";
+  }
+}
