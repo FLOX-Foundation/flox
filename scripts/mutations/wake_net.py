@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Mutation harness for the wake-set tests after the nets became settable.
 
-The tests in tests/test_event_bus_wake_set.cpp push every safety net out to
+The tests in tests/test_event_bus_wake_set.cpp, tests/test_event_bus_park.cpp
+and venue/tests/test_venue_shard_wake_set.cpp push every safety net out to
 ten seconds and then require each wake-up inside a round's spin budget, so a
 wake-up that rides the net fails the round instead of failing a millisecond
 bound a loaded runner is free to miss. That only proves something if a
 broken wake path still makes the tests go red. Each mutation below removes
 one wake, rebuilds the test, and requires it to fail.
 
-Run from the repository root with a configured `build/` (FLOX_BUILD_TESTS=ON):
+Run from the repository root with a configured `build/` (FLOX_BUILD_TESTS=ON,
+FLOX_BUILD_VENUE=ON):
 
     python3 scripts/mutations/wake_net.py
 """
@@ -26,7 +28,7 @@ REPO = Path(__file__).resolve().parents[2]
 BUILD = REPO / "build"
 BUS = "include/flox/util/eventing/event_bus.h"
 SET = "include/flox/util/eventing/wake_set.h"
-TARGET = "test_event_bus_wake_set"
+TARGETS = ["test_event_bus_wake_set", "test_event_bus_park", "test_venue_shard_wake_set"]
 
 MUTATIONS = [
     (
@@ -61,25 +63,36 @@ def sha(path: Path) -> str:
 
 
 def rebuild() -> tuple[bool, bool]:
-    for o in glob.glob(str(BUILD / "**" / "CMakeFiles" / f"{TARGET}.dir" / "**" / "*.o"), recursive=True):
-        os.remove(o)
+    for t in TARGETS:
+        for o in glob.glob(str(BUILD / "**" / "CMakeFiles" / f"{t}.dir" / "**" / "*.o"), recursive=True):
+            os.remove(o)
     r = subprocess.run(
-        ["cmake", "--build", str(BUILD), "-j4", "--target", TARGET],
+        ["cmake", "--build", str(BUILD), "-j4", "--target", *TARGETS],
         cwd=REPO, capture_output=True, text=True, timeout=3600,
     )
     return r.returncode == 0, "Building CXX" in r.stdout
 
 
-def run() -> str:
-    exe = BUILD / "tests" / TARGET
-    if not exe.exists():
+def run_one(target: str) -> str:
+    exes = [p for p in BUILD.rglob(target) if p.is_file() and os.access(p, os.X_OK)]
+    if not exes:
         return "NOBIN"
     try:
-        r = subprocess.run([str(exe)], cwd=REPO, capture_output=True, text=True, timeout=600,
+        r = subprocess.run([str(exes[0])], cwd=REPO, capture_output=True, text=True, timeout=900,
                            env=dict(os.environ, FLOX_REPO_ROOT=str(REPO)))
     except subprocess.TimeoutExpired:
         return "TIMEOUT"
     return "GREEN" if r.returncode == 0 else "RED"
+
+
+def run() -> str:
+    # RED when any of the three suites goes red: each mutation removes a wake
+    # every suite depends on.
+    results = {t: run_one(t) for t in TARGETS}
+    summary = " / ".join(f"{t}:{r}" for t, r in results.items())
+    if all(r == "GREEN" for r in results.values()):
+        return "GREEN"
+    return "RED (" + summary + ")"
 
 
 def main() -> int:
@@ -107,7 +120,7 @@ def main() -> int:
     print("\n=== TABLE ===")
     for name, result in rows:
         print(f"{name:<80} {result}")
-    killed = sum(1 for n, r in rows[:-1] if r == "RED" and "equivalent" not in n)
+    killed = sum(1 for n, r in rows[:-1] if r.startswith("RED") and "equivalent" not in n)
     expected = sum(1 for n, *_ in MUTATIONS if "equivalent" not in n)
     print(f"\n{killed}/{expected} non-equivalent mutations red; control: {control}")
     return 0 if killed == expected and control == "GREEN" else 1
