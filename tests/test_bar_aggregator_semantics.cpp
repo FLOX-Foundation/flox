@@ -456,6 +456,53 @@ TEST(RenkoGapBoundTest, TheCapIsDocumentedAndTheRemainderIsMarked)
   EXPECT_EQ(gapBars, 1u) << "only the bar that absorbs the remainder carries Gap";
   EXPECT_EQ(thresholdBars, result.size() - 1) << "every walked brick is an ordinary close";
 }
+
+// The bound is a published number, not just "some constant":
+// docs/explanation/bar-types.md states 1024 bars per trade, and a consumer
+// sizing a buffer or a downstream queue against that line has to be right.
+// "At most kMaxGapBricks" is true for any value the constant happens to hold,
+// so it is pinned here against the literal the documentation carries, and the
+// walk is pinned against the number of bars it actually publishes.
+//
+// Brick size 0.01 and a jump from 1.00 to 31.00 spans exactly 3000 bricks,
+// well past the bound. The budget spent is exactly kMaxGapBricks: the brick
+// that was forming closes at 1.01, 1022 synthesized bricks walk the grid on
+// to 11.23, and the last bar absorbs the whole remaining 11.23 -> 31.00 in
+// one piece, marked Gap -- 1 + 1022 + 1 = 1024 bars from the one trade.
+TEST(RenkoGapBoundTest, TheBoundIsTheDocumentedNumberAndIsSpentExactly)
+{
+  EXPECT_EQ(RenkoBarPolicy::kMaxGapBricks, 1024u)
+      << "docs/explanation/bar-types.md publishes this number";
+
+  std::vector<Bar> result;
+  BarBus bus;
+  bus.enableDrainOnStop();
+  RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(0.01), &bus);
+  Collector strat(result);
+  bus.subscribe(&strat);
+  bus.start();
+  aggregator.start();
+
+  aggregator.onTrade(makeTrade(1.0, 1.0, 0));
+  aggregator.onTrade(makeTrade(31.0, 1.0, 1));  // 3000 brick widths
+  bus.stop();
+
+  ASSERT_EQ(result.size(), 1024u) << "one trade spends the whole budget and no more";
+  EXPECT_EQ(result.size(), RenkoBarPolicy::kMaxGapBricks);
+
+  EXPECT_EQ(result[0].open, Price::fromDouble(1.0));
+  EXPECT_EQ(result[0].close, Price::fromDouble(1.01));
+  EXPECT_EQ(result[0].reason, BarCloseReason::Threshold);
+
+  // The last walked brick before the absorbing one closes on the 1023rd
+  // boundary above the open: 1.00 + 1023 * 0.01.
+  EXPECT_EQ(result[1022].close, Price::fromDouble(11.23));
+  EXPECT_EQ(result[1022].reason, BarCloseReason::Threshold);
+
+  EXPECT_EQ(result[1023].open, Price::fromDouble(11.23));
+  EXPECT_EQ(result[1023].close, Price::fromDouble(31.0)) << "the remainder closes on the far boundary";
+  EXPECT_EQ(result[1023].reason, BarCloseReason::Gap);
+}
 #endif
 
 // The reason byte is ABI and on-disk format at once: MmapBarWriter writes Bar

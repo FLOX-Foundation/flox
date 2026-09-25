@@ -313,6 +313,19 @@ MUTATIONS: list[Mutation] = [
         gtest_filter="RenkoGapBoundTest.*:CapiBarAggregationTest.RenkoGapIsBounded",
     ),
     Mutation(
+        name="kmax-gap-bricks-lowered-to-1023",
+        why="the bound is moved by one, downwards, where nothing static_asserts against it: "
+            "a test that only says 'at most kMaxGapBricks' is true for whatever the constant "
+            "holds, so the number docs/explanation/bar-types.md publishes (1024, and the bar "
+            "count a consumer sizes a buffer against) can drift silently",
+        file=RENKO_H,
+        old="  static constexpr std::size_t kMaxGapBricks = 1024;",
+        new="  static constexpr std::size_t kMaxGapBricks = 1023;",
+        cpp_targets=[T_BAR, T_SEM],
+        needs_capi=True,
+        gtest_filter="RenkoGapBoundTest.*:CapiBarAggregationTest.RenkoGapIsBounded",
+    ),
+    Mutation(
         name="capped-remainder-not-absorbed-grid-desyncs",
         why="the brick left open after a capped gap is anchored at the last *walked* boundary "
             "instead of the true trade boundary, so the un-walked remainder is never absorbed "
