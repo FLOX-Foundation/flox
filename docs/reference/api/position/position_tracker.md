@@ -84,6 +84,7 @@ PositionTracker(SubscriberId id, CostBasisMethod method = CostBasisMethod::FIFO)
 Quantity getPosition(SymbolId symbol) const override;
 Price getAvgEntryPrice(SymbolId symbol) const;
 std::optional<Price> getAverageEntryPrice(SymbolId symbol) const override;
+PositionSnapshot positionSnapshot(SymbolId symbol) const override;
 Volume getRealizedPnl(SymbolId symbol) const;
 Volume getTotalRealizedPnl() const;
 size_t trackedSymbolCount() const;
@@ -93,8 +94,9 @@ CostBasisMethod method() const;
 `getAvgEntryPrice` returns a default-constructed `Price` on a flat position.
 `getAverageEntryPrice` is the `IPositionManager` override and returns nothing
 there instead, so a caller cannot mistake "flat" for "entered at zero". The
-strategy context reads the override; see
-[IPositionManager](abstract_position_manager.md).
+strategy context reads `positionSnapshot()`, which answers both under one
+acquisition of the mutex and one pass over the lots — the separate getters
+walk them once each. See [IPositionManager](abstract_position_manager.md).
 
 All position queries are read-only: querying a symbol that never traded does
 not create an entry for it. `_states` is a plain (non-`mutable`)

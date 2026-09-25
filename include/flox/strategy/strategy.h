@@ -508,12 +508,21 @@ class Strategy : public IStrategy
   // field is dead — initialised to zero and never updated — which silently
   // produces 0-trade backtests when a strategy guards entries on
   // `ctx.is_flat()` and exits on `ctx.is_long()`.
+  //
+  // One question per tick. This runs on every trade, every book update and
+  // every bar while the symbol lock is held, and it used to ask getPosition()
+  // and getAverageEntryPrice() separately: on the shipped trackers that is
+  // two acquisitions of the manager's mutex -- the one the execution thread
+  // also wants -- and two passes over the symbol's lots, on the market-data
+  // thread, for a pair of values that come from the same state under the same
+  // lock.
   void refreshPosition(SymbolContext& c, SymbolId sym) noexcept
   {
     if (_positionManager)
     {
-      c.position = _positionManager->getPosition(sym);
-      c.avgEntryPrice = _positionManager->getAverageEntryPrice(sym);
+      const PositionSnapshot snap = _positionManager->positionSnapshot(sym);
+      c.position = snap.position;
+      c.avgEntryPrice = snap.avgEntryPrice;
     }
   }
 

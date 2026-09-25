@@ -12724,6 +12724,11 @@
           "name": "PositionReconciler"
         },
         {
+          "header": "include/flox/position/abstract_position_manager.h",
+          "kind": "type",
+          "name": "PositionSnapshot"
+        },
+        {
           "header": "include/flox/position/position_tracker.h",
           "kind": "type",
           "name": "PositionState"
@@ -18120,6 +18125,11 @@
         },
         {
           "kind": "method",
+          "name": "positionSnapshot",
+          "parent": "IPositionManager"
+        },
+        {
+          "kind": "method",
           "name": "unrealizedPnl",
           "parent": "IPositionValuator"
         },
@@ -20265,6 +20275,11 @@
         },
         {
           "kind": "method",
+          "name": "blendedEntry",
+          "parent": "MultiModePositionTracker"
+        },
+        {
+          "kind": "method",
           "name": "closeAcrossSymbol",
           "parent": "MultiModePositionTracker"
         },
@@ -20396,6 +20411,11 @@
         {
           "kind": "method",
           "name": "openShort",
+          "parent": "MultiModePositionTracker"
+        },
+        {
+          "kind": "method",
+          "name": "positionSnapshot",
           "parent": "MultiModePositionTracker"
         },
         {
@@ -22230,6 +22250,11 @@
         },
         {
           "kind": "method",
+          "name": "snapshot",
+          "parent": "PositionState"
+        },
+        {
+          "kind": "method",
           "name": "addLot",
           "parent": "PositionTracker"
         },
@@ -22276,6 +22301,11 @@
         {
           "kind": "method",
           "name": "onOrderPartiallyFilled",
+          "parent": "PositionTracker"
+        },
+        {
+          "kind": "method",
+          "name": "positionSnapshot",
           "parent": "PositionTracker"
         },
         {

@@ -144,6 +144,35 @@ struct PositionState
     }
     return sum.average();
   }
+
+  // The two answers above from one pass over the lots. position() sums every
+  // lot and avgEntryPrice() walks them all again in double, so a caller that
+  // wants both -- which is every caller on the market-data path -- paid the
+  // traversal twice. The arithmetic is unchanged, so the numbers are the same
+  // ones the separate getters produce.
+  PositionSnapshot snapshot() const
+  {
+    int64_t totalRaw = 0;
+    double totalQty = 0.0;
+    double totalNotional = 0.0;
+    for (const auto& lot : lots)
+    {
+      totalRaw += lot.quantity.raw();
+      const double absQty = std::abs(lot.quantity.toDouble());
+      totalQty += absQty;
+      totalNotional += absQty * lot.price.toDouble();
+    }
+
+    PositionSnapshot snap;
+    snap.position = Quantity::fromRaw(totalRaw);
+    // Nothing when flat, for the same reason getAverageEntryPrice() reports
+    // nothing: there is no entry price to report and zero would read as one.
+    if (totalRaw != 0 && totalQty != 0.0)
+    {
+      snap.avgEntryPrice = Price::fromDouble(totalNotional / totalQty);
+    }
+    return snap;
+  }
 };
 
 class PositionTracker : public IPositionManager
@@ -182,6 +211,13 @@ class PositionTracker : public IPositionManager
       return std::nullopt;
     }
     return state.avgEntryPrice();
+  }
+
+  // One lock, one traversal, both answers.
+  PositionSnapshot positionSnapshot(SymbolId symbol) const override
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _states[symbol].snapshot();
   }
 
   // Money, not a price: a quantity times a price difference is a notional, and
