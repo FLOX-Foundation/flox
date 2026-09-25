@@ -170,7 +170,7 @@ MIT License
 
 # Language bindings
 
-All bindings expose the same core model: strategy callbacks, order emission, position queries. The API shape is the same across languages.
+All bindings expose the same core model: strategy callbacks, order emission, position queries. What each one carries around that model differs, and the table below says where.
 
 | Language | Guide | Reference |
 |---|---|---|
@@ -179,6 +179,22 @@ All bindings expose the same core model: strategy callbacks, order emission, pos
 | Codon | [Codon](codon.md) | [API reference](../reference/codon/index.md) |
 | JavaScript (embedded) | [JavaScript](javascript.md) | [API reference](../reference/quickjs/index.md) |
 | C API | [C API](capi.md) | [reference](../reference/api/capi/flox_capi.md) |
+
+## What each binding carries
+
+| Capability | Python | Node | Codon | JavaScript (QuickJS) |
+|---|---|---|---|---|
+| `Strategy` callbacks — trade, book, bar | yes | yes | yes | yes |
+| `BacktestRunner` — event-driven replay (`run_csv`, `run_tape`, `run_ohlcv`, `run_bars`) | yes | yes | yes | no |
+| `Engine` + `SignalBuilder` — backtest a pre-built signal list | yes | yes | yes | yes |
+| `SimulatedExecutor`, `BacktestResult` | yes | yes | yes | yes |
+| `DataReader`, `DataWriter` | yes | yes | yes | yes |
+| Bar aggregators — time, tick, volume, range, Renko, Heikin-Ashi | yes | yes | yes | yes |
+
+The embedded JavaScript binding has no `BacktestRunner`: the event-driven
+replay entry points are unreachable from QuickJS, and a strategy backtests
+there by building a signal list and running it through `Engine`. Everything
+else in the table is reachable from all four.
 
 ## Which one to use
 
