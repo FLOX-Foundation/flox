@@ -897,7 +897,10 @@ jobs:
     # ThreadSanitizer stay off this job: ASan leak detection is unsupported
     # on Darwin (silently ignored) and TSan is covered on Linux already, so
     # only UBSan is worth the macOS runner cost here.
-    timeout-minutes: 30
+    # Observed: about 30 min on a cold cache since the test suite grew past
+    # 320 binaries (the cap cancelled the job in the middle of linking), so
+    # 45 leaves a margin, as for linux-gcc and linux-clang.
+    timeout-minutes: 45
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # ccache defaults to comparing the compiler binary's mtime, and
