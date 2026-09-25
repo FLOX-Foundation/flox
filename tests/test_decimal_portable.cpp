@@ -165,6 +165,11 @@ TEST(DecimalOverflow, ScalarDivideByMinusOneTripsTheAssertAtTheBoundaryWithScale
   EXPECT_EQ((Quantity::fromRaw(opaque(kMax)) / opaque(-1)).raw(), kMin + 1);
 }
 
+TEST(DecimalOverflow, SubtractingFromAZeroMinuendTripsTheAssertWithScaleChecksOn)
+{
+  EXPECT_DEATH({ (void)(Volume::fromRaw(0) - Volume::fromRaw(kMin)); }, "overflow");
+}
+
 #else
 
 TEST(DecimalOverflow, MinusEqualsSaturatesInsteadOfWrapping)
@@ -187,6 +192,12 @@ TEST(DecimalOverflow, BinaryMinusSaturatesInsteadOfWrapping)
 {
   EXPECT_EQ((Volume::fromRaw(kMin + 3) - Volume::fromRaw(100)).raw(), kMin);
   EXPECT_EQ((Volume::fromRaw(kMax - 3) - Volume::fromRaw(-100)).raw(), kMax);
+
+  // The minuend is exactly zero, which is the threshold the saturation reads
+  // its direction from: zero counts as non-negative, so 0 - INT64_MIN
+  // saturates upward. Every other overflowing subtraction here has a minuend
+  // strictly either side of it.
+  EXPECT_EQ((Volume::fromRaw(0) - Volume::fromRaw(kMin)).raw(), kMax);
 }
 
 TEST(DecimalOverflow, ScalarMultiplySaturatesOnBothSides)
@@ -207,6 +218,53 @@ TEST(DecimalOverflow, ScalarDivideByMinusOneSaturatesAtTheBoundary)
 }
 
 #endif
+
+// Scalar division past its two guards.
+//
+// Both existing tests of Decimal / int64_t sit on a guard -- x == 0 and
+// x == -1 -- and the tail that actually divides was never checked against a
+// known quotient. Swap its `/` for a `*` and every assertion in this file
+// still passes, because nothing asserts a value a multiplication could not
+// also have produced. A divisor that does not divide evenly is what tells
+// the two apart, and the sign of the quotient has to be right on all four
+// sign combinations: this operator truncates toward zero.
+TEST(DecimalOverflow, ScalarDivideIsExactOnEverySignCombination)
+{
+  EXPECT_EQ((Quantity::fromRaw(opaque(10)) / opaque(3)).raw(), 3);
+  EXPECT_EQ((Quantity::fromRaw(opaque(-10)) / opaque(3)).raw(), -3);
+  EXPECT_EQ((Quantity::fromRaw(opaque(10)) / opaque(-3)).raw(), -3);
+  EXPECT_EQ((Quantity::fromRaw(opaque(-10)) / opaque(-3)).raw(), 3);
+
+  // A quotient far enough from its dividend that no rounding rule could
+  // reach it, and a divisor above 1 in both directions.
+  EXPECT_EQ((Quantity::fromRaw(opaque(1'000'000'007LL)) / opaque(7)).raw(), 142'857'143LL);
+  EXPECT_EQ((Quantity::fromRaw(opaque(-1'000'000'007LL)) / opaque(7)).raw(), -142'857'143LL);
+
+  // Dividing by 1 is the one divisor a multiply agrees with; it still has to
+  // be the identity.
+  EXPECT_EQ((Quantity::fromRaw(opaque(kMax)) / opaque(1)).raw(), kMax);
+  EXPECT_EQ((Quantity::fromRaw(opaque(kMin)) / opaque(1)).raw(), kMin);
+}
+
+// checkedMulI64's overflow test is `lo > limit`, and the limit is one larger
+// on the negative side (INT64_MIN has no positive twin). These are the
+// largest products that are NOT overflows -- the smallest that are have their
+// own tests above -- and the negative ones also run the two's-complement
+// negation of the low word, which nothing else here reaches: every other
+// negative scalar multiply in this file saturates before it gets there.
+TEST(DecimalOverflow, ScalarMultiplyIsExactAtTheLastValueBeforeTheLimit)
+{
+  EXPECT_EQ((Quantity::fromRaw(opaque(kMax)) * opaque(1)).raw(), kMax);
+  EXPECT_EQ((opaque(1) * Quantity::fromRaw(opaque(kMax))).raw(), kMax);
+  EXPECT_EQ((Quantity::fromRaw(opaque(kMin)) * opaque(1)).raw(), kMin);
+  EXPECT_EQ((opaque(1) * Quantity::fromRaw(opaque(kMin))).raw(), kMin);
+  EXPECT_EQ((Quantity::fromRaw(opaque(kMin + 1)) * opaque(-1)).raw(), kMax);
+
+  EXPECT_EQ((Quantity::fromRaw(opaque(-3)) * opaque(5)).raw(), -15);
+  EXPECT_EQ((opaque(5) * Quantity::fromRaw(opaque(-3))).raw(), -15);
+  EXPECT_EQ((Quantity::fromRaw(opaque(3)) * opaque(-5)).raw(), -15);
+  EXPECT_EQ((Quantity::fromRaw(opaque(-3)) * opaque(-5)).raw(), 15);
+}
 
 TEST(DecimalOverflow, OrdinaryValuesAreUntouchedByTheChecks)
 {

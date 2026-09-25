@@ -41,10 +41,13 @@ BUILD_TIMEOUT = 900
 TEST_TIMEOUT = 120
 
 DECIMAL = "include/flox/util/base/decimal.h"
+SCALE_CHECK = "include/flox/util/base/scale_check.h"
 BOOK = "include/flox/book/nlevel_order_book.h"
 
 NATIVE = "test_decimal_portable"
 FORCED = "test_decimal_portable_forced"
+PLAIN = "test_decimal"
+MULDIV = "test_fixed_point_muldiv"
 
 
 @dataclass
@@ -174,6 +177,116 @@ MUTATIONS: list[Mutation] = [
         new="Volume::fromRaw(static_cast<int64_t>(notionalRaw2 / Volume::Scale))};",
         target=NATIVE,
         test="OrderBookNotional.ADeepBidConsumeSaturatesInsteadOfGoingNegative",
+        occurrence=2,
+        expected_occurrences=2,
+    ),
+    # --- Added after a mull run over decimal.h / scale_check.h. -------------
+    #
+    # The mutations above were written by hand from the fixes they guard, and
+    # they all mutate the same thing: whether the overflow check still runs.
+    # An automatic run over the same two headers found a second bug class on
+    # the very same lines -- the ordinary arithmetic under the check, and the
+    # comparisons at their exact thresholds -- which nobody thinks to break by
+    # hand precisely because it looks too simple to get wrong.
+    #
+    # Everything below is red in the build this script documents
+    # (RelWithDebInfo, so NDEBUG, so FLOX_SCALE_CHECKS off). The scale
+    # bookkeeping that operator+ / operator- / operator+= / operator-= do on a
+    # zero operand is NOT here: the runtime scale only exists with
+    # FLOX_SCALE_CHECKS on, so those mutations are equivalent in this build and
+    # only go red under -DCMAKE_BUILD_TYPE=Debug. Their tests live in
+    # tests/test_decimal.cpp behind #if FLOX_SCALE_CHECKS.
+    Mutation(
+        name="decimal-scalar-divide-multiplies-instead",
+        why="swaps the / for a * in the tail of Decimal / int64_t, past both of its guards",
+        file=DECIMAL,
+        old="return withScale(_raw / x, scale());",
+        new="return withScale(_raw * x, scale());",
+        target=NATIVE,
+        test="DecimalOverflow.ScalarDivideIsExactOnEverySignCombination",
+    ),
+    Mutation(
+        name="decimal-less-than-includes-equal",
+        why="widens operator< to <=, which only shows on two equal values",
+        file=DECIMAL,
+        old="constexpr bool operator<(const Decimal& other) const { return _raw < other._raw; }",
+        new="constexpr bool operator<(const Decimal& other) const { return _raw <= other._raw; }",
+        target=PLAIN,
+        test="DecimalTest.ComparisonOperatorsAtTheExactThreshold",
+    ),
+    Mutation(
+        name="decimal-greater-than-includes-equal",
+        why="widens operator> to >=, the same blind spot on the other side",
+        file=DECIMAL,
+        old="constexpr bool operator>(const Decimal& other) const { return _raw > other._raw; }",
+        new="constexpr bool operator>(const Decimal& other) const { return _raw >= other._raw; }",
+        target=PLAIN,
+        test="DecimalTest.ComparisonOperatorsAtTheExactThreshold",
+    ),
+    Mutation(
+        name="decimal-less-equal-excludes-equal",
+        why="narrows operator<= to <, so an equal price stops counting as within a limit",
+        file=DECIMAL,
+        old="constexpr bool operator<=(const Decimal& other) const { return _raw <= other._raw; }",
+        new="constexpr bool operator<=(const Decimal& other) const { return _raw < other._raw; }",
+        target=PLAIN,
+        test="DecimalTest.ComparisonOperatorsAtTheExactThreshold",
+    ),
+    Mutation(
+        name="decimal-greater-equal-excludes-equal",
+        why="narrows operator>= to >, the same on the other side",
+        file=DECIMAL,
+        old="constexpr bool operator>=(const Decimal& other) const { return _raw >= other._raw; }",
+        new="constexpr bool operator>=(const Decimal& other) const { return _raw > other._raw; }",
+        target=PLAIN,
+        test="DecimalTest.ComparisonOperatorsAtTheExactThreshold",
+    ),
+    Mutation(
+        name="scale-check-negate-low-word-subtracts",
+        why="breaks the two's-complement negation in checkedMulI64, so every negative scalar product that fits is off by two",
+        file=SCALE_CHECK,
+        old="return static_cast<int64_t>(~lo + 1u);",
+        new="return static_cast<int64_t>(~lo - 1u);",
+        target=NATIVE,
+        test="DecimalOverflow.ScalarMultiplyIsExactAtTheLastValueBeforeTheLimit",
+    ),
+    Mutation(
+        name="scale-check-subtract-saturation-sign-excludes-zero",
+        why="makes an overflowing subtraction from a zero minuend saturate downward instead of up",
+        file=SCALE_CHECK,
+        old="return a >= 0 ? (std::numeric_limits<int64_t>::max)() : (std::numeric_limits<int64_t>::min)();",
+        new="return a > 0 ? (std::numeric_limits<int64_t>::max)() : (std::numeric_limits<int64_t>::min)();",
+        target=NATIVE,
+        test="DecimalOverflow.BinaryMinusSaturatesInsteadOfWrapping",
+    ),
+    Mutation(
+        name="muldiv-high-word-guard-off-by-one",
+        why="lets a quotient of exactly 2^64 past the guard, where the shift-subtract answers 0 instead of saturating",
+        file=SCALE_CHECK,
+        old="  if (hi >= ud)",
+        new="  if (hi > ud)",
+        target=MULDIV,
+        test="FixedPointMulDiv.TheHighWordGuardTripsWhenItReachesTheDivisor",
+    ),
+    Mutation(
+        name="muldiv-zero-divisor-sign-native",
+        why="inverts the zero test that decides whether a division by zero saturates or returns zero",
+        file=SCALE_CHECK,
+        old="  const bool nonZeroProduct = (a != 0) && (b != 0);",
+        new="  const bool nonZeroProduct = (a == 0) && (b != 0);",
+        target=MULDIV,
+        test="FixedPointMulDiv.AZeroDivisorSaturatesWithTheProductsOwnSign",
+        occurrence=1,
+        expected_occurrences=2,
+    ),
+    Mutation(
+        name="muldiv-zero-divisor-sign-portable",
+        why="the same break in mulDivI64Portable, the copy no toolchain here compiles by default",
+        file=SCALE_CHECK,
+        old="  const bool nonZeroProduct = (a != 0) && (b != 0);",
+        new="  const bool nonZeroProduct = (a != 0) && (b == 0);",
+        target=MULDIV,
+        test="FixedPointMulDiv.AZeroDivisorSaturatesWithTheProductsOwnSign",
         occurrence=2,
         expected_occurrences=2,
     ),
