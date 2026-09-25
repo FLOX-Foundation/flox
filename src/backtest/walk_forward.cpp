@@ -74,6 +74,9 @@ struct GridSelection
 {
   std::vector<double> params;
   BacktestStats stats{};
+  // False when the factory declined every point of the grid, so `params` is
+  // not a winner but an empty default that must not be run.
+  bool selected = false;
 };
 
 // Evaluate every grid point on the train window and keep the best. Ranking is
@@ -87,7 +90,6 @@ GridSelection selectInSample(WalkForwardRunner::ParameterizedStrategyFactory& fa
                              std::size_t foldIndex, RunWindowFn&& runWindow)
 {
   GridSelection best;
-  bool haveBest = false;
   for (const auto& point : points)
   {
     IStrategy* strategy = factory(foldIndex, point);
@@ -96,11 +98,11 @@ GridSelection selectInSample(WalkForwardRunner::ParameterizedStrategyFactory& fa
       continue;
     }
     const BacktestStats stats = runWindow(strategy);
-    if (!haveBest || stats.netPnl > best.stats.netPnl)
+    if (!best.selected || stats.netPnl > best.stats.netPnl)
     {
       best.params = point;
       best.stats = stats;
-      haveBest = true;
+      best.selected = true;
     }
   }
   return best;
@@ -143,6 +145,42 @@ BacktestStats runWindowBars(const BacktestConfig& cfg,
       bars.begin() + static_cast<std::ptrdiff_t>(endBarExclusive));
   BacktestResult res = runner.runBars(slice);
   return res.computeStats();
+}
+
+// A fold whose every grid point the factory declined has no strategy to run
+// either window with. Report it the way the runner already reports a window
+// that executed nothing -- zeroed stats -- and keep walking: the folds after
+// it are unaffected.
+bool foldDeclined(WalkForwardFold& f, const GridSelection& winner)
+{
+  if (winner.selected)
+  {
+    return false;
+  }
+  FLOX_LOG_WARN(
+      "WalkForwardRunner: the strategy factory declined every grid "
+      "point of fold "
+      << f.foldIndex << "; the fold is reported empty");
+  f.trainStats = {};
+  f.testStats = {};
+  return true;
+}
+
+// The factory is asked once more for the winning point, and it is free to
+// decline that call too. Out of sample then ran nothing, so it reports the
+// same zeroed stats rather than a dereferenced null.
+bool testBuildDeclined(const WalkForwardFold& f, const IStrategy* strategy)
+{
+  if (strategy != nullptr)
+  {
+    return false;
+  }
+  FLOX_LOG_WARN(
+      "WalkForwardRunner: the strategy factory declined the winning "
+      "point of fold "
+      << f.foldIndex
+      << " out of sample; the test window is reported empty");
+  return true;
 }
 
 }  // namespace
@@ -193,13 +231,21 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
             return runWindow(_backtestConfig, strategy, bars, f.trainStartBar,
                              f.trainEndBar);
           });
+      if (foldDeclined(f, winner))
+      {
+        folds.push_back(f);
+        continue;
+      }
       f.trainStats = winner.stats;
 
       // Out of sample on the winning point, built fresh so the test window
       // starts from clean strategy state.
       IStrategy* testStrat = _factory(f.foldIndex, winner.params);
-      f.testStats = runWindow(_backtestConfig, testStrat, bars, f.testStartBar,
-                              f.testEndBar);
+      if (!testBuildDeclined(f, testStrat))
+      {
+        f.testStats = runWindow(_backtestConfig, testStrat, bars,
+                                f.testStartBar, f.testEndBar);
+      }
 
       folds.push_back(f);
     }
@@ -233,13 +279,21 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
             return runWindow(_backtestConfig, strategy, bars, f.trainStartBar,
                              f.trainEndBar);
           });
+      if (foldDeclined(f, winner))
+      {
+        folds.push_back(f);
+        continue;
+      }
       f.trainStats = winner.stats;
 
       // Out of sample on the winning point, built fresh so the test window
       // starts from clean strategy state.
       IStrategy* testStrat = _factory(f.foldIndex, winner.params);
-      f.testStats = runWindow(_backtestConfig, testStrat, bars, f.testStartBar,
-                              f.testEndBar);
+      if (!testBuildDeclined(f, testStrat))
+      {
+        f.testStats = runWindow(_backtestConfig, testStrat, bars,
+                                f.testStartBar, f.testEndBar);
+      }
 
       folds.push_back(f);
     }
@@ -304,13 +358,21 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
             return runWindowBars(_backtestConfig, strategy, bars, f.trainStartBar,
                                  f.trainEndBar);
           });
+      if (foldDeclined(f, winner))
+      {
+        folds.push_back(f);
+        continue;
+      }
       f.trainStats = winner.stats;
 
       // Out of sample on the winning point, built fresh so the test window
       // starts from clean strategy state.
       IStrategy* testStrat = _factory(f.foldIndex, winner.params);
-      f.testStats = runWindowBars(_backtestConfig, testStrat, bars, f.testStartBar,
-                                  f.testEndBar);
+      if (!testBuildDeclined(f, testStrat))
+      {
+        f.testStats = runWindowBars(_backtestConfig, testStrat, bars,
+                                    f.testStartBar, f.testEndBar);
+      }
 
       folds.push_back(f);
     }
@@ -344,13 +406,21 @@ std::vector<WalkForwardFold> WalkForwardRunner::run(
             return runWindowBars(_backtestConfig, strategy, bars, f.trainStartBar,
                                  f.trainEndBar);
           });
+      if (foldDeclined(f, winner))
+      {
+        folds.push_back(f);
+        continue;
+      }
       f.trainStats = winner.stats;
 
       // Out of sample on the winning point, built fresh so the test window
       // starts from clean strategy state.
       IStrategy* testStrat = _factory(f.foldIndex, winner.params);
-      f.testStats = runWindowBars(_backtestConfig, testStrat, bars, f.testStartBar,
-                                  f.testEndBar);
+      if (!testBuildDeclined(f, testStrat))
+      {
+        f.testStats = runWindowBars(_backtestConfig, testStrat, bars,
+                                    f.testStartBar, f.testEndBar);
+      }
 
       folds.push_back(f);
     }

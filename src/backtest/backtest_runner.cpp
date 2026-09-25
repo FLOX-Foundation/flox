@@ -98,6 +98,14 @@ void BacktestRunner::advanceClocks(UnixNanos ns)
 
 void BacktestRunner::setStrategy(IStrategy* strategy)
 {
+  if (strategy == nullptr)
+  {
+    // Every other use of _strategy is already null-checked, so a runner with
+    // no strategy replays the data and reports an empty result. Refusing the
+    // null here keeps that behaviour instead of dereferencing it.
+    FLOX_LOG_ERROR("BacktestRunner: setStrategy(nullptr) ignored");
+    return;
+  }
   _strategy = strategy;
   strategy->setSignalHandler(this);
   // Without this wire `ctx.position` / `ctx.is_long()` / `ctx.is_flat()`

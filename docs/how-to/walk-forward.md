@@ -201,7 +201,9 @@ Points are ranked on `net_pnl` — what the window kept after fees — and a tie
 goes to the earlier grid point, so the selection is deterministic. The
 factory is called once per grid point on the train slice and once more with
 the winning point, so the out-of-sample run starts from clean strategy state.
-Returning `nullptr` skips a point.
+Returning `nullptr` skips a point; a fold whose every grid point the
+factory declines is reported empty — zeroed train and test stats and a
+warning naming the fold — and the folds after it still run.
 
 A factory that takes only a fold index keeps the older behaviour: one
 strategy per window, no search. Setting a grid alongside that shape is
