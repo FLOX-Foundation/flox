@@ -8,6 +8,7 @@
 
 #include <napi.h>
 
+#include "bindings_common.h"
 #include "flox/capi/flox_capi.h"
 
 #include <map>
@@ -113,7 +114,7 @@ class MultiFeedClockWrap : public Napi::ObjectWrap<MultiFeedClockWrap>
 
   Napi::Value Tick(const Napi::CallbackInfo& info)
   {
-    int64_t ts = info[0].As<Napi::Number>().Int64Value();
+    int64_t ts = toInt64Ns(info[0]);
     uint32_t sym = info[1].As<Napi::Number>().Uint32Value();
     uint8_t fired = flox_feed_clock_tick(_h, ts, sym);
     Napi::Object out = Napi::Object::New(info.Env());
@@ -127,8 +128,10 @@ class MultiFeedClockWrap : public Napi::ObjectWrap<MultiFeedClockWrap>
     {
       uint32_t s = flox_feed_clock_symbol_at(_h, i);
       std::string key = std::to_string(s);
-      lastTs.Set(key, Napi::Number::New(info.Env(), static_cast<double>(
-                                                        flox_feed_clock_last_seen_at(_h, i))));
+      // lastTsNs is a clock reading and has to survive at full width; a
+      // staleness is a difference of two of them, exact in a double below
+      // 104 days, and stays a Number.
+      lastTs.Set(key, Napi::BigInt::New(info.Env(), flox_feed_clock_last_seen_at(_h, i)));
       stale.Set(key, Napi::Number::New(info.Env(), static_cast<double>(
                                                        flox_feed_clock_staleness_at(_h, i))));
     }

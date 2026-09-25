@@ -2770,7 +2770,8 @@ export interface LiveQueueSnapshot {
   queueAheadEst: number;
   total: number;
   confidence: number;
-  lastUpdateNs: number;
+  /** Absolute nanosecond clock reading. */
+  lastUpdateNs: bigint;
   hiddenVolumeSeen: number;
 }
 
@@ -2785,15 +2786,18 @@ export class LiveQueuePositionEstimator {
   setShrinkAttributionFactor(factor: number): void;
   setHiddenOrderPolicy(policy: HiddenOrderPolicyName): void;
   onOrderPlaced(symbol: number, side: 0 | 1, price: number, orderId: number,
-                orderQty: number, levelQtyNow: number, tsNs?: number): void;
-  onOrderCancelled(orderId: number, tsNs?: number): void;
-  onOrderFilled(orderId: number, cumulativeFill: number, tsNs?: number): void;
-  onTrade(symbol: number, price: number, qty: number, tsNs?: number): void;
-  onTradeWithFlag(symbol: number, price: number, qty: number, tsNs: number,
-                  isHidden: boolean): void;
+                orderQty: number, levelQtyNow: number,
+                tsNs?: number | bigint): void;
+  onOrderCancelled(orderId: number, tsNs?: number | bigint): void;
+  onOrderFilled(orderId: number, cumulativeFill: number,
+                tsNs?: number | bigint): void;
+  onTrade(symbol: number, price: number, qty: number,
+          tsNs?: number | bigint): void;
+  onTradeWithFlag(symbol: number, price: number, qty: number,
+                  tsNs: number | bigint, isHidden: boolean): void;
   onLevelUpdate(symbol: number, side: 0 | 1, price: number, newQty: number,
-                tsNs?: number): void;
-  snapshot(orderId: number, nowNs?: number): LiveQueueSnapshot | null;
+                tsNs?: number | bigint): void;
+  snapshot(orderId: number, nowNs?: number | bigint): LiveQueueSnapshot | null;
   trackedOrderCount(): number;
 }
 
@@ -2831,14 +2835,14 @@ export interface FeedClockSnapshot {
   fired: boolean;
   triggeredBy: number;
   /** Symbol id → last-seen exchange-ts in nanoseconds (0 if never). */
-  lastTsNs: Record<number, number>;
+  lastTsNs: Record<number, bigint>;
   /** Symbol id → staleness in nanoseconds at the moment of this tick. */
   stalenessNs: Record<number, number>;
 }
 
 export class MultiFeedClock {
   constructor(opts: MultiFeedClockOptions);
-  tick(tsNs: number, symbol: number): FeedClockSnapshot;
+  tick(tsNs: number | bigint, symbol: number): FeedClockSnapshot;
   reset(): void;
   symbolCount(): number;
 }
