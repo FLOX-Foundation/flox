@@ -7,7 +7,7 @@
  * license information.
  */
 
-// Tests for the C-API logger callback (T017).
+// Tests for the C-API logger callback.
 //
 // `flox_set_log_callback(cb, ud)` redirects FLOX_LOG_INFO/WARN/ERROR to
 // the user-supplied function. NULL restores the default ConsoleLogger.

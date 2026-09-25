@@ -7,7 +7,7 @@
  * license information.
  */
 
-// W15 composition tests. Each W15 subsystem has unit tests covering
+// Venue-stack composition tests. Each venue-stack subsystem has unit tests covering
 // its own surface; this file exercises the joint behaviour two or
 // more subsystems exhibit when they run on the same SimulatedExecutor
 // tick loop. The bugs caught here don't show up in isolated tests.
@@ -87,7 +87,7 @@ struct Capture
 // 1. STP-cancelled order produces no fill events — the trade didn't
 //    happen, so any downstream tracker (fees, position, etc.) sees
 //    the cancellation, not a phantom fill.
-TEST(W15Composition, StpCancelDoesNotEmitFill)
+TEST(VenueStackComposition, StpCancelDoesNotEmitFill)
 {
   SimulatedClock clock;
   SimulatedExecutor ex(clock);
@@ -111,7 +111,7 @@ TEST(W15Composition, StpCancelDoesNotEmitFill)
 // 2. LiquidationEngine routed through executor: a rate-limited
 //    executor still accepts liquidation orders (they bypass the
 //    user-strategy rate-limit envelope by design).
-TEST(W15Composition, LiquidationRoutesThroughRateLimitedExecutor)
+TEST(VenueStackComposition, LiquidationRoutesThroughRateLimitedExecutor)
 {
   SimulatedClock clock;
   SimulatedExecutor ex(clock);
@@ -147,7 +147,7 @@ TEST(W15Composition, LiquidationRoutesThroughRateLimitedExecutor)
 }
 
 // 3. Bracket entry queued during outage flushes on recovery.
-TEST(W15Composition, BracketEntrySubmittedDuringOutageFlushesOnRecovery)
+TEST(VenueStackComposition, BracketEntrySubmittedDuringOutageFlushesOnRecovery)
 {
   SimulatedClock clock;
   SimulatedExecutor ex(clock);
@@ -197,7 +197,7 @@ TEST(W15Composition, BracketEntrySubmittedDuringOutageFlushesOnRecovery)
 
 // 4. Multi-account STP + rate limit: the rate-limit policy ticks
 //    once per submit even when STP rejects the order.
-TEST(W15Composition, RateLimitChargesAccountOrderBeforeStpReject)
+TEST(VenueStackComposition, RateLimitChargesAccountOrderBeforeStpReject)
 {
   SimulatedClock clock;
   SimulatedExecutor ex(clock);
@@ -222,7 +222,7 @@ TEST(W15Composition, RateLimitChargesAccountOrderBeforeStpReject)
 
 // 5. FundingSchedule + venue downtime: funding still ticks during
 //    an outage (it's an internal clock event, not a venue action).
-TEST(W15Composition, FundingTicksDuringVenueOutage)
+TEST(VenueStackComposition, FundingTicksDuringVenueOutage)
 {
   SimulatedClock clock;
   SimulatedExecutor ex(clock);
@@ -243,10 +243,10 @@ TEST(W15Composition, FundingTicksDuringVenueOutage)
 
 // 6. Iceberg + pro-rata: a trade against a level with a single
 //    iceberg-style hidden order distributes pro-rata across visible
-//    orders. We don't have native iceberg yet (blocked on T029), so
-//    this test demonstrates the pure pro-rata distribution which the
-//    iceberg slice falls into once T029 lands.
-TEST(W15Composition, ProRataDistributesAcrossSeveralRestingOrders)
+//    orders. We don't have native iceberg support in pro-rata matching
+//    yet, so this test demonstrates the pure pro-rata distribution which
+//    the iceberg slice will fall into once that support lands.
+TEST(VenueStackComposition, ProRataDistributesAcrossSeveralRestingOrders)
 {
   SimulatedClock clock;
   SimulatedExecutor ex(clock);
@@ -272,7 +272,7 @@ TEST(W15Composition, ProRataDistributesAcrossSeveralRestingOrders)
 //    buffered. The gate's behaviour is asserted at the venue level:
 //    submits_allowed returns false during the window while
 //    cancels_allowed returns true.
-TEST(W15Composition, PartialOutageGatesSubmitsButPassesCancels)
+TEST(VenueStackComposition, PartialOutageGatesSubmitsButPassesCancels)
 {
   VenueAvailability va;
   va.scheduleOutageEx(/*start=*/1'000, /*duration=*/1'000,
@@ -288,7 +288,7 @@ TEST(W15Composition, PartialOutageGatesSubmitsButPassesCancels)
 // 8. Per-endpoint rate limit + STP: cancels for the rejected newest
 //    order do not double-bill the trading bucket on top of the
 //    submit. The submit cost is paid; the STP-driven reject doesn't.
-TEST(W15Composition, StpRejectDoesNotChargeCancelBucket)
+TEST(VenueStackComposition, StpRejectDoesNotChargeCancelBucket)
 {
   SimulatedClock clock;
   SimulatedExecutor ex(clock);

@@ -95,7 +95,7 @@ def test_test_order_helper_routes_samples_to_calibrator():
     assert cal.sample_count() == 1
 
 
-# === T048: scipy + analytical fit methods ===
+# === scipy + analytical fit methods ===
 
 def test_fit_default_method_is_grid():
     cal = flox_py.LiveQueueCalibrator()

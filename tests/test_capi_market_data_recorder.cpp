@@ -7,7 +7,7 @@
  * license information.
  */
 
-// Tests for the MarketDataRecorder hook (T020). Recorder receives every
+// Tests for the MarketDataRecorder hook. Recorder receives every
 // trade and book update fed into the runner, plus on_start / on_stop
 // lifecycle balanced against runner start/stop.
 

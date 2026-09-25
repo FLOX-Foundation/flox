@@ -109,8 +109,8 @@ class _StateWriter:
     The schema matches ``docs/reference/runtime-state-schema.md`` v1.
     For v1 of the sim engine, positions / pnl / open_orders are
     populated as empty arrays — the snapshot's value here is that it
-    *exists with valid schema*, so the read tools (post-T033) return
-    an actionable response instead of erroring. Deriving real
+    *exists with valid schema*, so the read tools always get back an
+    actionable response instead of erroring. Deriving real
     positions/PnL from the SimulatedExecutor fill stream is a
     follow-up — tracked separately.
     """

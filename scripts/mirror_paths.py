@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """The path list of the self-contained venue-core tree.
 
-T013's step 3 turns the venue module into a derived, read-only mirror: CI
-cuts the paths this script prints out of the monorepo (a `git subtree
-split`-shaped operation) and publishes them, with history, to a separate
-repository. Before that repository exists, the question the rehearsal in the
-task asks is simpler and answerable today: does a tree made of *only* these
-paths configure, build and pass the venue-lite profile's tests on its own,
-with nothing reached by relative `../` or by a stray absolute path back into
-the rest of this repo? `scripts/lite_standalone_check.sh` copies exactly this
-list into a scratch directory and runs the profile there -- so this script is
-the one place that says what "the mirror" means, and the checklist in
-.notes/tracks/W9-build-and-repo-hygiene/T013-venue-lite-profile.md points
-here rather than keeping its own copy.
+Cutting the venue core into its own repository turns the venue module into a
+derived, read-only mirror: CI cuts the paths this script prints out of the
+monorepo (a `git subtree split`-shaped operation) and publishes them, with
+history, to a separate repository. Before that repository exists, the
+question the rehearsal answers is simpler and answerable today: does a tree
+made of *only* these paths configure, build and pass the venue-lite profile's
+tests on its own, with nothing reached by relative `../` or by a stray
+absolute path back into the rest of this repo? `scripts/lite_standalone_check.sh`
+copies exactly this list into a scratch directory and runs the profile there
+-- so this script is the one place that says what "the mirror" means, and
+every other plan for that cut points here rather than keeping its own copy.
 
 Two closures are involved, not one:
 

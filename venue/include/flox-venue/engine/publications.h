@@ -68,7 +68,7 @@ class Publications
 
   // One cancel report. Every engine-side cancel names the order the same way:
   // the venue's id, the owner it was routed for, and the identifier the
-  // submitter itself chose. leavesQty/cumQty (T058) default to 0 for a
+  // submitter itself chose. leavesQty/cumQty default to 0 for a
   // caller with nothing better -- correct for a pending stop or an order
   // already gone by the time this runs, wrong for a resting order a caller
   // still holds; those callers pass the real RestingOrder-derived values.

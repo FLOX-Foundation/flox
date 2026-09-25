@@ -1,4 +1,4 @@
-# W15 venue-stack reproducibility
+# Venue-stack reproducibility
 
 Backtest results are only useful if they are reproducible. A
 strategy backtested today must produce the same numbers when
@@ -8,12 +8,12 @@ get made, then re-runs disagree and every prior result becomes
 suspect.
 
 This page is the audit trail for every potential
-non-determinism source introduced across W15 round 4 + 5 (28
-PRs), with the resolution for each.
+non-determinism source introduced across the venue-stack
+subsystems, with the resolution for each.
 
 ## Potential sources, audited
 
-### 1. Iceberg refresh jitter (T029, T041)
+### 1. Iceberg refresh jitter
 
 `SimulatedExecutor::IcebergState` carries a per-engine RNG used
 to randomise slice size when `setIcebergSizeRandomisationPct` is
@@ -24,7 +24,7 @@ both the executor and the strategy author control it.
 Default seed when none is set is a stable constant
 (`0xC0FFEEC0FFEEULL`).
 
-### 2. Cross-margin liquidation worst-leg ranking (T037)
+### 2. Cross-margin liquidation worst-leg ranking
 
 `LiquidationEngine::walkCrossAccount` ranks attached-account
 positions by uPnL (ascending) with a deterministic tie-breaker
@@ -35,7 +35,7 @@ sort are stable.
 ranking path; positions iterate from `account.positionsMut()`
 which is a `std::vector` — insertion-ordered.
 
-### 3. Mark-impact cascade (T038)
+### 3. Mark-impact cascade
 
 `LiquidationEngine::onMark` recomputes the mark from the post-fill
 book mid and recurses. The recursion bound `_maxCascadeDepth` is
@@ -45,7 +45,7 @@ configurable; mark recomputation is a pure function of
 **Resolution:** deterministic. Identical book state → identical
 recomputed mark → identical next-round behaviour.
 
-### 4. Cross-account ADL candidate pool (T055)
+### 4. Cross-account ADL candidate pool
 
 `runInsuranceAndAdlPhase` builds a `std::vector<AdlCandidate>`
 from orphan `_positions` followed by every attached account's
@@ -58,14 +58,14 @@ per-account close indices does NOT affect ordering — it only
 batches erase-descending per account, and each account's per-erase
 order is determined by `std::sort` over its own indices.
 
-### 5. Funding settlement timestamps (T031, T047)
+### 5. Funding settlement timestamps
 
 `FundingSchedule::tick` walks settlement boundaries in
 `(lastTickNs, nowNs]` deterministically.
 
 **Resolution:** deterministic. No RNG; pure timer arithmetic.
 
-### 6. Rate-limit policy (T022, T049)
+### 6. Rate-limit policy
 
 `RateLimitPolicy::tryConsume` checks bucket capacities against a
 deterministic clock. Ban state is recorded with the timestamp of
@@ -73,7 +73,7 @@ the triggering action.
 
 **Resolution:** deterministic given identical input action stream.
 
-### 7. Venue-availability outage policy (T023, T046)
+### 7. Venue-availability outage policy
 
 `VenueAvailability` supports scheduled + random outages. Random
 mode uses a seeded RNG; scheduled mode is purely table-driven.
@@ -82,7 +82,7 @@ mode uses a seeded RNG; scheduled mode is purely table-driven.
 in `auto_random_outages` mode unless the seed is fixed (caller's
 responsibility).
 
-### 8. 30-day rolling notional eviction (T037, T059)
+### 8. 30-day rolling notional eviction
 
 `Account::evictExpired` and `FeeSchedule::evictExpired` evict
 fills with `tsNs <= cutoff`. Comparison is `<=` (deterministic

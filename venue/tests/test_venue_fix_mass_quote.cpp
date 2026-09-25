@@ -7,7 +7,7 @@
  * license information.
  *
  * FIX MassQuote (35=i) / QuoteCancel (35=Z) / QuoteStatusReport (35=AI) --
- * T063: the FIX perimeter gained a decoder for a maker's whole ladder on one
+ * The FIX perimeter gained a decoder for a maker's whole ladder on one
  * symbol, decoding to the SAME QuoteLadder command a non-FIX caller builds
  * directly (see flox-venue/messages.h, flox-venue/engine/quote_mmp.inl,
  * docs/venue/fix-quoting.md).

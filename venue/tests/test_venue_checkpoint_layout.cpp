@@ -275,7 +275,7 @@ const std::vector<std::string> kRecordedLayout = {
     "ListInstrument", "SetBands", "SetRiskLimits", "SetTriggerRef",
     "SetStpGroup", "SetStpGroup",            // matcher: firm groups, by account
     "SetAdmissionProfile",                   // credit: who may send what
-    "SetAccountRiskLimits",                  // credit: one account's own caps (W26-T064), after the
+    "SetAccountRiskLimits",                  // credit: one account's own caps, after the
                                              // profile that admits it and before anything it bounds
     "AdminCmd", "AdminCmd",                  // session: Halt, then CloseSession
     "RestoreFunding",                        // clearing: the calendar and the rate

@@ -7,7 +7,7 @@
  * license information.
  */
 
-// W28-T046: measures the wall-clock cost of a real native strategy's hook
+// Measures the wall-clock cost of a real native strategy's hook
 // body, end to end through Strategy::onBookUpdate() (the public entry point
 // that takes the per-symbol lock, applies the book update, and dispatches
 // to the protected onSymbolBook() override) -- i.e. exactly the span the
@@ -40,8 +40,8 @@ void fillSnapshot(BookUpdateEvent& ev, SymbolId sym, double bid, double ask)
 
 // Exposes the protected onSymbolBook() hook body directly, with the
 // surrounding lock / applyBookUpdate() / refreshPosition() machinery
-// (Strategy::onBookUpdate()) excluded -- isolating exactly the span T046
-// is asking about (the user hook itself), separate from the book-apply
+// (Strategy::onBookUpdate()) excluded -- isolating exactly the span this
+// benchmark measures (the user hook itself), separate from the book-apply
 // cost that stays inside the lock either way narrowing goes.
 class BenchPairsStrategy : public demo::PairsStrategy
 {
@@ -154,7 +154,7 @@ BENCHMARK(BM_PairsStrategyOnBookUpdate_ColdState);
 
 // The isolated hook body: onSymbolBook() alone, with the lock /
 // applyBookUpdate() / refreshPosition() machinery that always runs inside
-// Strategy's per-symbol lock excluded. This is T046's actual subject --
+// Strategy's per-symbol lock excluded. This is the actual subject being measured --
 // "how long does a typical hook run for" -- separate from the book-write
 // cost measured above, which narrowing the lock would not remove either
 // way.

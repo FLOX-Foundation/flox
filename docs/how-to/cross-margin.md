@@ -7,7 +7,7 @@ in isolation overstate liquidation risk for cross-margined
 portfolios (because cross has more shared cushion) and understate
 the systemic risk when one position drags the whole account.
 
-W15's `Account` type owns the shared state — equity, the position
+The venue-stack's `Account` type owns the shared state — equity, the position
 book across symbols, per-symbol mark prices, and a 30-day rolling
 notional counter — and plugs into `LiquidationEngine` and
 `FeeSchedule` so they evaluate at the account level instead of
@@ -86,7 +86,7 @@ mode, it evaluates the account-level maintenance-margin check
 (`equity + total_uPnL` vs `total_notional * mm_fraction`) and, when
 the account is underwater, closes the worst-PnL position first.
 
-Use `on_marks(...)` (T053) with the full set of current marks per
+Use `on_marks(...)` with the full set of current marks per
 tick — it updates every attached account's marks atomically before
 walking. The legacy single-symbol `on_mark(...)` is still
 available but is a footgun for multi-symbol accounts: forgetting

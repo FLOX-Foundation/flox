@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that node/index.d.ts class bodies cover every NAPI wrap method.
 
-T018 / T021 / T022 / T026 each introduced new NAPI InstanceMethod
+Past changes have introduced new NAPI InstanceMethod
 entries and silently left the d.ts class body behind. The
 check_dts_exports.py gate catches missing top-level exports but not
 missing methods inside an existing class body. This script closes that

@@ -4,7 +4,7 @@
 (`venue/include/flox-venue/fix_session.h`) decode a maker's whole ladder on
 one symbol from a single FIX message, the same `QuoteLadder` command a
 non-FIX caller builds directly (`venue/include/flox-venue/messages.h`,
-`venue/include/flox-venue/engine/quote_mmp.inl`). Before T063 the FIX
+`venue/include/flox-venue/engine/quote_mmp.inl`). Before MassQuote/QuoteCancel support was added, the FIX
 perimeter accepted `D`/`F`/`G` (order entry) only -- a market maker speaking
 FIX could not quote at all.
 

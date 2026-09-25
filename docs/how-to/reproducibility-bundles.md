@@ -17,7 +17,7 @@ bundle.tar
 │   └── strategy.py        # the user's strategy module
 ├── config/
 │   └── params.json        # runtime params (slippage, queue model, ...)
-├── tape/                  # the W14 tape this run drove against
+├── tape/                  # the tape this run drove against
 │   ├── manifest.json
 │   └── trades-*.bin
 ├── expected_output.json   # fill sequence, totals, trade count (legacy JSON summary)

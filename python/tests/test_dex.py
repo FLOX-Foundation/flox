@@ -62,7 +62,7 @@ def test_raydium_cp_fee():
 
 
 def test_guardrail_kills_the_footgun():
-    # The W1-suite bug: token0=USDC here; quoting a WETH amount the wrong way must raise,
+    # Regression: token0=USDC here; quoting a WETH amount the wrong way must raise,
     # not return a silent ~0.
     v3 = dex.UniswapV3(USDC, WETH, 1959100328691929984878240664321702, 2580696918646962643, "0.05%")
     # An unknown token raises.

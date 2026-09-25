@@ -111,7 +111,7 @@ from C import flox_liquidation_engine_mark_impact_weight(cobj) -> f64
 from C import flox_liquidation_engine_set_max_cascade_depth(cobj, u32)
 from C import flox_liquidation_engine_max_cascade_depth(cobj) -> u32
 
-# T037 — Account
+# Cross-margin account
 from C import flox_account_create(u64, f64) -> cobj
 from C import flox_account_destroy(cobj)
 from C import flox_account_id(cobj) -> u64
@@ -138,7 +138,7 @@ from C import flox_liquidation_engine_detach_account(cobj, u64)
 from C import flox_fee_schedule_bind_account(cobj, cobj)
 from C import flox_fee_schedule_clear_account_binding(cobj)
 
-# T052 — VenueStack
+# VenueStack
 from C import flox_venue_stack_create(u8, u64, f64) -> cobj
 from C import flox_venue_stack_destroy(cobj)
 from C import flox_venue_stack_executor(cobj) -> cobj

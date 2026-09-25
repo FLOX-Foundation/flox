@@ -542,7 +542,7 @@ MUTATIONS: list[Mutation] = [
         name="venue-executor-trigger-not-set",
         why="the isConditional block that arms Order::triggerPrice is deleted outright -- "
             "every stop/take-profit submitted through VenueExecutor carries a zero trigger "
-            "again and fires on the first print, the original W33 finding",
+            "again and fires on the first print, the original finding this fix corrected",
         kind="py",
         edits=[Edit(
             file=BARE_EXECUTOR_BINDINGS_H,

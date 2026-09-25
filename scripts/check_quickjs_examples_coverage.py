@@ -7,7 +7,7 @@ trace format) and were never added to the "Verify QuickJS runner" step of
 .github/workflows/ci.yml. Nothing broke: a QuickJS example needs no build
 registration, so there is no compile-time signal comparable to a missing
 add_codon_executable(...) call. The example just sat in the tree, present
-and never run, until this script started looking. This is T057/T058/T059's
+and never run, until this script started looking. This is the same
 class of defect (a file counted as coverage while nothing in CI executes
 it) recurring for the fourth time, here on the QuickJS side, and the fix
 mirrors scripts/check_codon_examples_coverage.py: the list of examples and

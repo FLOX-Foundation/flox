@@ -6,7 +6,7 @@ each declaration based on the nearest preceding `// === ... ===` comment block,
 and writes a complete flox_capi_spec.hpp with FLOX_EXPORT annotations on every
 function declaration.
 
-This is intentionally not a round-trippable import — it is run once at T014
+This is intentionally not a round-trippable import — it is run once
 to bootstrap the full-coverage spec. After that, the spec is the source of
 truth and changes go there directly.
 

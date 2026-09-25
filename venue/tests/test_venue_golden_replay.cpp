@@ -232,7 +232,7 @@ struct RunT
   std::vector<OutboundEvent> since;  // events of the last submit
   MatchingEngine<Book> eng;
   int64_t ts{1};
-  // W26-T065: the most events one command (or one tick) may produce. A
+  // The most events one command (or one tick) may produce. A
   // broken book that keeps the matcher spinning used to hang the corpus
   // until the test was killed, ten minutes later and with no scenario
   // named. Past the budget push() throws, and CorpusMatchesTheTable turns
@@ -633,7 +633,7 @@ struct Scenario
 // docs/venue/verification.md ("Golden replay, on both books").
 //
 // A LadderBook mutation at either of its two real-fill points (fillBest,
-// consumeById -- T058's coverage-gap note) changes RestingOrder::cumQty or
+// consumeById -- the LadderBook mutation-coverage gap noted below) changes RestingOrder::cumQty or
 // leaves on the LadderBook side only, so it reddens the LadderBook pass here
 // while the MatchingBook pass (and every existing unit test) stays green.
 template <class Book>
@@ -1046,7 +1046,7 @@ std::vector<Scenario> corpus()
                  return r.hashes();
                }});
 
-  // T058 coverage gap: an auction uncross fills a resting order PARTIALLY
+  // Coverage gap: an auction uncross fills a resting order PARTIALLY
   // (MatchingBook::consumeById, engine/session.inl's uncross loop -- a
   // different real-fill mutation point than the plain FIFO fillFront every
   // other scenario here exercises), and the residual is canceled afterward.
@@ -1220,7 +1220,7 @@ std::vector<Scenario> corpus()
                  return r.hashes();
                }});
 
-  // W26-T064: one account's own caps, tightened by a sequenced command,
+  // One account's own caps, tightened by a sequenced command,
   // refuse the orders the symbol's limits would admit -- and keep refusing
   // them after a checkpoint in the middle of the stream. The pre-snapshot
   // half sets the caps and shows both refusals (a size over the account's
@@ -1684,9 +1684,8 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
   // required to land on the SAME three numbers per scenario. This is what
   // catches a mutation at LadderBook's two real-fill points
   // (LadderBook::fillBest, LadderBook::consumeById) that the MatchingBook
-  // pass above cannot see by construction -- the gap T058 found and left
-  // open (see .notes/tracks/W26-venue-hardening/T058-fix-order-canceled-leaves-qty.md,
-  // "Mutation-coverage follow-up").
+  // pass above cannot see by construction -- the mutation-coverage gap the
+  // earlier leavesQty/cumQty fix found and left open, until this test closed it.
   for (const Scenario& s : corpus<LadderBook>())
   {
     const auto it = table.find(s.name);
@@ -1736,7 +1735,7 @@ TEST(VenueGoldenReplay, CorpusMatchesTheTable)
 // The golden table would catch a regression here again, but only on whichever
 // library the table was not recorded on. This does not care: it asserts the
 // property directly.
-// W26-T065: a command that produces more events than the budget is a failure
+// A command that produces more events than the budget is a failure
 // that names what was going on, not a hang the CI kills ten minutes later.
 TEST(VenueGoldenReplay, ACommandPastTheEventBudgetFailsInsteadOfHanging)
 {

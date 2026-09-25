@@ -208,7 +208,7 @@ TEST(LiquidationEngine, CannedProfileBinanceUmFutures)
   EXPECT_TRUE(e.adlEnabled());
 }
 
-// === T036: executor-routed liquidation ===
+// === Executor-routed liquidation ===
 
 namespace
 {
@@ -282,7 +282,7 @@ TEST(LiquidationEngine, ExecutorRoutedEmptyBookSkipsLiquidation)
 
 TEST(LiquidationEngine, DetachedExecutorPreservesFlatBpsBehaviour)
 {
-  // Default (no executor) → existing T032 semantics.
+  // Default (no executor) → existing flat-bps liquidation semantics.
   LiquidationEngine e;
   e.addTier(0.0, 0.005);
   e.setInsuranceFundCapital(1000.0);
@@ -295,7 +295,7 @@ TEST(LiquidationEngine, DetachedExecutorPreservesFlatBpsBehaviour)
   EXPECT_NEAR(out.insuranceFundDelta, -550.0, 1e-6);
 }
 
-// === T045: ADL ranking variants ===
+// === ADL ranking variants ===
 
 TEST(LiquidationEngine, AdlRankingDefaultsToPnlRatio)
 {
@@ -416,7 +416,7 @@ TEST(LiquidationEngine, BybitPresetUsesBybitAdlRanking)
   EXPECT_EQ(e.adlRanking(), AdlRanking::Bybit);
 }
 
-// === T039: cascade statistics ===
+// === Cascade statistics ===
 
 TEST(LiquidationEngine, StatsEmptyOnFreshEngine)
 {
@@ -492,7 +492,7 @@ TEST(LiquidationEngine, StatsResetClears)
   EXPECT_EQ(e.ticksToFirstAdl(), UINT64_MAX);
 }
 
-// === T038: mark-impact feedback + intra-tick cascades ===
+// === Mark-impact feedback + intra-tick cascades ===
 
 TEST(LiquidationEngine, MarkImpactDefaultsToNoneNoCascade)
 {

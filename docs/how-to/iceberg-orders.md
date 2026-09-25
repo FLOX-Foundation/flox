@@ -156,5 +156,5 @@ once the order is fully filled.
 - Refresh latency is a single venue-wide setting, not per-order.
   Most venues are instant; some inject 0.5-2ms between refresh and
   next-slice exposure.
-- Self-trade prevention (T025) and rate-limit policy (T022) apply
+- Self-trade prevention and rate-limit policy apply
   to native iceberg the same way they apply to limit orders.

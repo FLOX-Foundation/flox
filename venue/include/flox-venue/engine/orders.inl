@@ -97,7 +97,7 @@ bool MatchingEngine<Book>::onStop(const NewOrder& o)
   {
     expiry_.set(o.id, o.expiryNs);
   }
-  // T059: a pending stop has not triggered, so it has filled nothing -- cumQty
+  // A pending stop has not triggered, so it has filled nothing -- cumQty
   // is always 0.
   sink_(OrderAccepted{o.id, o.symbol, o.side, o.triggerPrice, o.quantity, false, Quantity{},
                       o.accountId, o.clientOrderId, Quantity{}});  // pending, not on book
@@ -182,7 +182,7 @@ void MatchingEngine<Book>::processTriggers()
       RestingOrder rro{agg->id, agg->accountId, agg->price, out.leaves, agg->side};
       rro.clientOrderId = agg->clientOrderId;
       rro.reduceOnly = agg->reduceOnly;
-      // T059: the triggered stop crossed as an aggressor before its residual
+      // The triggered stop crossed as an aggressor before its residual
       // rests -- out.filled is what it filled of itself. Stamped onto the
       // RestingOrder for the same reason as validate.inl's residualRests
       // branch: a later report on this order must not start its cumQty over
@@ -333,7 +333,7 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   // keeps postOnly: the order is the same order, and the submitter is still
   // reconciling against the name it chose.
   const uint64_t curClientOrderId = cur->clientOrderId;
-  // T059: the order's running cumQty from before this modify. A reduce-in-
+  // The order's running cumQty from before this modify. A reduce-in-
   // place never trades (unaffected); a re-enter starts a fresh cross() whose
   // own MatchOutcome::filled knows nothing about fills from the order's
   // earlier life, so this is added back onto every report the re-enter path
@@ -448,7 +448,7 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
   {
     // Self-trade prevention or a fill-time risk block killed the re-entering
     // order. Held slices stay reserved: their accept still has to settle.
-    // T059: out.filled is only what this re-cross filled; curCumQty is what
+    // out.filled is only what this re-cross filled; curCumQty is what
     // the order filled in its life BEFORE the modify -- both count toward
     // the order's real running total.
     releaseReservationExceptHeld(m.id);
@@ -464,7 +464,7 @@ void MatchingEngine<Book>::onModify(const ModifyOrder& m)
     mro.clientOrderId = curClientOrderId;
     mro.reduceOnly = re.reduceOnly;
     mro.postOnly = re.postOnly;
-    // T059: same reasoning as the residualCanceled branch above.
+    // Same reasoning as the residualCanceled branch above.
     mro.cumQty = curCumQty + out.filled;
     mro.lastLook = re.lastLook && cfg_.lastLookWindowNs.count() > 0;
     if (re.visibleQuantity.raw() > 0 && re.visibleQuantity < out.leaves)
@@ -521,7 +521,7 @@ void MatchingEngine<Book>::onCancel(const CancelOrder& c)
   const uint64_t restingAcct = ownerOf(c.id);
   const uint64_t stopAcct = stops_.accountOf(c.id);
   const uint64_t stopClOrd = stops_.clientOrderIdOf(c.id);
-  // Captured before stops_.cancel() below erases the entry (T058): a pending
+  // Captured before stops_.cancel() below erases the entry: a pending
   // stop never partially fills, so its full submitted quantity IS its
   // LeavesQty on this cancel.
   const Quantity stopQty = stops_.quantityOf(c.id);

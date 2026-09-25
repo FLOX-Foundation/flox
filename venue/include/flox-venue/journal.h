@@ -104,7 +104,7 @@ static_assert(std::variant_size_v<InboundCommand> == 37,
               "new InboundCommand alternative: extend expectedBodySize/appendDecoded and the "
               "blittable asserts above");
 
-// T057: every journaled/snapshot body is written as raw bytes (Journal::append
+// Every journaled/snapshot body is written as raw bytes (Journal::append
 // below), so any compiler-inserted alignment padding a struct above carries
 // would reach disk uninitialised. The fix is in messages.h, not here: each gap
 // the compiler would otherwise insert implicitly is instead an explicit
@@ -252,7 +252,7 @@ static_assert(sizeof(QuoteLadder) ==
 // head plus the rungs it names (quoteLadderBodySize), so the length of a
 // record is a property of the record and not only of its tag. Every other tag
 // is unchanged and still fixed-length.
-// 15/16 -> 17/18 (T058): RestoreOrder (tag unchanged) grows one field,
+// 15/16 -> 17/18: RestoreOrder (tag unchanged) grows one field,
 // cumQty -- the resting order's running fill total, restored so a cancel
 // reported after a recovery still carries its real FIX CumQty instead of
 // resetting to 0. Every other journaled body is unchanged and still
@@ -260,7 +260,7 @@ static_assert(sizeof(QuoteLadder) ==
 // one: 16 already names the scale-checked build's PREVIOUS format (see
 // "moves by two" in docs/venue/runtime.md), so the unchecked build's new
 // number cannot land on it without colliding with that older format.
-// 17/18 -> 19/20 (T059): RestoreHeld (tag unchanged) grows two fields,
+// 17/18 -> 19/20: RestoreHeld (tag unchanged) grows two fields,
 // makerCumQtyAtHold/takerCumQtyAtHold -- each leg's confirmed running fill
 // total as of the moment a last-look hold opened, restored so a hold that
 // resolves after a recovery still reports the real FIX CumQty on
@@ -268,7 +268,7 @@ static_assert(sizeof(QuoteLadder) ==
 // fully off the book, instead of resetting to 0. Every other journaled body
 // is unchanged and still fixed-length; only RestoreHeld's sizeof moved. Pair
 // moves by two, same reasoning as 15/16 -> 17/18.
-// 21/22 (W26-T064): a new journaled body, SetAccountRiskLimits (tag 36),
+// 21/22: a new journaled body, SetAccountRiskLimits (tag 36),
 // carried in the snapshot's config section. Every earlier body is unchanged;
 // the pair moves by two for the same reason 19/20 did.
 // 21/22 -> 23/24 (the snapshot round-trip fix): RestoreClOrdIds (tag unchanged) grows one field,
@@ -473,7 +473,7 @@ class Journal
           appendBytes(&stamp, sizeof(stamp));
           appendBytes(&tag, sizeof(tag));
           appendBytes(&len, sizeof(len));
-          // T057: every byte of v is real data, including what used to be
+          // Every byte of v is real data, including what used to be
           // implicit alignment padding -- messages.h now names those bytes as
           // explicit pad fields with their own default member initializer, so
           // v carries zeros there the same way it carries zeros in any other

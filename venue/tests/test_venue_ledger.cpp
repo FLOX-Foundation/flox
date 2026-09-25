@@ -361,7 +361,8 @@ void test_auction_settlement()
 
 // A leg with no reservation settles straight out of `available`, and that debit
 // can refuse. Crediting the counterparty anyway mints exactly the credited
-// amount -- the failure mode behind T028. This is the floor under EVERY such
+// amount -- the failure mode a self-trade-prevention cancel on a held maker
+// first surfaced. This is the floor under EVERY such
 // path, not just the one that was found: an order that reached the book before
 // a ledger was bound has no reservation, so its fill takes the unreserved
 // branch with an empty account behind it. Nothing may move, and the venue must

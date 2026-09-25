@@ -27,7 +27,7 @@ namespace flox
 // RateLimitedExecutor, a locally-rejected order emits no order event unless the
 // caller supplies an onReject callback (there is no listener chain on the
 // IRoutableExecutor decorator), and Replace is not charged (IRoutableExecutor
-// has only submit/cancel). Track completion in W25 before relying on it live.
+// has only submit/cancel). Track completion before relying on it live.
 //
 // Live-side rate-limit budgeter: venue quotas as a first-class resource
 // instead of a source of surprise rejects. Shares the quota core

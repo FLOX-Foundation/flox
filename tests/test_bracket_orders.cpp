@@ -159,7 +159,7 @@ TEST(BracketOrders, BracketStatusReturnsEmptyForUnknownId)
   EXPECT_EQ(st.state, BracketState::PENDING_ENTRY);
 }
 
-// === T040: child-arm modes ===
+// === Child-arm modes ===
 
 TEST(BracketOrders, OnFullFillModeIsDefault)
 {

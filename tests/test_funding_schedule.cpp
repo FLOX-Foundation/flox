@@ -133,7 +133,7 @@ TEST(FundingSchedule, CannedProfilesHaveCorrectIntervals)
   EXPECT_EQ(FundingSchedule::bitget_hourly().intervalNs(), HOUR);
 }
 
-// === T047: per-symbol tape ===
+// === Per-symbol tape ===
 
 TEST(FundingSchedule, TapeBySymbolPicksRatePerSymbolPerSettlement)
 {

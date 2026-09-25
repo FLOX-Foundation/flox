@@ -18,7 +18,7 @@
  *
  * Every number here is read off an engine that actually ran the hold cycle --
  * never a hand-built struct. An exporter wired to a sampler nobody calls
- * renders zeros, and zeros look exactly like a healthy venue (W26-T012).
+ * renders zeros, and zeros look exactly like a healthy venue.
  */
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"

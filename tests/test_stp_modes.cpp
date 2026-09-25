@@ -231,7 +231,7 @@ TEST(STPModes, SameSideNeverTriggers)
   EXPECT_EQ(cap.count(OrderEventStatus::REJECTED), 0u);
 }
 
-// === T044: multi-account STP ===
+// === Multi-account STP ===
 
 TEST(STPModes, DifferentAccountsDoNotTrigger)
 {
@@ -259,7 +259,7 @@ TEST(STPModes, DifferentAccountsDoNotTrigger)
 
 TEST(STPModes, SameAccountStillTriggers)
 {
-  // Same accountId — STP still fires (parity with existing T025 default).
+  // Same accountId — STP still fires (parity with the existing default STP behaviour).
   SimulatedClock clock;
   SimulatedExecutor exec(clock);
   exec.setQueueModel(QueueModel::TOB, 1);

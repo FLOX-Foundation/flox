@@ -29,7 +29,7 @@ grossValue, homeNotional, foreignNotional
 - linear: `public.bybit.com/trading/<SYMBOL>/<SYMBOL><YYYY-MM-DD>.csv.gz`
 - inverse: `public.bybit.com/trading/<SYMBOL>/<SYMBOL><YYYY-MM-DD>.csv.gz`
 
-The converter accepts the symbol verbatim; cross-exchange symbol normalisation is a `W5 connectors` concern, not an importer one. Each tape keys its own `(metadata.exchange, name)` so `MergedTapeReader` treats `binance:BTCUSDT` and `bybit:BTCUSDT` as distinct global symbols.
+The converter accepts the symbol verbatim; cross-exchange symbol normalisation is a connectors concern, not an importer one. Each tape keys its own `(metadata.exchange, name)` so `MergedTapeReader` treats `binance:BTCUSDT` and `bybit:BTCUSDT` as distinct global symbols.
 
 ### Example
 

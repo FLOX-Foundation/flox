@@ -176,7 +176,7 @@ TEST(ProRataMatching, EmptyLevelIgnored)
   EXPECT_TRUE(filled.empty());
 }
 
-// === T043: TOP_PRO_LMM + PRO_RATA_WITH_PRIORITY ===
+// === TOP_PRO_LMM + PRO_RATA_WITH_PRIORITY ===
 
 TEST(TopProLmm, TopGetsConfiguredShareThenProRataRest)
 {

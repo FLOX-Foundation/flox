@@ -189,7 +189,7 @@ class FromTapeTests(unittest.TestCase):
 
 
 class FromVenueStackTests(unittest.TestCase):
-    """T032: env routes orders through stack.executor(), reward
+    """The env routes orders through stack.executor(); reward
     reflects fees and funding via account equity, liquidation
     terminates the episode."""
 
@@ -230,7 +230,7 @@ class FromVenueStackTests(unittest.TestCase):
         self.assertGreaterEqual(stack.executor().fill_count, 1)
 
     def test_fee_deduction_matches_schedule(self) -> None:
-        """T032 acceptance — known fee on a single market fill shifts
+        """Acceptance — known fee on a single market fill shifts
         net reward by the expected delta. Buy 1 unit, then check the
         equity dropped by exactly the schedule's fee for that notional."""
         stack = self._stack()
@@ -286,7 +286,7 @@ class FromVenueStackTests(unittest.TestCase):
 
 
 class ContinuousActionTests(unittest.TestCase):
-    """T033: Box((3,)) action space — signed qty / price offset in
+    """Box((3,)) action space — signed qty / price offset in
     ticks / TIF flag — with market vs limit decode by offset==0 and
     out-of-bounds clipping (warning, not exception)."""
 
@@ -378,7 +378,7 @@ class ContinuousActionTests(unittest.TestCase):
 
 
 class OpenOrderObservationTests(unittest.TestCase):
-    """T034: per-open-order slots in the observation — qty remaining,
+    """Per-open-order slots in the observation — qty remaining,
     age, distance from latest price, queue position proxy."""
 
     def _stack(self):
@@ -489,7 +489,7 @@ class OpenOrderObservationTests(unittest.TestCase):
 
 
 class ObservationBuilderTests(unittest.TestCase):
-    """T035: standalone ObservationBuilder produces the same obs shape
+    """Standalone ObservationBuilder produces the same obs shape
     and semantics as FloxTradingEnv so a trained policy sees the same
     observation in env, paper, and live."""
 
@@ -601,7 +601,7 @@ class MakeRLPolicyTests(unittest.TestCase):
 
 
 class WalkForwardRLTests(unittest.TestCase):
-    """T037: WalkForwardRL harness — anchored / sliding folds, fresh
+    """WalkForwardRL harness — anchored / sliding folds, fresh
     VenueStack per fold, DSR-aware aggregate."""
 
     NS_PER_DAY = 86_400 * 1_000_000_000
@@ -736,7 +736,7 @@ class WalkForwardRLTests(unittest.TestCase):
 
 
 class MultiSymbolTests(unittest.TestCase):
-    """T036: Dict observation and action spaces over multiple tapes."""
+    """Dict observation and action spaces over multiple tapes."""
 
     def _stack(self):
         import flox_py

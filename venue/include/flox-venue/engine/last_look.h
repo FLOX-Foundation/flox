@@ -61,7 +61,7 @@ struct Held
   // submitter does.
   uint64_t makerClientOrderId{0};
   uint64_t takerClientOrderId{0};
-  // T059: each leg's CONFIRMED cumulative fill as of the moment this hold
+  // Each leg's CONFIRMED cumulative fill as of the moment this hold
   // opened -- the maker's RestingOrder::cumQty and the taker's running total
   // within its own crossing sweep, both read BEFORE this hold's own qty is
   // reserved out of the book (create()). FillHeld/FillRejected report the
@@ -279,7 +279,7 @@ class LastLook
     h.makerClientOrderId = maker.clientOrderId;
     h.takerClientOrderId = taker.clientOrderId;
     h.takerReduceOnly = taker.reduceOnly;
-    // T059: each leg's confirmed cumQty as of right now -- maker.cumQty is
+    // Each leg's confirmed cumQty as of right now -- maker.cumQty is
     // the RestingOrder's running total BEFORE this fill (the book has not
     // mutated it yet; that happens in the caller, after this call returns),
     // and takerCumSoFar is the caller's own running total for this sweep.
@@ -539,7 +539,7 @@ class LastLook
       {
         h = mix(h, x.takerClientOrderId);
       }
-      // T059: only when set, same guard as the client order ids above -- a
+      // Only when set, same guard as the client order ids above -- a
       // hold on a leg that never filled before it opened hashes as before.
       if (!x.makerCumQtyAtHold.isZero())
       {
@@ -614,7 +614,7 @@ class LastLook
       const Quantity makerLeaves =
           mk ? Quantity::fromRaw(mk->leaves.raw() + mk->hidden.raw()) : Quantity{};
       const Quantity makerDisp = mk ? mk->leaves : Quantity{};  // displayed peak, public feed
-      // T059: an accept confirms this fill, so the book's own optimistic
+      // An accept confirms this fill, so the book's own optimistic
       // cumQty bump at hold-creation time (fillBest, in matcher.h) is now
       // correct -- read it straight off the still-resting order. If the
       // maker left the book entirely, fall back to the snapshot taken when
@@ -632,21 +632,21 @@ class LastLook
       // heldQtyFor sums only the others. Hardcoding leaves=0/complete=true
       // here would fire the terminal report before a sibling hold or a
       // resting residual actually clears; hardcoding them false/0, as this
-      // used to, never fires it at all -- see T062.
+      // used to, never fires it at all.
       const RestingOrder* tk = host.findResting(h.taker);
       const Quantity takerRestLeaves =
           tk ? Quantity::fromRaw(tk->leaves.raw() + tk->hidden.raw()) : Quantity{};
       const Quantity takerLeaves =
           Quantity::fromRaw(takerRestLeaves.raw() + heldQtyFor(h.taker).raw());
       const Quantity takerDisp = tk ? tk->leaves : Quantity{};  // displayed peak, public feed
-      // T059: confirmed-before-this-hold (takerCumQtyAtHold) + this fill,
+      // Confirmed-before-this-hold (takerCumQtyAtHold) + this fill,
       // now confirmed (h.qty) + whatever a still-resting residual of the
       // SAME order id has filled separately since it started resting
       // (tk->cumQty; 0 when nothing rests). Does not see a SIBLING hold on
       // this taker that already resolved+accepted between this hold's
       // creation and now -- neither the sibling's fill nor this one flows
       // through the other's book entry, and nothing tracks a non-resting
-      // order's running total; the same class of honesty limit T058 already
+      // order's running total; the same class of honesty limit already
       // documented for the IOC-residual cancel case below.
       const Quantity takerCumAfter =
           h.takerCumQtyAtHold + h.qty + (tk ? tk->cumQty : Quantity{});
@@ -754,7 +754,7 @@ class LastLook
     if (auto ro = host.takeResting(h.maker); ro.has_value())
     {
       ro->leaves += h.qty;  // the returned slice was displayed when it was held
-      // T059: undo the book's own optimistic cumQty bump from hold creation
+      // Undo the book's own optimistic cumQty bump from hold creation
       // (fillBest ran before the maker's decision was known -- see Held's
       // comment). A reject means this hold's qty never traded, so it must
       // not count toward the order's running total. Relative, not an
@@ -778,7 +778,7 @@ class LastLook
       rebuilt.clientOrderId = h.makerClientOrderId;
       rebuilt.lastLook = true;
       rebuilt.reduceOnly = h.makerReduceOnly;
-      // T059: this hold took the order's entire remaining size, so its whole
+      // This hold took the order's entire remaining size, so its whole
       // history is exactly what it had filled before the hold opened --
       // nothing else could have touched it in between (it was off the book).
       rebuilt.cumQty = h.makerCumQtyAtHold;
@@ -812,7 +812,7 @@ class LastLook
       if (auto ro = host.takeResting(h.taker); ro.has_value())
       {
         ro->leaves += h.qty;  // combine with the already-resting remainder, tail requeue
-        // T059: this residual's own cumQty is untouched by this hold (a
+        // This residual's own cumQty is untouched by this hold (a
         // reject settles no trade); h.qty never rode through it, so nothing
         // to undo here, unlike the maker side above.
         if (!host.reinsertTail(ro->side, *ro))
@@ -836,7 +836,7 @@ class LastLook
         // would cross is refused before it reaches a maker, so no hold's
         // taker is ever post-only.
         rebuilt.reduceOnly = h.takerReduceOnly;
-        // T059: this hold held the taker's entire remaining size (nothing
+        // This hold held the taker's entire remaining size (nothing
         // else rested), so its life-to-date total is exactly what it had
         // confirmed before the hold opened -- the held qty itself never
         // traded (this is a reject).
@@ -864,9 +864,9 @@ class LastLook
                                 : (h.takerTif == TimeInForce::FOK)
                                     ? CancelReason::FillOrKillResidual
                                     : CancelReason::ImmediateOrCancelResidual;
-    // T059: h.qty is exactly the residual being killed (LeavesQty); cumQty
+    // h.qty is exactly the residual being killed (LeavesQty); cumQty
     // is now h.takerCumQtyAtHold -- the taker's confirmed total as of when
-    // this hold opened (T058 left this at 0, since Held did not carry the
+    // this hold opened (this used to default to 0, since Held did not carry the
     // value yet; see Held::takerCumQtyAtHold). Still understated if a
     // SIBLING hold on the same taker resolved+accepted in between (neither
     // fill flows through the other's bookkeeping) -- the same class of

@@ -365,8 +365,8 @@ TEST(EventBusWakeSet, OneThreadParksOnThreeBusesAndWakesFromAnyOfThem)
 // at its rings and it raising its hand: a publish landing there sees no
 // waiters, sends no wake-up, and -- if nothing follows it -- leaves the
 // driver asleep until the net expires. From outside, hitting a couple of
-// hundred nanoseconds inside another thread is luck, and T040 established
-// that a sweep across the window never lands in it reliably. So this test
+// hundred nanoseconds inside another thread is luck, and earlier measurement
+// established that a sweep across the window never lands in it reliably. So this test
 // publishes FROM that instant, through the set's probe.
 //
 // Each round does both halves of the contract in order. The wake publish

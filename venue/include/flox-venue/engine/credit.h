@@ -149,7 +149,7 @@ class Credit
       return RejectReason::None;  // no profile: everything permitted
     }
     const AdmissionProfile& p = it->second;
-    // DenyNewOrder (T063) is deliberately NOT checked here: admissionGate
+    // DenyNewOrder is deliberately NOT checked here: admissionGate
     // runs for every NewOrder onNew sees, including the synthetic legs a
     // Quote/QuoteLadder builds for itself (engine/quote.h), and a
     // quotes-only profile must deny exactly the client's OWN NewOrder
@@ -484,7 +484,7 @@ class Credit
     admission_ = m;
   }
 
-  // Per-account limits (W26-T064). A record carries the fields its mask
+  // Per-account limits. A record carries the fields its mask
   // names; the rest of the account's entry stays. An account with no entry
   // is bound by the symbol's limits alone.
   struct AccountLimits

@@ -152,7 +152,7 @@ void test_session_rate_limit_reject_echoes_client_order_id()
   // built from `echo` carries clientOrderId as the trailing field of the
   // encoded block through schema v8 (schema v4 appended it after `seq`; see
   // ClientOrderId.TheBinaryReportCarriesItWithoutDisplacingTheSequence for
-  // the same technique). Schema v9 (T058) appends `cumQty` after clOrdId, so
+  // the same technique). Schema v9 appends `cumQty` after clOrdId, so
   // clOrdId is now the second-to-last i64, not the last.
   const OutboundEvent ev{
       OrderRejected{echo.id, echo.symbol, RejectReason::RateLimited, s.account(), echo.clientOrderId}};

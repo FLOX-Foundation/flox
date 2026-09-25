@@ -679,7 +679,7 @@ extern "C"
   uint8_t flox_simulated_executor_bracket_state(FloxSimulatedExecutorHandle executor,
                                                 uint64_t bracket_id);
 
-  // Bracket child-arm policy (T040). 0=OnFullFill (default), 1=OnPartialFill.
+  // Bracket child-arm policy. 0=OnFullFill (default), 1=OnPartialFill.
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_set_bracket_child_arm_mode(
       FloxSimulatedExecutorHandle executor, uint8_t mode);
@@ -708,19 +708,19 @@ extern "C"
   int64_t flox_simulated_executor_iceberg_hidden_remaining_raw(
       FloxSimulatedExecutorHandle executor, uint64_t id);
 
-  // T041: per-refresh visible-slice size jitter as a fraction
+  // Per-refresh visible-slice size jitter as a fraction
   // (0.0 = deterministic, 0.10 = ±10% uniform). Default 0.
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_set_iceberg_size_randomisation_pct(
       FloxSimulatedExecutorHandle executor, double pct);
 
-  // T041: queue priority on refresh. 0=Back (default, T029 behaviour),
+  // Queue priority on refresh. 0=Back (default),
   // 1=Retain (CME options).
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_set_iceberg_priority_mode(
       FloxSimulatedExecutorHandle executor, uint8_t mode);
 
-  // T041: seed the size-jitter RNG for reproducible refresh
+  // Seed the size-jitter RNG for reproducible refresh
   // sequences. Default seed is fixed at construction time.
   FLOX_EXPORT(group = "simulated_executor")
   void flox_simulated_executor_set_iceberg_jitter_seed(
@@ -4578,7 +4578,7 @@ extern "C"
   uint32_t flox_liquidation_engine_on_mark(FloxLiquidationEngineHandle h,
                                            uint32_t symbol, double mark_price);
 
-  // T053: multi-symbol atomic mark update + walk. `symbols` and
+  // Multi-symbol atomic mark update + walk. `symbols` and
   // `prices` are parallel arrays of length `n`. `ts_ns` is recorded
   // on each account's mark for the stale-mark guard. Returns
   // aggregated liquidation count across all symbols walked.
@@ -4604,7 +4604,7 @@ extern "C"
   void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle h,
                                             FloxSimulatedExecutorHandle executor);
 
-  // T039: distribution-level cascade statistics. Each *_size returns
+  // Distribution-level cascade statistics. Each *_size returns
   // the vector size; *_copy copies up to `max` entries to caller's
   // buffer and returns the number copied. Use *_size first to size
   // the allocation.
@@ -4637,7 +4637,7 @@ extern "C"
   FLOX_EXPORT(group = "liquidation_engine")
   void flox_liquidation_engine_reset_stats(FloxLiquidationEngineHandle h);
 
-  // T038: mark-impact feedback. After liquidation fills, the engine
+  // Mark-impact feedback. After liquidation fills, the engine
   // recomputes the mark from the post-cascade book and may trigger
   // additional liquidations within the same on_mark call.
   //   model: 0=none (default), 1=book_anchored, 2=book_only.
@@ -4657,7 +4657,7 @@ extern "C"
   FLOX_EXPORT(group = "liquidation_engine")
   uint32_t flox_liquidation_engine_max_cascade_depth(FloxLiquidationEngineHandle h);
 
-  // ===== T037: Account — cross-margin shared state =====
+  // ===== Account — cross-margin shared state =====
   typedef void* FloxAccountHandle;
 
   FLOX_EXPORT(group = "account")
@@ -4684,7 +4684,7 @@ extern "C"
   FLOX_EXPORT(group = "account")
   void flox_account_open_position(FloxAccountHandle h, uint32_t symbol,
                                   double quantity, double entry_price);
-  // T054: open a position with an isolated-equity slice. Required
+  // Open a position with an isolated-equity slice. Required
   // when the account runs in MarginMode::Isolated; the slice backs
   // the position in the per-position MM check. Cross-mode accounts
   // ignore the slice.
@@ -4699,7 +4699,7 @@ extern "C"
 
   FLOX_EXPORT(group = "account")
   void flox_account_set_mark(FloxAccountHandle h, uint32_t symbol, double price);
-  // T053: set_mark with timestamp for stale-mark guard.
+  // set_mark with timestamp for stale-mark guard.
   FLOX_EXPORT(group = "account")
   void flox_account_set_mark_at(FloxAccountHandle h, uint32_t symbol,
                                 double price, int64_t ts_ns);
@@ -4717,7 +4717,7 @@ extern "C"
 
   FLOX_EXPORT(group = "account")
   void flox_account_record_fill(FloxAccountHandle h, int64_t ts_ns, double notional);
-  // T059: per-symbol fill recording. Same as record_fill but tags
+  // Per-symbol fill recording. Same as record_fill but tags
   // the fill with a symbol so rollingNotionalBySymbol30d can break
   // the aggregate down.
   FLOX_EXPORT(group = "account")
@@ -4755,7 +4755,7 @@ extern "C"
   FLOX_EXPORT(group = "fee_schedule")
   void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h);
 
-  // ===== T052: VenueStack — single-call venue-realistic backtest =====
+  // ===== VenueStack — single-call venue-realistic backtest =====
   // Each factory returns a fully-wired stack containing the
   // executor, account, liquidation engine, fee schedule, funding
   // schedule, rate-limit policy, and venue-availability instance.

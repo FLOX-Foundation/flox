@@ -1,7 +1,7 @@
 # Attribute hidden / iceberg flow correctly in queue estimation
 
 The proportional-shrink heuristic in
-`LiveQueuePositionEstimator` (T020) cannot distinguish three
+`LiveQueuePositionEstimator` cannot distinguish three
 sources of level shrinkage:
 
 1. Visible volume printed as a trade.
@@ -24,7 +24,7 @@ modes per estimator instance.
 
 | Mode                              | Behaviour                                                                                                                                                                       |
 |-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ignore` (default)                | Every trade deducts visible queue. Original T020 behaviour.                                                                                                                       |
+| `ignore` (default)                | Every trade deducts visible queue — the estimator's original behaviour.                                                                                                                       |
 | `trust_trade_flag`                | Caller passes `is_hidden` flag on the trade. Flagged trades do not deduct queue or feed the proportional-shrink path; instead they accumulate into `hidden_volume_seen`.            |
 | `infer_if_trade_exceeds_visible`  | When the reported trade volume exceeds the last-cached visible level total at that price, the excess is attributed to hidden flow; the visible portion deducts queue normally.    |
 

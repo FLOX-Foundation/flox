@@ -285,7 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Pass-through -I dir (repeatable)")
     pc.add_argument("--require-full-coverage", action="store_true",
                     help=("Fail when expected has functions absent from actual. "
-                          "Off by default during prototype; turned on in T014."))
+                          "Off by default during prototype; turned on once codegen is authoritative."))
     pc.set_defaults(func=_cmd_check)
 
     px = sub.add_parser("extract", help="Print IR as JSON (debug).")

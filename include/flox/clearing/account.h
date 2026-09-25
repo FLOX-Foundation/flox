@@ -40,7 +40,7 @@ enum class MarginMode : uint8_t
   Isolated = 1,
 };
 
-// Account-level state shared across W15 subsystems. Owns positions,
+// Account-level state shared across the venue-stack subsystems. Owns positions,
 // shared equity, per-symbol marks, and a 30-day rolling notional
 // counter that FeeSchedule can consume in place of its own internal
 // counter via bindAccount.
@@ -127,7 +127,7 @@ class Account
   // a mark are valued at entry price (zero uPnL).
   //
   // `tsNs` records the timestamp of the mark update; callers using
-  // the stale-mark guard (T053) must pass a real timestamp. The
+  // the stale-mark guard must pass a real timestamp. The
   // default 0 keeps backwards compatibility with callers that don't
   // care about staleness checks.
   void setMark(SymbolId symbol, Price price, int64_t tsNs = 0);

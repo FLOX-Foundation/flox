@@ -19,7 +19,7 @@ Markets use Bitget's native codes:
 
 The codes are awkward but they are what Bitget's own API uses, so
 the importer keeps them verbatim. Cross-exchange normalisation is a
-W5 connectors concern.
+connectors concern.
 
 URL layout per market on the public archive:
 

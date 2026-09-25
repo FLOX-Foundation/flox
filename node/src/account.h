@@ -1,4 +1,4 @@
-// node/src/account.h — Cross-margin Account state shared across W15 subsystems.
+// node/src/account.h — Cross-margin Account state shared across the venue-stack subsystems.
 
 #pragma once
 

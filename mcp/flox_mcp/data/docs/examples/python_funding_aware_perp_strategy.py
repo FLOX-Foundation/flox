@@ -6,7 +6,7 @@ funding settlements when computing PnL, or the backtest systematically
 underestimates the holding cost.
 
 Demonstrates:
-- VenueStack venue factory wires the FundingSchedule (T031/T047)
+- VenueStack venue factory wires the FundingSchedule
 - FundingSchedule.tick advances internal lastTickNs and emits payments
 - Each payment has sign based on (position_signed × rate)
 """

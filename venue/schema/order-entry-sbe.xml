@@ -81,7 +81,7 @@
   on one of them. Appended after `seq` on FillRejected, and after `takerSide`
   on FillHeld, so a version-6 reader skips it via blockLength on both.
 
-  Version 9 (T058): Canceled (13) gained trailing `leavesQty` and `cumQty`
+  Version 9: Canceled (13) gained trailing `leavesQty` and `cumQty`
   fields (QtyRaw each, sinceVersion="9"): the residual a cancel actually
   killed, and what the order filled before it. A reader that took LeavesQty
   off a terminal report (routine for an IOC/FOK residual) previously had no
@@ -96,7 +96,7 @@
   the last field on both. The C++ codec's seqOffsetIn has its own
   version-gated branch for it.
 
-  Version 10 (T059): the five remaining order-report templates that still
+  Version 10: the five remaining order-report templates that still
   lacked FIX 14 (CumQty) each gained a trailing `cumQty` field (QtyRaw,
   sinceVersion="10"), appended after each template's existing last field
   (`clOrdId`):

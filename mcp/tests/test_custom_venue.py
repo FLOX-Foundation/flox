@@ -1,4 +1,4 @@
-"""T067: assemble_custom_venue helper tests.
+"""assemble_custom_venue helper tests.
 
 Verifies the helper wires user-supplied subsystems into a usable
 venue stack (fees bound to account, account attached to

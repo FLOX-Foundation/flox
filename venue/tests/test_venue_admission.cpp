@@ -376,7 +376,7 @@ void run(const std::function<Book()>& mk, const char* label)
     eng.submit(InboundCommand{limit(4, Side::BUY, 99, 5, 7)});
     CHECK(eng.book().find(4) != nullptr);
   }
-  {  // W26-T064: one account's own fat-finger cap refuses that account and
+  {  // One account's own fat-finger cap refuses that account and
      // nobody else; the symbol's cap stays where it was.
     Cap cap;
     MatchingEngine<Book> eng(cfg(), cap.sink(), mk());

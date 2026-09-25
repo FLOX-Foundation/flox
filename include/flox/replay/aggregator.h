@@ -70,8 +70,7 @@ class IAggregator
   // observe windows that straddle worker boundaries. The merge of
   // such aggregators combines what each worker captured within its
   // share, so peaks / quantile observations on the boundary regions
-  // (≤ max(window_ns) per partition seam) may be under-counted. See
-  // the T020 tracker entry for the full discussion.
+  // (≤ max(window_ns) per partition seam) may be under-counted.
   virtual void merge(const IAggregator& other) = 0;
 
   // False for aggregators whose result depends on seeing the whole tape in

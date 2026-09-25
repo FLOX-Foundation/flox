@@ -10,7 +10,7 @@
 # equivalent of this example to check parity against -- quickjs/examples/
 # has no pairs-trading script, unlike sma_crossover.js -- so the driver
 # below is verified only against an independent hand-simulation of the
-# z-score logic (see the T058 PR description), not cross-binding.
+# z-score logic, not cross-binding.
 #
 # The driver moves leg1's book while leg2's stays fixed at a mid of
 # 100.0, so on_book_update's spread = mid1 - 100.0 is controlled

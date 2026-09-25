@@ -6,9 +6,9 @@ limits, venue availability) is wired with venue-realistic defaults in
 a single `flox.VenueStack.binance_um_futures(...)` call.
 
 Exercises:
-- VenueStack factory (T052)
-- Cross-margin account (T037)
-- Multi-symbol marks update via on_marks (T053)
+- VenueStack factory
+- Cross-margin account
+- Multi-symbol marks update via on_marks
 - Fee tier transitions driven by aggregate notional
 - Funding settlements
 """
@@ -38,7 +38,7 @@ def main():
             (BTC, 50_000.0 + 50.0 * i),
             (ETH, 3_000.0 - 5.0 * i),
         ]
-        # on_marks does the atomic multi-symbol update (T053) and then
+        # on_marks does the atomic multi-symbol update and then
         # walks attached accounts for cross-margin liquidation.
         out = liq.on_marks(marks, ts_ns=ts)
         if out["liquidations_count"] > 0:

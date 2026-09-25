@@ -144,7 +144,7 @@ void MatchingEngine<Book>::cancelEntireBook(CancelReason reason)
   {
     const uint64_t acct = stops_.accountOf(id);
     const uint64_t clOrd = stops_.clientOrderIdOf(id);
-    // Captured before stops_.cancel() below erases the entry (T058).
+    // Captured before stops_.cancel() below erases the entry.
     const Quantity stopQty = stops_.quantityOf(id);
     if (stops_.cancel(id))
     {
@@ -363,7 +363,7 @@ void MatchingEngine<Book>::runAuction()
     // leg out of the book before the reports are emitted.
     const uint64_t bClOrd = bid->clientOrderId;
     const uint64_t aClOrd = ask->clientOrderId;
-    const Quantity bLeavesTotal = bid->leaves + bid->hidden;  // T058
+    const Quantity bLeavesTotal = bid->leaves + bid->hidden;  // total leaves for the FIX LeavesQty field on a terminal report
     const Quantity aLeavesTotal = ask->leaves + ask->hidden;
     const Quantity bCum = bid->cumQty;
     const Quantity aCum = ask->cumQty;
@@ -453,7 +453,7 @@ void MatchingEngine<Book>::runAuction()
     // Post-consume displayed peak (b2/a2 already refilled) for the public feed.
     const Quantity bDisp = b2 ? b2->leaves : Quantity{};
     const Quantity aDisp = a2 ? a2->leaves : Quantity{};
-    // T059: running cumQty after this print. b2/a2, when found, already
+    // Running cumQty after this print. b2/a2, when found, already
     // reflect it (consumeById incremented it); when the leg left the book
     // entirely, fall back to the pre-consume snapshot (bCum/aCum) plus fill.
     const Quantity bCumAfter = b2 ? b2->cumQty : (bCum + fill);

@@ -220,7 +220,7 @@ struct RepairConfig
   bool rebuild_index{true};
   // remove_corrupted_frames / truncate_at_corruption were config knobs the
   // repair pass never read. Removed rather than left as silent no-ops; frame
-  // removal / truncation is future work tracked in W6.
+  // removal / truncation is future work.
 };
 
 struct RepairResult

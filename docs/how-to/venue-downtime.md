@@ -117,7 +117,7 @@ modes that a clean tape can't:
   during the outage and the second leg may fill against an old
   price.
 - Reconnect storms: 100 strategies hitting the venue at recovery
-  edge all at once. Combined with `RateLimitPolicy` (T022), you see
+  edge all at once. Combined with `RateLimitPolicy`, you see
   realistic rate-limit rejects on flush.
 - GTC orders that get dropped server-side after a long outage —
   `expire_gtc_after` models the typical venue TTL (e.g. 24h on

@@ -2,7 +2,7 @@
 
 End-to-end recipes for the most common backtest assembly patterns.
 Each is a single Python file under `docs/examples/`, runnable as-is,
-and exercises a specific composition of W15 subsystems.
+and exercises a specific composition of the venue-stack subsystems.
 
 | Recipe | What it shows |
 | --- | --- |

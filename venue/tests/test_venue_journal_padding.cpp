@@ -6,7 +6,7 @@
  * Licensed under the MIT License. See LICENSE file in the project root for full
  * license information.
  *
- * T057: uninitialised padding in journal/snapshot bodies.
+ * Uninitialised padding in journal/snapshot bodies.
  *
  * Every InboundCommand alternative is written to disk as a raw blob
  * (Journal::append). 31 of the 35 carried compiler-inserted alignment

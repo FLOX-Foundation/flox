@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""W15 composition smoke. Wire every W15 subsystem onto a single
+"""Venue-stack composition smoke. Wire every venue-stack subsystem onto a single
 SimulatedExecutor, run a short synthetic tape, and assert the result
 matches a fixed-shape summary.
 
@@ -35,7 +35,7 @@ def main() -> int:
             print(f"  {msg}")
             failures.append(name)
 
-    print("[smoke] W15 composition wiring check")
+    print("[smoke] venue-stack composition wiring check")
 
     # 1) Build the executor.
     exec = flox_py.SimulatedExecutor()
@@ -46,19 +46,19 @@ def main() -> int:
     exec.set_order_priority_multiplier(1, 1.5)
     must("set_queue_model + priority multiplier", True)
 
-    # 3) FOK mode (T042).
+    # 3) FOK mode.
     exec.set_fok_mode("single_price")
     must("set_fok_mode('single_price')",
          exec.fok_mode() == "single_price")
     exec.set_fok_mode("any_price")
 
-    # 4) STP + multi-account (T044).
+    # 4) STP + multi-account.
     exec.set_stp_mode("cancel_newest")
     exec.set_stp_group_membership(42, 100)
     exec.set_stp_group_membership(43, 100)
     must("STP group membership", exec.stp_group_for(42) == 100)
 
-    # 5) Rate-limit policy with per-endpoint families (T049).
+    # 5) Rate-limit policy with per-endpoint families.
     rl = flox_py.RateLimitPolicy()
     rl.add_bucket("orders_10s", 10_000_000_000, 5)
     rl.add_family_bucket(
@@ -71,7 +71,7 @@ def main() -> int:
     must("per-endpoint rate-limit pools",
          rl.try_consume("query_market_data", 0))
 
-    # 6) Venue downtime + outage pathology (T046).
+    # 6) Venue downtime + outage pathology.
     va = flox_py.VenueAvailability()
     va.schedule_outage_ex(
         start_ns=1_000_000_000, duration_ns=500_000_000,
@@ -82,7 +82,7 @@ def main() -> int:
     must("slow_degradation latency multiplier",
          va.latency_multiplier(1_100_000_000) == 20.0)
 
-    # 7) Funding schedule (T047) — per-symbol tape via direct entries.
+    # 7) Funding schedule -- per-symbol tape via direct entries.
     f = flox_py.FundingSchedule.tape_by_symbol([
         flox_py.FundingTapeEntry(),  # default zeros (rate=0)
     ])
@@ -99,14 +99,14 @@ def main() -> int:
          len(payments) >= 1,
          detail=f"got {len(payments)} payments")
 
-    # 8) LiquidationEngine + ADL ranking variants (T036 + T045).
+    # 8) LiquidationEngine + ADL ranking variants.
     liq = flox_py.LiquidationEngine.binance_um_futures()
     must("binance ADL ranking == Binance",
          liq.adl_ranking() == flox_py.AdlRanking.Binance)
     liq.set_executor(exec)
     must("LiquidationEngine.set_executor wired", True)
 
-    # 9) Bracket order surface (T040 partial-fill arm mode).
+    # 9) Bracket order surface (partial-fill arm mode).
     exec.set_bracket_child_arm_mode("on_partial_fill")
     must("set_bracket_child_arm_mode", True)
 
@@ -120,11 +120,11 @@ def main() -> int:
         must("tick loop drives 10 bars without crash", False,
              detail=f"raised: {exc}")
 
-    # 11) Cascade-stats accessors (T039).
+    # 11) Cascade-stats accessors.
     must("LiquidationEngine cascade stats accessor",
          isinstance(liq.cascade_sizes_per_tick(), list))
 
-    # 12) Cross-margin Account: attach to engine + bind to FeeSchedule (T037).
+    # 12) Cross-margin Account: attach to engine + bind to FeeSchedule.
     acct = flox_py.Account(account_id=42, equity=10_000.0)
     acct.open_position(symbol=1, quantity=1.0, entry_price=50_000.0)
     liq2 = flox_py.LiquidationEngine()
@@ -139,7 +139,7 @@ def main() -> int:
     must("Account 30d notional shared across schedules",
          acct.rolling_notional_30d() == 100_000.0)
 
-    # 13) VenueStack single-call factory (T052).
+    # 13) VenueStack single-call factory.
     stack = flox_py.VenueStack.binance_um_futures(account_id=7, equity=5_000.0)
     must("VenueStack.binance_um_futures", stack.venue_name() == "binance_um_futures")
     must("VenueStack.account wired", stack.account().account_id() == 7)

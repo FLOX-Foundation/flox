@@ -7,7 +7,7 @@ an existing wrap class slips through silently — the build passes,
 TypeScript users get no autocomplete, the missing method becomes
 `any` at usage sites.
 
-T018, T021, T022, and T026 each introduced new NAPI methods that
+Several past changes each introduced new NAPI methods that
 shipped without matching d.ts entries. `scripts/check_dts_class_members.py`
 runs in CI alongside the other verify-docs-current gates and fails
 the PR before the gap reaches main.
@@ -28,7 +28,7 @@ For every wrap class `XxxWrap` in `node/src/*.h`:
 
 The error tells you which class is missing which method names. Add
 the corresponding TypeScript signatures to `node/index.d.ts`.
-Example fix from T018:
+Example fix, for `OrderGroup`:
 
 ```ts
 export class OrderGroup {

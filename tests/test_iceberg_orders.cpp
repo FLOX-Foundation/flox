@@ -166,11 +166,11 @@ TEST(IcebergOrders, RefreshLatencyDelaysExposure)
   EXPECT_EQ(ex.icebergHiddenRemainingRaw(1), 0);
 }
 
-// === T041: size jitter + priority modes ===
+// === Size jitter + priority modes ===
 
 TEST(IcebergOrders, SizeRandomisationZeroIsDeterministic)
 {
-  // Default 0% jitter must match T029 deterministic slicing.
+  // Default 0% jitter must match the deterministic iceberg-slicing baseline.
   SimulatedClock clock;
   SimulatedExecutor ex(clock);
   ex.setQueueModel(QueueModel::FULL, 4);

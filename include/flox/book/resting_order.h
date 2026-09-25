@@ -54,7 +54,7 @@ struct RestingOrder
   // identifier it chose, not the one the venue assigned. 0 = none was given.
   uint64_t clientOrderId{};
   // Total quantity matched against this order while it rested, accumulated
-  // over its whole life on the book (T058: FIX CumQty/14 on a later cancel
+  // over its whole life on the book (FIX CumQty/14 on a later cancel
   // needs the running total, not just what a single cross just filled).
   // Incremented at the book's two real-fill mutation points only
   // (MatchingBook::fillFront/consumeById, LadderBook::fillBest/consumeById);

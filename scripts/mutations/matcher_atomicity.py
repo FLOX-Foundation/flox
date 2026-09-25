@@ -639,9 +639,9 @@ MUTATIONS: list[Mutation] = [
         file=DISPATCH,
         old="""    if (al->symbol == cfg_.id)
     {
-      credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed (W26-T064)
+      credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed
     }""",
-        new="""    credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed (W26-T064)""",
+        new="""    credit_.setAccountLimits(*al);  // sequenced -> journaled -> replayed""",
         target=ATOM_TEST,
         test="RejectAtomicity.SetAccountRiskLimitsForAForeignSymbolIsIgnored",
     ),

@@ -485,8 +485,8 @@ endif()
 # gates capabilities of the core library (backtest module, LZ4, Tracy,
 # CPU affinity).
 #
-# The eight FLOX_BUILD_* options below were renamed from FLOX_ENABLE_*
-# in W9-T002. The deprecated names continue to work as aliases for one
+# The eight FLOX_BUILD_* options below were renamed from FLOX_ENABLE_*.
+# The deprecated names continue to work as aliases for one
 # release cycle — passing -DFLOX_ENABLE_PYTHON=ON still flips
 # FLOX_BUILD_PYTHON, with a warning. See docs/build/feature-flags.md.
 # ──────────────────────────────────────────────────────────────────────

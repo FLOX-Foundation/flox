@@ -71,7 +71,7 @@ tools/codegen/
 include/flox/capi/
 ├── flox_export.h                 # FLOX_EXPORT(...) macro definition
 ├── flox_capi_spec.hpp            # the IDL — annotated declarations
-├── flox_capi.h                   # the live hand-written C header (untouched in T013)
+├── flox_capi.h                   # the live hand-written C header (untouched for now)
 └── ...
 ```
 

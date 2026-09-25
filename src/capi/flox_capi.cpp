@@ -11790,7 +11790,7 @@ extern "C" void flox_liquidation_engine_set_executor(FloxLiquidationEngineHandle
   FLOX_CAPI_LEAVE_VOID;
 }
 
-// T039: cascade statistics.
+// Cascade statistics.
 namespace
 {
 template <typename T>
@@ -11922,7 +11922,7 @@ extern "C" uint32_t flox_liquidation_engine_max_cascade_depth(
 }
 
 // ============================================================
-// T037: Account
+// Account
 // ============================================================
 
 extern "C" FloxAccountHandle flox_account_create(uint64_t account_id, double equity)
@@ -12120,7 +12120,7 @@ extern "C" void flox_fee_schedule_clear_account_binding(FloxFeeScheduleHandle h)
 }
 
 // ============================================================
-// T052: VenueStack
+// VenueStack
 // ============================================================
 
 #include "flox/backtest/venue_stack.h"
@@ -12253,7 +12253,7 @@ extern "C" const char* flox_venue_stack_venue_name(FloxVenueStackHandle h)
 }
 
 // ============================================================
-// T039: DEX amounts (u256 / i256) at the C boundary
+// DEX amounts (u256 / i256) at the C boundary
 // ============================================================
 
 namespace
@@ -12367,7 +12367,7 @@ extern "C" uint8_t flox_u256_from_words(const uint64_t* words, char* out, size_t
 }
 
 // ============================================================
-// T040: AMM curves
+// AMM curves
 // ============================================================
 
 namespace
@@ -12565,7 +12565,7 @@ extern "C" void flox_curve_destroy(FloxCurveHandle curve)
 }
 
 // ============================================================
-// T041: Pool-state tape replay
+// Pool-state tape replay
 // ============================================================
 
 namespace

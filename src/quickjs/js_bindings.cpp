@@ -2725,7 +2725,7 @@ static JSValue js_liquidation_engine_max_cascade_depth(JSContext* ctx,
                static_cast<FloxLiquidationEngineHandle>(getHandle(ctx, argv[0]))));
 }
 
-// ===== T037 Account =====
+// ===== Account =====
 static JSValue js_account_create(JSContext* ctx, JSValueConst, int argc,
                                  JSValueConst* argv)
 {
@@ -3025,7 +3025,7 @@ static JSValue js_fee_schedule_clear_account_binding(JSContext* ctx, JSValueCons
   return JS_UNDEFINED;
 }
 
-// ===== T052 VenueStack =====
+// ===== VenueStack =====
 static JSValue js_venue_stack_create(JSContext* ctx, JSValueConst, int argc,
                                      JSValueConst* argv)
 {
@@ -7382,7 +7382,7 @@ bool registerFloxBindings(JSContext* ctx)
                 js_liquidation_engine_set_max_cascade_depth, 2);
   addGlobalFunc(ctx, "__flox_liquidation_engine_max_cascade_depth",
                 js_liquidation_engine_max_cascade_depth, 1);
-  // T037 — Account + cross-margin bindings.
+  // Account + cross-margin bindings.
   addGlobalFunc(ctx, "__flox_account_create", js_account_create, 2);
   addGlobalFunc(ctx, "__flox_account_destroy", js_account_destroy, 1);
   addGlobalFunc(ctx, "__flox_account_id", js_account_id, 1);
@@ -7423,7 +7423,7 @@ bool registerFloxBindings(JSContext* ctx)
                 js_fee_schedule_bind_account, 2);
   addGlobalFunc(ctx, "__flox_fee_schedule_clear_account_binding",
                 js_fee_schedule_clear_account_binding, 1);
-  // T052 — VenueStack.
+  // VenueStack.
   addGlobalFunc(ctx, "__flox_venue_stack_create", js_venue_stack_create, 3);
   addGlobalFunc(ctx, "__flox_venue_stack_destroy", js_venue_stack_destroy, 1);
   addGlobalFunc(ctx, "__flox_venue_stack_executor", js_venue_stack_executor, 1);
