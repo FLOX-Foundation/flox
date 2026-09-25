@@ -10,6 +10,7 @@
 #include <limits>
 #include <stdexcept>
 
+#include "callback_guard.h"
 #include "flox/backtest/backtest_config.h"
 #include "flox/backtest/backtest_result.h"
 #include "flox/backtest/backtest_runner.h"
@@ -722,6 +723,27 @@ struct PyStrategyHost
   std::unique_ptr<BridgeStrategy> bridge;
   bool with_gil;
 
+  // Every one of the nine bridge callbacks goes through here. The
+  // engine is C code in the middle of delivering an event, so a Python
+  // exception must not unwind past this frame: on the live path it
+  // would kill the bus consumer and the strategy would stop receiving
+  // events, and out of a frame with C linkage it is undefined
+  // behaviour either way. The exception is contained and its text is
+  // reported through the engine log; callback_guard.h has the policy.
+  template <typename Fn>
+  static void dispatch(const PyStrategyHost* self, const char* source, Fn&& fn)
+  {
+    if (self->with_gil)
+    {
+      py::gil_scoped_acquire gil;
+      flox_py::guardCallback(fn, source);
+    }
+    else
+    {
+      flox_py::guardCallback(fn, source);
+    }
+  }
+
   // Atomically swap the user-facing strategy. Old strategy.on_stop
   // fires before the swap, new strategy.on_start fires after. Bus
   // subscriptions, in-flight orders, and the bridge's internal
@@ -735,29 +757,18 @@ struct PyStrategyHost
       {
         return;
       }
-      if (with_gil)
-      {
-        py::gil_scoped_acquire gil;
-        if (start)
-        {
-          s->on_start();
-        }
-        else
-        {
-          s->on_stop();
-        }
-      }
-      else
-      {
-        if (start)
-        {
-          s->on_start();
-        }
-        else
-        {
-          s->on_stop();
-        }
-      }
+      dispatch(this, start ? "Strategy.on_start" : "Strategy.on_stop",
+               [s, start]
+               {
+                 if (start)
+                 {
+                   s->on_start();
+                 }
+                 else
+                 {
+                   s->on_stop();
+                 }
+               });
     };
     fire_lifecycle(old, false);
     new_strat->_initBridge(bridge.get());
@@ -812,15 +823,7 @@ struct PyStrategyHost
 
       self->strategy.load(std::memory_order_acquire)->on_trade(pc, pt);
     };
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      call();
-    }
-    else
-    {
-      call();
-    }
+    dispatch(self, "Strategy.on_trade", call);
   }
 
   static void onBook(void* ud, const FloxSymbolContext* ctx,
@@ -838,15 +841,7 @@ struct PyStrategyHost
       pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
       self->strategy.load(std::memory_order_acquire)->on_book_update(pc);
     };
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      call();
-    }
-    else
-    {
-      call();
-    }
+    dispatch(self, "Strategy.on_book_update", call);
   }
 
   static void onBar(void* ud, const FloxSymbolContext* ctx,
@@ -879,29 +874,15 @@ struct PyStrategyHost
 
       self->strategy.load(std::memory_order_acquire)->on_bar(pc, pb);
     };
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      call();
-    }
-    else
-    {
-      call();
-    }
+    dispatch(self, "Strategy.on_bar", call);
   }
 
   static void onStart(void* ud)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      self->strategy.load(std::memory_order_acquire)->on_start();
-    }
-    else
-    {
-      self->strategy.load(std::memory_order_acquire)->on_start();
-    }
+    dispatch(self, "Strategy.on_start",
+             [self]
+             { self->strategy.load(std::memory_order_acquire)->on_start(); });
   }
 
   static PyOrderEventData toPyOrderEvent(const FloxOrderEventData* ev)
@@ -1045,15 +1026,7 @@ struct PyStrategyHost
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_fill(pc, pe);
     };
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      call();
-    }
-    else
-    {
-      call();
-    }
+    dispatch(self, "Strategy.on_fill", call);
   }
 
   static void onOrderUpdate(void* ud, const FloxSymbolContext* ctx,
@@ -1072,15 +1045,7 @@ struct PyStrategyHost
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_order_update(pc, pe);
     };
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      call();
-    }
-    else
-    {
-      call();
-    }
+    dispatch(self, "Strategy.on_order_update", call);
   }
 
   static void onQueuePositionChange(void* ud, const FloxSymbolContext* ctx,
@@ -1099,15 +1064,7 @@ struct PyStrategyHost
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_queue_position_change(pc, pe);
     };
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      call();
-    }
-    else
-    {
-      call();
-    }
+    dispatch(self, "Strategy.on_queue_position_change", call);
   }
 
   static void onMarketPositionChange(void* ud, const FloxSymbolContext* ctx,
@@ -1127,29 +1084,15 @@ struct PyStrategyHost
       self->strategy.load(std::memory_order_acquire)
           ->on_market_position_change(pc, pe);
     };
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      call();
-    }
-    else
-    {
-      call();
-    }
+    dispatch(self, "Strategy.on_market_position_change", call);
   }
 
   static void onStop(void* ud)
   {
     auto* self = static_cast<PyStrategyHost*>(ud);
-    if (self->with_gil)
-    {
-      py::gil_scoped_acquire gil;
-      self->strategy.load(std::memory_order_acquire)->on_stop();
-    }
-    else
-    {
-      self->strategy.load(std::memory_order_acquire)->on_stop();
-    }
+    dispatch(self, "Strategy.on_stop",
+             [self]
+             { self->strategy.load(std::memory_order_acquire)->on_stop(); });
   }
 };
 
@@ -1488,9 +1431,16 @@ class PyLiveEngine
     flox_live_engine_stop(_engine);
   }
 
+  // The three publish_* methods release the GIL for the duration of the
+  // call, the way stop() does. Publishing gates on the consumer once the
+  // ring is full (event_bus.h), and the consumer thread needs the GIL to
+  // finish the Python callback that would drain it — holding the GIL
+  // here wedges the two threads against each other. Nothing below
+  // touches a Python object: the vectors were already converted.
   void publish_trade(uint32_t symbol, double price, double qty,
                      bool is_buy, int64_t ts_ns)
   {
+    py::gil_scoped_release release;
     flox_live_engine_publish_trade(_engine, symbol, price, qty,
                                    static_cast<uint8_t>(is_buy), ts_ns);
   }
@@ -1504,6 +1454,7 @@ class PyLiveEngine
   {
     uint32_t nb = static_cast<uint32_t>(bid_prices.size());
     uint32_t na = static_cast<uint32_t>(ask_prices.size());
+    py::gil_scoped_release release;
     flox_live_engine_publish_book_snapshot(_engine, symbol,
                                            bid_prices.data(), bid_qtys.data(), nb,
                                            ask_prices.data(), ask_qtys.data(), na,
@@ -1516,6 +1467,7 @@ class PyLiveEngine
                    int64_t start_time_ns, int64_t end_time_ns,
                    uint8_t close_reason)
   {
+    py::gil_scoped_release release;
     flox_live_engine_publish_bar(_engine, symbol, bar_type, bar_type_param,
                                  open, high, low, close, volume, buy_volume,
                                  start_time_ns, end_time_ns, close_reason);
@@ -2921,7 +2873,14 @@ inline void bindStrategy(py::module_& m)
   m.def("set_log_callback", &flox_py::setPythonLogCallback, py::arg("callback"),
         "Install a Python callable as the global log sink. Pass None to "
         "detach. Callable receives (level: int, msg: str); level: 0=info, "
-        "1=warn, 2=error.");
+        "1=warn, 2=error. The binding detaches it automatically at "
+        "interpreter shutdown.");
+
+  // The sink is a Python callable held by the C API for the whole
+  // process. Detach it while the interpreter is still up, or shutdown
+  // releases it afterwards and the process crashes on exit.
+  py::module_::import("atexit").attr("register")(
+      py::cpp_function(&flox_py::logCallbackTeardown));
 
   py::class_<PyRunner>(m, "Runner")
       .def(py::init([](SymbolRegistry* reg, py::object on_signal, bool threaded)

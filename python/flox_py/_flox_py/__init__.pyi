@@ -3880,7 +3880,7 @@ def second_order_greeks(option_type: OptionType, spot: typing.SupportsFloat | ty
     """
 def set_log_callback(callback: typing.Any) -> None:
     """
-    Install a Python callable as the global log sink. Pass None to detach. Callable receives (level: int, msg: str); level: 0=info, 1=warn, 2=error.
+    Install a Python callable as the global log sink. Pass None to detach. Callable receives (level: int, msg: str); level: 0=info, 1=warn, 2=error. The binding detaches it automatically at interpreter shutdown.
     """
 def shannon_entropy(input: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], period: typing.SupportsInt | typing.SupportsIndex, bins: typing.SupportsInt | typing.SupportsIndex = 10) -> numpy.typing.NDArray[numpy.float64]:
     ...

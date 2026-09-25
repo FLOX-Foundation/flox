@@ -129,6 +129,16 @@ else: a successful call does not clear it. `flox_clear_last_error()` is there
 if you want a clean slate first. The slot is per thread, so one thread's
 failure never shows up on another.
 
+That rule covers calls *into* the library. The callbacks you register — the
+strategy callbacks, the hooks, the pre-trade gates — run in the other
+direction, and there the boundary belongs to the caller: an exception raised
+in your callback must stop inside it, and a gate that could not answer must
+return its failure value, 0, which drops the signal. The Python binding
+implements exactly that; see
+[When a callback raises](python.md#when-a-callback-raises) for how the
+description is carried out of the callback when there is no
+`flox_last_error_*` to read.
+
 ### ABI version
 
 The header declares `FLOX_CAPI_ABI_VERSION` and the library reports

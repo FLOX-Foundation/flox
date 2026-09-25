@@ -159,6 +159,34 @@ asyncio.run(main())
 
 One strategy class runs backtest, paper, and live. See [Connect FLOX to a CCXT exchange](../how-to/ccxt-adapter.md) and `docs/examples/python_ccxt_live.py`.
 
+### When a callback raises
+
+Every Python callable the engine calls back into — the nine `Strategy` callbacks, the extension hooks (`PnLTracker`, `StorageSink`, `Executor`, `ExecutionListener`, `MarketDataRecorderHook`), and the three pre-trade gates — runs inside a C call. An exception is never allowed to unwind out of there: out of a frame with C linkage that is undefined behaviour, and on `threaded=True` it kills the bus consumer delivering the event, so the strategy would stop receiving events for the rest of the run. One rule applies to all of them:
+
+1. **The exception stops at the bridge.** The engine carries on with the next event, and the call that drove it — `Runner.on_trade`, `BacktestRunner.run_bars`, `runner.start()` — returns normally.
+2. **A pre-trade gate that did not answer denies.** `RiskManager.allow`, `KillSwitch.check` and `OrderValidator.validate` drop the signal when the callable raises, or returns something that is not a bool. That is the C ABI's own rule — "a call that was stopped this way returns its failure value" (`include/flox/capi/flox_capi.h`) — read against what a gate's return values mean: "Returning 0 (deny) drops the signal entirely" (`include/flox/capi/flox_capi_spec.hpp`). A broken gate is a closed gate, never an open one.
+3. **The description survives.** The exception text, with type and traceback, goes to the engine log at error level. `flox.set_log_callback(fn)` is how it reaches Python; with no callback installed the bundled console logger writes it to stderr.
+
+```python
+def sink(level, msg):      # level: 0=info, 1=warn, 2=error
+    print(msg)
+
+flox.set_log_callback(sink)
+
+class Gate(flox.RiskManager):
+    def allow(self, sig):
+        raise RuntimeError("limits service is down")
+
+runner.set_risk_manager(Gate())
+runner.on_trade(btc, 100.0, 1.0, True, ts_ns)
+# on_signal never fires, and sink() receives
+# "flox: RiskManager.allow raised: RuntimeError: limits service is down"
+```
+
+So a callback that raises costs you that event, not the run. If you want anything else to happen — retry, halt, alert — catch it in your own callback and decide there.
+
+The log sink is detached at interpreter shutdown, so leaving one installed is safe.
+
 ---
 
 ## Vectorised Engine
