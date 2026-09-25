@@ -613,7 +613,7 @@ TEST(EngineClearing, RestorePositionRefusesADuplicateRecordAndKeepsAFlatOne)
   // A flat entry is a state the engine holds on purpose: an operator
   // correction that zeroes a position leaves it in the table, margin
   // untouched, and hashPositions folds it -- so the record has to restore
-  // (W33-T002). It used to be read as corruption, which made every
+  // (the snapshot round-trip fix). It used to be read as corruption, which made every
   // checkpoint taken after such a correction unloadable.
   Host flat(perpCfg());
   EXPECT_TRUE(flat.clearing.restorePosition(RestorePosition{1, 0, 0, {}, 0}, true));

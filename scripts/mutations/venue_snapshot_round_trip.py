@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation run for W33-T002 (venue snapshot holes).
+"""Mutation run for the venue snapshot round-trip fixes.
 
 Every fix in this task is worth exactly what the test that pins it is worth,
 and a test is only worth something if it fails when the fix is taken away.
@@ -15,7 +15,7 @@ A mutation that does not compile is not a mutation either: it is reported as
 NO-COMPILE and counts as a failure of the run.
 
 Run from the repository root with a configured build-venue-lite:
-    cmake --preset venue-lite && python3 scripts/mutations/w33_t002.py
+    cmake --preset venue-lite && python3 scripts/mutations/venue_snapshot_round_trip.py
 """
 
 import hashlib

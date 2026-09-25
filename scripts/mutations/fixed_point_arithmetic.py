@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Mutation harness for W33-T011 (fixed-point arithmetic).
+"""Mutation harness for the fixed-point arithmetic fixes.
 
 A test that passes proves nothing on its own; what it has to do is fail when
-the code it covers is wrong. This script breaks each fix in W33-T011 one at a
+the code it covers is wrong. This script breaks each fix one at a
 time, in the source, and checks that the test written for it goes red -- and
 that an unmutated tree goes green before and after.
 
@@ -13,9 +13,9 @@ and the test binary runs under a timeout.
 
 Usage:
 
-    python3 scripts/mutations/w33_t011.py            # control, all mutations, control
-    python3 scripts/mutations/w33_t011.py --list
-    python3 scripts/mutations/w33_t011.py --only decimal-mul-overflowing-split
+    python3 scripts/mutations/fixed_point_arithmetic.py            # control, all mutations, control
+    python3 scripts/mutations/fixed_point_arithmetic.py --list
+    python3 scripts/mutations/fixed_point_arithmetic.py --only decimal-mul-overflowing-split
 
 The build directory is expected to be configured already:
 

@@ -7,7 +7,7 @@
  * license information.
  */
 
-// W33-T014, core finding 21.
+// Review finding 21 behind the execution tracker fix.
 //
 // OrderRouter has no synchronisation. _enabled is a plain std::array<bool>
 // written by setEnabled() from a control thread while route() reads it on a

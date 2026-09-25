@@ -7,7 +7,7 @@
  * license information.
  */
 
-// W33-T014, core finding 6.
+// Review finding 6 behind the execution tracker fix.
 //
 // OrderState::isTerminal() lists FILLED / CANCELED / REJECTED / EXPIRED but
 // not REPLACED, which is the status OrderTracker::onReplaced() writes on the

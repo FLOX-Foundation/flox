@@ -7,16 +7,16 @@
  * license information.
  */
 
-// W33-T014, core finding 6 (second half).
+// the execution tracker fix, core finding 6 (second half).
 //
 // config::ORDER_TRACKER_CAPACITY exists, carries a FLOX_DEFAULT_ORDER_TRACKER_CAPACITY
 // override hook, and is read by nothing. OrderTracker is default-constructed
 // everywhere and its unordered_map has no bound at all. The tracker has to
 // take the capacity, expose it, and honour it.
 //
-// W33-T014 needs: explicit OrderTracker(size_t capacity);
-// W33-T014 needs: OrderTracker() with the default capacity config::ORDER_TRACKER_CAPACITY;
-// W33-T014 needs: size_t OrderTracker::capacity() const noexcept;
+// needs: explicit OrderTracker(size_t capacity);
+// needs: OrderTracker() with the default capacity config::ORDER_TRACKER_CAPACITY;
+// needs: size_t OrderTracker::capacity() const noexcept;
 
 #include "flox/engine/engine_config.h"
 #include "flox/execution/order_tracker.h"

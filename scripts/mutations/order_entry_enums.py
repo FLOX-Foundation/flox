@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Mutation harness for W33-T001 (order-entry enums off the wire).
+"""Mutation harness for the order-entry enums read off the wire.
 
 A test that passes proves nothing on its own; what it has to do is fail when
-the code it covers is wrong. This script breaks each fix in W33-T001 one at a
+the code it covers is wrong. This script breaks each fix one at a
 time, in the source, and checks that the test written for it goes red -- and
 that an unmutated tree goes green before and after.
 
@@ -14,9 +14,9 @@ not a mutation, and the run stops rather than reporting one.
 
 Usage:
 
-    python3 scripts/mutations/w33_t001.py            # control, all mutations, control
-    python3 scripts/mutations/w33_t001.py --list
-    python3 scripts/mutations/w33_t001.py --only decoder-stp-range
+    python3 scripts/mutations/order_entry_enums.py            # control, all mutations, control
+    python3 scripts/mutations/order_entry_enums.py --list
+    python3 scripts/mutations/order_entry_enums.py --only decoder-stp-range
 
 The build directory is expected to be configured already:
 

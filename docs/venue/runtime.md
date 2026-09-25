@@ -369,7 +369,7 @@ gap 15/16 closed for a plain resting order's cancel, this time for a hold --
 so it is refused rather than read that way.
 
 Versions 21 and 22 were the pair before `RestoreClOrdIds` carried
-`rotatedAtNs` (W33-T002), the moment an account's clientOrderId window last
+`rotatedAtNs` (the snapshot round-trip fix), the moment an account's clientOrderId window last
 rotated. `stateHash` has always folded it -- the split between the two halves
 decides which id is forgotten next, so two windows holding the same ids at
 different moments are different states -- but the snapshot never wrote it, so

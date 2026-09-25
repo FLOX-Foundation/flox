@@ -7,7 +7,7 @@
  * license information.
  */
 
-// W33-T014, core finding 7.
+// Review finding 7 behind the execution tracker fix.
 //
 // RateLimiter guards refillRate == 0 with an assert only. CMakeLists.txt pins
 // CMAKE_BUILD_TYPE to Release when it is unset, so NDEBUG is on in every

@@ -271,7 +271,7 @@ static_assert(sizeof(QuoteLadder) ==
 // 21/22 (W26-T064): a new journaled body, SetAccountRiskLimits (tag 36),
 // carried in the snapshot's config section. Every earlier body is unchanged;
 // the pair moves by two for the same reason 19/20 did.
-// 21/22 -> 23/24 (W33-T002): RestoreClOrdIds (tag unchanged) grows one field,
+// 21/22 -> 23/24 (the snapshot round-trip fix): RestoreClOrdIds (tag unchanged) grows one field,
 // rotatedAtNs -- the account's window rotation moment, which the state hash
 // has always folded and the snapshot never carried, so any engine configured
 // with clOrdIdWindowNs > 0 wrote checkpoints that failed their own hash check

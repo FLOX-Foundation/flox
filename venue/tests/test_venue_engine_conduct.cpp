@@ -193,7 +193,7 @@ TEST(ConductClOrdIdWindow, RestoreReproducesTheWindowTheSnapshotDescribed)
     ASSERT_NE(r, nullptr);
     back.restore(r->account, r->generation, r->ids, r->count, r->rotatedAtNs);
   }
-  // The rotation moment rides the record too (W33-T002), so the restored
+  // The rotation moment rides the record too (the snapshot round-trip fix), so the restored
   // window is the SAME state and not merely one that blocks the same ids --
   // which is what the engine's own SnapshotEnd hash check demands.
   EXPECT_EQ(back.hashInto(0), w.hashInto(0));
