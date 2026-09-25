@@ -3,6 +3,9 @@
 #include "js_executor.h"
 #include "js_strategy.h"
 
+#include "flox/backtest/backtest_result.h"
+#include "flox/backtest/simulated_clock.h"
+#include "flox/backtest/simulated_executor.h"
 #include "flox/book/events/book_update_event.h"
 #include "flox/capi/bridge_strategy.h"
 
@@ -3297,9 +3300,6 @@ TEST(JsIntegrationTest, SimulatedExecutorDrivesTheBarPath)
          "instead of the stop";
   EXPECT_EQ(num("bracketFills"), 2.0);
 
-#include "flox/backtest/backtest_result.h"
-#include "flox/backtest/simulated_clock.h"
-#include "flox/backtest/simulated_executor.h"
   EXPECT_GE(num("barCount"), 1.0);
   EXPECT_TRUE(flag("hasCloseReason"))
       << "an aggregated bar reaches JS with no closeReason; the Python and Node "
