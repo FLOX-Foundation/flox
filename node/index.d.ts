@@ -104,11 +104,24 @@ export interface SymbolContext {
 
 /** Trade tick passed to `onTrade`. */
 export interface TradeData {
+  /** Symbol id. Set on every TradeData the addon delivers. */
+  symbol: number;
   price: number;
   qty: number;
   isBuy: boolean;
   side: Side;
   timestampNs: bigint;
+
+  /** @deprecated Alias of `qty`, kept for one release. A
+   *  `MarketDataRecorderHook` used to be handed `quantity` instead of the
+   *  declared `qty`; both are delivered now. Read `qty`. */
+  quantity?: number;
+  /** @deprecated Alias of `timestampNs`, kept for one release, and a
+   *  `bigint` like it — the reading never fit in a double. A
+   *  `MarketDataRecorderHook` used to be handed `exchangeTsNs` instead of
+   *  the declared `timestampNs`; both are delivered now. Read
+   *  `timestampNs`. */
+  exchangeTsNs?: bigint;
 }
 
 /** Order-event lifecycle status, mirrored from `FloxOrderEventStatus`. */

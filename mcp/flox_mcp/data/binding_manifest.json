@@ -32544,6 +32544,11 @@
         },
         {
           "kind": "method",
+          "name": "exchangeTsNs",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
           "name": "isBuy",
           "parent": "TradeData"
         },
@@ -32559,7 +32564,17 @@
         },
         {
           "kind": "method",
+          "name": "quantity",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
           "name": "side",
+          "parent": "TradeData"
+        },
+        {
+          "kind": "method",
+          "name": "symbol",
           "parent": "TradeData"
         },
         {

@@ -117,14 +117,33 @@ inline Napi::Object orderToJs(Napi::Env env, const FloxOrder* o)
   return obj;
 }
 
+// The trade a MarketDataRecorderHook is handed. index.d.ts types that
+// argument TradeData, and this used to deliver something else: `quantity`
+// where TradeData says `qty`, `exchangeTsNs` where it says `timestampNs`,
+// and no `side` at all -- so a hook written against the declared type read
+// undefined from two of its five fields, while the same TradeData coming out
+// of a strategy's onTrade (built in node/src/strategy.h) had the declared
+// spelling all along.
+//
+// The declared shape is what goes out now. `quantity` and `exchangeTsNs`
+// stay beside it for one release so hooks written against what was actually
+// delivered keep working; both are deprecated in index.d.ts and go in the
+// release after. They are aliases, not copies of the old behaviour:
+// exchangeTsNs carries the same BigInt as timestampNs, because a double
+// could not hold the reading in the first place.
 inline Napi::Object tradeToJs(Napi::Env env, const FloxTradeData* t)
 {
   auto obj = Napi::Object::New(env);
+  auto qty = Napi::Number::New(env, t->quantity_raw / 1e8);
+  auto ts = Napi::BigInt::New(env, static_cast<int64_t>(t->exchange_ts_ns));
   obj.Set("symbol", Napi::Number::New(env, t->symbol));
   obj.Set("price", Napi::Number::New(env, t->price_raw / 1e8));
-  obj.Set("quantity", Napi::Number::New(env, t->quantity_raw / 1e8));
+  obj.Set("qty", qty);
   obj.Set("isBuy", Napi::Boolean::New(env, t->is_buy != 0));
-  obj.Set("exchangeTsNs", Napi::BigInt::New(env, static_cast<int64_t>(t->exchange_ts_ns)));
+  obj.Set("side", Napi::String::New(env, t->is_buy ? "buy" : "sell"));
+  obj.Set("timestampNs", ts);
+  obj.Set("quantity", qty);
+  obj.Set("exchangeTsNs", ts);
   return obj;
 }
 

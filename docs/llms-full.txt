@@ -14550,6 +14550,27 @@ Each takes a plain JS object, or `null` to detach.
 | `setMarketDataRecorder(recorder)` | Attach a `MarketDataRecorderHook` or `BinaryLogRecorderHook` |
 | `setExecutor(executor)` | Replace the executor. Sync only — `capabilities()` is read inline |
 
+#### What a hook is handed
+
+An order — the argument to `Executor.submit` and to every
+`ExecutionListener` callback — carries `createdAtNs` and `exchangeTsNs` as
+`bigint`. They are clock readings, and a JS `Number` is a double that steps
+256 ns at present-day magnitudes. Prices, sizes and ids on the same object
+stay `number`.
+
+A trade handed to a `MarketDataRecorderHook`'s `onTrade` is a `TradeData`:
+`{ symbol, price, qty, isBuy, side, timestampNs }`, with `timestampNs` a
+`bigint`. It is the same shape a strategy's `onTrade` receives.
+
+!!! warning "Deprecated: `trade.quantity` and `trade.exchangeTsNs`"
+
+    The recorder hook used to be handed `quantity` and `exchangeTsNs` in
+    place of the declared `qty` and `timestampNs`. Both spellings are
+    delivered for one release and the old two are removed in the next.
+    `exchangeTsNs` is a `bigint` like `timestampNs` — the reading never fit
+    in a double — so a hook doing arithmetic on it needs `Number()` at the
+    edge, or the one-word change to `timestampNs`.
+
 ### Trace recording
 
 | Method | Description |
