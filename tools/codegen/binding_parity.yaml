@@ -2135,10 +2135,10 @@ allowlist_functions:
     flox_volume_profile_total_delta: *no_napi_wrapper
 
   codon:
-    flox_best_ask_raw_opt: "the Codon context reads the raw accessors; the optional variants that tell no quote from a price of zero are a follow-up"
-    flox_best_bid_raw_opt: "the Codon context reads the raw accessors; the optional variants that tell no quote from a price of zero are a follow-up"
-    flox_mid_price_raw_opt: "the Codon context reads the raw accessors; the optional variants that tell no quote from a price of zero are a follow-up"
     flox_aggregator_destroy: *no_codon_import
+    flox_best_ask_raw: "the Codon context reads the _opt variants, which tell no quote from a price of zero"
+    flox_best_bid_raw: "the Codon context reads the _opt variants, which tell no quote from a price of zero"
+    flox_mid_price_raw: "the Codon context reads the _opt variants, which tell no quote from a price of zero"
     flox_backtest_runner_add_execution_listener: *no_codon_import
     flox_backtest_runner_add_journey_tracer: *no_codon_import
     flox_backtest_runner_run_replay_source: *no_codon_import

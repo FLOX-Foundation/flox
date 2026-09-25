@@ -132,7 +132,7 @@ class MyStrategy(flox.Strategy):
 |----------|------|-------------|
 | `position` | `float` | Current position quantity |
 | `last_trade_price` | `float` | Last trade price |
-| `best_bid` | `float` | Best bid |
+| `best_bid` | `float \| None` | Best bid, `None` when the side is empty |
 | `best_ask` | `float` | Best ask |
 | `mid_price` | `float` | Mid price |
 | `is_flat()` | `bool` | No position |

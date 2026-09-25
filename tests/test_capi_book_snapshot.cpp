@@ -108,6 +108,8 @@ TEST(CApiBookSnapshot, BestLevelSizesReachTheCConsumer)
       << "the size resting at the best bid, not the size of the whole side";
   EXPECT_EQ(captured.fromEvent.ask_qty_raw, Quantity::fromDouble(1.25).raw())
       << "the size resting at the best ask";
+  EXPECT_EQ(captured.fromEvent.has_bid, 1);
+  EXPECT_EQ(captured.fromEvent.has_ask, 1);
 
   // The same snapshot is embedded in the symbol context handed to every
   // callback, and it is built by the same helper.
@@ -139,6 +141,38 @@ TEST(CApiBookSnapshot, EmptySideReportsZeroPriceAndZeroSize)
       << "no ask side, so there is no best ask price";
   EXPECT_EQ(captured.fromEvent.ask_qty_raw, 0)
       << "0 means the book cannot say, which here is the truth";
+  EXPECT_EQ(captured.fromEvent.has_bid, 1) << "the bid side has a best level";
+  EXPECT_EQ(captured.fromEvent.has_ask, 0)
+      << "the ask side has none; the flag, not the zero price, says so";
+}
+
+// The mirror case: an ask and no bid. A flag derived from the other side
+// (has_ask written from the bid) survives every two-sided and bid-only book;
+// only a book with an ask alone tells the flags apart.
+TEST(CApiBookSnapshot, EmptyBidSideReportsTheAskFlagAlone)
+{
+  SymbolRegistry registry;
+  SymbolId sym = addSymbol(registry);
+
+  Captured captured;
+  FloxStrategyCallbacks cb{};
+  cb.on_book = &onBookCapture;
+  cb.user_data = &captured;
+
+  auto bridge = std::make_unique<BridgeStrategy>(1, std::vector<SymbolId>{sym}, registry, cb);
+
+  BookUpdatePool pool;
+  auto update =
+      makeSnapshot(pool, sym, {}, {{Price::fromDouble(100.05), Quantity::fromDouble(1.5)}});
+  bridge->onBookUpdate(*update);
+
+  ASSERT_EQ(captured.bookCalls, 1);
+
+  EXPECT_EQ(captured.fromEvent.has_ask, 1) << "the ask side has a best level";
+  EXPECT_EQ(captured.fromEvent.ask_price_raw, Price::fromDouble(100.05).raw());
+  EXPECT_EQ(captured.fromEvent.ask_qty_raw, Quantity::fromDouble(1.5).raw());
+  EXPECT_EQ(captured.fromEvent.has_bid, 0) << "no bid side";
+  EXPECT_EQ(captured.fromEvent.bid_price_raw, 0);
 }
 
 // The best level moving is the case a cached or hardcoded size gets wrong
@@ -205,6 +239,8 @@ TEST(CApiBookSnapshot, SymbolContextQueryReportsTheBestLevelSizes)
   EXPECT_EQ(ctx.book.ask_price_raw, Price::fromDouble(100.05).raw());
   EXPECT_EQ(ctx.book.bid_qty_raw, Quantity::fromDouble(2.5).raw())
       << "the size resting at the best bid, queried outside a callback";
+  EXPECT_EQ(ctx.book.has_bid, 1);
+  EXPECT_EQ(ctx.book.has_ask, 1);
   EXPECT_EQ(ctx.book.ask_qty_raw, Quantity::fromDouble(1.25).raw())
       << "the size resting at the best ask, queried outside a callback";
 }
@@ -230,4 +266,7 @@ TEST(CApiBookSnapshot, SymbolContextQueryReportsZeroForAnEmptySide)
   EXPECT_EQ(ctx.book.ask_price_raw, 0);
   EXPECT_EQ(ctx.book.ask_qty_raw, 0)
       << "0 means the book cannot say, which here is the truth";
+  EXPECT_EQ(ctx.book.has_bid, 1) << "the bid side has a best level";
+  EXPECT_EQ(ctx.book.has_ask, 0)
+      << "the ask side has none; the flag, not the zero price, says so";
 }

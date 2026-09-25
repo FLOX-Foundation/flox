@@ -27,7 +27,7 @@ Surface: 118 classes, 79 functions, 41 constants.
 - `BookOnly: MarkImpactModel = ...`
 - `Bybit: AdlRanking = ...`
 - `CANCELLED: OrderGroupState = ...`
-- `CAPI_ABI_VERSION: int = 3`
+- `CAPI_ABI_VERSION: int = 4`
 - `Cross: MarginMode = ...`
 - `FAILED: OrderGroupState = ...`
 - `FILLED: OrderGroupState = ...`
@@ -1983,8 +1983,8 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 **Members**
 
 - `bar_ring_capacity(self) -> int`
-- `best_ask(self, symbol: str | None = None) -> float`
-- `best_bid(self, symbol: str | None = None) -> float`
+- `best_ask(self, symbol: str | None = None) -> float | None`
+- `best_bid(self, symbol: str | None = None) -> float | None`
 - `cancel_all_orders(self, symbol: str | None = None) -> None`
 - `cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `close_position(self, symbol: str | None = None) -> int`
@@ -2015,7 +2015,7 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 - `limit_sell(self, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, symbol: str | None = None, tif: str = 'gtc') -> int`
 - `market_buy(self, qty: typing.SupportsFloat | typing.SupportsIndex, symbol: str | None = None) -> int`
 - `market_sell(self, qty: typing.SupportsFloat | typing.SupportsIndex, symbol: str | None = None) -> int`
-- `mid_price(self, symbol: str | None = None) -> float`
+- `mid_price(self, symbol: str | None = None) -> float | None`
 - `modify_order(self, order_id: typing.SupportsInt | typing.SupportsIndex, new_price: typing.SupportsFloat | typing.SupportsIndex, new_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_bar(self, ctx: SymbolContext, bar: BarData) -> None`
 - `on_book_update(self, ctx: SymbolContext) -> None`
@@ -2058,17 +2058,17 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 **Members**
 
 - *attr* `symbol: str`
-- `book_spread(self) -> float`
+- `book_spread(self) -> float | None`
 - `is_flat(self) -> bool`
 - `is_long(self) -> bool`
 - `is_short(self) -> bool`
-- *property* `best_ask: float`
+- *property* `best_ask: float | None`
 - *property* `best_ask: None`
-- *property* `best_bid: float`
+- *property* `best_bid: float | None`
 - *property* `best_bid: None`
 - *property* `last_trade_price: float`
 - *property* `last_trade_price: None`
-- *property* `mid_price: float`
+- *property* `mid_price: float | None`
 - *property* `mid_price: None`
 - *property* `position: float`
 - *property* `position: None`

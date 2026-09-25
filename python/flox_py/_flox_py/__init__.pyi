@@ -3053,9 +3053,9 @@ class Strategy:
         ...
     def bar_ring_capacity(self) -> int:
         ...
-    def best_ask(self, symbol: str | None = None) -> float:
+    def best_ask(self, symbol: str | None = None) -> float | None:
         ...
-    def best_bid(self, symbol: str | None = None) -> float:
+    def best_bid(self, symbol: str | None = None) -> float | None:
         ...
     def cancel_all_orders(self, symbol: str | None = None) -> None:
         ...
@@ -3121,7 +3121,7 @@ class Strategy:
         ...
     def market_sell(self, qty: typing.SupportsFloat | typing.SupportsIndex, symbol: str | None = None) -> int:
         ...
-    def mid_price(self, symbol: str | None = None) -> float:
+    def mid_price(self, symbol: str | None = None) -> float | None:
         ...
     def modify_order(self, order_id: typing.SupportsInt | typing.SupportsIndex, new_price: typing.SupportsFloat | typing.SupportsIndex, new_qty: typing.SupportsFloat | typing.SupportsIndex) -> None:
         ...
@@ -3201,7 +3201,7 @@ class SymbolContext:
     symbol: str
     def __init__(self) -> None:
         ...
-    def book_spread(self) -> float:
+    def book_spread(self) -> float | None:
         ...
     def is_flat(self) -> bool:
         ...
@@ -3210,16 +3210,16 @@ class SymbolContext:
     def is_short(self) -> bool:
         ...
     @property
-    def best_ask(self) -> float:
+    def best_ask(self) -> float | None:
         ...
     @best_ask.setter
-    def best_ask(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> None:
+    def best_ask(self, arg0: typing.SupportsFloat | typing.SupportsIndex | None) -> None:
         ...
     @property
-    def best_bid(self) -> float:
+    def best_bid(self) -> float | None:
         ...
     @best_bid.setter
-    def best_bid(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> None:
+    def best_bid(self, arg0: typing.SupportsFloat | typing.SupportsIndex | None) -> None:
         ...
     @property
     def last_trade_price(self) -> float:
@@ -3228,10 +3228,10 @@ class SymbolContext:
     def last_trade_price(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> None:
         ...
     @property
-    def mid_price(self) -> float:
+    def mid_price(self) -> float | None:
         ...
     @mid_price.setter
-    def mid_price(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> None:
+    def mid_price(self, arg0: typing.SupportsFloat | typing.SupportsIndex | None) -> None:
         ...
     @property
     def position(self) -> float:
@@ -3965,7 +3965,7 @@ BookAnchored: MarkImpactModel  # value = <MarkImpactModel.BookAnchored: 1>
 BookOnly: MarkImpactModel  # value = <MarkImpactModel.BookOnly: 2>
 Bybit: AdlRanking  # value = <AdlRanking.Bybit: 2>
 CANCELLED: OrderGroupState  # value = <OrderGroupState.CANCELLED: 4>
-CAPI_ABI_VERSION: int = 3
+CAPI_ABI_VERSION: int = 4
 Cross: MarginMode  # value = <MarginMode.Cross: 0>
 FAILED: OrderGroupState  # value = <OrderGroupState.FAILED: 6>
 FILLED: OrderGroupState  # value = <OrderGroupState.FILLED: 3>

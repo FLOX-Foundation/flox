@@ -57,6 +57,7 @@ class FloxJsStrategy
   JSValue makeCtxObject(const FloxSymbolContext* ctx);
   JSValue makeTradeObject(const FloxTradeData* trade);
   JSValue makeBookObject(const FloxBookData* book);
+  JSValue makeBookSnapshotObject(const FloxBookSnapshot* snap);
   JSValue makeBarObject(const FloxBarData* bar);
   JSValue makeOrderEventObject(const FloxOrderEventData* ev);
 

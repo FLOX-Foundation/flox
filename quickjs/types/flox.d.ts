@@ -1,8 +1,11 @@
+/** Top of book. A side with no level reads as `null`; a book may be quoted
+ *  at exactly zero, so `0` is a price, never "no quote". `midPrice` and
+ *  `spread` are numbers only when both sides have a level. */
 interface BookSnapshot {
-    readonly bidPrice: number;
-    readonly askPrice: number;
-    readonly midPrice: number;
-    readonly spread: number;
+    readonly bidPrice: number | null;
+    readonly askPrice: number | null;
+    readonly midPrice: number | null;
+    readonly spread: number | null;
 }
 
 interface SymbolContext {

@@ -48,8 +48,10 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `ctx.symbolId` | `number` | Numeric symbol ID |
 | `ctx.position` | `number` | Current position size |
 | `ctx.avgEntryPrice` | `number` | Average entry price, `NaN` when the position manager reports none |
-| `ctx.book.bidPrice` | `number` | Best bid |
-| `ctx.book.askPrice` | `number` | Best ask |
+| `ctx.book.bidPrice` | `number \| null` | Best bid; `null` when the bid side has no level (`0` is a price) |
+| `ctx.book.askPrice` | `number \| null` | Best ask; `null` when the ask side has no level |
+| `ctx.book.midPrice` | `number \| null` | Mid price; `null` unless both sides have a level |
+| `ctx.book.spread` | `number \| null` | Spread; `null` unless both sides have a level |
 | `trade.symbol` | `string` | Symbol name |
 | `trade.price` | `number` | Trade price |
 | `trade.qty` | `number` | Trade quantity |

@@ -155,9 +155,9 @@ These methods use the first registered symbol when `symbol` is omitted. `symbol`
 | `pos(symbol=None)` | `float` | Alias of `position` |
 | `ctx(symbol=None)` | `SymbolContext` | Per-symbol context snapshot |
 | `last_price(symbol=None)` | `float` | Last trade price |
-| `best_bid(symbol=None)` | `float` | Best bid |
-| `best_ask(symbol=None)` | `float` | Best ask |
-| `mid_price(symbol=None)` | `float` | Mid price |
+| `best_bid(symbol=None)` | `float \| None` | Best bid; `None` when the bid side has no level. A book may be quoted at exactly zero, so `0.0` is a price, never "no quote" |
+| `best_ask(symbol=None)` | `float \| None` | Best ask; `None` when the ask side has no level |
+| `mid_price(symbol=None)` | `float \| None` | Mid price; `None` unless both sides have a level |
 | `get_order_status(order_id)` | `int` | Order status (-1 if not found) |
 | `order_status(order_id)` | `int` | Alias of `get_order_status` |
 | `symbols` | `list[int]` | Subscribed symbol IDs (property) |
@@ -185,11 +185,11 @@ volume / range threshold the aggregator was configured with.
 | `symbol` | `str` | Symbol name |
 | `position` | `float` | Current position |
 | `last_trade_price` | `float` | Last trade price |
-| `best_bid` | `float` | Best bid price |
-| `best_ask` | `float` | Best ask price |
-| `mid_price` | `float` | Mid price |
+| `best_bid` | `float \| None` | Best bid price; `None` when the bid side has no level (`0.0` is a price) |
+| `best_ask` | `float \| None` | Best ask price; `None` when the ask side has no level |
+| `mid_price` | `float \| None` | Mid price; `None` unless both sides have a level |
 | `unrealized_pnl` | `float` | Unrealized P&L, or `NaN` when the position manager reports no entry price (see below) |
-| `book_spread()` | `float` | Bid-ask spread |
+| `book_spread()` | `float \| None` | Bid-ask spread; `None` unless both sides have a level |
 | `is_long()` | `bool` | True if long |
 | `is_short()` | `bool` | True if short |
 | `is_flat()` | `bool` | True if no position |

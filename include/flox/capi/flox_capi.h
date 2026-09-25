@@ -23,8 +23,9 @@
  * version used against a library from another produces wrong numbers
  * rather than a failed load -- compare FLOX_CAPI_ABI_VERSION against
  * flox_capi_abi_version() once at startup and refuse the mismatch.
- * 3: FloxBar grew close_reason. */
-#define FLOX_CAPI_ABI_VERSION 3
+ * 3: FloxBar grew close_reason. 4: FloxBookSnapshot grew has_bid and
+ * has_ask. */
+#define FLOX_CAPI_ABI_VERSION 4
 
 /* Declared by a header that carries flox_best_bid_raw_opt and its two
  * siblings, so a binding can compile against a header with or without them.
@@ -186,12 +187,14 @@ extern "C"
 
   typedef struct
   {
-    int64_t bid_price_raw;
-    int64_t bid_qty_raw;
-    int64_t ask_price_raw;
-    int64_t ask_qty_raw;
-    int64_t mid_raw;
-    int64_t spread_raw;
+    int64_t bid_price_raw; /* a price only when has_bid is 1, else 0 */
+    int64_t bid_qty_raw;   /* size at the best bid, 0 when the book cannot say */
+    int64_t ask_price_raw; /* a price only when has_ask is 1, else 0 */
+    int64_t ask_qty_raw;   /* size at the best ask, 0 when the book cannot say */
+    int64_t mid_raw;       /* a price only when both flags are 1, else 0 */
+    int64_t spread_raw;    /* a price only when both flags are 1, else 0 */
+    uint8_t has_bid;       /* 1 when the bid side has a best level, at any price */
+    uint8_t has_ask;       /* 1 when the ask side has a best level, at any price */
   } FloxBookSnapshot;
 
   typedef struct

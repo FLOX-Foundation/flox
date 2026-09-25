@@ -2468,6 +2468,99 @@ TEST(JsIntegrationTest, BestQuoteAccessorsAnswerNullForNoQuoteAndZeroForAPriceOf
   EXPECT_NEAR(readGlobalDouble(jsStrat, "askAboveZero"), 0.01, 1e-9);
 }
 
+// The same four books, read through the objects a callback receives rather
+// than the accessors: ctx.book on every callback and book.snapshot on
+// onBookUpdate. Both used to write 0 for an empty side, the number a bid at
+// exactly 0.0 also writes, so a strategy reading ctx.book.bidPrice could not
+// tell the two apart. null is "no quote"; a number, 0 included, is a price.
+TEST(JsIntegrationTest, ContextBookAndSnapshotAnswerNullForNoQuoteAndZeroForAPriceOfZero)
+{
+  TempJsFile script(R"(
+    var phase = 0;
+    var emptyAllNull = false;
+    var bidZeroCtxIsNumber = false, bidZeroCtxValue = -1, bidZeroSnapIsNumber = false;
+    var askNullBidOnly = false, midNullBidOnly = false, spreadNullBidOnly = false;
+    var askZeroCtxIsNumber = false, bidNullAskOnly = false, midNullAskOnly = false;
+    var midZeroIsNumber = false, midZeroValue = -1, spreadValue = -1;
+    var snapAgreesWithCtx = true;
+
+    class TestStrat extends Strategy {
+      constructor() { super({ exchange: "T", symbols: ["ZERO"] }); }
+      onBookUpdate(ctx, book) {
+        phase++;
+        var b = ctx.book, s = book.snapshot;
+        snapAgreesWithCtx = snapAgreesWithCtx &&
+          (b.bidPrice === s.bidPrice) && (b.askPrice === s.askPrice) &&
+          (b.midPrice === s.midPrice) && (b.spread === s.spread);
+        if (phase === 1) {
+          emptyAllNull = (b.bidPrice === null && b.askPrice === null &&
+                          b.midPrice === null && b.spread === null);
+        } else if (phase === 2) {
+          bidZeroCtxIsNumber = (typeof b.bidPrice === 'number');
+          bidZeroCtxValue = (typeof b.bidPrice === 'number') ? b.bidPrice : -1;
+          bidZeroSnapIsNumber = (typeof s.bidPrice === 'number');
+          askNullBidOnly = (b.askPrice === null);
+          midNullBidOnly = (b.midPrice === null);
+          spreadNullBidOnly = (b.spread === null);
+        } else if (phase === 3) {
+          askZeroCtxIsNumber = (typeof b.askPrice === 'number');
+          bidNullAskOnly = (b.bidPrice === null);
+          midNullAskOnly = (b.midPrice === null);
+        } else if (phase === 4) {
+          midZeroIsNumber = (typeof b.midPrice === 'number');
+          midZeroValue = (typeof b.midPrice === 'number') ? b.midPrice : -1;
+          spreadValue = (typeof b.spread === 'number') ? b.spread : -1;
+        }
+      }
+    }
+    flox.register(new TestStrat());
+  )");
+
+  SymbolRegistry registry;
+  FloxJsStrategy jsStrat(script.path(), registry);
+  auto callbacks = jsStrat.getCallbacks();
+  auto symIds = jsStrat.symbolIds();
+  ASSERT_FALSE(symIds.empty());
+
+  auto bridge = std::make_unique<BridgeStrategy>(
+      1, std::vector<SymbolId>(symIds.begin(), symIds.end()), registry, callbacks);
+  jsStrat.injectHandle(static_cast<FloxStrategyHandle>(bridge.get()));
+
+  const SymbolId sym = symIds[0];
+  pushBook(*bridge, sym, {}, {});
+  pushBook(*bridge, sym, {{0.0, 1.0}}, {});
+  pushBook(*bridge, sym, {}, {{0.0, 1.0}});
+  pushBook(*bridge, sym, {{-0.01, 1.0}}, {{0.01, 1.0}});
+
+  ASSERT_EQ(readGlobalInt32(jsStrat, "phase"), 4) << "the JS hook did not see every update";
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "snapAgreesWithCtx"))
+      << "book.snapshot and ctx.book disagree on the same update";
+
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "emptyAllNull"))
+      << "an empty book does not read as null on every field of ctx.book";
+
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "bidZeroCtxIsNumber"))
+      << "a bid at exactly 0.0 reads as null on ctx.book instead of the number 0";
+  EXPECT_DOUBLE_EQ(readGlobalDouble(jsStrat, "bidZeroCtxValue"), 0.0);
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "bidZeroSnapIsNumber"))
+      << "a bid at exactly 0.0 reads as null on book.snapshot";
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "askNullBidOnly"));
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "midNullBidOnly"))
+      << "ctx.book.midPrice on a one-sided book is not null";
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "spreadNullBidOnly"))
+      << "ctx.book.spread on a one-sided book is not null";
+
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "askZeroCtxIsNumber"))
+      << "an ask at exactly 0.0 reads as null on ctx.book";
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "bidNullAskOnly"));
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "midNullAskOnly"));
+
+  EXPECT_TRUE(readGlobalInt32(jsStrat, "midZeroIsNumber"))
+      << "a mid of exactly 0.0 reads as null instead of the number 0";
+  EXPECT_DOUBLE_EQ(readGlobalDouble(jsStrat, "midZeroValue"), 0.0);
+  EXPECT_NEAR(readGlobalDouble(jsStrat, "spreadValue"), 0.02, 1e-9);
+}
+
 // ============================================================
 // Bar timestamps — one unit and one type on every path
 // ============================================================

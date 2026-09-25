@@ -272,3 +272,44 @@ TEST(CapiNegativeBook, OptionalRawBestQuotesAcceptANullPriceOut)
   FAIL() << "needs FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE";
 #endif
 }
+
+// The snapshot a strategy reads out of flox_get_symbol_context carried the same
+// collision the raw accessors had: a bid at 0.0 and no bid both wrote 0 into
+// bid_price_raw. The two presence flags are what a consumer of the struct reads
+// before it believes a price, so they are asserted against the same set of
+// books as the _opt accessors, side by side with the price they qualify.
+TEST(CapiNegativeBook, SymbolContextSnapshotSeparatesNoQuoteFromAPriceOfZero)
+{
+  const auto& books = bookStatesUnderTest();
+  FloxStrategyHandle s = books.strategy;
+  FloxSymbolContext ctx{};
+
+  flox_get_symbol_context(s, books.bidAtZero, &ctx);
+  EXPECT_EQ(ctx.book.has_bid, 1) << "a bid at 0.0 is a quote";
+  EXPECT_EQ(ctx.book.bid_price_raw, 0);
+  EXPECT_EQ(ctx.book.has_ask, 0) << "no ask side";
+  EXPECT_EQ(ctx.book.ask_price_raw, 0);
+  EXPECT_EQ(ctx.book.mid_raw, 0) << "no mid without both sides";
+  EXPECT_EQ(ctx.book.spread_raw, 0);
+
+  flox_get_symbol_context(s, books.askOnly, &ctx);
+  EXPECT_EQ(ctx.book.has_bid, 0);
+  EXPECT_EQ(ctx.book.has_ask, 1);
+
+  flox_get_symbol_context(s, books.askAtZero, &ctx);
+  EXPECT_EQ(ctx.book.has_bid, 1);
+  EXPECT_EQ(ctx.book.has_ask, 1) << "an ask at 0.0 is a quote";
+  EXPECT_EQ(ctx.book.ask_price_raw, 0);
+
+  flox_get_symbol_context(s, books.belowZero, &ctx);
+  EXPECT_EQ(ctx.book.has_bid, 1);
+  EXPECT_EQ(ctx.book.has_ask, 1);
+  EXPECT_EQ(ctx.book.bid_price_raw, flox_price_from_double(-101.0));
+  EXPECT_EQ(ctx.book.ask_price_raw, flox_price_from_double(-99.0));
+  EXPECT_EQ(ctx.book.mid_raw, flox_price_from_double(-100.0));
+
+  // A symbol the strategy never subscribed: nothing on either side.
+  flox_get_symbol_context(s, 0, &ctx);
+  EXPECT_EQ(ctx.book.has_bid, 0);
+  EXPECT_EQ(ctx.book.has_ask, 0);
+}

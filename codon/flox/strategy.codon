@@ -474,16 +474,16 @@ class Strategy:
         """Last trade price. Defaults to primary symbol."""
         return self.ctx(self._resolve(symbol)).last_trade_price()
 
-    def best_bid(self, symbol: Optional[str] = None) -> float:
-        """Best bid price. Defaults to primary symbol."""
+    def best_bid(self, symbol: Optional[str] = None) -> Optional[float]:
+        """Best bid price, or None when the bid side is empty. Defaults to primary symbol."""
         return self.ctx(self._resolve(symbol)).best_bid()
 
-    def best_ask(self, symbol: Optional[str] = None) -> float:
-        """Best ask price. Defaults to primary symbol."""
+    def best_ask(self, symbol: Optional[str] = None) -> Optional[float]:
+        """Best ask price, or None when the ask side is empty. Defaults to primary symbol."""
         return self.ctx(self._resolve(symbol)).best_ask()
 
-    def mid_price(self, symbol: Optional[str] = None) -> float:
-        """Mid price. Defaults to primary symbol."""
+    def mid_price(self, symbol: Optional[str] = None) -> Optional[float]:
+        """Mid price, or None unless both sides have a level. Defaults to primary symbol."""
         return self.ctx(self._resolve(symbol)).mid_price()
 
     def order_status(self, order_id: int) -> int:
