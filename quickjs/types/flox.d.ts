@@ -357,6 +357,16 @@ declare class SimulatedExecutor {
     destroy(): void;
     submitOrder(id: number, side: "buy" | "sell", price: number, qty: number, type?: number, symbol?: number): void;
     onBar(symbol: number, closePrice: number): void;
+    /** Manual bar path: moves the market to `open` (releasing any order held
+     *  from a beginBarCallbackWindow/endBarCallbackWindow pair there), then
+     *  walks low -> high -> close. Use this, not onBar, to drive the
+     *  executor by hand to the fills BacktestRunner produces on the same
+     *  bars. */
+    onBarOhlc(symbol: number, open: number, high: number, low: number, close: number): void;
+    beginBarCallbackWindow(): void;
+    endBarCallbackWindow(): void;
+    /** Drop fills and run-scoped state, keeping installed configuration. */
+    reset(): void;
     onTrade(symbol: number, price: number, isBuy: boolean): void;
     onTradeQty(symbol: number, price: number, quantity: number, isBuy: boolean): void;
     onBestLevels(symbol: number, bidPrice: number, bidQty: number, askPrice: number, askQty: number): void;
