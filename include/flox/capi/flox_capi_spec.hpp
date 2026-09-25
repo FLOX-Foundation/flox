@@ -313,6 +313,23 @@ extern "C"
   int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol);
   FLOX_EXPORT(group = "context_queries")
   int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol);
+  /* The _opt trio answers the question the three above cannot: they return 0
+   * both when the side is empty and when the best quote is a price of exactly
+   * 0.0, and a book quoting through zero reaches that price. Here the return
+   * value is the presence flag -- 1 with the raw price written to price_out,
+   * 0 with price_out untouched -- so "no quote" has its own answer. price_out
+   * may be NULL when only the flag is wanted. The three int64_t forms stay as
+   * they are for callers that cannot see below zero. */
+  FLOX_EXPORT(group = "context_queries")
+  uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  FLOX_EXPORT(group = "context_queries")
+  uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  FLOX_EXPORT(group = "context_queries")
+  uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t* price_out);
+  /* Defined by a header that declares the _opt trio, so a binding can compile
+   * against either. */
+  // flox::export_macro(group="feature_flags")
+  #define FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE 1
   FLOX_EXPORT(group = "context_queries")
   void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext* out);
   FLOX_EXPORT(group = "context_queries")

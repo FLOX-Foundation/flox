@@ -327,6 +327,11 @@ if(FLOX_BUILD_CAPI)
   target_link_libraries(test_capi_bar_aggregation PRIVATE flox_capi)
   add_flox_test(test_capi_negative_book)
   target_link_libraries(test_capi_negative_book PRIVATE flox_capi)
+  # The strategy-side case needs a strategy that already holds a book; the
+  # fixture that builds one is force-included so the test source stays on the
+  # C API and gtest alone.
+  target_precompile_headers(test_capi_negative_book
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support/capi_strategy_under_test.h)
   # test_capi_logger needs to share a single ILogger global with flox_capi.
   # If we use add_flox_test, the test exe links the static `flox` library
   # alongside flox_capi.dylib (which itself statically embeds `flox`) —

@@ -330,7 +330,17 @@
         {
           "group": "context_queries",
           "kind": "function",
+          "name": "flox_best_ask_raw_opt"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
           "name": "flox_best_bid_raw"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_best_bid_raw_opt"
         },
         {
           "group": "tape_aggregator",
@@ -2076,6 +2086,11 @@
           "group": "context_queries",
           "kind": "function",
           "name": "flox_mid_price_raw"
+        },
+        {
+          "group": "context_queries",
+          "kind": "function",
+          "name": "flox_mid_price_raw_opt"
         },
         {
           "group": "tape_aggregator",
@@ -8482,7 +8497,15 @@
         },
         {
           "kind": "c_import",
+          "name": "flox_best_ask_raw_opt"
+        },
+        {
+          "kind": "c_import",
           "name": "flox_best_bid_raw"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_best_bid_raw_opt"
         },
         {
           "kind": "c_import",
@@ -9879,6 +9902,10 @@
         {
           "kind": "c_import",
           "name": "flox_mid_price_raw"
+        },
+        {
+          "kind": "c_import",
+          "name": "flox_mid_price_raw_opt"
         },
         {
           "kind": "c_import",
@@ -40879,11 +40906,14 @@
     "context_queries": {
       "capi_functions": [
         "flox_best_ask_raw",
+        "flox_best_ask_raw_opt",
         "flox_best_bid_raw",
+        "flox_best_bid_raw_opt",
         "flox_get_order_status",
         "flox_get_symbol_context",
         "flox_last_trade_price_raw",
         "flox_mid_price_raw",
+        "flox_mid_price_raw_opt",
         "flox_position_raw"
       ],
       "codon": {
