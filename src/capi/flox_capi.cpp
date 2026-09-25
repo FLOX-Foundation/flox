@@ -763,9 +763,11 @@ void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolCo
   auto bid = c.book.bestBid();
   auto ask = c.book.bestAsk();
   out->book.bid_price_raw = bid ? bid->raw() : 0;
-  out->book.bid_qty_raw = 0;
+  // See BridgeStrategy::toBookSnapshot: the size at the best level comes
+  // from bidAtPrice()/askAtPrice(), and 0 is reserved for an empty side.
+  out->book.bid_qty_raw = bid ? c.book.bidAtPrice(*bid).raw() : 0;
   out->book.ask_price_raw = ask ? ask->raw() : 0;
-  out->book.ask_qty_raw = 0;
+  out->book.ask_qty_raw = ask ? c.book.askAtPrice(*ask).raw() : 0;
   auto mid = c.mid();
   out->book.mid_raw = mid ? mid->raw() : 0;
   auto spread = c.bookSpread();

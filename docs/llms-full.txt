@@ -17518,9 +17518,9 @@ typedef void* FloxVenueStackHandle;
 | Field | Type | Description |
 |-------|------|-------------|
 | `bid_price_raw` | `int64_t` | Best bid price × 1e8 (0 if absent) |
-| `bid_qty_raw` | `int64_t` | Best bid quantity × 1e8 |
+| `bid_qty_raw` | `int64_t` | Size resting at the best bid × 1e8 (0 when the book cannot say) |
 | `ask_price_raw` | `int64_t` | Best ask price × 1e8 (0 if absent) |
-| `ask_qty_raw` | `int64_t` | Best ask quantity × 1e8 |
+| `ask_qty_raw` | `int64_t` | Size resting at the best ask × 1e8 (0 when the book cannot say) |
 | `mid_raw` | `int64_t` | Mid price × 1e8 (0 if absent) |
 | `spread_raw` | `int64_t` | Spread × 1e8 (0 if absent) |
 
