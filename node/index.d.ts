@@ -74,8 +74,10 @@ export interface BarData {
   close: number;
   volume: number;
   buyVolume: number;
-  startTimeNs: number;
-  endTimeNs: number;
+  /** Absolute nanosecond clock readings: a `Number` is a double and steps
+   *  256 ns at a time at present-day magnitudes. */
+  startTimeNs: bigint;
+  endTimeNs: bigint;
   /** 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi, 6=BpsRange.
    *  Mirrors `flox::BarType` (include/flox/aggregator/bar.h) and the
    *  `composite.BAR_TYPE_*` constants. */
@@ -202,8 +204,8 @@ export interface ClosedBar {
   low: number;
   close: number;
   volume: number;
-  startNs: number;
-  endNs: number;
+  startNs: bigint;
+  endNs: bigint;
 }
 
 /** Order-emission helper passed as the third arg to strategy callbacks.
@@ -528,7 +530,16 @@ export class Runner {
     askQtys: Float64Array,
     timestampNs: number | bigint,
   ): void;
-  onBar(symbol: Symbol | number, bar: Partial<BarData> & Pick<BarData, "open" | "high" | "low" | "close">): void;
+  /** The nanosecond fields take a `Number` or a `BigInt`; a bar read out
+   *  of `onBar` carries `BigInt`s and can be handed straight back. */
+  onBar(
+    symbol: Symbol | number,
+    bar: Partial<Omit<BarData, "startTimeNs" | "endTimeNs">> &
+      Pick<BarData, "open" | "high" | "low" | "close"> & {
+        startTimeNs?: number | bigint;
+        endTimeNs?: number | bigint;
+      },
+  ): void;
 
   // ── Hook setters ──
   setPnlTracker(tracker: PnLTracker | null): void;
@@ -1510,8 +1521,8 @@ export function list_indicators(): string[];
 
 /** A single aggregated bar emitted by `aggregate*` helpers. */
 export interface AggregatedBar {
-  startTimeNs: number;
-  endTimeNs: number;
+  startTimeNs: bigint;
+  endTimeNs: bigint;
   open: number;
   high: number;
   low: number;
@@ -1522,42 +1533,42 @@ export interface AggregatedBar {
 }
 
 export function aggregateTimeBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   intervalSeconds: number,
 ): AggregatedBar[];
 export function aggregateTickBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   tickCount: number,
 ): AggregatedBar[];
 export function aggregateVolumeBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   threshold: number,
 ): AggregatedBar[];
 export function aggregateRangeBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   rangeSize: number,
 ): AggregatedBar[];
 export function aggregateRenkoBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   brickSize: number,
 ): AggregatedBar[];
 export function aggregateHeikinAshiBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,

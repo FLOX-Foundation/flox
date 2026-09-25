@@ -4,6 +4,7 @@
 
 #include <napi.h>
 
+#include "bindings_common.h"
 #include "data_ops.h"
 #include "error_translator.h"
 #include "flox/capi/bridge_strategy.h"
@@ -432,8 +433,10 @@ struct NodeStrategyHost : TsfnHost
       o.Set("low", Napi::Number::New(env, b.low.toDouble()));
       o.Set("close", Napi::Number::New(env, b.close.toDouble()));
       o.Set("volume", Napi::Number::New(env, b.volume.toDouble()));
-      o.Set("startNs", Napi::Number::New(env, static_cast<double>(b.startTime.time_since_epoch().count())));
-      o.Set("endNs", Napi::Number::New(env, static_cast<double>(b.endTime.time_since_epoch().count())));
+      o.Set("startNs",
+            Napi::BigInt::New(env, static_cast<int64_t>(b.startTime.time_since_epoch().count())));
+      o.Set("endNs",
+            Napi::BigInt::New(env, static_cast<int64_t>(b.endTime.time_since_epoch().count())));
       return o;
     };
     em.Set("lastClosedBar", Napi::Function::New(env_, [buildBar](const Napi::CallbackInfo& i) -> Napi::Value
@@ -538,8 +541,10 @@ struct NodeStrategyHost : TsfnHost
     o.Set("close", Napi::Number::New(env, flox_price_to_double(bar->close_raw)));
     o.Set("volume", Napi::Number::New(env, flox_quantity_to_double(bar->volume_raw)));
     o.Set("buyVolume", Napi::Number::New(env, flox_quantity_to_double(bar->buy_volume_raw)));
-    o.Set("startTimeNs", Napi::Number::New(env, static_cast<double>(bar->start_time_ns)));
-    o.Set("endTimeNs", Napi::Number::New(env, static_cast<double>(bar->end_time_ns)));
+    // BigInt for the same reason as TradeData.timestampNs above: a real ns
+    // reading does not survive a double.
+    o.Set("startTimeNs", Napi::BigInt::New(env, static_cast<int64_t>(bar->start_time_ns)));
+    o.Set("endTimeNs", Napi::BigInt::New(env, static_cast<int64_t>(bar->end_time_ns)));
     o.Set("closeReason", Napi::Number::New(env, bar->close_reason));
   }
 
@@ -1563,10 +1568,18 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       auto v = opts.Get(k);
       return v.IsNumber() ? v.As<Napi::Number>().DoubleValue() : dflt;
     };
+    // A BigInt is the type onBar hands back, so it has to be the type onBar
+    // takes: the old `IsNumber()` guard silently substituted the default for
+    // a BigInt startTimeNs, and a bar taken out of the addon and fed straight
+    // back in arrived stamped 0.
     auto getInt = [&](const char* k, int64_t dflt) -> int64_t
     {
       auto v = opts.Get(k);
-      return v.IsNumber() ? static_cast<int64_t>(v.As<Napi::Number>().Int64Value()) : dflt;
+      if (v.IsBigInt() || v.IsNumber())
+      {
+        return toInt64Ns(v);
+      }
+      return dflt;
     };
     auto getU8 = [&](const char* k, uint8_t dflt) -> uint8_t
     {
