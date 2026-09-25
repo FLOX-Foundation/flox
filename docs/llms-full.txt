@@ -170,7 +170,7 @@ MIT License
 
 # Language bindings
 
-All bindings expose the same core model: strategy callbacks, order emission, position queries. The API shape is the same across languages.
+All bindings expose the same core model: strategy callbacks, order emission, position queries. What each one carries around that model differs, and the table below says where.
 
 | Language | Guide | Reference |
 |---|---|---|
@@ -179,6 +179,22 @@ All bindings expose the same core model: strategy callbacks, order emission, pos
 | Codon | [Codon](codon.md) | [API reference](../reference/codon/index.md) |
 | JavaScript (embedded) | [JavaScript](javascript.md) | [API reference](../reference/quickjs/index.md) |
 | C API | [C API](capi.md) | [reference](../reference/api/capi/flox_capi.md) |
+
+## What each binding carries
+
+| Capability | Python | Node | Codon | JavaScript (QuickJS) |
+|---|---|---|---|---|
+| `Strategy` callbacks — trade, book, bar | yes | yes | yes | yes |
+| `BacktestRunner` — event-driven replay (`run_csv`, `run_tape`, `run_ohlcv`, `run_bars`) | yes | yes | yes | no |
+| `Engine` + `SignalBuilder` — backtest a pre-built signal list | yes | yes | yes | yes |
+| `SimulatedExecutor`, `BacktestResult` | yes | yes | yes | yes |
+| `DataReader`, `DataWriter` | yes | yes | yes | yes |
+| Bar aggregators — time, tick, volume, range, Renko, Heikin-Ashi | yes | yes | yes | yes |
+
+The embedded JavaScript binding has no `BacktestRunner`: the event-driven
+replay entry points are unreachable from QuickJS, and a strategy backtests
+there by building a signal list and running it through `Engine`. Everything
+else in the table is reachable from all four.
 
 ## Which one to use
 
@@ -9586,7 +9602,7 @@ Resample with replacement from observed values. Pass three lists of measured lat
 - `open(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]`
 - `resample(self, symbol: str, target: str, interval: str) -> None`
 - `run(self, signals: SignalBuilder, default_symbol: typing.SupportsInt | typing.SupportsIndex = 0) -> Stats`
-- `ts(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]`
+- `ts(self, symbol: str = '') -> numpy.typing.NDArray[numpy.int64]`
 - `volume(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]`
 - *property* `symbols: list`
 
@@ -11403,7 +11419,7 @@ Referencing an unregistered symbol name raises `FloxError(code="E_SYM_001")`.
 |--------|------|-------------|
 | `symbols` | `list[str]` | Registered symbol names (property) |
 | `bar_count(symbol='')` | `int` | Number of bars loaded for a symbol |
-| `ts(symbol='')` | `float64[]` | Bar timestamps in nanoseconds |
+| `ts(symbol='')` | `int64[]` | Bar timestamps in nanoseconds |
 | `open(symbol='')` | `float64[]` | Open prices |
 | `high(symbol='')` | `float64[]` | High prices |
 | `low(symbol='')` | `float64[]` | Low prices |
@@ -17363,12 +17379,17 @@ Every other helper here closes at most one bar per input trade.
 
 | Call | `param` |
 |------|---------|
-| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
+| `flox.timeBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds — `60000000000` is one minute |
 | `flox.tickBars(ts, px, qty, sides, ticksPerBar)` | Trades per bar |
 | `flox.volumeBars(ts, px, qty, sides, volumePerBar)` | Volume per bar |
 | `flox.rangeBars(ts, px, qty, sides, rangeSize)` | High-low range |
 | `flox.renkoBars(ts, px, qty, sides, brickSize)` | Brick size |
 | `flox.heikinBars(ts, px, qty, sides, intervalNs)` | Interval in nanoseconds |
+
+A nanosecond interval may be a `Number` or a `BigInt`. Each bar comes back
+with `ts` (the bar start, a nanosecond `BigInt`), `open`, `high`, `low`,
+`close`, `volume`, `buyVolume` and `trades`. Only closed bars are returned:
+a bar still forming when the tape ends is not one of them.
 
 ---
 
@@ -17581,9 +17602,9 @@ typedef void* FloxVenueStackHandle;
 | Field | Type | Description |
 |-------|------|-------------|
 | `bid_price_raw` | `int64_t` | Best bid price × 1e8 (0 if absent) |
-| `bid_qty_raw` | `int64_t` | Best bid quantity × 1e8 |
+| `bid_qty_raw` | `int64_t` | Size resting at the best bid × 1e8 (0 when the book cannot say) |
 | `ask_price_raw` | `int64_t` | Best ask price × 1e8 (0 if absent) |
-| `ask_qty_raw` | `int64_t` | Best ask quantity × 1e8 |
+| `ask_qty_raw` | `int64_t` | Size resting at the best ask × 1e8 (0 when the book cannot say) |
 | `mid_raw` | `int64_t` | Mid price × 1e8 (0 if absent) |
 | `spread_raw` | `int64_t` | Spread × 1e8 (0 if absent) |
 

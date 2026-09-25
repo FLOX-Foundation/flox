@@ -45,6 +45,17 @@ Read side, now `BigInt`:
 - backtest stats `startTimeNs` / `endTimeNs`, equity-point `timestampNs`
 - trace reader run bounds, partition `fromNs` / `toNs` / `warmupFromNs`,
   merged-tape `firstEventNs` / `lastEventNs`
+- `bar.ts` on every bar object: the aggregators (`flox.timeBars` and the
+  rest) and `flox.loadCsv` / `Engine.loadCsv`
+
+`bar.ts` from `loadCsv` changed unit as well as type. It used to be a
+millisecond `Number`, while every other bar source reported nanoseconds,
+so a script that read one bar from a CSV and one from an aggregator was
+out by 1e6 and threw a `TypeError` the moment it subtracted one from the
+other. A CSV column in seconds, milliseconds or microseconds is still
+detected and scaled, but what reaches the script is always nanoseconds.
+`SignalBuilder` and `Engine.run` follow: they timestamp, order and match
+signals against bars in nanoseconds, and take a `BigInt` or a `Number`.
 
 Write side: every binding that takes a nanosecond argument accepts a
 `BigInt` or a `Number`, so `advanceClock`, `writeTrade`, `writeBook`,

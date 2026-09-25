@@ -74,11 +74,11 @@ extern "C"
   typedef struct
   {
     int64_t bid_price_raw;  // best bid, or 0 if absent
-    int64_t bid_qty_raw;
+    int64_t bid_qty_raw;    // size resting at the best bid, 0 when the book cannot say
     int64_t ask_price_raw;  // best ask, or 0 if absent
-    int64_t ask_qty_raw;
-    int64_t mid_raw;     // mid price, or 0
-    int64_t spread_raw;  // spread, or 0
+    int64_t ask_qty_raw;    // size resting at the best ask, 0 when the book cannot say
+    int64_t mid_raw;        // mid price, or 0
+    int64_t spread_raw;     // spread, or 0
   } FloxBookSnapshot;
 
   typedef struct

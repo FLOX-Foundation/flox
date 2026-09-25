@@ -329,6 +329,8 @@ if(FLOX_BUILD_CAPI)
   target_link_libraries(test_capi_signal_codes PRIVATE flox_capi)
   add_flox_test(test_capi_bar_aggregation)
   target_link_libraries(test_capi_bar_aggregation PRIVATE flox_capi)
+  add_flox_test(test_capi_book_snapshot)
+  target_link_libraries(test_capi_book_snapshot PRIVATE flox_capi)
   add_flox_test(test_capi_negative_book)
   target_link_libraries(test_capi_negative_book PRIVATE flox_capi)
   # The strategy-side case needs a strategy that already holds a book; the
@@ -365,6 +367,11 @@ endif()
 if(FLOX_BUILD_QUICKJS)
   add_flox_test(test_quickjs)
   target_link_libraries(test_quickjs PRIVATE flox_quickjs)
+  # One test runs quickjs/examples/backtest_sma.js and checks the numbers it
+  # computes. The example loads its CSV by a path relative to the repo root,
+  # so the test has to know where that is.
+  target_compile_definitions(test_quickjs PRIVATE
+    FLOX_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
 endif()
 
 if(FLOX_ENABLE_CPU_AFFINITY)

@@ -452,14 +452,19 @@ class Engine
     return resolve(symbol).bars.size();
   }
 
-  py::array_t<double> timestamps(const std::string& symbol = "") const
+  // int64, not float64: a nanosecond timestamp today is ~1.78e18, far past
+  // the 2^53 where a double still holds every integer, so a float64 array
+  // rounded every value it handed back (256 ns spacing at that magnitude).
+  // The OHLCV columns stay float64 -- those are converted out of fixed
+  // point for the caller.
+  py::array_t<int64_t> timestamps(const std::string& symbol = "") const
   {
     auto& bars = resolve(symbol).bars;
-    py::array_t<double> out(bars.size());
+    py::array_t<int64_t> out(bars.size());
     auto* p = out.mutable_data();
     for (size_t i = 0; i < bars.size(); ++i)
     {
-      p[i] = static_cast<double>(bars[i].timestamp_ns);
+      p[i] = bars[i].timestamp_ns;
     }
     return out;
   }
