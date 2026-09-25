@@ -230,6 +230,111 @@ TEST_F(TickRoundingTest, DeltaReanchorsOnTheSideAwareSnap)
   EXPECT_EQ(bid->raw(), Price::fromDouble(300.0).raw());
 }
 
+// Quotes below zero. A negative price is not a malformed one -- crude settled
+// there in April 2020, day-ahead power does it regularly, and a calendar
+// spread is quoted negative most of its life -- and it is the only thing that
+// reaches the negative half of the tick division: ticks() is handed the price
+// itself, so where the window is anchored never makes the argument negative.
+// Snapping away from the quote there means away from zero for a bid and
+// toward zero for an ask, the opposite of what truncating integer division
+// does on its own: -100.4 truncates to -100, a price better than the bid
+// quoted.
+//
+// Read through the level accessors rather than bestBid()/bestAsk(): those two
+// report a tick index below zero as "no book" (the `t < 0` sentinel at
+// nlevel_order_book.h:454), so they cannot express a negative best quote at
+// all. That is a separate limit of the accessors, not of the snapping these
+// tests are about.
+TEST_F(TickRoundingTest, NegativeQuotesSnapAwayFromTheQuote)
+{
+  NLevelOrderBook<512> book{Price::fromDouble(1.0)};
+
+  const Price quotedBid = Price::fromDouble(-100.4);
+  const Price quotedAsk = Price::fromDouble(-99.6);
+  auto update = makeSnapshot({{quotedBid, Quantity::fromDouble(1.0)}},
+                             {{quotedAsk, Quantity::fromDouble(2.0)}});
+  book.applyBookUpdate(*update);
+
+  const auto bids = book.getBidLevels(1);
+  const auto asks = book.getAskLevels(1);
+  ASSERT_EQ(bids.size(), 1u);
+  ASSERT_EQ(asks.size(), 1u);
+
+  EXPECT_LE(bids[0].price.raw(), quotedBid.raw())
+      << "bid " << bids[0].price.raw() << " is better than the quoted " << quotedBid.raw();
+  EXPECT_GE(asks[0].price.raw(), quotedAsk.raw())
+      << "ask " << asks[0].price.raw() << " is better than the quoted " << quotedAsk.raw();
+
+  // -100.4 floors to -101, not to the -100 that truncation toward zero gives.
+  EXPECT_EQ(bids[0].price.raw(), Price::fromDouble(-101.0).raw());
+  EXPECT_EQ(asks[0].price.raw(), Price::fromDouble(-99.0).raw());
+
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(-101.0)).raw(), Quantity::fromDouble(1.0).raw());
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(-100.0)).raw(), 0);
+  EXPECT_EQ(book.askAtPrice(Price::fromDouble(-99.0)).raw(), Quantity::fromDouble(2.0).raw());
+  EXPECT_EQ(book.askAtPrice(Price::fromDouble(-100.0)).raw(), 0);
+
+  // And the quoted price itself reads the level it was stored on.
+  EXPECT_EQ(book.bidAtPrice(quotedBid).raw(), Quantity::fromDouble(1.0).raw());
+  EXPECT_EQ(book.askAtPrice(quotedAsk).raw(), Quantity::fromDouble(2.0).raw());
+}
+
+// The same band swept below zero, so the whole negative half is covered and
+// not one point in it.
+TEST_F(TickRoundingTest, EveryOffsetInsideATickSnapsAwayFromTheQuoteBelowZero)
+{
+  const int64_t tickRaw = Price::fromDouble(1.0).raw();
+
+  for (int64_t offset = 1; offset < tickRaw; offset += tickRaw / 16)
+  {
+    NLevelOrderBook<512> book{Price::fromDouble(1.0)};
+
+    // -200 + offset and -100 + offset: both land strictly between two ticks.
+    const Price quotedBid = Price::fromRaw(Price::fromDouble(-200.0).raw() + offset);
+    const Price quotedAsk = Price::fromRaw(Price::fromDouble(-100.0).raw() + offset);
+    auto update = makeSnapshot({{quotedBid, Quantity::fromDouble(1.0)}},
+                               {{quotedAsk, Quantity::fromDouble(1.0)}});
+    book.applyBookUpdate(*update);
+
+    const auto bids = book.getBidLevels(1);
+    const auto asks = book.getAskLevels(1);
+    ASSERT_EQ(bids.size(), 1u) << "offset " << offset;
+    ASSERT_EQ(asks.size(), 1u) << "offset " << offset;
+
+    EXPECT_LE(bids[0].price.raw(), quotedBid.raw()) << "offset " << offset;
+    EXPECT_GE(asks[0].price.raw(), quotedAsk.raw()) << "offset " << offset;
+    EXPECT_EQ(bids[0].price.raw(), Price::fromDouble(-200.0).raw()) << "offset " << offset;
+    EXPECT_EQ(asks[0].price.raw(), Price::fromDouble(-99.0).raw()) << "offset " << offset;
+  }
+}
+
+// Where the window happens to sit is not part of the snap: the tick a quote
+// belongs to is a property of the price and the tick size, and the anchor is
+// subtracted afterwards. Pinned with the anchor above the quote, the one
+// arrangement the cases above never produce.
+TEST_F(TickRoundingTest, SnapIsIndependentOfWhereTheWindowIsAnchored)
+{
+  NLevelOrderBook<512> book{Price::fromDouble(1.0)};
+
+  // Far enough up that the snapshot re-anchors instead of keeping the fresh
+  // window: the anchor lands at tick 744, well above the quote added next.
+  auto snapshot = makeSnapshot({{Price::fromDouble(1000.0), Quantity::fromDouble(1.0)}},
+                               {{Price::fromDouble(1001.0), Quantity::fromDouble(1.0)}});
+  book.applyBookUpdate(*snapshot);
+
+  auto delta = makeDelta({{Price::fromDouble(800.6), Quantity::fromDouble(2.0)}}, {});
+  book.applyBookUpdate(*delta);
+
+  // 800.6 is nearest to tick 801 and floors to 800; the level is at 800.
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(800.6)).raw(), Quantity::fromDouble(2.0).raw());
+  EXPECT_EQ(book.bidAtPrice(Price::fromDouble(801.0)).raw(), 0);
+
+  const auto levels = book.getBidLevels(2);
+  ASSERT_EQ(levels.size(), 2u);
+  EXPECT_EQ(levels[0].price.raw(), Price::fromDouble(1000.0).raw());
+  EXPECT_EQ(levels[1].price.raw(), Price::fromDouble(800.0).raw());
+}
+
 // Control: prices that already sit on a tick are unchanged by any rounding
 // rule. Green before the fix and after it.
 TEST_F(TickRoundingTest, OnTickQuotesAreUnchanged)

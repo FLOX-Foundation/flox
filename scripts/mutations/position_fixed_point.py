@@ -73,6 +73,7 @@ BOOK = "include/flox/book/nlevel_order_book.h"
 TRACKER = "include/flox/position/position_tracker.h"
 ACCOUNT_H = "include/flox/clearing/account.h"
 ACCOUNT_CPP = "src/clearing/account.cpp"
+MATH = "include/flox/util/base/math.h"
 
 NLEVEL = "test_nlevel_tick_rounding"
 TRACKER_T = "test_position_tracker_fixed_point"
@@ -209,6 +210,21 @@ MUTATIONS: list[Mutation] = [
     return i < MAX_LEVELS ? _asks[i] : Quantity{};
   }""",
         targets=NLEVEL_TARGETS,
+    ),
+    Mutation(
+        name="sdiv-floor-truncates-toward-zero",
+        why="own mutation: sdiv_floor's negative branch drops the correction that turns a "
+            "truncating division into a floor, so a quote below zero snaps toward zero "
+            "instead of away from it -- a bid stored above what was quoted. Only a negative "
+            "price reaches that branch (ticks() is handed the price, not an offset from the "
+            "window anchor), and no test quoted one",
+        file=MATH,
+        old="  return exact ? -(int64_t)q : -(int64_t)q - 1;",
+        new="  return -(int64_t)q;",
+        targets=NLEVEL_TARGETS,
+        gtest_filter="TickRoundingTest.NegativeQuotesSnapAwayFromTheQuote:"
+                     "TickRoundingTest.EveryOffsetInsideATickSnapsAwayFromTheQuoteBelowZero",
+        filter_target=NLEVEL,
     ),
     Mutation(
         name="delta-reanchor-scan-sides-swapped",
