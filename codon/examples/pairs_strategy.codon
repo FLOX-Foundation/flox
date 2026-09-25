@@ -77,7 +77,8 @@ class PairsStrategy(Strategy):
         mid1 = self.ctx(self.cfg.leg1).mid_price()
         mid2 = self.ctx(self.cfg.leg2).mid_price()
 
-        if mid1 == 0.0 or mid2 == 0.0:
+        # None until both sides of a leg's book are quoted.
+        if mid1 is None or mid2 is None:
             return
 
         spread_value = mid1 - mid2

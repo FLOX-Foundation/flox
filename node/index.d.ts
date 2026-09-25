@@ -111,9 +111,13 @@ export interface SymbolContext {
   position: number;
   symbolId: number;
   lastTradePrice: number;
-  bestBid: number;
-  bestAsk: number;
-  midPrice: number;
+  /** Best bid, or `null` when the bid side has no level. A book may be
+   *  quoted at exactly zero, so `0` is a price, never "no quote". */
+  bestBid: number | null;
+  /** Best ask, or `null` when the ask side has no level. */
+  bestAsk: number | null;
+  /** Mid price, or `null` unless both sides have a level. */
+  midPrice: number | null;
 }
 
 /** Trade tick passed to `onTrade`. */

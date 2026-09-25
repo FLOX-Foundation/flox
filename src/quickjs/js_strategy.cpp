@@ -1164,16 +1164,28 @@ JSValue FloxJsStrategy::makeCtxObject(const FloxSymbolContext* ctx)
   JS_SetPropertyStr(c, obj, "lastUpdateNs",
                     JS_NewBigInt64(c, static_cast<int64_t>(ctx->last_update_ns)));
 
-  JSValue bookObj = JS_NewObject(c);
-  JS_SetPropertyStr(c, bookObj, "bidPrice",
-                    JS_NewFloat64(c, flox_price_to_double(ctx->book.bid_price_raw)));
-  JS_SetPropertyStr(c, bookObj, "askPrice",
-                    JS_NewFloat64(c, flox_price_to_double(ctx->book.ask_price_raw)));
-  JS_SetPropertyStr(c, bookObj, "midPrice",
-                    JS_NewFloat64(c, flox_price_to_double(ctx->book.mid_raw)));
-  JS_SetPropertyStr(c, bookObj, "spread",
-                    JS_NewFloat64(c, flox_price_to_double(ctx->book.spread_raw)));
-  JS_SetPropertyStr(c, obj, "book", bookObj);
+  JS_SetPropertyStr(c, obj, "book", makeBookSnapshotObject(&ctx->book));
+  return obj;
+}
+
+// null when a side has no best level. A book may be quoted at exactly zero,
+// so 0 is a price here, never a stand-in for "no quote"; the snapshot's
+// presence flags are what say.
+JSValue FloxJsStrategy::makeBookSnapshotObject(const FloxBookSnapshot* snap)
+{
+  auto* c = _engine.context();
+  const bool both = snap->has_bid && snap->has_ask;
+  JSValue obj = JS_NewObject(c);
+  JS_SetPropertyStr(c, obj, "bidPrice",
+                    snap->has_bid ? JS_NewFloat64(c, flox_price_to_double(snap->bid_price_raw))
+                                  : JS_NULL);
+  JS_SetPropertyStr(c, obj, "askPrice",
+                    snap->has_ask ? JS_NewFloat64(c, flox_price_to_double(snap->ask_price_raw))
+                                  : JS_NULL);
+  JS_SetPropertyStr(c, obj, "midPrice",
+                    both ? JS_NewFloat64(c, flox_price_to_double(snap->mid_raw)) : JS_NULL);
+  JS_SetPropertyStr(c, obj, "spread",
+                    both ? JS_NewFloat64(c, flox_price_to_double(snap->spread_raw)) : JS_NULL);
   return obj;
 }
 
@@ -1199,16 +1211,7 @@ JSValue FloxJsStrategy::makeBookObject(const FloxBookData* book)
   JS_SetPropertyStr(c, obj, "timestampNs",
                     JS_NewBigInt64(c, static_cast<int64_t>(book->exchange_ts_ns)));
 
-  JSValue snap = JS_NewObject(c);
-  JS_SetPropertyStr(c, snap, "bidPrice",
-                    JS_NewFloat64(c, flox_price_to_double(book->snapshot.bid_price_raw)));
-  JS_SetPropertyStr(c, snap, "askPrice",
-                    JS_NewFloat64(c, flox_price_to_double(book->snapshot.ask_price_raw)));
-  JS_SetPropertyStr(c, snap, "midPrice",
-                    JS_NewFloat64(c, flox_price_to_double(book->snapshot.mid_raw)));
-  JS_SetPropertyStr(c, snap, "spread",
-                    JS_NewFloat64(c, flox_price_to_double(book->snapshot.spread_raw)));
-  JS_SetPropertyStr(c, obj, "snapshot", snap);
+  JS_SetPropertyStr(c, obj, "snapshot", makeBookSnapshotObject(&book->snapshot));
   return obj;
 }
 

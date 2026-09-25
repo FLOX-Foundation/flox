@@ -79,24 +79,44 @@ struct PySymbolCtx
   std::string symbol;
   double position;
   double last_trade_price;
-  double best_bid;
-  double best_ask;
-  double mid_price;
+  // None when the side has no best level. A book may be quoted at exactly
+  // zero, so 0.0 is a price here, never a stand-in for "no quote".
+  std::optional<double> best_bid;
+  std::optional<double> best_ask;
+  std::optional<double> mid_price;
   double unrealized_pnl;
 
-  double book_spread() const
+  std::optional<double> book_spread() const
   {
-    if (best_bid > 0 && best_ask > 0)
+    if (best_bid && best_ask)
     {
-      return best_ask - best_bid;
+      return *best_ask - *best_bid;
     }
-    return 0.0;
+    return std::nullopt;
   }
 
   bool is_long() const { return position > 0; }
   bool is_short() const { return position < 0; }
   bool is_flat() const { return position == 0; }
 };
+
+// The presence flags say whether a side has a quote; the price fields cannot,
+// since a book may be quoted at exactly zero.
+inline void fillQuotes(PySymbolCtx& pc, const FloxBookSnapshot& book)
+{
+  if (book.has_bid)
+  {
+    pc.best_bid = flox_price_to_double(book.bid_price_raw);
+  }
+  if (book.has_ask)
+  {
+    pc.best_ask = flox_price_to_double(book.ask_price_raw);
+  }
+  if (book.has_bid && book.has_ask)
+  {
+    pc.mid_price = flox_price_to_double(book.mid_raw);
+  }
+}
 
 // Order-event payload exposed to the Python `on_fill` /
 // `on_order_update` hooks. Mirrors `FloxOrderEventData` from the C
@@ -392,12 +412,18 @@ class PyStrategyBase
     result.symbol_id = c.symbolId;
     result.position = c.position.toDouble();
     result.last_trade_price = c.lastTradePrice.toDouble();
-    auto bid = c.book.bestBid();
-    result.best_bid = bid ? bid->toDouble() : 0.0;
-    auto ask = c.book.bestAsk();
-    result.best_ask = ask ? ask->toDouble() : 0.0;
-    auto mid = c.mid();
-    result.mid_price = mid ? mid->toDouble() : 0.0;
+    if (auto bid = c.book.bestBid())
+    {
+      result.best_bid = bid->toDouble();
+    }
+    if (auto ask = c.book.bestAsk())
+    {
+      result.best_ask = ask->toDouble();
+    }
+    if (auto mid = c.mid())
+    {
+      result.mid_price = mid->toDouble();
+    }
     // NaN when the position manager reports no entry price. This used to be
     // position times mark, i.e. the whole notional reported as profit.
     result.unrealized_pnl =
@@ -509,34 +535,35 @@ class PyStrategyBase
     return _bridge->ctx(_resolve(symbol)).lastTradePrice.toDouble();
   }
 
-  double best_bid(std::optional<std::string> symbol = std::nullopt) const
+  // None when there is no quote (no book yet, or an empty side); 0.0 is a price.
+  std::optional<double> best_bid(std::optional<std::string> symbol = std::nullopt) const
   {
     if (!_bridge)
     {
-      return 0.0;
+      return std::nullopt;
     }
     auto bid = _bridge->ctx(_resolve(symbol)).book.bestBid();
-    return bid ? bid->toDouble() : 0.0;
+    return bid ? std::optional<double>(bid->toDouble()) : std::nullopt;
   }
 
-  double best_ask(std::optional<std::string> symbol = std::nullopt) const
+  std::optional<double> best_ask(std::optional<std::string> symbol = std::nullopt) const
   {
     if (!_bridge)
     {
-      return 0.0;
+      return std::nullopt;
     }
     auto ask = _bridge->ctx(_resolve(symbol)).book.bestAsk();
-    return ask ? ask->toDouble() : 0.0;
+    return ask ? std::optional<double>(ask->toDouble()) : std::nullopt;
   }
 
-  double mid_price(std::optional<std::string> symbol = std::nullopt) const
+  std::optional<double> mid_price(std::optional<std::string> symbol = std::nullopt) const
   {
     if (!_bridge)
     {
-      return 0.0;
+      return std::nullopt;
     }
     auto mid = _bridge->ctx(_resolve(symbol)).mid();
-    return mid ? mid->toDouble() : 0.0;
+    return mid ? std::optional<double>(mid->toDouble()) : std::nullopt;
   }
 
   int32_t order_status(uint64_t order_id) const { return get_order_status(order_id); }
@@ -810,9 +837,7 @@ struct PyStrategyHost
       pc.symbol_id = ctx->symbol_id;
       pc.position = flox_quantity_to_double(ctx->position_raw);
       pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
-      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
-      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
-      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      fillQuotes(pc, ctx->book);
 
       PyTradeData pt{};
       pt.symbol = trade->symbol;
@@ -837,9 +862,7 @@ struct PyStrategyHost
       pc.symbol_id = ctx->symbol_id;
       pc.position = flox_quantity_to_double(ctx->position_raw);
       pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
-      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
-      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
-      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      fillQuotes(pc, ctx->book);
       self->strategy.load(std::memory_order_acquire)->on_book_update(pc);
     };
     dispatch(self, "Strategy.on_book_update", call);
@@ -855,9 +878,7 @@ struct PyStrategyHost
       pc.symbol_id = ctx->symbol_id;
       pc.position = flox_quantity_to_double(ctx->position_raw);
       pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
-      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
-      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
-      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      fillQuotes(pc, ctx->book);
 
       PyBarData pb{};
       pb.symbol = bar->symbol;
@@ -1003,9 +1024,7 @@ struct PyStrategyHost
       pc.symbol_id = ctx->symbol_id;
       pc.position = flox_quantity_to_double(ctx->position_raw);
       pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
-      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
-      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
-      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      fillQuotes(pc, ctx->book);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_fill(pc, pe);
     };
@@ -1022,9 +1041,7 @@ struct PyStrategyHost
       pc.symbol_id = ctx->symbol_id;
       pc.position = flox_quantity_to_double(ctx->position_raw);
       pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
-      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
-      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
-      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      fillQuotes(pc, ctx->book);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_order_update(pc, pe);
     };
@@ -1041,9 +1058,7 @@ struct PyStrategyHost
       pc.symbol_id = ctx->symbol_id;
       pc.position = flox_quantity_to_double(ctx->position_raw);
       pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
-      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
-      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
-      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      fillQuotes(pc, ctx->book);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)->on_queue_position_change(pc, pe);
     };
@@ -1060,9 +1075,7 @@ struct PyStrategyHost
       pc.symbol_id = ctx->symbol_id;
       pc.position = flox_quantity_to_double(ctx->position_raw);
       pc.last_trade_price = flox_price_to_double(ctx->last_trade_price_raw);
-      pc.best_bid = flox_price_to_double(ctx->book.bid_price_raw);
-      pc.best_ask = flox_price_to_double(ctx->book.ask_price_raw);
-      pc.mid_price = flox_price_to_double(ctx->book.mid_raw);
+      fillQuotes(pc, ctx->book);
       PyOrderEventData pe = toPyOrderEvent(ev);
       self->strategy.load(std::memory_order_acquire)
           ->on_market_position_change(pc, pe);

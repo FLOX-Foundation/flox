@@ -101,9 +101,9 @@ All methods accept an optional `symbol` kwarg to target a specific symbol by nam
 |--------|-------------|
 | `position()` | Current position (float) |
 | `last_price()` | Last trade price |
-| `best_bid()` | Best bid |
-| `best_ask()` | Best ask |
-| `mid_price()` | Mid price |
+| `best_bid()` | Best bid, `None` when the bid side has no level (`0.0` is a price) |
+| `best_ask()` | Best ask, `None` when the ask side has no level |
+| `mid_price()` | Mid price, `None` unless both sides have a level |
 
 ## Runner (live)
 

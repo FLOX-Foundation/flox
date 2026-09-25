@@ -51,9 +51,9 @@ const strategy = {
         // ctx.position      — current position quantity
         // ctx.symbolId      — symbol ID (int)
         // ctx.lastTradePrice
-        // ctx.bestBid
-        // ctx.bestAsk
-        // ctx.midPrice
+        // ctx.bestBid      — null when the bid side has no level (0 is a price)
+        // ctx.bestAsk      — null when the ask side has no level
+        // ctx.midPrice     — null unless both sides have a level
 
         // trade.price
         // trade.qty

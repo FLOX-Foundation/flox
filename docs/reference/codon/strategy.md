@@ -213,9 +213,9 @@ back to the primary symbol when omitted. Prices and quantities are plain `float`
 | `modify_order(order_id, new_price, new_qty)` | `None` |
 | `pos(symbol=None)` | `float` position |
 | `last_price(symbol=None)` | `float` |
-| `best_bid(symbol=None)` | `float` |
-| `best_ask(symbol=None)` | `float` |
-| `mid_price(symbol=None)` | `float` |
+| `best_bid(symbol=None)` | `Optional[float]`, `None` when the bid side has no level; `0.0` is a price |
+| `best_ask(symbol=None)` | `Optional[float]`, `None` when the ask side has no level |
+| `mid_price(symbol=None)` | `Optional[float]`, `None` unless both sides have a level |
 | `order_status(order_id)` | `int` |
 
 `side` and `tif` are lowercase strings here (`'buy'` / `'sell'`, `'gtc'` / `'ioc'` / ...), unlike the

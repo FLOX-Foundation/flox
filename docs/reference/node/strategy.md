@@ -97,9 +97,9 @@ All callbacks are optional.
 | `position` | `number` | Current position quantity |
 | `symbolId` | `number` | Symbol ID |
 | `lastTradePrice` | `number` | Last trade price |
-| `bestBid` | `number` | Best bid |
-| `bestAsk` | `number` | Best ask |
-| `midPrice` | `number` | Mid price |
+| `bestBid` | `number \| null` | Best bid; `null` when the bid side has no level. A book may be quoted at exactly zero, so `0` is a price, never "no quote" |
+| `bestAsk` | `number \| null` | Best ask; `null` when the ask side has no level |
+| `midPrice` | `number \| null` | Mid price; `null` unless both sides have a level |
 
 ### TradeData (`trade`)
 

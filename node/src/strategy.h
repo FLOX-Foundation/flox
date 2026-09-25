@@ -478,9 +478,18 @@ struct NodeStrategyHost : TsfnHost
     o.Set("symbolId", Napi::Number::New(env, ctx->symbol_id));
     o.Set("position", Napi::Number::New(env, flox_quantity_to_double(ctx->position_raw)));
     o.Set("lastTradePrice", Napi::Number::New(env, flox_price_to_double(ctx->last_trade_price_raw)));
-    o.Set("bestBid", Napi::Number::New(env, flox_price_to_double(ctx->book.bid_price_raw)));
-    o.Set("bestAsk", Napi::Number::New(env, flox_price_to_double(ctx->book.ask_price_raw)));
-    o.Set("midPrice", Napi::Number::New(env, flox_price_to_double(ctx->book.mid_raw)));
+    // null when the side has no best level. A book may be quoted at exactly
+    // zero, so 0 is a price here, never a stand-in for "no quote"; the
+    // presence flags on the snapshot are what say.
+    const bool both = ctx->book.has_bid && ctx->book.has_ask;
+    o.Set("bestBid", ctx->book.has_bid
+                         ? Napi::Value(Napi::Number::New(env, flox_price_to_double(ctx->book.bid_price_raw)))
+                         : Napi::Value(env.Null()));
+    o.Set("bestAsk", ctx->book.has_ask
+                         ? Napi::Value(Napi::Number::New(env, flox_price_to_double(ctx->book.ask_price_raw)))
+                         : Napi::Value(env.Null()));
+    o.Set("midPrice", both ? Napi::Value(Napi::Number::New(env, flox_price_to_double(ctx->book.mid_raw)))
+                           : Napi::Value(env.Null()));
   }
 
   static void callOnTrade(Napi::Env env, Napi::Function, TradeCallData* d)

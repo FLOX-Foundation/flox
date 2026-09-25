@@ -8,9 +8,9 @@ from flox.abi import check_abi_version
 
 from C import flox_position_raw(cobj, u32) -> i64
 from C import flox_last_trade_price_raw(cobj, u32) -> i64
-from C import flox_best_bid_raw(cobj, u32) -> i64
-from C import flox_best_ask_raw(cobj, u32) -> i64
-from C import flox_mid_price_raw(cobj, u32) -> i64
+from C import flox_best_bid_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import flox_best_ask_raw_opt(cobj, u32, Ptr[i64]) -> u8
+from C import flox_mid_price_raw_opt(cobj, u32, Ptr[i64]) -> u8
 
 from flox.types import SCALE, Price, Quantity
 
@@ -43,28 +43,38 @@ class SymbolContext:
         raw = flox_last_trade_price_raw(self._handle, self.symbol_id)
         return float(raw) / float(SCALE)
 
-    def best_bid(self) -> float:
-        """Best bid price as float. Returns 0.0 if no bid."""
-        raw = flox_best_bid_raw(self._handle, self.symbol_id)
+    # The three quote accessors answer None for "no quote" and a float for a
+    # price, 0.0 included: a book may be quoted at exactly zero, so the raw
+    # accessors' 0 could not tell the two apart. The _opt variants return the
+    # presence flag and write the price through the pointer.
+    def best_bid(self) -> Optional[float]:
+        """Best bid price, or None when the bid side is empty."""
+        raw = i64(0)
+        if flox_best_bid_raw_opt(self._handle, self.symbol_id, __ptr__(raw)) == u8(0):
+            return None
         return float(raw) / float(SCALE)
 
-    def best_ask(self) -> float:
-        """Best ask price as float. Returns 0.0 if no ask."""
-        raw = flox_best_ask_raw(self._handle, self.symbol_id)
+    def best_ask(self) -> Optional[float]:
+        """Best ask price, or None when the ask side is empty."""
+        raw = i64(0)
+        if flox_best_ask_raw_opt(self._handle, self.symbol_id, __ptr__(raw)) == u8(0):
+            return None
         return float(raw) / float(SCALE)
 
-    def mid_price(self) -> float:
-        """Mid price as float. Returns 0.0 if no bid/ask."""
-        raw = flox_mid_price_raw(self._handle, self.symbol_id)
+    def mid_price(self) -> Optional[float]:
+        """Mid price, or None unless both sides have a level."""
+        raw = i64(0)
+        if flox_mid_price_raw_opt(self._handle, self.symbol_id, __ptr__(raw)) == u8(0):
+            return None
         return float(raw) / float(SCALE)
 
-    def book_spread(self) -> float:
-        """Bid-ask spread as float."""
+    def book_spread(self) -> Optional[float]:
+        """Bid-ask spread, or None unless both sides have a level."""
         bid = self.best_bid()
         ask = self.best_ask()
-        if bid > 0.0 and ask > 0.0:
-            return ask - bid
-        return 0.0
+        if bid is None or ask is None:
+            return None
+        return ask - bid
 
     def is_long(self) -> bool:
         return flox_position_raw(self._handle, self.symbol_id) > 0

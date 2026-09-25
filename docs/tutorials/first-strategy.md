@@ -47,7 +47,8 @@ This strategy logs every trade and tracks the best bid / ask.
             print(f"Trade: {trade.price:.2f} x {trade.quantity:.4f} ({side})")
 
         def on_book_update(self, ctx):
-            print(f"Book: {ctx.best_bid:.2f} / {ctx.best_ask:.2f}")
+            if ctx.best_bid is not None and ctx.best_ask is not None:
+                print(f"Book: {ctx.best_bid:.2f} / {ctx.best_ask:.2f}")
     ```
 
 === "Node.js"

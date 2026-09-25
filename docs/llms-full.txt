@@ -570,9 +570,9 @@ const strategy = {
         // ctx.position      — current position quantity
         // ctx.symbolId      — symbol ID (int)
         // ctx.lastTradePrice
-        // ctx.bestBid
-        // ctx.bestAsk
-        // ctx.midPrice
+        // ctx.bestBid      — null when the bid side has no level (0 is a price)
+        // ctx.bestAsk      — null when the ask side has no level
+        // ctx.midPrice     — null unless both sides have a level
 
         // trade.price
         // trade.qty
@@ -842,9 +842,9 @@ All methods accept an optional `symbol` kwarg to target a specific symbol by nam
 |--------|-------------|
 | `position()` | Current position (float) |
 | `last_price()` | Last trade price |
-| `best_bid()` | Best bid |
-| `best_ask()` | Best ask |
-| `mid_price()` | Mid price |
+| `best_bid()` | Best bid, `None` when the bid side has no level (`0.0` is a price) |
+| `best_ask()` | Best ask, `None` when the ask side has no level |
+| `mid_price()` | Mid price, `None` unless both sides have a level |
 
 ## Runner (live)
 
@@ -2252,7 +2252,8 @@ This strategy logs every trade and tracks the best bid / ask.
             print(f"Trade: {trade.price:.2f} x {trade.quantity:.4f} ({side})")
 
         def on_book_update(self, ctx):
-            print(f"Book: {ctx.best_bid:.2f} / {ctx.best_ask:.2f}")
+            if ctx.best_bid is not None and ctx.best_ask is not None:
+                print(f"Book: {ctx.best_bid:.2f} / {ctx.best_ask:.2f}")
     ```
 
 === "Node.js"
@@ -9057,7 +9058,7 @@ Surface: 118 classes, 79 functions, 41 constants.
 - `BookOnly: MarkImpactModel = ...`
 - `Bybit: AdlRanking = ...`
 - `CANCELLED: OrderGroupState = ...`
-- `CAPI_ABI_VERSION: int = 3`
+- `CAPI_ABI_VERSION: int = 4`
 - `Cross: MarginMode = ...`
 - `FAILED: OrderGroupState = ...`
 - `FILLED: OrderGroupState = ...`
@@ -11013,8 +11014,8 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 **Members**
 
 - `bar_ring_capacity(self) -> int`
-- `best_ask(self, symbol: str | None = None) -> float`
-- `best_bid(self, symbol: str | None = None) -> float`
+- `best_ask(self, symbol: str | None = None) -> float | None`
+- `best_bid(self, symbol: str | None = None) -> float | None`
 - `cancel_all_orders(self, symbol: str | None = None) -> None`
 - `cancel_order(self, order_id: typing.SupportsInt | typing.SupportsIndex) -> None`
 - `close_position(self, symbol: str | None = None) -> int`
@@ -11045,7 +11046,7 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 - `limit_sell(self, price: typing.SupportsFloat | typing.SupportsIndex, qty: typing.SupportsFloat | typing.SupportsIndex, symbol: str | None = None, tif: str = 'gtc') -> int`
 - `market_buy(self, qty: typing.SupportsFloat | typing.SupportsIndex, symbol: str | None = None) -> int`
 - `market_sell(self, qty: typing.SupportsFloat | typing.SupportsIndex, symbol: str | None = None) -> int`
-- `mid_price(self, symbol: str | None = None) -> float`
+- `mid_price(self, symbol: str | None = None) -> float | None`
 - `modify_order(self, order_id: typing.SupportsInt | typing.SupportsIndex, new_price: typing.SupportsFloat | typing.SupportsIndex, new_qty: typing.SupportsFloat | typing.SupportsIndex) -> None`
 - `on_bar(self, ctx: SymbolContext, bar: BarData) -> None`
 - `on_book_update(self, ctx: SymbolContext) -> None`
@@ -11088,17 +11089,17 @@ Simulated time source shared by a VenueStack. Monotonic: advance_to()
 **Members**
 
 - *attr* `symbol: str`
-- `book_spread(self) -> float`
+- `book_spread(self) -> float | None`
 - `is_flat(self) -> bool`
 - `is_long(self) -> bool`
 - `is_short(self) -> bool`
-- *property* `best_ask: float`
+- *property* `best_ask: float | None`
 - *property* `best_ask: None`
-- *property* `best_bid: float`
+- *property* `best_bid: float | None`
 - *property* `best_bid: None`
 - *property* `last_trade_price: float`
 - *property* `last_trade_price: None`
-- *property* `mid_price: float`
+- *property* `mid_price: float | None`
 - *property* `mid_price: None`
 - *property* `position: float`
 - *property* `position: None`
@@ -11714,9 +11715,9 @@ These methods use the first registered symbol when `symbol` is omitted. `symbol`
 | `pos(symbol=None)` | `float` | Alias of `position` |
 | `ctx(symbol=None)` | `SymbolContext` | Per-symbol context snapshot |
 | `last_price(symbol=None)` | `float` | Last trade price |
-| `best_bid(symbol=None)` | `float` | Best bid |
-| `best_ask(symbol=None)` | `float` | Best ask |
-| `mid_price(symbol=None)` | `float` | Mid price |
+| `best_bid(symbol=None)` | `float \| None` | Best bid; `None` when the bid side has no level. A book may be quoted at exactly zero, so `0.0` is a price, never "no quote" |
+| `best_ask(symbol=None)` | `float \| None` | Best ask; `None` when the ask side has no level |
+| `mid_price(symbol=None)` | `float \| None` | Mid price; `None` unless both sides have a level |
 | `get_order_status(order_id)` | `int` | Order status (-1 if not found) |
 | `order_status(order_id)` | `int` | Alias of `get_order_status` |
 | `symbols` | `list[int]` | Subscribed symbol IDs (property) |
@@ -11744,11 +11745,11 @@ volume / range threshold the aggregator was configured with.
 | `symbol` | `str` | Symbol name |
 | `position` | `float` | Current position |
 | `last_trade_price` | `float` | Last trade price |
-| `best_bid` | `float` | Best bid price |
-| `best_ask` | `float` | Best ask price |
-| `mid_price` | `float` | Mid price |
+| `best_bid` | `float \| None` | Best bid price; `None` when the bid side has no level (`0.0` is a price) |
+| `best_ask` | `float \| None` | Best ask price; `None` when the ask side has no level |
+| `mid_price` | `float \| None` | Mid price; `None` unless both sides have a level |
 | `unrealized_pnl` | `float` | Unrealized P&L, or `NaN` when the position manager reports no entry price (see below) |
-| `book_spread()` | `float` | Bid-ask spread |
+| `book_spread()` | `float \| None` | Bid-ask spread; `None` unless both sides have a level |
 | `is_long()` | `bool` | True if long |
 | `is_short()` | `bool` | True if short |
 | `is_flat()` | `bool` | True if no position |
@@ -14555,9 +14556,9 @@ All callbacks are optional.
 | `position` | `number` | Current position quantity |
 | `symbolId` | `number` | Symbol ID |
 | `lastTradePrice` | `number` | Last trade price |
-| `bestBid` | `number` | Best bid |
-| `bestAsk` | `number` | Best ask |
-| `midPrice` | `number` | Mid price |
+| `bestBid` | `number \| null` | Best bid; `null` when the bid side has no level. A book may be quoted at exactly zero, so `0` is a price, never "no quote" |
+| `bestAsk` | `number \| null` | Best ask; `null` when the ask side has no level |
+| `midPrice` | `number \| null` | Mid price; `null` unless both sides have a level |
 
 ### TradeData (`trade`)
 
@@ -15726,9 +15727,9 @@ back to the primary symbol when omitted. Prices and quantities are plain `float`
 | `modify_order(order_id, new_price, new_qty)` | `None` |
 | `pos(symbol=None)` | `float` position |
 | `last_price(symbol=None)` | `float` |
-| `best_bid(symbol=None)` | `float` |
-| `best_ask(symbol=None)` | `float` |
-| `mid_price(symbol=None)` | `float` |
+| `best_bid(symbol=None)` | `Optional[float]`, `None` when the bid side has no level; `0.0` is a price |
+| `best_ask(symbol=None)` | `Optional[float]`, `None` when the ask side has no level |
+| `mid_price(symbol=None)` | `Optional[float]`, `None` unless both sides have a level |
 | `order_status(order_id)` | `int` |
 
 `side` and `tif` are lowercase strings here (`'buy'` / `'sell'`, `'gtc'` / `'ioc'` / ...), unlike the
@@ -17136,8 +17137,10 @@ super({ symbols: ['Binance:BTCUSDT', 'Bybit:ETHUSDT'] })
 | `ctx.symbolId` | `number` | Numeric symbol ID |
 | `ctx.position` | `number` | Current position size |
 | `ctx.avgEntryPrice` | `number` | Average entry price, `NaN` when the position manager reports none |
-| `ctx.book.bidPrice` | `number` | Best bid |
-| `ctx.book.askPrice` | `number` | Best ask |
+| `ctx.book.bidPrice` | `number \| null` | Best bid; `null` when the bid side has no level (`0` is a price) |
+| `ctx.book.askPrice` | `number \| null` | Best ask; `null` when the ask side has no level |
+| `ctx.book.midPrice` | `number \| null` | Mid price; `null` unless both sides have a level |
+| `ctx.book.spread` | `number \| null` | Spread; `null` unless both sides have a level |
 | `trade.symbol` | `string` | Symbol name |
 | `trade.price` | `number` | Trade price |
 | `trade.qty` | `number` | Trade quantity |
