@@ -288,7 +288,7 @@ class BacktestRunner:
         ...
     def set_venue_stack(self, stack: VenueStack) -> None:
         """
-        Run against a VenueStack: the runner feeds the stack executor market data and harvests its fills, so the run uses the venue's fill mechanics (queue model, iceberg latency, venue availability, rate limits). Fees still come from BacktestConfig, and funding and liquidation are driven by explicit calls rather than the replay loop. Pass None to revert to the built-in executor.
+        Run against a VenueStack: the runner feeds the stack executor market data and harvests its fills, so the run uses the venue's fill mechanics (queue model, iceberg latency, venue availability, rate limits) and its fee ladder -- each fill is billed at the tier the stack's 30-day notional resolves to instead of the flat fee_rate. Funding and liquidation are still driven by explicit calls rather than the replay loop. Pass None to revert to the built-in executor.
         """
     def trades(self) -> typing.Any:
         """
@@ -750,7 +750,7 @@ class Engine:
         ...
     def run(self, signals: SignalBuilder, default_symbol: typing.SupportsInt | typing.SupportsIndex = 0) -> Stats:
         ...
-    def ts(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]:
+    def ts(self, symbol: str = '') -> numpy.typing.NDArray[numpy.int64]:
         ...
     def volume(self, symbol: str = '') -> numpy.typing.NDArray[numpy.float64]:
         ...
@@ -2751,6 +2751,10 @@ class SimulatedExecutor:
         """
         Apply a named latency profile: binance_um_futures, bybit_linear, okx_swap, deribit, idealized, adversarial.
         """
+    def begin_bar_callback_window(self) -> None:
+        """
+        Open the bar-callback window: every order submitted while it is open is held instead of matched immediately, and released at the next bar's open. Call before invoking a strategy's bar callback by hand; always pair with end_bar_callback_window.
+        """
     def bracket_state(self, bracket_id: typing.SupportsInt | typing.SupportsIndex) -> str:
         """
         Bracket state: pending_entry | entry_filled | tp_filled | stop_filled | canceled.
@@ -2763,6 +2767,10 @@ class SimulatedExecutor:
         ...
     def clear_rate_limit_policy(self) -> None:
         ...
+    def end_bar_callback_window(self) -> None:
+        """
+        Close the bar-callback window opened by begin_bar_callback_window.
+        """
     def fills(self) -> numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]:
         """
         Get all fills as numpy structured array
@@ -2781,6 +2789,10 @@ class SimulatedExecutor:
         """
         Feed a bar close price for order matching
         """
+    def on_bar_ohlc(self, symbol: typing.SupportsInt | typing.SupportsIndex, open: typing.SupportsFloat | typing.SupportsIndex, high: typing.SupportsFloat | typing.SupportsIndex, low: typing.SupportsFloat | typing.SupportsIndex, close: typing.SupportsFloat | typing.SupportsIndex) -> None:
+        """
+        Feed a full OHLC bar: moves the market to the open (releasing any order held from the previous bar's callback there), then walks low -> high -> close so resting stops/targets match the intrabar extremes. Use this, not on_bar, when driving the executor by hand to reach the fills BacktestRunner.run_bars produces.
+        """
     def on_best_levels(self, symbol: typing.SupportsInt | typing.SupportsIndex, bid_price: typing.SupportsFloat | typing.SupportsIndex, bid_qty: typing.SupportsFloat | typing.SupportsIndex, ask_price: typing.SupportsFloat | typing.SupportsIndex, ask_qty: typing.SupportsFloat | typing.SupportsIndex) -> None:
         """
         Feed a top-of-book snapshot (both best bid and best ask in one call)
@@ -2796,6 +2808,10 @@ class SimulatedExecutor:
     def on_trade_qty(self, symbol: typing.SupportsInt | typing.SupportsIndex, price: typing.SupportsFloat | typing.SupportsIndex, quantity: typing.SupportsFloat | typing.SupportsIndex, is_buy: bool) -> None:
         """
         Feed a trade with quantity (enables queue-fill simulation)
+        """
+    def reset(self) -> None:
+        """
+        Drop fills and run-scoped state while keeping installed configuration (slippage, queue model, latency, ...), so a second hand-driven run reports that run and not the sum of every run.
         """
     def set_bracket_child_arm_mode(self, mode: str) -> None:
         """
@@ -3949,7 +3965,7 @@ BookAnchored: MarkImpactModel  # value = <MarkImpactModel.BookAnchored: 1>
 BookOnly: MarkImpactModel  # value = <MarkImpactModel.BookOnly: 2>
 Bybit: AdlRanking  # value = <AdlRanking.Bybit: 2>
 CANCELLED: OrderGroupState  # value = <OrderGroupState.CANCELLED: 4>
-CAPI_ABI_VERSION: int = 2
+CAPI_ABI_VERSION: int = 3
 Cross: MarginMode  # value = <MarginMode.Cross: 0>
 FAILED: OrderGroupState  # value = <OrderGroupState.FAILED: 6>
 FILLED: OrderGroupState  # value = <OrderGroupState.FILLED: 3>
