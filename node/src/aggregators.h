@@ -26,6 +26,9 @@ inline Napi::Value barsToJs(Napi::Env env, const FloxBar* bars, uint32_t n)
     o.Set("volume", (double)bars[i].volume_raw / 1e8);
     o.Set("buyVolume", (double)bars[i].buy_volume_raw / 1e8);
     o.Set("tradeCount", bars[i].trade_count);
+    // flox::Bar::reason, carried through so a batch-aggregated bar says why
+    // it closed the same way the live callback path's BarData does.
+    o.Set("closeReason", bars[i].close_reason);
     arr.Set(i, o);
   }
   return arr;

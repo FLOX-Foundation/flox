@@ -1104,6 +1104,23 @@ export class SimulatedExecutor {
   cancelOrder(orderId: number): void;
   cancelAll(symbol: number): void;
   onBar(symbol: number, closePrice: number): void;
+  /** Open-aware form: moves the market to the open (releasing any order held
+   *  from the previous bar's callback there), then walks low -> high -> close
+   *  so resting stops/targets match the intrabar extremes. Use this, not
+   *  onBar, when driving the executor by hand to reach the fills
+   *  BacktestRunner.runBars produces on the same bars. */
+  onBarOhlc(symbol: number, open: number, high: number, low: number, close: number): void;
+  /** Open the bar-callback window: every order submitted while it is open is
+   *  held instead of matched immediately, and released at the next bar's
+   *  open. Call before invoking a strategy's bar callback by hand; always
+   *  pair with endBarCallbackWindow. */
+  beginBarCallbackWindow(): void;
+  /** Close the bar-callback window opened by beginBarCallbackWindow. */
+  endBarCallbackWindow(): void;
+  /** Drops fills and run-scoped state while keeping installed configuration
+   *  (slippage, queue model, latency, ...), so a second hand-driven run
+   *  reports that run and not the sum of every run. */
+  reset(): void;
   onTrade(symbol: number, price: number, isBuy: boolean): void;
   advanceClock(timestampNs: number | bigint): void;
   setDefaultSlippage(
