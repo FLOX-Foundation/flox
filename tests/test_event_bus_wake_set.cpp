@@ -81,6 +81,14 @@ int64_t nowNs()
   return duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
+// Every net in these tests is pushed out this far. A wake-up that arrives
+// inside a round's spin budget then cannot have come from the net, whatever
+// the runner's scheduler did to it on the way: the mechanism is proved by
+// which side of the net the wake-up lands on, not by a number of
+// milliseconds that a loaded shared runner is free to miss.
+constexpr auto kFarNet = seconds(10);
+const int64_t kFarNetUs = duration_cast<microseconds>(kFarNet).count();
+
 // Counts deliveries and remembers the worst publish-to-handler delay it saw.
 // One listener type for every test here: a lost wake-up shows up as a delay
 // of a whole net interval, so the latency IS the assertion.
@@ -167,10 +175,12 @@ class Fanout
  public:
   explicit Fanout(bool useWakeSet) : _useWakeSet(useWakeSet)
   {
+    _set.setNetInterval(kFarNet);
     for (int b = 0; b < kBuses; ++b)
     {
       _buses[b] = std::make_unique<WakeBus>();
       _buses[b]->setOwnConsumerThreads(false);
+      _buses[b]->setParkNetInterval(kFarNet);
       if (_useWakeSet)
       {
         _buses[b]->setWakeSet(&_set);
@@ -341,12 +351,13 @@ TEST(EventBusWakeSet, OneThreadParksOnThreeBusesAndWakesFromAnyOfThem)
   EXPECT_EQ(fan.delivered(), kRounds);
   // The timed wait inside parkUnless() is a net, not the mechanism. If
   // wake-ups were arriving on its schedule instead of from the publisher,
-  // 60 rounds would take 60 net intervals.
-  EXPECT_LT(elapsed, milliseconds(1500)) << "wake-ups are riding the safety net";
+  // every round would wait out kFarNet and the spin above would have given
+  // up long before; the worst delay is bounded by the net for the same
+  // reason, and by nothing tighter, because the scheduler is not on trial.
   const auto worstUs = fan.worstNs() / 1000;
-  std::printf("worst publish->handler over %d buses on one thread: %lld us\n", kBuses,
-              static_cast<long long>(worstUs));
-  EXPECT_LT(worstUs, 25000) << "a wake-up came from the net, not from the publisher";
+  std::printf("worst publish->handler over %d buses on one thread: %lld us (%lld ms total)\n",
+              kBuses, static_cast<long long>(worstUs), static_cast<long long>(elapsed.count()));
+  EXPECT_LT(worstUs, kFarNetUs / 2) << "a wake-up came from the net, not from the publisher";
   fan.shutdown();
 }
 
@@ -417,7 +428,7 @@ TEST(EventBusWakeSet, APublishInsideTheSleepWindowStillWakesTheDriver)
   const auto worstUs = fan.worstNs() / 1000;
   std::printf("worst publish->handler across the sleep window: %lld us\n",
               static_cast<long long>(worstUs));
-  EXPECT_LT(worstUs, 25000) << "a wake-up came from the net, not from the publisher";
+  EXPECT_LT(worstUs, kFarNetUs / 2) << "a wake-up came from the net, not from the publisher";
   fan.shutdown();
 }
 
@@ -464,12 +475,14 @@ TEST(EventBusWakeSet, IdleDriverOverManyBusesCostsNothingAndBackoffDoesNot)
   }
 }
 
-// A bus nobody pointed at a set is the T040 bus, unchanged: its own parked
-// consumer thread is still woken by its own condition variable.
+// A bus nobody pointed at a set is the bus as it was before sets existed:
+// its own parked consumer thread is still woken by its own condition
+// variable.
 TEST(EventBusWakeSet, ABusWithoutASetParksItsOwnConsumersAsBefore)
 {
   WakeBus bus;
   Sink c;
+  bus.setParkNetInterval(kFarNet);
   ASSERT_TRUE(bus.subscribe(&c, /*required=*/true, WakeBus::WaitMode::PARKED));
   bus.start();
   ASSERT_EQ(bus.wakeSet(), nullptr);
@@ -483,7 +496,7 @@ TEST(EventBusWakeSet, ABusWithoutASetParksItsOwnConsumersAsBefore)
     bus.publish(ev(i));
     ASSERT_TRUE(spinFor(c.count, i + 1, milliseconds(2000))) << "wake-up lost at round " << i;
   }
-  EXPECT_LT(c.worstNs.load() / 1000, 25000) << "the parked consumer rode the net";
+  EXPECT_LT(c.worstNs.load() / 1000, kFarNetUs / 2) << "the parked consumer rode the net";
   bus.stop();
 }
 
@@ -516,6 +529,7 @@ TEST(EventBusWakeSet, StoppingABusReleasesADriverParkedOnItsSet)
   WakeBus bus;
   WakeSet set;
   Sink c;
+  set.setNetInterval(kFarNet);
   bus.setOwnConsumerThreads(false);
   bus.setWakeSet(&set);
   ASSERT_TRUE(bus.subscribe(&c, /*required=*/true));
@@ -548,7 +562,7 @@ TEST(EventBusWakeSet, StoppingABusReleasesADriverParkedOnItsSet)
   waiter.reset();
 
   EXPECT_TRUE(woke.load(std::memory_order_acquire));
-  EXPECT_LT(took, milliseconds(40)) << "stop() left the driver to wait out the net";
+  EXPECT_LT(took, kFarNet / 2) << "stop() left the driver to wait out the net";
 }
 
 TEST(EventBusWakeSet, WakingAnEmptySetIsFree)

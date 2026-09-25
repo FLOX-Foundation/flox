@@ -560,6 +560,16 @@ class EventBus : public ISubsystem
     _parkProbeUser = user;
   }
 
+  // How long a parked consumer sleeps when nothing wakes it. Only a test has
+  // a reason to move it: pushing the net far out is how a test proves that a
+  // wake-up came from the publisher and not from the schedule, without
+  // putting a number on the scheduler. Set it before start().
+  void setParkNetInterval(std::chrono::milliseconds interval) noexcept
+  {
+    _parkNetInterval = interval;
+  }
+  std::chrono::milliseconds parkNetInterval() const noexcept { return _parkNetInterval; }
+
   // The listener threw and the slot is out of service. A driver stepping many
   // consumers uses this to stop stepping this one; checkHealth() reports the
   // same thing as DEAD.
@@ -1439,7 +1449,7 @@ class EventBus : public ISubsystem
     if (_published[idx].load(std::memory_order_acquire) != want &&
         _running.load(std::memory_order_acquire))
     {
-      _parkCv.wait_for(lk, kParkNetInterval);
+      _parkCv.wait_for(lk, _parkNetInterval);
     }
     _parkWaiters.fetch_sub(1, std::memory_order_relaxed);
   }
@@ -1955,8 +1965,9 @@ class EventBus : public ISubsystem
   bool _wakeOnPublish{false};
   // A missed wake-up costs one of these, not forever. Long on purpose: it is
   // a net, and a net that catches things often is a mechanism nobody meant to
-  // build.
-  static constexpr auto kParkNetInterval = std::chrono::milliseconds(50);
+  // build. See setParkNetInterval().
+  static constexpr auto kDefaultParkNetInterval = std::chrono::milliseconds(50);
+  std::chrono::milliseconds _parkNetInterval{kDefaultParkNetInterval};
   alignas(64) std::atomic<uint32_t> _parkWaiters{0};
   void (*_parkProbe)(void*){nullptr};
   void* _parkProbeUser{nullptr};

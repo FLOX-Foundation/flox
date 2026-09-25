@@ -429,7 +429,7 @@ TEST(VenueShardWakeSet, ParkUntilWakesOnItsDeadlineWithNobodyPublishing)
   WakeSet set;
   constexpr int kRounds = 32;
   constexpr int64_t kDeadlineMs = 5;
-  constexpr int64_t kNetMs = WakeSet::kNetInterval.count();
+  constexpr int64_t kNetMs = WakeSet::kDefaultNetInterval.count();
 
   int64_t worstMs = 0;
   int64_t totalMs = 0;
