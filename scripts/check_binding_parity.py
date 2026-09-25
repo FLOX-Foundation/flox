@@ -1,53 +1,64 @@
 #!/usr/bin/env python3
 """Cross-binding parity gate.
 
-Reads the IDL spec (`include/flox/capi/flox_capi_spec.hpp`) and verifies
-that every user-facing C ABI group has a corresponding presence in each
-language binding: pybind11 Python, NAPI Node, Codon, QuickJS.
+Reads the IDL spec (`include/flox/capi/flox_capi_spec.hpp`) and verifies, for
+every user-facing C ABI group, that each language binding -- pybind11 Python,
+NAPI Node, Codon, QuickJS -- can actually reach the functions in it.
 
-This gate checked three of the four for a long time. The `quickjs` key was
-read by nobody: the per-group loop called pybind11, napi and codon and then
-printed "all bindings in parity". A group with no QuickJS implementation at
-all passed, which is how the composite-book function shipped missing from
-QuickJS with this green. The manifest had `quickjs` entries; the code never
-opened them.
+The gate used to promise that and not deliver it. It matched *class names* in
+`.pyi` / `.d.ts`, so one name satisfied a whole group no matter how many
+functions the group gained; it checked Codon against
+`tools/codegen/golden/flox_capi.codon`, a file generated from the same IDL it
+had just read, which cannot disagree with it; and it skipped QuickJS entirely
+for any group that carried no `quickjs` entry.
 
-QuickJS functions are checked against the `addGlobalFunc` registration table
-in `src/quickjs/js_bindings.cpp` -- the same place
-`check_quickjs_registration.py` reads. QuickJS classes are checked against
-the embedded JS standard library in `src/quickjs/js_strategy.cpp`, via
-`flox_codegen.manifest.scan_quickjs` -- the same extractor
-`scripts/sync_mcp_data.py` uses to feed the MCP `list_bindings` /
-`lookup_symbol` tools, reused here rather than re-implemented, so the two
-never drift apart on what counts as a registered QuickJS class.
+What is checked now, per group and per binding:
 
-This gate used to hardcode the QuickJS class set to empty regardless of
-what `scan_quickjs` could see, so a `classes:` entry under `quickjs:` failed
-every time with a misleading "class absent" message -- true of no
-implementation existing, false of the check itself.
+    pybind11  every C function of the group has a call site under `python/`
+    napi      every C function of the group has a call site under `node/src/`
+    codon     every C function of the group is `from C import`-ed by a module
+              under `codon/flox/` -- the code a strategy actually links, not
+              the generated golden
+    quickjs   every C function of the group is mapped, in this file, to the
+              global name a strategy calls, and that global is registered
+              with `addGlobalFunc` in `src/quickjs/js_bindings.cpp`
 
-Most groups still carry no `quickjs` entry, so the gate cannot yet demand one.
-It counts them instead and says the number out loud, rather than implying they
-were checked. `--require-quickjs` turns those undeclared groups into failures;
-flip it on in CI once the manifest is complete.
+Class declarations are still checked on top of that: the `classes:` list of a
+`required` entry must appear in `.pyi` / `.d.ts` / the QuickJS prelude, and a
+`functions:` list under pybind11 / napi still names top-level binding
+functions in those stubs. The QuickJS layer is read through
+`flox_codegen.manifest.scan_quickjs`, the extractor `scripts/sync_mcp_data.py`
+uses for the MCP `list_bindings` / `lookup_symbol` tools, so the two never
+drift apart on what counts as a registered QuickJS class.
 
 Configuration lives in `tools/codegen/binding_parity.yaml`. Each group
-declared in IDL must be listed there, with a per-binding status:
+declared in IDL must be listed there with a per-binding status:
 
-    required: a mapping with `classes` / `functions` that must exist
-    not_applicable: this group is internal / never exposed to this binding
-    allowlist: known gap, with `reason` (links to a tracker task)
+    required          the binding exposes this group; classes/functions as
+                      declared, and every C function reachable or allowlisted
+    not_applicable    this group is internal / never exposed to this binding
+    allowlist         the whole group is a known gap, with a `reason`
+
+A binding that is missing an individual wrapper carries the function in the
+top-level `allowlist_functions:` section, under that binding, with a one-line
+reason -- rather than the group being demoted to `allowlist`. That section is
+the inventory of what each binding does not reach; see
+docs/contributors/parity-gate.md.
 
 The script fails CI when:
     - A group exists in IDL but isn't in the YAML
-    - A `required` binding is missing one of the declared classes/functions
-    - An `allowlist` entry is missing a reason
+    - A `required` binding is missing a declared class or function
+    - A C function is reachable from neither the binding nor the allowlist
+    - A QuickJS mapping names a global that is not registered
+    - An allowlist entry is missing a reason
 
 Run as:
     python3 scripts/check_binding_parity.py
 
-Or with --verbose for details on every group, --require-quickjs to demand a
-`quickjs` entry for every group.
+`--verbose` prints every group, `--no-require-quickjs` drops the demand for a
+`quickjs` entry on every group, and `--root` points the gate at a tree other
+than the one it lives in (the gate's own tests build a miniature repository
+and point it there).
 """
 
 from __future__ import annotations
@@ -55,9 +66,8 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 try:
     import yaml
@@ -65,18 +75,60 @@ except ImportError:
     print("ERROR: PyYAML required. pip install pyyaml", file=sys.stderr)
     sys.exit(2)
 
-ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_ROOT = Path(__file__).resolve().parent.parent
 
-sys.path.insert(0, str(ROOT / "tools" / "codegen"))
+# The codegen package always comes from the checkout this script lives in:
+# a tree passed with --root carries binding sources, not the toolchain.
+sys.path.insert(0, str(SCRIPT_ROOT / "tools" / "codegen"))
 from flox_codegen import manifest as codegen_manifest  # noqa: E402
 
-IDL_PATH = ROOT / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
-CONFIG_PATH = ROOT / "tools" / "codegen" / "binding_parity.yaml"
-PYI_PATH = ROOT / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
-DTS_PATH = ROOT / "node" / "index.d.ts"
-CODON_GOLDEN_PATH = ROOT / "tools" / "codegen" / "golden" / "flox_capi.codon"
-QUICKJS_BINDINGS_PATH = ROOT / "src" / "quickjs" / "js_bindings.cpp"
-QUICKJS_PRELUDE_PATH = ROOT / "src" / "quickjs" / "js_strategy.cpp"
+BINDINGS = ("pybind11", "napi", "codon", "quickjs")
+
+# Sources scanned for a call site, per binding. C++ trees are scanned with
+# comments stripped, so a function named in a comment does not count as
+# reachable.
+CPP_SUFFIXES = (".h", ".hpp", ".hh", ".cpp", ".cc", ".cxx", ".inl")
+
+
+@dataclass
+class Paths:
+    root: Path
+
+    @property
+    def idl(self) -> Path:
+        return self.root / "include" / "flox" / "capi" / "flox_capi_spec.hpp"
+
+    @property
+    def config(self) -> Path:
+        return self.root / "tools" / "codegen" / "binding_parity.yaml"
+
+    @property
+    def pyi(self) -> Path:
+        return self.root / "python" / "flox_py" / "_flox_py" / "__init__.pyi"
+
+    @property
+    def dts(self) -> Path:
+        return self.root / "node" / "index.d.ts"
+
+    @property
+    def pybind_sources(self) -> Path:
+        return self.root / "python"
+
+    @property
+    def napi_sources(self) -> Path:
+        return self.root / "node" / "src"
+
+    @property
+    def codon_sources(self) -> Path:
+        return self.root / "codon" / "flox"
+
+    @property
+    def quickjs_bindings(self) -> Path:
+        return self.root / "src" / "quickjs" / "js_bindings.cpp"
+
+    @property
+    def quickjs_prelude(self) -> Path:
+        return self.root / "src" / "quickjs" / "js_strategy.cpp"
 
 
 # ── IDL parsing ────────────────────────────────────────────────────────
@@ -153,25 +205,48 @@ def scan_dts(path: Path) -> tuple[set[str], set[str]]:
     return classes, funcs
 
 
-def scan_codon_groups(path: Path) -> set[str]:
-    """Scan the IDL-derived Codon GOLDEN for '# ── group_name ──' markers.
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+_LINE_COMMENT = re.compile(r"//[^\n]*")
+_C_FUNCTION = re.compile(r"\bflox_[a-z_0-9]+")
 
-    IMPORTANT: this validates that the codegen golden is structurally complete,
-    NOT that the shipped `codon/flox/*.codon` module actually imports every
-    group. Because the golden is generated from the IDL, every group in the IDL
-    is present here by construction -- so a `codon: required` group can pass
-    this check while being absent from the importable module. Verifying the
-    shipped module's real coverage is tracked separately (W27); do not read a
-    green result here as "Codon imports this group"."""
-    if not path.exists():
-        return set()
-    seen: set[str] = set()
-    pat = re.compile(r"^#\s*──\s*([A-Za-z_0-9]+)\s*──\s*$")
-    for line in path.read_text().splitlines():
-        m = pat.match(line)
-        if m:
-            seen.add(m.group(1))
-    return seen
+
+def scan_c_call_sites(tree: Path) -> set[str]:
+    """C API functions named in the C/C++ sources under `tree`.
+
+    Comments are stripped first: a function that only appears in a comment
+    is not reachable from the binding, and a gate that accepted one would
+    be back to matching text instead of code.
+    """
+    found: set[str] = set()
+    if not tree.is_dir():
+        return found
+    for path in sorted(tree.rglob("*")):
+        if not path.is_file() or path.suffix not in CPP_SUFFIXES:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        text = _BLOCK_COMMENT.sub(" ", text)
+        text = _LINE_COMMENT.sub(" ", text)
+        found |= set(_C_FUNCTION.findall(text))
+    return found
+
+
+def scan_codon_imports(tree: Path) -> set[str]:
+    """C API functions imported by the shipped Codon modules.
+
+    `from C import flox_x(...)` is the only way Codon can call into the C
+    ABI, so it is what "Codon reaches this function" means. Read from
+    `codon/flox/`, deliberately not from the IDL-generated golden: the
+    golden is generated from the same spec this gate parses, so a check
+    against it can never fail.
+    """
+    found: set[str] = set()
+    if not tree.is_dir():
+        return found
+    for path in sorted(tree.rglob("*.codon")):
+        _groups, imports = codegen_manifest.scan_codon(
+            path.read_text(encoding="utf-8", errors="ignore"))
+        found |= set(imports)
+    return found
 
 
 def scan_quickjs_globals(path: Path) -> set[str]:
@@ -183,8 +258,8 @@ def scan_quickjs_globals(path: Path) -> set[str]:
 
     Names are not derivable from the C API function names -- the `__` + name
     convention has real exceptions (`__flox_vprofile_create` wraps
-    `flox_volume_profile_create`) -- which is why the manifest lists the
-    globals explicitly rather than the gate guessing them.
+    `flox_volume_profile_create`) -- which is why the manifest maps each C
+    function to its global explicitly rather than the gate guessing them.
     """
     if not path.exists():
         return set()
@@ -199,7 +274,7 @@ def scan_quickjs_classes(bindings_path: Path, prelude_path: Path) -> set[str]:
     `scripts/sync_mcp_data.py` already uses to build the `binding_manifest`
     MCP tools query -- reusing it instead of a second regex kept in sync by
     hand. It reads the raw-string JS literal in `js_strategy.cpp`
-    (`QUICKJS_PRELUDE_PATH`), not `js_bindings.cpp`, since that is where the
+    (`quickjs_prelude`), not `js_bindings.cpp`, since that is where the
     classes -- as opposed to the C++ registration calls -- are written.
     """
     if not bindings_path.exists() or not prelude_path.exists():
@@ -208,6 +283,41 @@ def scan_quickjs_classes(bindings_path: Path, prelude_path: Path) -> set[str]:
         bindings_path.read_text(encoding="utf-8", errors="ignore"),
         prelude_path.read_text(encoding="utf-8", errors="ignore"))
     return set(classes)
+
+
+@dataclass
+class BindingSurface:
+    """What each binding exposes, as read off the tree under test."""
+
+    classes: dict[str, set[str]] = field(default_factory=dict)
+    stub_functions: dict[str, set[str]] = field(default_factory=dict)
+    reachable: dict[str, set[str]] = field(default_factory=dict)
+
+
+def read_surface(paths: Paths) -> BindingSurface:
+    pyi_classes, pyi_funcs = scan_pyi(paths.pyi)
+    dts_classes, dts_funcs = scan_dts(paths.dts)
+    return BindingSurface(
+        classes={
+            "pybind11": pyi_classes,
+            "napi": dts_classes,
+            "codon": set(),
+            "quickjs": scan_quickjs_classes(paths.quickjs_bindings,
+                                            paths.quickjs_prelude),
+        },
+        stub_functions={
+            "pybind11": pyi_funcs,
+            "napi": dts_funcs,
+            "codon": set(),
+            "quickjs": set(),
+        },
+        reachable={
+            "pybind11": scan_c_call_sites(paths.pybind_sources),
+            "napi": scan_c_call_sites(paths.napi_sources),
+            "codon": scan_codon_imports(paths.codon_sources),
+            "quickjs": scan_quickjs_globals(paths.quickjs_bindings),
+        },
+    )
 
 
 # ── Verification ───────────────────────────────────────────────────────
@@ -221,8 +331,62 @@ class GroupReport:
     detail: str = ""
 
 
-def verify_classes_and_funcs(group: str, binding: str, expect: dict,
-                              present_classes: set[str], present_funcs: set[str]) -> list[GroupReport]:
+def _allowlisted(allowlist: dict, fn: str) -> tuple[bool, str]:
+    """Is `fn` in this binding's allowlist, and with what reason? An entry
+    with a blank reason is not an allowlist entry: the reason is the point."""
+    if not isinstance(allowlist, dict) or fn not in allowlist:
+        return False, ""
+    return True, str(allowlist.get(fn) or "").strip()
+
+
+def verify_functions(group: str, binding: str, expect: dict,
+                     idl_functions: list[str],
+                     reachable: set[str],
+                     allowlist: dict) -> list[GroupReport]:
+    """Every C function of the group is reachable from this binding, mapped
+    to a registered QuickJS global, or allowlisted with a reason."""
+    missing: list[str] = []
+    unregistered: list[str] = []
+    no_reason: list[str] = []
+    mapping = expect.get("functions") if binding == "quickjs" else None
+    if not isinstance(mapping, dict):
+        mapping = {}
+
+    for fn in idl_functions:
+        if binding == "quickjs":
+            if fn in mapping:
+                global_name = str(mapping[fn])
+                if global_name not in reachable:
+                    unregistered.append(f"{fn} -> {global_name}")
+                continue
+        elif fn in reachable:
+            continue
+        listed, reason = _allowlisted(allowlist, fn)
+        if not listed:
+            missing.append(fn)
+        elif not reason:
+            no_reason.append(fn)
+
+    reports: list[GroupReport] = []
+    if missing:
+        reports.append(GroupReport(
+            group, binding, "missing_in_binding",
+            f"no wrapper and no allowlist entry for {sorted(missing)}"))
+    if unregistered:
+        reports.append(GroupReport(
+            group, binding, "missing_in_binding",
+            f"mapped to a global that is not registered: {sorted(unregistered)}"))
+    if no_reason:
+        reports.append(GroupReport(
+            group, binding, "allowlist_no_reason",
+            f"allowlist_functions entries without a reason: {sorted(no_reason)}"))
+    return reports
+
+
+def verify_binding(group: str, binding: str, expect: dict,
+                   idl_functions: list[str],
+                   surface: BindingSurface,
+                   allowlist: dict) -> list[GroupReport]:
     status = expect.get("status")
     if status == "not_applicable":
         return [GroupReport(group, binding, "ok", "n/a")]
@@ -235,39 +399,42 @@ def verify_classes_and_funcs(group: str, binding: str, expect: dict,
     if status != "required":
         return [GroupReport(group, binding, "missing_yaml",
                             f"unknown status `{status}`; expected required/not_applicable/allowlist")]
+
+    reports: list[GroupReport] = []
     expected_classes = expect.get("classes") or []
-    expected_funcs = expect.get("functions") or []
-    if not expected_classes and not expected_funcs:
-        return [GroupReport(group, binding, "missing_yaml",
-                            "required status but no classes/functions listed")]
-    missing_c = [c for c in expected_classes if c not in present_classes]
-    missing_f = [f for f in expected_funcs if f not in present_funcs]
+    missing_c = [c for c in expected_classes if c not in surface.classes[binding]]
+
+    # `functions:` under pybind11 / napi names top-level functions in the
+    # stub; under quickjs it is the C-function-to-global map, checked by
+    # verify_functions.
+    expected_funcs = []
+    if binding in ("pybind11", "napi"):
+        declared = expect.get("functions") or []
+        if isinstance(declared, list):
+            expected_funcs = declared
+    missing_f = [f for f in expected_funcs
+                 if f not in surface.stub_functions[binding]]
+
     if missing_c or missing_f:
         bits = []
         if missing_c:
             bits.append(f"classes={missing_c}")
         if missing_f:
             bits.append(f"functions={missing_f}")
-        return [GroupReport(group, binding, "missing_in_binding",
-                            "missing " + ", ".join(bits))]
-    return [GroupReport(group, binding, "ok",
-                        f"classes={expected_classes} funcs={expected_funcs}")]
+        reports.append(GroupReport(group, binding, "missing_in_binding",
+                                   "missing " + ", ".join(bits)))
 
-
-def verify_codon(group: str, expect: dict, codon_groups: set[str]) -> list[GroupReport]:
-    status = expect.get("status")
-    if status == "not_applicable":
-        return [GroupReport(group, "codon", "ok", "n/a")]
-    # Codon is auto-generated from IDL: presence of a group section in the
-    # golden file is a sufficient check (function-level granularity is
-    # already covered by codegen-check).
-    if group in codon_groups:
-        return [GroupReport(group, "codon", "ok", "section present in golden")]
-    if status == "allowlist":
-        return [GroupReport(group, "codon", "ok",
-                            f"allowlist: {expect.get('reason', '')}")]
-    return [GroupReport(group, "codon", "missing_in_binding",
-                        f"group not found in {CODON_GOLDEN_PATH.name}")]
+    reports += verify_functions(group, binding, expect, idl_functions,
+                                surface.reachable[binding], allowlist)
+    if not reports:
+        detail = f"{len(idl_functions)} C functions"
+        allowed = len([f for f in idl_functions if f in allowlist])
+        if allowed:
+            detail += f", {allowed} allowlisted"
+        if expected_classes:
+            detail += f", classes={expected_classes}"
+        reports.append(GroupReport(group, binding, "ok", detail))
+    return reports
 
 
 # ── Main ──────────────────────────────────────────────────────────────
@@ -277,72 +444,68 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--verbose", action="store_true",
                     help="print every group, not only failures")
-    ap.add_argument("--require-quickjs", action="store_true",
-                    help="fail on a group with no `quickjs` entry instead of counting it")
+    ap.add_argument("--require-quickjs", action=argparse.BooleanOptionalAction,
+                    default=True,
+                    help="fail on a group with no `quickjs` entry (default: on)")
+    ap.add_argument("--root", default=str(SCRIPT_ROOT),
+                    help="repository to check (default: the one this script lives in)")
     args = ap.parse_args(argv)
 
-    if not IDL_PATH.exists():
-        print(f"ERROR: IDL spec not found: {IDL_PATH}", file=sys.stderr)
+    paths = Paths(Path(args.root).resolve())
+
+    if not paths.idl.exists():
+        print(f"ERROR: IDL spec not found: {paths.idl}", file=sys.stderr)
         return 2
-    if not CONFIG_PATH.exists():
-        print(f"ERROR: parity config not found: {CONFIG_PATH}", file=sys.stderr)
+    if not paths.config.exists():
+        print(f"ERROR: parity config not found: {paths.config}", file=sys.stderr)
         return 2
 
-    idl_groups = parse_idl_groups(IDL_PATH.read_text())
+    idl_groups = parse_idl_groups(paths.idl.read_text())
     idl_names = {g.name for g in idl_groups}
+    functions_by_group = {g.name: g.functions for g in idl_groups}
 
-    config = yaml.safe_load(CONFIG_PATH.read_text()) or {}
+    config = yaml.safe_load(paths.config.read_text()) or {}
     cfg_groups = config.get("groups", {})
 
-    pyi_classes, pyi_funcs = scan_pyi(PYI_PATH)
-    dts_classes, dts_funcs = scan_dts(DTS_PATH)
-    codon_groups = scan_codon_groups(CODON_GOLDEN_PATH)
-    quickjs_globals = scan_quickjs_globals(QUICKJS_BINDINGS_PATH)
-    if not quickjs_globals:
-        print(f"ERROR: no QuickJS registrations found in {QUICKJS_BINDINGS_PATH}",
+    allowlists = config.get("allowlist_functions") or {}
+
+    surface = read_surface(paths)
+    if not surface.reachable["quickjs"]:
+        print(f"ERROR: no QuickJS registrations found in {paths.quickjs_bindings}",
               file=sys.stderr)
         return 2
-    quickjs_classes = scan_quickjs_classes(QUICKJS_BINDINGS_PATH, QUICKJS_PRELUDE_PATH)
-    if not quickjs_classes:
-        print(f"ERROR: no QuickJS classes found in {QUICKJS_PRELUDE_PATH}",
+    if not surface.classes["quickjs"]:
+        print(f"ERROR: no QuickJS classes found in {paths.quickjs_prelude}",
               file=sys.stderr)
         return 2
 
     reports: list[GroupReport] = []
-    undeclared_quickjs: list[str] = []
 
     # 1. Every IDL group must appear in the config.
-    unknown_in_yaml = sorted(idl_names - set(cfg_groups.keys()))
-    for g in unknown_in_yaml:
+    for g in sorted(idl_names - set(cfg_groups.keys())):
         reports.append(GroupReport(g, "config", "missing_yaml",
-                                   f"add an entry to {CONFIG_PATH.name}"))
+                                   f"add an entry to {paths.config.name}"))
 
     # 2. Config entries for groups that don't exist in IDL.
-    stale_in_yaml = sorted(set(cfg_groups.keys()) - idl_names)
-    for g in stale_in_yaml:
+    for g in sorted(set(cfg_groups.keys()) - idl_names):
         reports.append(GroupReport(g, "config", "missing_in_binding",
                                    f"group `{g}` not found in IDL spec; remove from yaml"))
 
     # 3. Per-group, per-binding verification.
     for group_name in sorted(idl_names & set(cfg_groups.keys())):
         entry = cfg_groups[group_name] or {}
-        reports += verify_classes_and_funcs(group_name, "pybind11",
-                                              entry.get("pybind11", {"status": "missing_yaml"}),
-                                              pyi_classes, pyi_funcs)
-        reports += verify_classes_and_funcs(group_name, "napi",
-                                              entry.get("napi", {"status": "missing_yaml"}),
-                                              dts_classes, dts_funcs)
-        reports += verify_codon(group_name,
-                                 entry.get("codon", {"status": "missing_yaml"}),
-                                 codon_groups)
-        if "quickjs" in entry:
-            reports += verify_classes_and_funcs(group_name, "quickjs",
-                                                entry["quickjs"], quickjs_classes, quickjs_globals)
-        elif args.require_quickjs:
-            reports.append(GroupReport(group_name, "quickjs", "missing_yaml",
-                                       f"no `quickjs` entry in {CONFIG_PATH.name}"))
-        else:
-            undeclared_quickjs.append(group_name)
+        functions = functions_by_group.get(group_name, [])
+        for binding in BINDINGS:
+            if binding not in entry:
+                if binding == "quickjs" and not args.require_quickjs:
+                    continue
+                reports.append(GroupReport(
+                    group_name, binding, "missing_yaml",
+                    f"no `{binding}` entry in {paths.config.name}"))
+                continue
+            reports += verify_binding(group_name, binding, entry[binding] or {},
+                                      functions, surface,
+                                      allowlists.get(binding) or {})
 
     # ── Output ─────────────────────────────────────────────────────────
 
@@ -358,32 +521,28 @@ def main(argv: list[str]) -> int:
             for r in failures:
                 print(f"FAIL  {r.group:30s} {r.binding:10s} {r.status}: {r.detail}")
 
-    if undeclared_quickjs:
-        print()
-        print(f"{len(undeclared_quickjs)} of {len(idl_names)} groups carry no "
-              f"`quickjs` entry and were NOT checked against the QuickJS layer:")
-        print("  " + ", ".join(undeclared_quickjs))
-        print(f"Declare them in {CONFIG_PATH.relative_to(ROOT)} (required with the "
-              "registered globals, allowlist with a reason, or not_applicable),")
-        print("then run this with --require-quickjs to keep it that way.")
-
     if failures:
         print()
         print(f"{len(failures)} parity issue(s) found.")
-        print(f"Edit {CONFIG_PATH.relative_to(ROOT)} to declare expected coverage,")
-        print("or add bindings for the missing groups.")
+        print(f"Edit {paths.config.name} to declare expected coverage,")
+        print("or add bindings for the missing functions.")
         return 1
 
     # Say what was checked, with the count. "All bindings in parity" is what
     # this line used to claim while one of the four was never opened.
-    checked = {"pybind11": 0, "napi": 0, "codon": 0, "quickjs": 0}
-    for r in reports:
-        if r.binding in checked:
-            checked[r.binding] += 1
-    print(f"OK — {len(idl_names)} IDL groups. Checked: " +
-          ", ".join(f"{name} {count}" for name, count in checked.items()) +
-          (f" ({len(undeclared_quickjs)} groups undeclared for quickjs)"
-           if undeclared_quickjs else ""))
+    checked = {b: 0 for b in BINDINGS}
+    allowlisted = {b: 0 for b in BINDINGS}
+    for group_name in sorted(idl_names & set(cfg_groups.keys())):
+        functions = functions_by_group.get(group_name, [])
+        for binding in BINDINGS:
+            allowed = allowlists.get(binding) or {}
+            allowlisted[binding] += len([f for f in functions if f in allowed])
+            checked[binding] += len(functions)
+    print(f"OK — {len(idl_names)} IDL groups, "
+          f"{sum(len(v) for v in functions_by_group.values())} C functions. "
+          "Functions checked per binding: " +
+          ", ".join(f"{name} {checked[name]} ({allowlisted[name]} allowlisted)"
+                    for name in BINDINGS))
     return 0
 
 
