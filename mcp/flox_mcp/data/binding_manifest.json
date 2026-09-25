@@ -37139,6 +37139,11 @@
         },
         {
           "kind": "method",
+          "name": "begin_bar_callback_window",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "bracket_state",
           "parent": "SimulatedExecutor"
         },
@@ -37160,6 +37165,11 @@
         {
           "kind": "method",
           "name": "clear_rate_limit_policy",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "end_bar_callback_window",
           "parent": "SimulatedExecutor"
         },
         {
@@ -37194,6 +37204,11 @@
         },
         {
           "kind": "method",
+          "name": "on_bar_ohlc",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
           "name": "on_best_levels",
           "parent": "SimulatedExecutor"
         },
@@ -37210,6 +37225,11 @@
         {
           "kind": "method",
           "name": "on_trade_qty",
+          "parent": "SimulatedExecutor"
+        },
+        {
+          "kind": "method",
+          "name": "reset",
           "parent": "SimulatedExecutor"
         },
         {
