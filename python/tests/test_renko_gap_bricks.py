@@ -5,10 +5,10 @@ brick sizes into a single zero-range bar, silently dropping every brick in
 between. This exercises the numpy batch-aggregation path (the one this
 module binds directly, independent of the C++ event-driven aggregator) with
 the same gap the C++ suite covers: a jump from 100 to 155 on a brick size of
-10 (5.5 brick-widths) must come out as the real bar plus the 4 complete
-bricks a continuous price path would have produced -- 5 bars in total,
-walking cleanly from 100 to 150 in steps of 10. The trailing bar left open
-at 155 is not returned: doAggregate (python/aggregator_bindings.h) never
+10 (5.5 brick-widths) must come out as 5 bars walking cleanly from 100 to
+150 in steps of 10 -- the brick that was forming closes at the first
+boundary the gapping trade crossed (100 -> 110), then 4 synthesized bricks
+carry the price to 150. The trailing bar left open at 150 is not returned: doAggregate (python/aggregator_bindings.h) never
 flushes a still-open trailing bar for any policy, Renko included, so this
 agrees with node/test/test_renko_gap_bricks.js on the same input.
 
@@ -46,12 +46,12 @@ class RenkoGapBricksTest(unittest.TestCase):
 
         # doAggregate (python/aggregator_bindings.h) no longer flushes the
         # trailing, still-open bar for any policy -- see the batch bar-count
-        # parity fix -- so this is the real bar (100 -> 100, no trade ever
-        # touched a price in between) plus 4 synthesized bricks, 5 bars
-        # total. No bar for the new brick left open at the raw trade price
-        # (155): that matches node/test/test_renko_gap_bricks.js, which
-        # goes through the same shared C ABI aggregator and never flushed
-        # a trailing bar to begin with.
+        # parity fix -- so this is the real bar (100 -> 110, closed at the
+        # boundary the gapping trade crossed) plus 4 synthesized bricks, 5
+        # bars total. No bar for the new brick left open at 150: that
+        # matches node/test/test_renko_gap_bricks.js, which goes through the
+        # same shared C ABI aggregator and never flushed a trailing bar to
+        # begin with.
         self.assertEqual(len(bars), 5, "1 real + 4 synthesized bricks")
 
         opens = bars["open_raw"] / PRICE_SCALE
@@ -60,8 +60,8 @@ class RenkoGapBricksTest(unittest.TestCase):
         lows = bars["low_raw"] / PRICE_SCALE
 
         np.testing.assert_allclose(opens, [100.0, 110.0, 120.0, 130.0, 140.0])
-        np.testing.assert_allclose(closes, [100.0, 120.0, 130.0, 140.0, 150.0])
-        np.testing.assert_allclose(highs, [100.0, 120.0, 130.0, 140.0, 150.0])
+        np.testing.assert_allclose(closes, [110.0, 120.0, 130.0, 140.0, 150.0])
+        np.testing.assert_allclose(highs, [110.0, 120.0, 130.0, 140.0, 150.0])
         np.testing.assert_allclose(lows, [100.0, 110.0, 120.0, 130.0, 140.0])
 
     def test_ordinary_single_brick_close_is_unaffected(self) -> None:
@@ -72,11 +72,11 @@ class RenkoGapBricksTest(unittest.TestCase):
 
         bars = flox.aggregate_renko_bars(ts, px, qty, is_buy, brick_size=10.0)
 
-        # One closed brick (100 -> 100); no bar for the trailing open one
-        # at 114 (doAggregate never flushes it -- see the test above).
+        # One closed brick (100 -> 110); no bar for the trailing open one
+        # at 110 -> 114 (doAggregate never flushes it -- see the test above).
         self.assertEqual(len(bars), 1)
-        opens = bars["open_raw"] / PRICE_SCALE
-        np.testing.assert_allclose(opens, [100.0])
+        np.testing.assert_allclose(bars["open_raw"] / PRICE_SCALE, [100.0])
+        np.testing.assert_allclose(bars["close_raw"] / PRICE_SCALE, [110.0])
 
 
 if __name__ == "__main__":

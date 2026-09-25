@@ -123,8 +123,9 @@ inline Napi::Value agg_renko_bars(const Napi::CallbackInfo& info)
   // Every other aggregator in this file closes at most one bar per input
   // trade, so `maxBars = t.n` is always enough room. Renko is the
   // exception: a trade that gaps past more than one brick width closes the
-  // forming brick AND synthesizes the bricks in between (see gapBricks() in
-  // renko_bar_policy.h), so a single trade can produce several bars.
+  // forming brick AND synthesizes the bricks in between (see
+  // closeAndReopen() in renko_bar_policy.h), so a single trade can produce
+  // several bars.
   // flox_aggregate_renko_bars() is bounds-checked and never writes past
   // maxBars, but if it reports more bars than that, the extra ones were
   // silently dropped rather than written -- reading `count` entries out of

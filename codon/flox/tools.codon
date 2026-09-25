@@ -286,7 +286,7 @@ def aggregate_renko_bars(timestamps: List[int], prices: List[float],
     # so max_bars = len(timestamps) is always enough room. Renko is the
     # exception: a trade that gaps past more than one brick width closes
     # the forming brick and also synthesizes the bricks in between (see
-    # gapBricks() in renko_bar_policy.h), so a single trade can produce
+    # closeAndReopen() in renko_bar_policy.h), so a single trade can produce
     # several bars. flox_aggregate_renko_bars() is bounds-checked and
     # never writes past max_bars, but if it reports more bars than that,
     # the extra ones were silently dropped rather than written -- decoding

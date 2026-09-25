@@ -29,7 +29,7 @@ function check(cond, msg) {
     const bars = flox.renkoBars(ts, px, qty, sides, 10.0);
 
     check(bars.length === 5, '1 real bar + 4 synthesized bricks, got ' + bars.length);
-    check(bars[0].open === 100 && bars[0].close === 100, 'real bar stays at 100 (no trade touched a price in between)');
+    check(bars[0].open === 100 && bars[0].close === 110, 'real bar closes at the boundary the gapping trade crossed');
 
     const expectedOpens = [110, 120, 130, 140];
     const expectedCloses = [120, 130, 140, 150];
@@ -48,7 +48,7 @@ function check(cond, msg) {
     const bars = flox.renkoBars(ts, px, qty, sides, 10.0);
 
     check(bars.length === 1, 'ordinary single-brick close is unaffected, got ' + bars.length);
-    check(bars[0].open === 100, 'brick opens at 100');
+    check(bars[0].open === 100 && bars[0].close === 110, 'brick runs 100 -> 110, one brick tall');
 }
 
 if (failed > 0) {

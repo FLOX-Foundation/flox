@@ -2,6 +2,8 @@
 
 When several `BarAggregator` instances close on the same wall-clock instant — for example, a 4-hour bar, a 1-hour bar, and a 5-minute bar all sharing a midnight UTC boundary — the order in which they fire `onBar` matters. A strategy that updates a coarse-context indicator on the 4-hour close and reads it on the 5-minute close depends on the coarse one firing first.
 
+This page is about ordering *between* aggregators. For the ordering *inside* one close — whether the trade that crossed the threshold belongs to the bar it closed or to the one that opens next — see the per-type rules in [Bar types](bar-types.md): Tick, Volume, Range and BpsRange fold the crossing trade in and detect the close on the following trade, Renko applies the crossing trade to the brick it completes and then closes that brick at its boundary, and Time drops a trade whose bucket has already been published.
+
 ## Rule
 
 flox dispatches bars in **aggregator registration order**. The first aggregator added to a `MultiTimeframeAggregator` (or subscribed to a `BarBus`) emits its tied-timestamp bar first; the next emits next; and so on.

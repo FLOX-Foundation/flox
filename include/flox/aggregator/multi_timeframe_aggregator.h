@@ -215,8 +215,18 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
 
     if (policy.shouldClose(trade, state.bar)) [[unlikely]]
     {
-      emitBar(slotIdx, trade.trade.symbol, state);
-      policy.initBar(trade, state.bar);
+      if constexpr (ClosesAndReopens<Policy>)
+      {
+        const InstrumentType instrument = state.instrument;
+        const SymbolId symbol = trade.trade.symbol;
+        policy.closeAndReopen(trade, state.bar, [&](const Bar& bar)
+                              { publishBar(slotIdx, symbol, instrument, bar); });
+      }
+      else
+      {
+        emitBar(slotIdx, trade.trade.symbol, state);
+        policy.initBar(trade, state.bar);
+      }
       state.instrument = trade.trade.instrument;
       return;
     }
@@ -228,13 +238,17 @@ class MultiTimeframeAggregator : public ISubsystem, public IMarketDataSubscriber
                BarCloseReason reason = BarCloseReason::Threshold)
   {
     state.bar.reason = reason;
+    publishBar(slotIdx, symbol, state.instrument, state.bar);
+  }
 
+  void publishBar(size_t slotIdx, SymbolId symbol, InstrumentType instrument, const Bar& bar)
+  {
     const auto& slot = slots()[slotIdx];
     BarEvent ev{.symbol = symbol,
-                .instrument = state.instrument,
+                .instrument = instrument,
                 .barType = slot.timeframeId.type,
                 .barTypeParam = slot.timeframeId.param,
-                .bar = state.bar};
+                .bar = bar};
 
     if (_bus) [[likely]]
     {

@@ -95,6 +95,10 @@ RenkoBarAggregator aggregator(RenkoBarPolicy::fromDouble(10.0), &bus);  // $10 b
 
 **Use cases**: Trend following, noise elimination, support/resistance identification.
 
+A brick closes at its boundary with the crossing trade counted in it, and the next brick opens at
+that boundary. A trade that jumps several brick widths fills in the bricks a continuous price path
+would have produced. See [Bar types](../../../explanation/bar-types.md).
+
 ### Range Bars
 
 Close when high-low range exceeds a threshold.
@@ -247,6 +251,14 @@ Implement your own bar policy by satisfying the `BarPolicy` concept:
 The concept requires four members: `shouldClose`, `update`, `initBar`, `param()`, plus a
 `kBarType` constant. All four functions must be `noexcept`. Omitting `param()` fails the constraint
 and `BarAggregator<MyCustomPolicy>` will not instantiate.
+
+One member is optional, declared as a concept in `aggregator/aggregation_policy.h` and picked up
+by every aggregator at once — `BarAggregator`, `MultiTimeframeAggregator`, and the batch
+aggregators behind the C ABI and the Python bindings:
+
+| Member | Concept | Effect |
+|---|---|---|
+| `template <typename Emit> void closeAndReopen(const TradeEvent&, Bar&, Emit&&) const` | `ClosesAndReopens` | Replaces the default close (publish the bar as it stands, then `initBar` at the trade price). The policy publishes every bar itself through `Emit` and leaves the `Bar&` re-initialized as the one that opens next. Only `RenkoBarPolicy` declares it, because a brick's close price and the next brick's open are the same boundary and have to be computed together. |
 
 `kBarType` must be one of the existing `BarType` values — there is no `BarType::Custom`. Pick the
 value that best describes the closing rule (`Tick`, `Volume`, `Range`, ...).

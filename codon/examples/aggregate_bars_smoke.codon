@@ -88,7 +88,8 @@ def run():
           f"renko gap: 1 real + 4 synthesized bricks (got {len(gap_bars)})")
     if len(gap_bars) == 5:
         check(abs(gap_bars[0].open() - 100.0) < 1e-6, "renko gap: first brick opens at 100")
-        check(abs(gap_bars[0].close() - 100.0) < 1e-6, "renko gap: first brick closes at 100")
+        check(abs(gap_bars[0].close() - 110.0) < 1e-6,
+              f"renko gap: first brick closes at the boundary it crossed (got {gap_bars[0].close()})")
         expected_opens = [110.0, 120.0, 130.0, 140.0]
         expected_closes = [120.0, 130.0, 140.0, 150.0]
         for i in range(4):
