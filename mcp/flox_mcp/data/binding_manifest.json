@@ -26403,6 +26403,10 @@
         },
         {
           "kind": "class",
+          "name": "HookErrorRecord"
+        },
+        {
+          "kind": "class",
           "name": "IcebergExecutor"
         },
         {
@@ -29215,6 +29219,21 @@
         },
         {
           "kind": "method",
+          "name": "hook",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
+          "name": "message",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
+          "name": "method",
+          "parent": "HookErrorRecord"
+        },
+        {
+          "kind": "method",
           "name": "filledQty",
           "parent": "IcebergExecutor"
         },
@@ -31111,6 +31130,11 @@
         {
           "kind": "method",
           "name": "attachTraceRecorder",
+          "parent": "Runner"
+        },
+        {
+          "kind": "method",
+          "name": "hookErrors",
           "parent": "Runner"
         },
         {

@@ -2329,6 +2329,22 @@ extern "C"
   // would otherwise be delivered to on_signal — fields are read-only;
   // mutations are not propagated.
   //
+  // What a gate owes the caller when it cannot answer — this applies to
+  // KillSwitch.check and OrderValidator.validate below as much as to
+  // RiskManager.allow, and every binding implements it the same way:
+  //
+  //   The policy, one for every binding: a host-language throw and a
+  //   non-boolean return both DENY the order, and both are reported. Neither
+  //   ever lets the order through, and neither escapes through the C
+  //   boundary. A gate that plainly returns false is a decision, not a
+  //   failure, and is not reported.
+  //
+  // A binding therefore catches its own host-language exception inside the
+  // bridge — an exception crossing a C function pointer is undefined
+  // behaviour — records it somewhere the caller can read synchronously, and
+  // returns 0. Returning anything other than 0 or 1 from this callback is a
+  // binding bug; the engine reads any non-zero value as allow.
+  //
   // Lifecycle: created via flox_risk_manager_create, attached to a
   // runner/engine via flox_runner_set_risk_manager /
   // flox_live_engine_set_risk_manager (NULL to detach), destroyed via
