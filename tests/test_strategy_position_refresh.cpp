@@ -455,15 +455,11 @@ TEST(StrategyPositionRefresh, ALotTrackersShortReachesTheContextThroughTheSnapsh
       << "FIFO covered the lot sold at 100 first, so what is left was sold at 200";
 }
 
-// positionSnapshot() and getAverageEntryPrice() do not share an
-// implementation: the query sums the products exactly in fixed point
-// (WeightedPriceSum), the snapshot accumulates them in double and divides
-// once. On a book whose average is not representable the two land a raw unit
-// apart -- two at 100 and four at 200 give 166.66666666 from the query and
-// 166.66666667 from the snapshot -- so the claim above snapshot() that it
-// produces "the same numbers the separate getters produce" is not quite true
-// today. Whatever closes that, the two answers for one state may never drift
-// further apart than the rounding of the last digit.
+// positionSnapshot() and getAverageEntryPrice() share WeightedPriceSum, so
+// on a book whose average is not representable -- two at 100 and four at 200,
+// 166.666666... -- the two answers for one state are the same to the last raw
+// unit. A snapshot that accumulated in double and divided once landed a raw
+// unit away from the query on exactly this book.
 TEST(PositionTrackerSnapshot, TheSnapshotAndTheQueryAgreeToTheLastRaw)
 {
   constexpr SymbolId sym = 201;
@@ -477,7 +473,7 @@ TEST(PositionTrackerSnapshot, TheSnapshotAndTheQueryAgreeToTheLastRaw)
 
   ASSERT_TRUE(snap.avgEntryPrice.has_value());
   ASSERT_TRUE(queried.has_value());
-  EXPECT_LE(std::llabs(snap.avgEntryPrice->raw() - queried->raw()), 1)
+  EXPECT_EQ(snap.avgEntryPrice->raw(), queried->raw())
       << "the snapshot said " << snap.avgEntryPrice->toDouble() << " and the query said "
       << queried->toDouble() << " for the same lots";
   EXPECT_EQ(snap.position.raw(), Quantity::fromDouble(-6.0).raw());

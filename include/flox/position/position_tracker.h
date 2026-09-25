@@ -146,30 +146,27 @@ struct PositionState
   }
 
   // The two answers above from one pass over the lots. position() sums every
-  // lot and avgEntryPrice() walks them all again in double, so a caller that
-  // wants both -- which is every caller on the market-data path -- paid the
-  // traversal twice. The arithmetic is unchanged, so the numbers are the same
-  // ones the separate getters produce.
+  // lot and avgEntryPrice() walks them all again, so a caller that wants both
+  // -- which is every caller on the market-data path -- paid the traversal
+  // twice. Same arithmetic as the separate getters, WeightedPriceSum included,
+  // so the numbers are the same to the last raw unit.
   PositionSnapshot snapshot() const
   {
     int64_t totalRaw = 0;
-    double totalQty = 0.0;
-    double totalNotional = 0.0;
+    detail::WeightedPriceSum sum;
     for (const auto& lot : lots)
     {
-      totalRaw += lot.quantity.raw();
-      const double absQty = std::abs(lot.quantity.toDouble());
-      totalQty += absQty;
-      totalNotional += absQty * lot.price.toDouble();
+      totalRaw = checkedAddI64(totalRaw, lot.quantity.raw());
+      sum.add(lot.quantity, lot.price);
     }
 
     PositionSnapshot snap;
     snap.position = Quantity::fromRaw(totalRaw);
     // Nothing when flat, for the same reason getAverageEntryPrice() reports
     // nothing: there is no entry price to report and zero would read as one.
-    if (totalRaw != 0 && totalQty != 0.0)
+    if (totalRaw != 0 && !sum.empty())
     {
-      snap.avgEntryPrice = Price::fromDouble(totalNotional / totalQty);
+      snap.avgEntryPrice = sum.average();
     }
     return snap;
   }
