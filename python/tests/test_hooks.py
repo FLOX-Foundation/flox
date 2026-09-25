@@ -244,14 +244,16 @@ def test_execution_listener_with_backtest():
             self.emit_market_buy(sym_id, 1.0)
 
     btr.set_strategy(S(symbols=[sym_id]))
+    # Two bars: an order emitted inside a bar callback fills at the next
+    # bar's open, so a single bar leaves nothing for the listener to see.
     btr.run_bars(
-        start_time_ns=np.array([1_000_000_000], dtype=np.int64),
-        end_time_ns=np.array([1_999_999_999], dtype=np.int64),
-        open=np.array([100.0]),
-        high=np.array([101.0]),
-        low=np.array([99.0]),
-        close=np.array([100.5]),
-        volume=np.array([10.0]),
+        start_time_ns=np.array([1_000_000_000, 2_000_000_000], dtype=np.int64),
+        end_time_ns=np.array([1_999_999_999, 2_999_999_999], dtype=np.int64),
+        open=np.array([100.0, 100.5]),
+        high=np.array([101.0, 101.5]),
+        low=np.array([99.0, 99.5]),
+        close=np.array([100.5, 101.0]),
+        volume=np.array([10.0, 10.0]),
         symbol="BTC",
     )
     check(len(fills) >= 1, f"ExecutionListener.on_filled fired ≥1×, got {len(fills)}")
