@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "flox-connectors/execution/fill_watermark.h"
+
 #include <flox/book/bus/book_update_bus.h>
 #include <flox/book/bus/trade_bus.h>
 #include <flox/common.h>
@@ -99,12 +101,26 @@ class BybitExchangeConnector : public IExchangeConnector
   // reconnect re-subscribes everything from onOpen.
   void resubscribeBook(std::string_view symbolName);
 
+  // Advances the per-order fill watermark to the venue's cumulative filled
+  // quantity and writes the increment into ev.fillQty. Returns false when a
+  // fill status brings no new quantity -- the same execution already reached
+  // the bus from the other private topic, and republishing it would double the
+  // position.
+  bool applyFillWatermark(OrderEvent& ev, Quantity cumulative);
+
   BybitConfig _config;
 
   BookUpdateBus* _bookUpdateBus;
   TradeBus* _tradeBus;
 
   SymbolRegistry* _registry = nullptr;
+
+  // This connector's own id in the registry, resolved once in the
+  // constructor. Every published book event carries it as sourceExchange:
+  // CompositeBookMatrix::onBookUpdate drops any update whose sourceExchange is
+  // out of range, so leaving it at InvalidExchangeId kept the cross-venue book
+  // permanently empty in live.
+  ExchangeId _exchangeId{InvalidExchangeId};
 
   // Per-symbol book continuity: Bybit v5 orderbook deltas carry an update id
   // ("u") that increments by 1 per message; a jump means a dropped frame and a
@@ -119,14 +135,15 @@ class BybitExchangeConnector : public IExchangeConnector
   std::unordered_map<SymbolId, BookSeqState> _bookSeq;
   std::atomic<uint64_t> _bookGapCount{0};
 
-  // Filled quantity known so far for each order, last reported via the
-  // "order" topic. The order-topic message carries the venue's cumulative
-  // fill state (cumExecQty), not a per-message delta; this lets the
-  // handler derive the incremental fillQty that OrderEvent::dispatchTo()
-  // needs for onOrderPartiallyFilled(order, fillQty), which used to be
-  // left at its default of zero on every fill. Only touched from the
-  // private-stream callback, so no additional locking.
-  std::unordered_map<OrderId, Quantity> _filledSoFar;
+  // Cross-topic fill de-duplication and cumulative-to-delta conversion.
+  //
+  // The private stream subscribes to both "order" and "execution", which
+  // announce the *same* execution -- the order topic as a cumulative total
+  // (cumExecQty), the execution topic as a single fill. Publishing both booked
+  // twice the quantity that actually traded, and the cumulative half left
+  // OrderEvent::fillQty at zero. Both are the watermark's job; see
+  // FillWatermark.
+  FillWatermark _reportedFill;
 
   std::shared_ptr<ILogger> _logger;
 

@@ -151,6 +151,12 @@ void BybitOrderExecutorT<Policies>::submitOrder(const Order& order)
   body.reserve(256);
   body.append("{\"category\":\"").append(Bybit::toString(info->type)).append("\",");
   body.append("\"symbol\":\"").append(info->symbol).append("\",");
+  // The client order id. Bybit echoes it on every private "order" and
+  // "execution" frame for this order, and it is the only id the engine's
+  // OrderTracker and position book recognise -- without it every fill comes
+  // back under the venue's own orderId and matches nothing. Bybit allows up to
+  // 36 characters here; a decimal OrderId is far inside that.
+  body.append("\"orderLinkId\":\"").append(std::to_string(order.id)).append("\",");
   body.append("\"side\":\"").append(order.side == Side::BUY ? "Buy" : "Sell").append("\",");
   body.append("\"orderType\":\"").append(priceIsLimit ? "Limit" : "Market").append("\",");
   body.append("\"qty\":\"").append(order.quantity.toString()).append("\",");

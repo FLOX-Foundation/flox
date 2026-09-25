@@ -27,6 +27,20 @@ The "Orders" column above means "submit/cancel/replace exists," not "every `Orde
 
 A rejected order publishes `OrderEventStatus::REJECTED` on the venue's `OrderExecutionBus` with a reason string identifying the unsupported type or flag — it never reaches the exchange as a same-looking order with the unsupported part silently dropped.
 
+## The live fill contract
+
+Every connector that reports fills must honour all of the following. The engine has no way to detect a violation — a fill that breaks one of these rules looks exactly like a correct fill, and the damage shows up as a wrong position or a wrong PnL much later.
+
+- **`fillQty` is the size that just traded**, not the order's size and not the cumulative filled quantity. A venue that reports cumulatively (Bybit's `cumExecQty`, Bitget's `accBaseVolume`) must be differenced against what the connector has already published. The cumulative number belongs in `order.filledQuantity`.
+- **`fillPrice` is the price it traded at.** `PositionTracker::onOrderPartiallyFilled(order, fillQty, fillPrice)` builds cost basis and realized PnL from it, so an unset `fillPrice` books the position at zero.
+- **No fill without a price.** A fill is published only when the venue has reported the price it traded at. `Price` has no unset state — its default and a parsed `"0"` are the same bits — so an unpriced fill and a fill that traded at zero reach a listener as the same event, and the cost basis is built at zero. Bybit's order topic reports `avgPrice` `"0"` until something trades, which makes this the everyday shape rather than an edge case. An unpriced increment is *held*, not dropped: the watermark is left where it was, so the next report that does carry a price publishes the whole quantity the venue has accumulated since. The order's own status and cumulative quantity still go out, demoted to `ACCEPTED` so nothing moves a position.
+- **One event per execution.** Where a venue announces the same execution on more than one channel (Bybit's `order` and `execution` topics both report it), the connector publishes it once. Identity is the venue's own execution id or, where there is none, a per-order cumulative watermark: the first channel to report an execution advances the watermark and publishes the increment, the second computes a zero increment and publishes nothing.
+- **`order.id` is the id the engine issued**, never the venue's. Executors send the engine's `OrderId` as the venue's client order id (Bybit `orderLinkId`, Bitget `clientOid`, Hyperliquid `cloid`) and the connector reads it back off every private frame. The venue's own order id is the fallback for orders this engine did not place, and it belongs in the tracker's `exchangeOrderId`, not in `OrderEvent::order.id`.
+- **A venue rejection publishes `REJECTED` with the venue's own reason text** and leaves no live order behind, in the tracker or in the strategy's belief.
+- **`recvNs` is stamped on receipt and `sourceExchange` names the venue** on every event. Both are covered in [Building a custom connector](../how-to/custom-connector.md): without `sourceExchange`, `CompositeBookMatrix` drops the update and the cross-venue book is empty in live; without `recvNs`, its staleness sweep skips the venue and a frozen feed keeps being quoted.
+
+`connectors/tests/unit_test_*_fill_contract.cpp` pins this per venue, offline, by feeding recorded frames into the connector's message handlers and asserting on what a real `IOrderExecutionListener` receives from a real `OrderExecutionBus`.
+
 ## Build
 
 ```bash

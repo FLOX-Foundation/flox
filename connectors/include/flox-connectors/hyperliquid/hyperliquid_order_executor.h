@@ -12,6 +12,7 @@
 #include "flox-connectors/execution/executor_policies.h"
 
 #include <flox/engine/symbol_registry.h>
+#include <flox/execution/bus/order_execution_bus.h>
 #include <flox/execution/order_tracker.h>
 #include <flox/log/abstract_logger.h>
 #include <flox/net/abstract_transport.h>
@@ -76,9 +77,20 @@ class HyperliquidOrderExecutorT
   void cancelOrder(OrderId id);
   void replaceOrder(OrderId oldId, const Order& n);
 
+  // Without this the executor was mute: it held no bus and published no
+  // OrderEvent on any path, so a fill Hyperliquid returned inline with the
+  // submit reached no listener and a venue rejection was not even parsed --
+  // the order was handed to the tracker as submitted and the strategy went on
+  // believing a resting order existed. Same hook BybitOrderExecutorT has.
+  void setOrderBus(OrderExecutionBus* bus) { _orderBus = bus; }
+
  private:
   void loadAssetIds();
   int assetIdFor(std::string_view coin);
+
+  void publishRejection(const Order& order, const std::string& reason);
+  void publishSubmitted(const Order& order);
+  void publishFill(const Order& order, Quantity fillQty, Price fillPrice);
 
   std::string _url;
   std::string _privateKey;
@@ -90,6 +102,7 @@ class HyperliquidOrderExecutorT
   OrderTracker* _orderTracker;
   std::shared_ptr<ILogger> _logger;
   std::unique_ptr<ITransport> _transport;
+  OrderExecutionBus* _orderBus = nullptr;
 
   // Thread-safe asset ID cache
   mutable std::mutex _assetMutex;

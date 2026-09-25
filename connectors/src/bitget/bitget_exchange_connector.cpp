@@ -112,6 +112,14 @@ BitgetExchangeConnector::BitgetExchangeConnector(const BitgetConfig& cfg, BookUp
       _registry(registry),
       _logger(std::move(logger))
 {
+  // Registering here rather than waiting for someone else to do it: the
+  // registry is idempotent, and an id resolved lazily on the first frame would
+  // be InvalidExchangeId for whatever ran before it.
+  if (_registry)
+  {
+    _exchangeId = _registry->registerExchange("bitget");
+  }
+
   _wsClient = std::make_unique<IxWebSocketClient>(
       cfg.publicEndpoint, BITGET_ORIGIN, cfg.reconnectDelayMs, _logger.get(), 0, BITGET_USER_AGENT);
 }
@@ -294,6 +302,12 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
     return;
   }
 
+  // Stamped before parsing, so it measures when the frame reached this
+  // process. CompositeBookMatrix::checkStaleness skips any venue whose
+  // lastUpdateNs is still zero, so a book event without it left a frozen
+  // Bitget feed quotable forever.
+  const uint64_t recvNs = nowNsMonotonic();
+
   static thread_local simdjson::dom::parser parser;
 
   try
@@ -357,6 +371,8 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
       auto& ev = *evOpt;
       SymbolId sid = resolveSymbolId(inst);
       ev->update.symbol = sid;
+      ev->recvNs = MonoNanos::fromRaw(recvNs);
+      ev->sourceExchange = _exchangeId;
 
       BookUpdateType updateType = BookUpdateType::SNAPSHOT;
       if (action == "update")
@@ -434,6 +450,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
 
       if (!ev->update.bids.empty() || !ev->update.asks.empty())
       {
+        ev->publishTsNs = nowMonoNanos();
         auto [res, _] = _bookUpdateBus->tryPublish(std::move(ev));
         if (res != BookUpdateBus::PublishResult::SUCCESS)
         {
@@ -462,6 +479,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
         TradeEvent ev;
         SymbolId sid = resolveSymbolId(inst);
         ev.trade.symbol = sid;
+        ev.recvNs = MonoNanos::fromRaw(recvNs);
         if (_registry)
         {
           if (const auto info = _registry->getSymbolInfo(sid))
@@ -486,6 +504,7 @@ void BitgetExchangeConnector::handleMessage(std::string_view payload)
           }
         }
 
+        ev.publishTsNs = nowMonoNanos();
         auto [res, _] = _tradeBus->tryPublish(ev);
         if (res != TradeBus::PublishResult::SUCCESS)
         {
@@ -521,6 +540,8 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
     return;
   }
 
+  const uint64_t recvNs = nowNsMonotonic();
+
   static thread_local simdjson::ondemand::parser parser;
   try
   {
@@ -552,6 +573,7 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
       for (auto d : data)
       {
         OrderEvent ev;
+        ev.recvNs = MonoNanos::fromRaw(recvNs);
         ev.order.symbol = resolveSymbolId(d["instId"].get_string().value());
 
         auto clientOidField = d["clientOid"];
@@ -588,12 +610,52 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
         }
         ev.order.price = *priceOpt;
         ev.order.quantity = *qtyOpt;
+
+        // The three fields that make a Bitget push a usable fill and that this
+        // handler used to ignore entirely, dispatching onOrderFilled(order, 0,
+        // 0) and moving no position at all: fillPrice is where the latest fill
+        // traded, baseVolume how much of it traded, accBaseVolume the order's
+        // cumulative filled quantity. All three are absent (or empty) on a
+        // push that reports no new execution, such as the first "live" one.
+        bool fillPriceReported = false;
+        if (auto fp = d["fillPrice"]; !fp.error())
+        {
+          if (auto fillPriceOpt = util::parsePrice(fp.get_string().value()))
+          {
+            fillPriceReported = fillPriceOpt->raw() > 0;
+            ev.fillPrice = *fillPriceOpt;
+          }
+        }
+        if (auto bv = d["baseVolume"]; !bv.error())
+        {
+          if (auto fillQtyOpt = util::parseQty(bv.get_string().value()))
+          {
+            ev.fillQty = *fillQtyOpt;
+          }
+        }
+        bool haveCumulative = false;
+        if (auto acc = d["accBaseVolume"]; !acc.error())
+        {
+          if (auto filledOpt = util::parseQty(acc.get_string().value()))
+          {
+            ev.order.filledQuantity = *filledOpt;
+            haveCumulative = true;
+          }
+        }
+
         std::string_view status = d["status"].get_string().value();
         if (status == "filled")
         {
           ev.status = OrderEventStatus::FILLED;
         }
-        else if (status == "canceled")
+        else if (status == "partially_filled")
+        {
+          // Used to fall into the else below and reach the engine as
+          // SUBMITTED, so a partial fill dispatched onOrderSubmitted and the
+          // position never moved.
+          ev.status = OrderEventStatus::PARTIALLY_FILLED;
+        }
+        else if (status == "canceled" || status == "cancelled")
         {
           ev.status = OrderEventStatus::CANCELED;
         }
@@ -601,6 +663,55 @@ void BitgetExchangeConnector::handlePrivateMessage(std::string_view payload)
         {
           ev.status = OrderEventStatus::SUBMITTED;
         }
+
+        const bool isFill = (ev.status == OrderEventStatus::FILLED ||
+                             ev.status == OrderEventStatus::PARTIALLY_FILLED);
+
+        // The same rule the Bybit order topic follows: an increment the venue
+        // has not priced is held, not published as a fill. Price has no unset
+        // state, so a zero fillPrice is indistinguishable from a fill that
+        // traded at zero and a position tracker builds the cost basis there.
+        // The watermark is left alone so the quantity is not lost -- the next
+        // push that does carry a fillPrice reports the same accBaseVolume and
+        // publishes the whole held increment. The order's status and
+        // cumulative quantity still go out, demoted to ACCEPTED.
+        const bool advancesFill = !haveCumulative || ev.order.filledQuantity.raw() >
+                                                         _reportedFill.reported(ev.order.id).raw();
+        if (isFill && advancesFill && !fillPriceReported)
+        {
+          ev.status = OrderEventStatus::ACCEPTED;
+          ev.fillQty = Quantity{};
+          ev.publishNs = nowMonoNanos();
+          _orderBus->publish(std::move(ev));
+          continue;
+        }
+
+        if (isFill && haveCumulative)
+        {
+          // A push that carries no new cumulative quantity is the venue
+          // repeating itself, not a second execution.
+          const Quantity newlyFilled = _reportedFill.advance(ev.order.id, ev.order.filledQuantity);
+          if (newlyFilled.isZero())
+          {
+            continue;
+          }
+          // baseVolume is the venue's view of the execution it is reporting
+          // right now; the increment is everything not yet published, which is
+          // larger whenever an earlier push was held for want of a price.
+          // Publishing the larger of the two carries a held quantity forward
+          // instead of dropping it, and still lets either field stand in when
+          // the other is missing.
+          if (ev.fillQty.raw() < newlyFilled.raw())
+          {
+            ev.fillQty = newlyFilled;
+          }
+        }
+        if (ev.status == OrderEventStatus::FILLED || ev.status == OrderEventStatus::CANCELED)
+        {
+          _reportedFill.complete(ev.order.id);
+        }
+
+        ev.publishNs = nowMonoNanos();
         _orderBus->publish(std::move(ev));
       }
     }

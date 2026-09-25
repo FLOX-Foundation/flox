@@ -50,6 +50,8 @@ class CapturingSub final : public IMarketDataSubscriber
   {
     std::lock_guard<std::mutex> lk(_m);
     _bookTs.push_back(ev.update.exchangeTsNs);
+    _bookSources.push_back(ev.sourceExchange);
+    _bookRecvNs.push_back(ev.recvNs.raw());
   }
 
   void onTrade(const TradeEvent& ev) override
@@ -64,6 +66,18 @@ class CapturingSub final : public IMarketDataSubscriber
     return _bookTs;
   }
 
+  std::vector<ExchangeId> bookSources()
+  {
+    std::lock_guard<std::mutex> lk(_m);
+    return _bookSources;
+  }
+
+  std::vector<uint64_t> bookRecvNs()
+  {
+    std::lock_guard<std::mutex> lk(_m);
+    return _bookRecvNs;
+  }
+
   std::vector<UnixNanos> tradeTimestamps()
   {
     std::lock_guard<std::mutex> lk(_m);
@@ -74,6 +88,8 @@ class CapturingSub final : public IMarketDataSubscriber
   std::mutex _m;
   std::vector<UnixNanos> _bookTs;
   std::vector<UnixNanos> _tradeTs;
+  std::vector<ExchangeId> _bookSources;
+  std::vector<uint64_t> _bookRecvNs;
 };
 
 // 2023-11-14T22:13:20Z, i.e. deep in the past relative to "now" in any CI
@@ -202,4 +218,54 @@ TEST(PolymarketTimestamps, TradeEventUsesVenueTimestamp)
 
   const UnixNanos expected = msToUnixNs(kVenueTimestampMs);
   EXPECT_EQ(ts[0], expected);
+}
+
+// A book event that does not name the venue it came from is invisible to
+// cross-venue consumers: CompositeBookMatrix::onBookUpdate returns at its
+// first line when sourceExchange is out of range, and InvalidExchangeId
+// always is. Both shapes this connector publishes -- the snapshot and the
+// price_change delta -- have to carry it.
+TEST(PolymarketTimestamps, BookEventsNameTheirSourceExchange)
+{
+  BookUpdateBus bookBus;
+  TradeBus tradeBus;
+  CapturingSub sub;
+  bookBus.subscribe(&sub);
+  bookBus.start();
+  tradeBus.start();
+
+  SymbolRegistry registry;
+  AtomicLoggerOptions logOpts;
+  logOpts.directory = tempLogDir();
+  logOpts.basename = "poly_source_exchange.log";
+  auto logger = std::make_shared<AtomicLogger>(logOpts);
+
+  PolymarketConfig cfg;
+  cfg.wsEndpoint = "wss://unused.invalid";
+  cfg.tokenIds = {"TOKEN"};
+  PolymarketExchangeConnector connector(cfg, &bookBus, &tradeBus, &registry, logger);
+
+  const ExchangeId expected = registry.getExchangeId(connector.exchangeId());
+  ASSERT_NE(expected, InvalidExchangeId)
+      << "the connector must register itself with the registry, or its events can name no venue";
+
+  connector.handleMessage(
+      R"([{"event_type":"book","asset_id":"TOKEN","bids":[{"price":"0.40","size":"100"}],"asks":[{"price":"0.60","size":"80"}]}])");
+  connector.handleMessage(
+      R"({"event_type":"price_change","market":"0xabc","price_changes":[)"
+      R"({"asset_id":"TOKEN","price":"0.41","size":"50","side":"BUY","hash":"h"}],"timestamp":1})");
+
+  bookBus.flush();
+  bookBus.stop();
+  tradeBus.stop();
+
+  const auto sources = sub.bookSources();
+  ASSERT_EQ(sources.size(), 2u);
+  EXPECT_EQ(sources[0], expected) << "the snapshot must name polymarket as its source";
+  EXPECT_EQ(sources[1], expected) << "the price_change delta must name it too";
+
+  const auto recv = sub.bookRecvNs();
+  ASSERT_EQ(recv.size(), 2u);
+  EXPECT_NE(recv[0], 0u);
+  EXPECT_NE(recv[1], 0u);
 }

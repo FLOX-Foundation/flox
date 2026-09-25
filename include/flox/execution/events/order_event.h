@@ -219,6 +219,17 @@ struct OrderEvent
         listener.onOrderGasReplaced(order, newOrder);
         break;
     }
+
+    // The raw fan-out, after the typed dispatch, exactly as
+    // IOrderExecutionListener::onOrderEvent documents itself. Until now no
+    // dispatch path called it: the typed callbacks hand over the Order and the
+    // fill payload and never the event, so everything that lives only on the
+    // event -- recvNs, publishNs, exchangeTsNs, queue position, maker/taker,
+    // the on-chain fields -- was unreachable from any bus subscriber, and
+    // OrderJourneyTracer (whose only hook this is) was fed by hand from
+    // BacktestRunner and got nothing at all in live. The default is a no-op,
+    // so a listener that overrides only typed callbacks is unaffected.
+    listener.onOrderEvent(*this);
   }
 };
 

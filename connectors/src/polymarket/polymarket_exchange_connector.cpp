@@ -35,6 +35,13 @@ PolymarketExchangeConnector::PolymarketExchangeConnector(const PolymarketConfig&
       _registry(registry),
       _logger(std::move(logger))
 {
+  // Registering here rather than waiting for someone else to do it: the
+  // registry is idempotent, and an id resolved lazily on the first frame would
+  // be InvalidExchangeId for whatever ran before it.
+  if (_registry)
+  {
+    _exchangeId = _registry->registerExchange("polymarket");
+  }
 }
 
 void PolymarketExchangeConnector::start()
@@ -377,6 +384,7 @@ void PolymarketExchangeConnector::processBookSnapshot(simdjson::ondemand::object
 
   auto& ev = *evOpt;
   ev->recvNs = MonoNanos::fromRaw(recvNs);
+  ev->sourceExchange = _exchangeId;
   ev->update.symbol = sym;
   ev->update.bids.clear();
   ev->update.asks.clear();
@@ -523,6 +531,7 @@ void PolymarketExchangeConnector::processPriceChanges(simdjson::ondemand::object
     }
     auto& ev = *evOpt;
     ev->recvNs = MonoNanos::fromRaw(recvNs);
+    ev->sourceExchange = _exchangeId;
     ev->update.symbol = c.sym;
     ev->update.type = BookUpdateType::DELTA;
     ev->update.bids.clear();

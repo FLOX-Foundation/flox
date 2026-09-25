@@ -61,6 +61,13 @@ class PolymarketExchangeConnector : public IExchangeConnector
   TradeBus* _tradeBus;
   SymbolRegistry* _registry = nullptr;
 
+  // This connector's own id in the registry, resolved once in the
+  // constructor. Every published book event carries it as sourceExchange:
+  // CompositeBookMatrix::onBookUpdate drops any update whose sourceExchange is
+  // out of range, so leaving it at InvalidExchangeId kept the cross-venue book
+  // permanently empty in live.
+  ExchangeId _exchangeId{InvalidExchangeId};
+
   std::shared_ptr<ILogger> _logger;
 
   std::unique_ptr<IWebSocketClient> _wsMarket;
