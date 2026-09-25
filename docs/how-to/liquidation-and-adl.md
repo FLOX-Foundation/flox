@@ -317,6 +317,13 @@ See [Cross-margin accounts](cross-margin.md) for the full guide.
 
 - The engine is per-venue (per-margin-pool). For cross-margin or
   multi-asset accounts, instantiate one engine per pool.
+- Liquidating an isolated leg of an attached account returns what the
+  slice still holds -- posted margin less the realised loss and the
+  liquidation fee -- to the account's free balance, and sends a negative
+  remainder to the insurance fund with the account left at zero (isolated
+  margin caps the loss at the margin posted). Orphan positions in the
+  engine's own book have no account to credit, so their remainder is not
+  returned anywhere.
 - The slippage knob is a flat bps haircut on the bankruptcy
   price; for venue-specific book-walk simulation, layer the
   existing `SlippageProfile` on top.

@@ -94,13 +94,13 @@ FLOX_VENUE_HAS(unsettledTrades, uint64_t (Engine::*)() const);
 FLOX_VENUE_HAS(setMmp, void (Engine::*)(uint64_t, Quantity, DurationNs));
 FLOX_VENUE_HAS(setStpGroup, void (Engine::*)(uint64_t, uint64_t));
 FLOX_VENUE_HAS(setAdmissionProfile, void (Engine::*)(uint64_t, const AdmissionProfile&));
-FLOX_VENUE_HAS(admissionProfiles, const std::unordered_map<uint64_t, AdmissionProfile>& (Engine::*)() const);
+FLOX_VENUE_HAS(admissionProfiles, std::unordered_map<uint64_t, AdmissionProfile> (Engine::*)() const);
 FLOX_VENUE_HAS(admissionRejects, uint64_t (Engine::*)() const);
 
 // ---- last look ----------------------------------------------------------
 FLOX_VENUE_HAS(openHolds, uint64_t (Engine::*)() const);
 FLOX_VENUE_HAS(hasHold, bool (Engine::*)(uint64_t) const);
-FLOX_VENUE_HAS(lastLookStats, const std::unordered_map<uint64_t, LastLookStats>& (Engine::*)() const);
+FLOX_VENUE_HAS(lastLookStats, std::unordered_map<uint64_t, LastLookStats> (Engine::*)() const);
 FLOX_VENUE_HAS(toleranceRejectedHolds, uint64_t (Engine::*)() const);
 FLOX_VENUE_HAS(riskRejectedHolds, uint64_t (Engine::*)() const);
 FLOX_VENUE_HAS(skippedLastLookProRata, uint64_t (Engine::*)() const);

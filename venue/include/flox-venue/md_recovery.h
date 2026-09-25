@@ -123,8 +123,16 @@ class MdRecoveryServer
     }
 
     std::vector<uint8_t> buf;
+    // A request is counted by the decision, before its reply is written: the
+    // requester can only observe the counter after it has read the reply, and
+    // a count taken after the last frame let a reader on another core see the
+    // reply first and the old count second.
     if (const auto tail = src.resend(req.fromSeq))
     {
+      if (counters_ != nullptr)
+      {
+        counters_->resendServed.fetch_add(1, std::memory_order_relaxed);
+      }
       for (const MdMessage& m : *tail)
       {
         SbeMdCodec::encode(m, buf);
@@ -133,16 +141,16 @@ class MdRecoveryServer
           return;
         }
       }
-      if (counters_ != nullptr)
-      {
-        counters_->resendServed.fetch_add(1, std::memory_order_relaxed);
-      }
       return;  // EOF terminates the replay
     }
 
     // fromSeq is older than the ring's tail (or 0): the increments are gone,
     // serve the whole book instead.
     const MdSnapshot snap = src.snapshot();
+    if (counters_ != nullptr)
+    {
+      counters_->snapshotsServed.fetch_add(1, std::memory_order_relaxed);
+    }
     SbeMdCodec::encode(MdSnapshotRequired{req.symbol, snap.epoch, snap.lastSeq}, buf);
     if (!net::writeFrame(fd, buf.data(), buf.size()))
     {
@@ -188,10 +196,6 @@ class MdRecoveryServer
     if (!net::writeFrame(fd, buf.data(), buf.size()))
     {
       return;
-    }
-    if (counters_ != nullptr)
-    {
-      counters_->snapshotsServed.fetch_add(1, std::memory_order_relaxed);
     }
   }
 

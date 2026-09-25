@@ -39,9 +39,12 @@ static constexpr std::string_view kPathModifyTpsl = "/api/v2/mix/order/modify-tp
 
 // Format a double as a fixed-point decimal with up to `max_decimals` fractional
 // digits, rounded half-to-even, trailing zeros stripped. Bitget validates
-// trigger prices against the symbol's pricePrecision (BTC perp = 1 digit) and
-// rejects values like "73577.65" even though they parse to the same number.
-static std::string trimDouble(double v, int max_decimals = 1)
+// prices against the symbol's own precision and rejects values like
+// "73577.65" on an instrument that quotes to one digit, even though they
+// parse to the same number -- so the digit count is a property of the
+// instrument and must come from the registry (decimalsForTick below), never
+// from a default.
+static std::string trimDouble(double v, int max_decimals)
 {
   // Round to max_decimals first.
   double scale = 1.0;
@@ -65,6 +68,45 @@ static std::string trimDouble(double v, int max_decimals = 1)
     }
   }
   return s;
+}
+
+// Fractional digits the Price type itself can carry (its scale is a power of
+// ten), which is the cap on anything formatted below.
+static constexpr int priceDecimals()
+{
+  int digits = 0;
+  for (int64_t scale = Price::Scale; scale > 1; scale /= 10)
+  {
+    ++digits;
+  }
+  return digits;
+}
+
+static constexpr int kPriceDecimals = priceDecimals();
+
+// How many fractional digits this instrument quotes in, from the tick size the
+// registry already holds: 0.1 -> 1, 0.0001 -> 4, 1e-8 -> 8. Every trigger and
+// limit price this connector sends used to be formatted with one digit, an
+// assumption spelled out in trimDouble's own comment ("BTC perp = 1 digit"),
+// which moved a protective stop on anything finer and sent "0" for a symbol
+// priced below 0.05.
+static int decimalsForTick(Price tickSize)
+{
+  int64_t raw = tickSize.raw();
+  if (raw <= 0)
+  {
+    // No usable tick in the registry: send everything the fixed-point type can
+    // carry rather than silently rounding the strategy's price away.
+    return kPriceDecimals;
+  }
+
+  int decimals = kPriceDecimals;
+  while (decimals > 0 && raw % 10 == 0)
+  {
+    raw /= 10;
+    --decimals;
+  }
+  return decimals;
 }
 
 namespace
@@ -112,8 +154,32 @@ void appendPositionFields(std::string& body, const Order& order, const Bitget::P
 
 }  // namespace
 
+// setLeverage, submitOrderWithLeverage, placePosTpsl and modifyPosTpsl are
+// ordinary REST requests against the same venue budget as a submit, and the
+// trailing stop walks modifyPosTpsl on every bar -- the paths that used to
+// skip the limiter were the ones that fire most often. Neither setLeverage
+// nor modifyPosTpsl carries an OrderId to report against, so a refusal is a
+// log line rather than an event; kNoOrderId only names that in the log.
+static constexpr OrderId kNoOrderId = 0;
+
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::setLeverage(const std::string& symbol, int leverage)
+{
+  _policies.rateLimit.gate(
+      kNoOrderId,
+      [this, symbol, leverage]
+      {
+        sendSetLeverage(symbol, leverage);
+      },
+      [symbol]
+      {
+        FLOX_LOG_WARN("[BitgetOE] setLeverage for " << symbol
+                                                    << " refused by the client-side rate limit");
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendSetLeverage(const std::string& symbol, int leverage)
 {
   std::string body;
   body.reserve(128);
@@ -156,6 +222,22 @@ void BitgetOrderExecutorT<Policies>::setLeverage(const std::string& symbol, int 
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitOrderWithLeverage(const Order& order, int leverage,
                                                              double slPrice, double tpPrice)
+{
+  _policies.rateLimit.gate(
+      order.id,
+      [this, order, leverage, slPrice, tpPrice]
+      {
+        sendSubmitOrderWithLeverage(order, leverage, slPrice, tpPrice);
+      },
+      [this, order]
+      {
+        publishRateLimited(order);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendSubmitOrderWithLeverage(const Order& order, int leverage,
+                                                                 double slPrice, double tpPrice)
 {
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
@@ -343,15 +425,21 @@ void BitgetOrderExecutorT<Policies>::publishRateLimited(const Order& order)
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
-  if (!_policies.rateLimit.tryAcquire(order.id,
-                                      [this, &order]
-                                      {
-                                        publishRateLimited(order);
-                                      }))
-  {
-    return;
-  }
+  _policies.rateLimit.gate(
+      order.id,
+      [this, order]
+      {
+        sendSubmitOrder(order);
+      },
+      [this, order]
+      {
+        publishRateLimited(order);
+      });
+}
 
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
+{
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
@@ -462,6 +550,22 @@ void BitgetOrderExecutorT<Policies>::submitOrder(const Order& order)
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const SymbolInfo& info)
 {
+  // A STOP_LIMIT is a stop plus the limit price that bounds what it may fill
+  // at; sending it as a plan order of type "market" with no price, which is
+  // what this path used to do for every conditional order, turns it into a
+  // stop-market at the venue and removes that bound with no rejection and no
+  // event. The limit price is what the strategy asked for, so an order that
+  // cannot carry it is rejected instead of approximated.
+  const bool isLimitPlan =
+      (order.type == OrderType::STOP_LIMIT || order.type == OrderType::TAKE_PROFIT_LIMIT);
+  if (isLimitPlan && order.price.raw() <= 0)
+  {
+    publishRejection(order, "conditional limit order without a limit price");
+    return;
+  }
+
+  const int decimals = decimalsForTick(info.tickSize);
+
   std::string body;
   body.reserve(320);
   body.append("{\"planType\":\"normal_plan\",")
@@ -481,7 +585,7 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
       .append(order.quantity.toString())
       .append("\",")
       .append("\"triggerPrice\":\"")
-      .append(order.triggerPrice.toString())
+      .append(trimDouble(order.triggerPrice.toDouble(), decimals))
       .append("\",")
       .append("\"triggerType\":\"mark_price\",")
       .append("\"side\":\"")
@@ -490,7 +594,12 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
 
   appendPositionFields(body, order, _params);
 
-  body.append("\"orderType\":\"market\",");
+  body.append("\"orderType\":\"").append(isLimitPlan ? "limit" : "market").append("\",");
+
+  if (isLimitPlan)
+  {
+    body.append("\"price\":\"").append(trimDouble(order.price.toDouble(), decimals)).append("\",");
+  }
 
   body.append("\"clientOid\":\"").append(std::to_string(order.id)).append("\"}");
 
@@ -528,6 +637,11 @@ void BitgetOrderExecutorT<Policies>::submitPlanOrder(const Order& order, const S
 template <typename Policies>
 void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
 {
+  // Looked up before the rate-limit gate so a refused cancel can still be
+  // reported against the order it targeted instead of vanishing with no event
+  // while the tracker keeps reporting the order active. The send path reads
+  // the tracker again: a deferred cancel runs later, and the order it names
+  // may have moved on in the meantime.
   auto st = _orderTracker->get(id);
   if (!st)
   {
@@ -535,15 +649,26 @@ void BitgetOrderExecutorT<Policies>::cancelOrder(OrderId id)
     return;
   }
 
-  // Looked up before the rate-limit check so a rejected cancel can still be
-  // reported against the order it targeted instead of vanishing
-  // with no event while the tracker keeps reporting the order active.
-  if (!_policies.rateLimit.tryAcquire(id,
-                                      [this, &st]
-                                      {
-                                        publishRateLimited(st->localOrder);
-                                      }))
+  Order target = st->localOrder;
+  _policies.rateLimit.gate(
+      id,
+      [this, id]
+      {
+        sendCancelOrder(id);
+      },
+      [this, target]
+      {
+        publishRateLimited(target);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendCancelOrder(OrderId id)
+{
+  auto st = _orderTracker->get(id);
+  if (!st)
   {
+    FLOX_LOG_ERROR("[BitgetOE] cancelOrder: unknown id=" << id);
     return;
   }
 
@@ -619,12 +744,26 @@ void BitgetOrderExecutorT<Policies>::replaceOrder(OrderId oldId, const Order& ne
     return;
   }
 
-  if (!_policies.rateLimit.tryAcquire(oldId,
-                                      [this, &st]
-                                      {
-                                        publishRateLimited(st->localOrder);
-                                      }))
+  Order target = st->localOrder;
+  _policies.rateLimit.gate(
+      oldId,
+      [this, oldId, newOrd]
+      {
+        sendReplaceOrder(oldId, newOrd);
+      },
+      [this, target]
+      {
+        publishRateLimited(target);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldId, const Order& newOrd)
+{
+  auto st = _orderTracker->get(oldId);
+  if (!st)
   {
+    FLOX_LOG_ERROR("[BitgetOE] replaceOrder: unknown id=" << oldId);
     return;
   }
 
@@ -693,6 +832,28 @@ template <typename Policies>
 void BitgetOrderExecutorT<Policies>::placePosTpsl(SymbolId symbol, HoldSide holdSide,
                                                   double slPrice, double tpPrice, OrderId localId)
 {
+  _policies.rateLimit.gate(
+      localId,
+      [this, symbol, holdSide, slPrice, tpPrice, localId]
+      {
+        sendPlacePosTpsl(symbol, holdSide, slPrice, tpPrice, localId);
+      },
+      [this, symbol, localId]
+      {
+        // A protective stop that never left the process is worth an event:
+        // the position is unprotected and only this connector knows it.
+        Order refused;
+        refused.id = localId;
+        refused.symbol = symbol;
+        publishRateLimited(refused);
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendPlacePosTpsl(SymbolId symbol, HoldSide holdSide,
+                                                      double slPrice, double tpPrice,
+                                                      OrderId localId)
+{
   auto info = _registry->getSymbolInfo(symbol);
   if (!info)
   {
@@ -724,17 +885,18 @@ void BitgetOrderExecutorT<Policies>::placePosTpsl(SymbolId symbol, HoldSide hold
               : slPrice > 0              ? "pos_loss"
                                          : "pos_profit")
       .append("\",");
+  const int decimals = decimalsForTick(info->tickSize);
   if (slPrice > 0)
   {
     body.append("\"stopLossTriggerPrice\":\"")
-        .append(trimDouble(slPrice))
+        .append(trimDouble(slPrice, decimals))
         .append("\",")
         .append("\"stopLossTriggerType\":\"mark_price\",");
   }
   if (tpPrice > 0)
   {
     body.append("\"stopSurplusTriggerPrice\":\"")
-        .append(trimDouble(tpPrice))
+        .append(trimDouble(tpPrice, decimals))
         .append("\",")
         .append("\"stopSurplusTriggerType\":\"mark_price\",");
   }
@@ -790,6 +952,26 @@ void BitgetOrderExecutorT<Policies>::modifyPosTpsl(SymbolId symbol,
                                                    const std::string& exchangeOrderId,
                                                    double newTriggerPrice, double qty)
 {
+  _policies.rateLimit.gate(
+      kNoOrderId,
+      [this, symbol, exchangeOrderId, newTriggerPrice, qty]
+      {
+        sendModifyPosTpsl(symbol, exchangeOrderId, newTriggerPrice, qty);
+      },
+      [exchangeOrderId]
+      {
+        FLOX_LOG_WARN("[BitgetOE] modifyPosTpsl for "
+                      << exchangeOrderId
+                      << " refused by the client-side rate limit: the stop "
+                         "stays where the venue last accepted it");
+      });
+}
+
+template <typename Policies>
+void BitgetOrderExecutorT<Policies>::sendModifyPosTpsl(SymbolId symbol,
+                                                       const std::string& exchangeOrderId,
+                                                       double newTriggerPrice, double qty)
+{
   auto info = _registry->getSymbolInfo(symbol);
   if (!info)
   {
@@ -814,7 +996,7 @@ void BitgetOrderExecutorT<Policies>::modifyPosTpsl(SymbolId symbol,
       .append(trimDouble(qty, /*max_decimals=*/4))
       .append("\",")
       .append("\"triggerPrice\":\"")
-      .append(trimDouble(newTriggerPrice, /*max_decimals=*/1))
+      .append(trimDouble(newTriggerPrice, decimalsForTick(info->tickSize)))
       .append("\",")
       .append("\"triggerType\":\"mark_price\"}");
 

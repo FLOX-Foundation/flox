@@ -23,9 +23,29 @@ The "Orders" column above means "submit/cancel/replace exists," not "every `Orde
 
 - `TimeInForce` and reduce-only are serialized on all four venues. Post-only maps to the venue's maker-only token (Bybit `PostOnly`, Bitget `post_only`, Hyperliquid `Alo`); `GTD` has no native equivalent on any of the four and is rejected rather than silently downgraded to `GTC`.
 - Stop-market, stop-limit, take-profit-market and take-profit-limit route through Bitget's plan-order endpoint and Bybit's conditional-order fields on the regular order endpoint. Hyperliquid has no trigger-order implementation in this connector and rejects them.
+- A conditional order carries its execution price. Bitget's plan-order endpoint takes an order type of its own, so `STOP_LIMIT` and `TAKE_PROFIT_LIMIT` are sent as plan orders of type `limit` with the `price` field the strategy asked for; the market variants are sent as `market` with no price at all. A limit-typed conditional order with no limit price is rejected rather than downgraded to a stop-market, which would silently remove the bound on what it may fill at.
+- Prices are formatted at the instrument's own precision, taken from `SymbolInfo::tickSize` in the registry the executor already holds. Venues validate a price against the symbol's precision and reject one with more digits than the instrument quotes, and rounding to a fixed digit count instead moves a protective trigger — on a symbol priced below the rounding granularity, to zero.
 - `TRAILING_STOP` and `ICEBERG` are not implemented on any of the three CEX connectors (Polymarket has no order-side concept of either) and are rejected at submit time. Bybit's trailing stop in particular lives on a different endpoint (`/v5/position/trading-stop`) than the rest of order submission, which this connector does not call.
 
 A rejected order publishes `OrderEventStatus::REJECTED` on the venue's `OrderExecutionBus` with a reason string identifying the unsupported type or flag — it never reaches the exchange as a same-looking order with the unsupported part silently dropped.
+
+## Threading: the transport and the rate-limit gate
+
+Order submission is called from the strategy / event-bus consumer thread. Nothing on that path may wait for a venue, because a venue that accepts the connection and then says nothing is indistinguishable from a healthy one until a timeout fires — and while the thread waits, the engine processes no events at all, market data included.
+
+Two components own that rule.
+
+**`CurlTransport` is asynchronous.** `post()` copies the request, hands it to a sender thread and returns; `curl_easy_perform` and both completion callbacks run on that thread. The outcome reaches the strategy the way it always did — as an `OrderEvent` on the `OrderExecutionBus`, published from the callback — so a submit that fails on the wire still produces a `REJECTED` with the transport's reason, and nothing is dropped quietly. The defaults in `CurlDispatchConfig` are one sender thread, so requests leave in the order they were handed over (a cancel submitted after a place is sent after it), and a bounded queue: a full queue answers `onError` instead of growing, because a venue that has stopped draining is a condition the caller has to hear about rather than a buffer to absorb.
+
+Timeouts are milliseconds throughout — `CurlTimeoutConfig` and `postWithTimeout()` map onto `CURLOPT_TIMEOUT_MS` / `CURLOPT_CONNECTTIMEOUT_MS`, so 1500 ms is 1500 ms and 250 ms is 250 ms. Second-resolution options truncated both to one second, which is the whole resolution an order path needs.
+
+**The rate-limit policy is a gate, not a check.** Every send path of every executor — submit, cancel, replace, and on Bitget also `setLeverage`, `submitOrderWithLeverage`, `placePosTpsl` and `modifyPosTpsl` — hands its request to `ActiveRateLimitPolicy::gate()`, which decides whether it may leave and when. A path that consults nothing is a path the venue budget does not cover, and the trailing stop walks `modifyPosTpsl` on every bar.
+
+- A request that takes a token is sent inline on the calling thread: unchanged ordering, unchanged latency, nothing queued.
+- `RateLimitPolicy::REJECT` and `CALLBACK` refuse it and publish `REJECTED_RATE_LIMIT` on the bus, so a cancel that never left the process cannot leave the tracker reporting the order live.
+- `RateLimitPolicy::WAIT` defers: the request is queued on the policy's own sender thread, `gate()` returns immediately, and the sender sends it once the bucket really has a token — re-checking the budget after every sleep, since several deferred requests wake into the same refill and only the one that takes the token may send. The deferral queue is bounded; past its depth the request is refused through the same `REJECTED_RATE_LIMIT` path as `REJECT`.
+
+Because a deferred request runs after its entry point returned, each send path owns what it needs — it copies the order, or re-reads the tracker — instead of borrowing from the caller's frame.
 
 ## The live fill contract
 
@@ -40,6 +60,34 @@ Every connector that reports fills must honour all of the following. The engine 
 - **`recvNs` is stamped on receipt and `sourceExchange` names the venue** on every event. Both are covered in [Building a custom connector](../how-to/custom-connector.md): without `sourceExchange`, `CompositeBookMatrix` drops the update and the cross-venue book is empty in live; without `recvNs`, its staleness sweep skips the venue and a frozen feed keeps being quoted.
 
 `connectors/tests/unit_test_*_fill_contract.cpp` pins this per venue, offline, by feeding recorded frames into the connector's message handlers and asserting on what a real `IOrderExecutionListener` receives from a real `OrderExecutionBus`.
+
+## Feed health
+
+`IExchangeConnector` carries the framework's only generic health surface —
+`setErrorCallbacks(onDisconnect, onSequenceGap, onStaleData)` — and every
+connector in tree honours the same contract, so a supervisor wires the three
+callbacks once and hears about all four venues the same way.
+
+| Event | Every connector raises it when |
+|---|---|
+| `onDisconnect` | The WebSocket closed. Delivered from the socket's own close handler through the connector's public `handleDisconnect(code, reason)`; the reason carries both the close code and the venue's text. Both the public market-data socket and, where a venue has one, the private order stream report — losing the private stream stops fills reaching the engine. |
+| `onSequenceGap` | The venue's own continuity field broke, so the local book is no longer a valid continuation of the venue's: Bybit's orderbook update id `u` skipped, Bitget's `seq` skipped, or a Bitget snapshot failed its checksum. In every case the offending frame is dropped, further deltas are suppressed, and the topic is re-subscribed so the venue re-sends a snapshot — the event never replaces the invalidation, it reports it. | A checksum of 0 is the venue saying it computed none for that push, which is how the depth-limited channels carry the field; such a snapshot is accepted unverified.
+| `onStaleData` | A subscribed symbol stopped ticking. This is the failure a close handler cannot catch: the socket stays open and the data stops. |
+
+A gap event carries `(expected, received)` update ids. A Bitget checksum
+failure means the same thing — the book is wrong and must be re-baselined —
+and rides the same callback carrying the computed and received CRC32 values
+instead; the log line at `error` level says which of the two fired.
+
+Staleness is polled, not timed: no connector owns a timer, so the supervisor
+calls `pollFeedHealth(now)` on its own cadence and each connector compares
+`now` against its per-symbol last-arrival stamp. The window is
+`<Config>::staleDataTimeoutMs` and defaults to **0, which disables the
+check** — the right window is a property of the instrument's liquidity, not
+of the venue, so there is no default the connector can pick. A symbol is
+reported once per staleness episode, and fresh data re-arms it. Each
+connector stamps every subscribed symbol at `start()`, so a feed that never
+delivers a single frame ages out like one that stopped.
 
 ## Build
 
@@ -92,6 +140,15 @@ python3 connectors/utils/hl_signerd.py
 ```
 
 Out-of-process signing keeps the secret out of the trading binary's address space and avoids shipping a Rust crypto stack into every flox build.
+
+**Transport rule: the key travels over a Unix socket private to its owner, or it does not travel.** The signing request contains the raw private key in its body, so the transport *is* the access control:
+
+- The client speaks `AF_UNIX` only. There is no TCP fallback — loopback authenticates neither end, and any local process that binds the port first harvests the key.
+- The socket path is `FLOX_HL_SIGNER_SOCKET`, defaulting to `/dev/shm/hl_sign.sock`. Set it on any host without `/dev/shm` (macOS, for one) rather than expecting a fallback.
+- Before a byte is written the client checks the path itself: it must be a socket (checked with `lstat`, so a symlink is refused rather than followed), owned by the calling user, with no group or other permission bits. The daemon creates it `0600` under a narrowed umask so it is private from the moment it exists, not from the moment a `chmod` lands.
+- The reply's length header comes from the peer, so it is a request for an allocation rather than a fact. A signature is a few hundred bytes; anything above 4 KiB is refused before memory is reserved.
+
+With no daemon reachable, signing fails and returns no signature. It never falls back to a transport it cannot authenticate.
 
 ## Adding a new venue
 

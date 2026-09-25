@@ -102,15 +102,21 @@ void BybitOrderExecutorT<Policies>::publishRateLimited(const Order& order)
 template <typename Policies>
 void BybitOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
-  if (!_policies.rateLimit.tryAcquire(order.id,
-                                      [this, &order]
-                                      {
-                                        publishRateLimited(order);
-                                      }))
-  {
-    return;
-  }
+  _policies.rateLimit.gate(
+      order.id,
+      [this, order]
+      {
+        sendSubmitOrder(order);
+      },
+      [this, order]
+      {
+        publishRateLimited(order);
+      });
+}
 
+template <typename Policies>
+void BybitOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
+{
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info.has_value())
   {
@@ -229,18 +235,31 @@ void BybitOrderExecutorT<Policies>::cancelOrder(OrderId orderId)
     return;
   }
 
-  // Resolved before the rate-limit check (rather than after, as submit/
-  // replace check first) so a rejected cancel can still be reported against
-  // the order it was trying to cancel: a silently dropped cancel
-  // is worse than a silently dropped submit, since the tracker keeps
-  // reporting the order active with no hint that the cancel never left the
-  // process.
-  if (!_policies.rateLimit.tryAcquire(orderId,
-                                      [this, &state]
-                                      {
-                                        publishRateLimited(state->localOrder);
-                                      }))
+  // Resolved before the rate-limit gate (rather than after, as submit/
+  // replace do) so a refused cancel can still be reported against the order
+  // it was trying to cancel: a silently dropped cancel is worse than a
+  // silently dropped submit, since the tracker keeps reporting the order
+  // active with no hint that the cancel never left the process.
+  Order target = state->localOrder;
+  _policies.rateLimit.gate(
+      orderId,
+      [this, orderId]
+      {
+        sendCancelOrder(orderId);
+      },
+      [this, target]
+      {
+        publishRateLimited(target);
+      });
+}
+
+template <typename Policies>
+void BybitOrderExecutorT<Policies>::sendCancelOrder(OrderId orderId)
+{
+  auto state = _orderTracker->get(orderId);
+  if (!state)
   {
+    FLOX_LOG_ERROR("[BybitOrderExecutor] Cannot cancel, unknown orderId=" << orderId);
     return;
   }
 
@@ -312,12 +331,33 @@ void BybitOrderExecutorT<Policies>::replaceOrder(OrderId oldOrderId, const Order
     return;
   }
 
-  if (!_policies.rateLimit.tryAcquire(oldOrderId,
-                                      [this, &state]
-                                      {
-                                        publishRateLimited(state->localOrder);
-                                      }))
+  Order target = state->localOrder;
+  _policies.rateLimit.gate(
+      oldOrderId,
+      [this, oldOrderId, newOrder]
+      {
+        sendReplaceOrder(oldOrderId, newOrder);
+      },
+      [this, target]
+      {
+        publishRateLimited(target);
+      });
+}
+
+template <typename Policies>
+void BybitOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldOrderId, const Order& newOrder)
+{
+  auto info = _registry->getSymbolInfo(newOrder.symbol);
+  if (!info.has_value())
   {
+    FLOX_LOG_ERROR("[BybitOrderExecutor] No symbol info for symbolId=" << newOrder.symbol);
+    return;
+  }
+
+  auto state = _orderTracker->get(oldOrderId);
+  if (!state)
+  {
+    FLOX_LOG_ERROR("[BybitOrderExecutor] Cannot replace, unknown orderId=" << oldOrderId);
     return;
   }
 

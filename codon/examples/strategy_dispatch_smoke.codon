@@ -123,8 +123,8 @@ def check_run_bars(reg: cobj, sym: int):
     check(s.starts == 1, f"on_start called exactly once (got {s.starts})")
     check(s.stops >= 1, f"on_stop called (got {s.stops})")
 
-    # The payload, not just the count. These offsets are read by hand in
-    # dispatch.codon, so a field moving in the C struct has to fail here.
+    # The payload, not just the count. dispatch.codon reads it at the offsets
+    # in flox/layout.codon, so a field moving in the C struct has to fail here.
     b = s.last_bar
     check(b.symbol == sym, f"bar carries the symbol id (got {b.symbol})")
     check(b.symbol_name == SYMBOL, f"bar carries the symbol name (got '{b.symbol_name}')")

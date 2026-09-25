@@ -160,6 +160,24 @@ class BitgetOrderExecutorT : public IOrderExecutor
                      double qty);
 
  private:
+  // Every public entry point above is a gate, and every send* below is what
+  // the gate runs once the venue budget allows it -- inline on the caller
+  // when a token was there, on the rate-limit policy's sender thread when the
+  // WAIT policy had to wait for one. Splitting them is what makes it possible
+  // for a deferred request to be sent later instead of dropped, so a send*
+  // must own or re-read everything it needs rather than borrow from the
+  // caller's frame.
+  void sendSubmitOrder(const Order& order);
+  void sendCancelOrder(OrderId orderId);
+  void sendReplaceOrder(OrderId oldOrderId, const Order& newOrder);
+  void sendSetLeverage(const std::string& symbol, int leverage);
+  void sendSubmitOrderWithLeverage(const Order& order, int leverage, double slPrice,
+                                   double tpPrice);
+  void sendPlacePosTpsl(SymbolId symbol, HoldSide holdSide, double slPrice, double tpPrice,
+                        OrderId localId);
+  void sendModifyPosTpsl(SymbolId symbol, const std::string& exchangeOrderId,
+                         double newTriggerPrice, double qty);
+
   void submitPlanOrder(const Order& order, const SymbolInfo& info);
   void publishRejection(const Order& order, const std::string& reason);
   void publishRateLimited(const Order& order);

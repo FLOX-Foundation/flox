@@ -4,26 +4,12 @@
 #include <napi.h>
 #include <cstring>
 #include <vector>
+#include "bindings_common.h"
 #include "flox/capi/flox_capi.h"
 #include "tape_aggregators.h"
 
 namespace node_flox
 {
-
-// JS Numbers are float64 and lose precision past 2^53, which truncates
-// nanosecond timestamps in unpredictable ways (e.g. 1765615835519000000
-// round-trips as 1765615835519000064). Accept BigInt for any int64_t arg
-// that may hold a real ns timestamp; fall back to Number for callers that
-// pass smaller values.
-inline int64_t toInt64Ns(const Napi::Value& v)
-{
-  if (v.IsBigInt())
-  {
-    bool lossless = false;
-    return v.As<Napi::BigInt>().Int64Value(&lossless);
-  }
-  return v.As<Napi::Number>().Int64Value();
-}
 
 // ── DataWriter ──────────────────────────────────────────────────────
 

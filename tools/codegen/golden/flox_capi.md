@@ -2,7 +2,7 @@
 
 Generated from `include/flox/capi/flox_capi_spec.hpp`. Source of truth for FFI consumers (Codon, QuickJS, Rust, Go cgo, Python ctypes). The pybind11 (Python) and NAPI (Node) bindings wrap this surface but expose richer language-native APIs that live in `python/` and `node/` respectively — see those for the Python/TS-flavored interfaces.
 
-**Surface:** 736 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 15 macro constants, 73 groups.
+**Surface:** 739 functions, 58 handles, 59 structs, 43 callback typedefs, 3 enums, 16 macro constants, 73 groups.
 
 ## Opaque handles
 
@@ -95,6 +95,10 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 ### abi_version
 
 - `FLOX_CAPI_ABI_VERSION` = `2`
+
+### feature_flags
+
+- `FLOX_HAS_OPTIONAL_RAW_BEST_QUOTE` = `1`
 
 ### signal_type
 
@@ -1056,6 +1060,9 @@ All handles are typedef'd `void*`. Treat them as opaque; manage lifetime via the
 - `int64_t flox_best_bid_raw(FloxStrategyHandle s, uint32_t symbol)`
 - `int64_t flox_best_ask_raw(FloxStrategyHandle s, uint32_t symbol)`
 - `int64_t flox_mid_price_raw(FloxStrategyHandle s, uint32_t symbol)`
+- `uint8_t flox_best_bid_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t * price_out)`
+- `uint8_t flox_best_ask_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t * price_out)`
+- `uint8_t flox_mid_price_raw_opt(FloxStrategyHandle s, uint32_t symbol, int64_t * price_out)`
 - `void flox_get_symbol_context(FloxStrategyHandle s, uint32_t symbol, FloxSymbolContext * out)`
 - `int32_t flox_get_order_status(FloxStrategyHandle s, uint64_t order_id)`
 

@@ -410,6 +410,9 @@ LiquidationEngine::OnMarkPass LiquidationEngine::onMarkOnce(SymbolId symbol,
     // Equity attributed to the filled portion (proportional).
     const double filledEquity = equityOf(p) * (filledQty / absQtyOf(p));
     const double residualEquity = filledEquity + realized;
+    // Orphan positions carry an account id but no Account object, so a
+    // positive remainder has no balance to be returned to here -- see
+    // walkIsolatedAccount for the attached-account case, which does return it.
     out.liquidated.push_back(p.accountId);
     ++_statLiquidations;
     ++out.liquidationsCount;
@@ -834,6 +837,19 @@ LiquidationEngine::AccountWalkOutcome LiquidationEngine::walkIsolatedAccount(
     if (residualEquity < 0.0)
     {
       result.deficit += -residualEquity;
+    }
+    else
+    {
+      // Isolated margin is a ring-fenced slice, not a forfeit: liquidation
+      // takes the position and what the close cost, and the rest of the
+      // posted margin is still the account's money. The leg is erased a few
+      // lines below, so whatever the slice still holds has to be routed back
+      // to the free balance now -- the same move walkCrossAccount makes when
+      // it books `realized` onto an account that keeps its remaining balance,
+      // and the same one the ADL path makes with `p.equity + realized`.
+      // Dropping it here made the remainder exist nowhere afterwards: not on
+      // the account, not in the insurance fund.
+      account.addEquity(residualEquity);
     }
     if (filledQty >= absQtyOf(p) - 1e-12)
     {

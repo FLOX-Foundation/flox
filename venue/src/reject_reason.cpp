@@ -94,6 +94,8 @@ const char* toString(RejectReason r) noexcept
       return "UnknownOrderType";
     case RejectReason::BookCapacityExceeded:
       return "BookCapacityExceeded";
+    case RejectReason::PegRequiresTick:
+      return "PegRequiresTick";
   }
   return "?";
 }

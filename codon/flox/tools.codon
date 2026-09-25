@@ -2,6 +2,10 @@
 # Wrappers over the C API for non-strategy infrastructure.
 
 from flox.order_type_codes import order_type_code_from_str
+from flox.layout import _FLOXBAR_SIZE, _FLOXBAR_START_NS, _FLOXBAR_END_NS
+from flox.layout import _FLOXBAR_OPEN_RAW, _FLOXBAR_HIGH_RAW, _FLOXBAR_LOW_RAW
+from flox.layout import _FLOXBAR_CLOSE_RAW, _FLOXBAR_VOLUME_RAW
+from flox.layout import _FLOXBAR_BUY_VOLUME_RAW, _FLOXBAR_TRADE_COUNT
 
 from C import flox_book_create(f64) -> cobj
 from C import flox_book_destroy(cobj)
@@ -152,7 +156,7 @@ from C import flox_aggregate_heikin_ashi_bars(Ptr[i64], Ptr[f64], Ptr[f64], Ptr[
 # bindings.h) -- a raw trade array in, an FloxBar array out. Unlike
 # Python and Node, Codon had no wrapper: the declaration above types
 # `bars_out` as `cobj`, so calling any of these six meant hand-rolling
-# the output buffer and reading FloxBar's 72-byte layout back by pointer
+# the output buffer and reading FloxBar's layout back by pointer
 # arithmetic at every call site. AggBar + _decode_agg_bars() below do
 # that once, the same way DataReader.read_trades() already does for
 # FloxTradeRecord a few hundred lines down.
@@ -192,33 +196,21 @@ class AggBar:
 
 
 def _decode_agg_bars(buf: List[byte], count: int) -> List[AggBar]:
-    # FloxBar layout (include/flox/capi/flox_capi.h):
-    #   i64 start_time_ns   (0)
-    #   i64 end_time_ns     (8)
-    #   i64 open_raw        (16)
-    #   i64 high_raw        (24)
-    #   i64 low_raw         (32)
-    #   i64 close_raw       (40)
-    #   i64 volume_raw      (48)
-    #   i64 buy_volume_raw  (56)
-    #   u32 trade_count     (64) + 4 bytes padding
-    #   total: 72 bytes (python/aggregator_bindings.h static_asserts this)
-    stride = 72
+    # FloxBar's size and offsets come from flox/layout.codon, generated from
+    # the IDL spec; tests/test_capi_event_layout.cpp holds them to offsetof.
     result = list[AggBar]()
     for i in range(count):
-        base = i * stride
-        lp = Ptr[i64](Ptr[byte](buf.arr.ptr) + base)
-        up = Ptr[u32](Ptr[byte](buf.arr.ptr) + base)
+        p = Ptr[byte](buf.arr.ptr) + i * _FLOXBAR_SIZE
         result.append(AggBar(
-            start_time_ns=int(lp[0]),
-            end_time_ns=int(lp[1]),
-            open_raw=int(lp[2]),
-            high_raw=int(lp[3]),
-            low_raw=int(lp[4]),
-            close_raw=int(lp[5]),
-            volume_raw=int(lp[6]),
-            buy_volume_raw=int(lp[7]),
-            trade_count=int(up[16]),  # byte offset 64 -> u32 index 16
+            start_time_ns=int(Ptr[i64](p + _FLOXBAR_START_NS)[0]),
+            end_time_ns=int(Ptr[i64](p + _FLOXBAR_END_NS)[0]),
+            open_raw=int(Ptr[i64](p + _FLOXBAR_OPEN_RAW)[0]),
+            high_raw=int(Ptr[i64](p + _FLOXBAR_HIGH_RAW)[0]),
+            low_raw=int(Ptr[i64](p + _FLOXBAR_LOW_RAW)[0]),
+            close_raw=int(Ptr[i64](p + _FLOXBAR_CLOSE_RAW)[0]),
+            volume_raw=int(Ptr[i64](p + _FLOXBAR_VOLUME_RAW)[0]),
+            buy_volume_raw=int(Ptr[i64](p + _FLOXBAR_BUY_VOLUME_RAW)[0]),
+            trade_count=int(Ptr[u32](p + _FLOXBAR_TRADE_COUNT)[0]),
         ))
     return result
 

@@ -127,7 +127,10 @@ reads. Nothing extra is needed.
 
 **Closing.** `ForceClosePosition` closes a position on the owner's decision,
 settling through exactly the path the engine's own sweep uses, so the events
-and the replay are identical either way. Pair it with
+and the replay are identical either way. The control-plane verb
+`forceClosePosition` sends it from outside the process
+(`{"method":"forceClosePosition","symbol":1,"account":7,"qty":2.0}`; an
+unnamed `qty` closes the whole position). Pair it with
 `SymbolConfig::externalLiquidation`, which stops the engine liquidating on its
 own: two systems closing the same position from different numbers is worse than
 either doing it alone.
@@ -201,3 +204,14 @@ f.resetSamples();
 `FundingScheduler` closes the loop (sample, settle at the boundary, reset).
 Settlement is zero-sum: longs pay shorts or the reverse, and the charges
 across a balanced book sum to zero.
+
+The rate is a `double` as far as the journaled `ApplyFunding` body -- that is
+what a calculator produces and what an operator types, and it replays bit for
+bit -- and becomes an integer exactly once, at the boundary of the settlement
+path: `fundingRateRawOf` rounds it to nearest at `kFundingRateScale`, so 0.0003
+means 30000 rather than the 29999 truncation used to publish. Every payment
+after that is `mulDivI64(notionalRaw, rateRaw, kFundingRateScale)`, truncated
+toward zero and mirrored between the two legs. The clearing path and the
+portfolio-margin path (`CrossMarginManager::applyFunding`) take the same
+conversion and the same multiply, so the two books cannot settle one interval
+differently.

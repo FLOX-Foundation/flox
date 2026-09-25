@@ -120,7 +120,12 @@ class InstrumentRegistry
     if (std::get_if<SetStpGroup>(&cmd) != nullptr ||
         std::get_if<SetFundingSchedule>(&cmd) != nullptr ||
         std::get_if<SetAdmissionProfile>(&cmd) != nullptr ||
-        std::get_if<SetRiskLimits>(&cmd) != nullptr)
+        std::get_if<SetRiskLimits>(&cmd) != nullptr ||
+        // Routed by symbol and journaled exactly like the three above. It was
+        // answered "not a configuration command" only because it was added
+        // last, which made a replay of the WAL stop being a faithful replay
+        // at the first per-account limit.
+        std::get_if<SetAccountRiskLimits>(&cmd) != nullptr)
     {
       return true;  // engine-owned state: the shards consume it, no registry state
     }

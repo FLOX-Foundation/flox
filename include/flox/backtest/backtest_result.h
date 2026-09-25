@@ -11,10 +11,12 @@
 
 #include "flox/backtest/backtest_config.h"
 #include "flox/backtest/simulated_executor.h"
+#include "flox/clearing/fee_schedule.h"
 #include "flox/common.h"
 #include "flox/util/base/time.h"
 
 #include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -91,6 +93,19 @@ class BacktestResult
   void recordFill(const Fill& fill);
   BacktestStats computeStats() const;
 
+  // Price every fill through a venue's volume ladder instead of the flat
+  // BacktestConfig::feeRate. The schedule is copied, and the copy is unbound
+  // from whatever account drove it: the replay pushes the run's own notional
+  // into that copy, so the tier climbs as the run trades while the venue's
+  // live 30-day counter is left alone. Two results built from the same fill
+  // stream therefore price it identically.
+  //
+  // Precedence: an explicit non-percentage fee model (usePercentageFee ==
+  // false) still wins, because that is the caller replacing the fee model
+  // outright. Otherwise the ladder outranks feeRate and the per-side
+  // overrides -- a run on a venue pays what that venue charges.
+  void setFeeSchedule(const FeeSchedule& schedule);
+
   const BacktestConfig& config() const { return _config; }
 
   const std::vector<Fill>& fills() const { return _fills; }
@@ -119,7 +134,10 @@ class BacktestResult
   void recordTrade(SymbolId symbol, Side side, Price entryPrice, Price exitPrice,
                    Quantity quantity, UnixNanos entryTimeNs, UnixNanos exitTimeNs,
                    Volume pnl, Volume fee);
-  Volume computeFee(Price price, Quantity qty, bool isMaker) const;
+  // Not const: with a fee ladder attached this advances the replay's own
+  // 30-day window, so the next fill resolves against the tier this one
+  // helped reach.
+  Volume computeFee(Price price, Quantity qty, bool isMaker, UnixNanos tsNs);
 
   // Ratios are computed from per-period returns derived from the equity curve.
   // Each return is (equity[i] - equity[i-1]) / equity[i-1] with the configured
@@ -153,6 +171,14 @@ class BacktestResult
   // a 1M to 0.7M to 3M curve reported 10% against a true 30%, and the Calmar
   // ratio built on the same denominator was inflated by the same factor.
   double _maxDrawdownPct{0.0};
+
+  // Venue fee ladder, if one was attached. `_feeBaseNotional30d` is the
+  // 30-day notional the venue's account already carried when the schedule
+  // was attached; it is pushed into the copy on the first fill, where there
+  // is finally a timestamp to stamp it with.
+  std::optional<FeeSchedule> _fees{};
+  double _feeBaseNotional30d{0.0};
+  bool _feeBaseApplied{false};
 };
 
 }  // namespace flox

@@ -372,8 +372,35 @@ way: `ControlApi` applies a successful mutation to the registry and forwards
 the equivalent command (`ListInstrument`, `SetBands`, `SetTriggerRef`,
 `AdminCmd` halt/resume)
 to its command sink, which the deployment wires into the journaled stream --
-on restart, `InstrumentRegistry::apply` replays those records. There is no
-separate configuration store. See [Runtime and recovery](runtime.md).
+on restart, `InstrumentRegistry::apply` replays those records, driven by
+`SequencedShard::setRegistry(&reg)` (set before `start()`). There is no
+separate configuration store. The shard writes the registry on its consumer
+thread, so serve this api from that thread. See
+[Runtime and recovery](runtime.md).
+
+Three of the verbs act on an ACCOUNT rather than on the instrument, and each
+forwards a record that was already journaled, snapshotted and replayed and had
+no way in from outside the process:
+
+```cpp
+api.handle(R"({"method":"setAccountRiskLimits","symbol":1,"account":7,
+                "maxOrderQty":1.0,"maxOrderNotional":0})");
+api.handle(R"({"method":"adjustPosition","symbol":1,"account":7,"qtyDelta":-2.0,
+                "reason":"counterpartyReport","note":"LP fill 88213"})");
+api.handle(R"({"method":"forceClosePosition","symbol":1,"account":7})");
+```
+
+`setAccountRiskLimits` masks and pairs its fields the way `setRiskLimits` does
+(`maxOrderQty`/`maxOrderNotional` are named together; `maxOpenOrders` and
+`maxPositionQty` are each optional), and a request naming no limit answers
+`no_limits_named`. `adjustPosition` requires the `reason`
+(`reconciliation`, `counterpartyReport`, `settlementCorrection`, `migration`,
+`manual`) -- an adjustment has no fill behind it, so the record is the whole
+explanation, and an unknown word answers `bad_reason` rather than being mapped
+to `manual`. Its `entry` is optional (absent keeps the average entry, and is
+NOT a zero entry), its `note` is truncated to `kAdjustNoteLen - 1`, and a
+request that moves neither size nor entry answers `no_adjustment_named`.
+`forceClosePosition` takes an optional `qty`; absent closes the whole position.
 
 Requests are read literally. A field nobody named is not a zero, so `setBand`
 needs both of its bounds and a paired risk limit needs both of its halves; a
@@ -449,6 +476,16 @@ samples venue state (open interest, position count, best bid/ask, mark age,
 feed-breaker state). `prometheus.h` renders the exposition format and
 `MetricsServer` serves it over HTTP for scraping.
 
+Every number on the page and in a control reply is rendered from its raw by
+`fixedPointToStr` (`flox-venue/fixed_point_text.h`): sign, integral part, and
+exactly as many fractional digits as the scale carries, written as digits with
+no float in between. `Gauges::fundingRateRaw` is a raw at `kFundingRateScale`
+for that reason, so the page says `fme_funding_rate 0.00030000` and a
+one-raw tick in an instrument reply says `0.00000001`. `std::to_string(double)`
+is printf("%f"): six decimals, and the C locale's separator -- which under a
+comma locale emits `0,00030000`, invalid JSON for the operator's tooling and
+an unparseable sample line for every scraper. Neither surface builds a float.
+
 ### Last look
 
 Six series, from `LastLookSample`. Four are labeled by maker:
@@ -483,3 +520,30 @@ monitoring thread, so a deployment reads `lastLookStats()`,
 `toleranceRejectedHolds()` and `skippedLastLookProRata()` off the engine and
 hands them to `prom::render`. Left unsampled they render zeros, and zeros look
 exactly like a venue where nobody has ever held a fill.
+
+### Who may read the engine while it is matching
+
+Almost everything in the engine belongs to the matching consumer thread and is
+read by nobody else. Three accessors are the exception, because they exist to
+be scraped: **`lastLookStats()`, `admissionProfiles()` and
+`restingOrderCount()` may be called from any thread while the consumer is
+matching** — `MetricsServer` runs its sampler on the connection thread that
+answered the scrape, which is exactly what the section above instructs. No
+other accessor carries that permission; `hasHold()` / `forEachHold()` state
+their own consumer-thread rule and mean it.
+
+The first two hand back a **snapshot by value**, taken under
+`engine::SnapshotLock` (`venue/include/flox-venue/engine/snapshot_lock.h`) --
+a spinlock the consumer takes when it writes one of those containers and the
+sampler takes for the length of one copy. A reference into live storage would
+be neither safe nor useful: unsafe because an insert can rehash the map under
+the reader's iterator, and useless because a page built from a container that
+keeps moving carries two series from two different moments. The lock is a
+spinlock and not a mutex because of who pays: uncontended it is one atomic
+exchange on the consumer, and a scrape happens once every few seconds.
+
+`restingOrderCount()` is published through a relaxed atomic instead, because
+it is the one of the three written on the per-ORDER path -- every order that
+rests or leaves. A lock there, for a gauge, is a cost the matching path does
+not take; a count is a single number with nothing else it has to agree with,
+so nothing is lost by publishing it that way.

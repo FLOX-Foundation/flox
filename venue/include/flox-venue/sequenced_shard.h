@@ -9,6 +9,7 @@
 #pragma once
 
 #include "flox-venue/checkpoint_lane.h"
+#include "flox-venue/control_plane.h"
 #include "flox-venue/journal.h"
 #include "flox-venue/matching_book.h"
 #include "flox-venue/matching_engine.h"
@@ -254,6 +255,26 @@ class SequencedShard
   // it: a shard nobody steps accepts commands and matches none of them.
   void setOwnThreads(bool own) noexcept { ownThreads_ = own; }
   bool ownThreads() const noexcept { return ownThreads_; }
+
+  // Keep an InstrumentRegistry in step with this shard's command stream.
+  //
+  // "The WAL is the configuration source of truth, not an external store" is
+  // the contract on InstrumentRegistry::apply, and apply() is the only thing
+  // that can keep it. Nothing called it: the shard replayed its journal into
+  // the engine and into nothing else, so a restarted venue came up with an
+  // engine that knew all of its state and a registry that knew no
+  // instruments -- and the control plane validates every operator request
+  // against that registry. Wired here, every record the shard applies is
+  // offered to apply(): the snapshot's config section, each replayed segment
+  // and every command sequenced afterwards, in stream order.
+  //
+  // Set before start(), and null (the default) leaves the shard as it was.
+  //
+  // Thread rule: the registry is written on the CONSUMER thread from here on.
+  // A deployment that also serves a ControlApi against the same registry must
+  // reach it from that thread too -- the control server on the thread that
+  // steps the shard -- or the operator's read races the replay's write.
+  void setRegistry(InstrumentRegistry* reg) noexcept { consumer_.setRegistry(reg); }
 
   // One pass over this shard: the matching consumer, then every outbound
   // subscriber. Returns true if anything was delivered -- a driver that gets
@@ -556,8 +577,14 @@ class SequencedShard
     return checkpointPublishFailures_.load(std::memory_order_acquire);
   }
 
-  // Consumer-thread stall of the most recent checkpoint (state clone + journal
-  // rotation; serialization runs in the background). Observability gauge.
+  // Consumer-thread stall of the most recent checkpoint: everything between
+  // the moment the consumer stops matching and the moment it resumes -- the
+  // wait for the previous publish and for the checkpoint lane, the state
+  // clone, the journal rotation, the checkpoint hook, and the mutex and thread
+  // spawn that hand the snapshot to the background. Serialization itself runs
+  // on that background thread and is not part of it. Observability gauge: an
+  // operator sizes the venue's worst-case matching gap from this number, so
+  // everything the consumer spends inside a checkpoint has to be in it.
   int64_t lastCheckpointPauseNs() const noexcept
   {
     return lastCheckpointPauseNs_.load(std::memory_order_acquire);
@@ -605,7 +632,7 @@ class SequencedShard
                       return;
                     }
                     msg.publishMonoNs = venueMonoNs();
-                    out_.publish(std::move(msg)); }, std::move(book))
+                    out_.publish(std::move(msg)); }, std::move(book), cfg.matchPolicy)
     {
     }
 
@@ -619,6 +646,7 @@ class SequencedShard
       for (const auto& [ts, cmd] : records)
       {
         engine_.submit(cmd, ts);
+        offerToRegistry(cmd);
         if (ts > lastTs_)
         {
           lastTs_ = ts;
@@ -638,6 +666,10 @@ class SequencedShard
       for (const auto& [ts, cmd] : records)
       {
         engine_.applySnapshotRecord(cmd, ts);
+        // The snapshot's config section is where an instrument listed before
+        // the oldest surviving segment still lives, so recovery through a
+        // checkpoint rebuilds the registry the same way a full replay does.
+        offerToRegistry(cmd);
         if (ts > lastTs_)
         {
           lastTs_ = ts;
@@ -669,6 +701,7 @@ class SequencedShard
       {
         journal_.append(ev.cmd, ts);  // write-ahead, before applying
         engine_.submit(ev.cmd, ts);   // the SAME timestamp the journal holds
+        offerToRegistry(ev.cmd);      // the same record a restart would replay
       }
       catch (const std::exception& e)
       {
@@ -718,10 +751,25 @@ class SequencedShard
     // Called once at construction when the journal batches its barrier.
     void enableGroupCommit() { staged_ = &stagedStorage_; }
 
+    void setRegistry(InstrumentRegistry* reg) noexcept { registry_ = reg; }
+
     MatchingEngine<Book>& engine() noexcept { return engine_; }
     const MatchingEngine<Book>& engine() const noexcept { return engine_; }
 
    private:
+    // Every applied record, offered to the registry in the order the engine
+    // saw it. apply() answers false for anything that is not configuration --
+    // an order, a Restore* record, a re-listing of an instrument it already
+    // holds -- and that is not an error here: the stream carries both kinds
+    // and the registry is the one deciding which is which.
+    void offerToRegistry(const InboundCommand& cmd)
+    {
+      if (registry_ != nullptr)
+      {
+        (void)registry_->apply(cmd);
+      }
+    }
+
     // Strictly monotonic, non-zero sequencer time: a stalled or backwards
     // clock still yields lastTs_ + 1, so replay ordering is unambiguous.
     int64_t nextTs()
@@ -744,6 +792,7 @@ class SequencedShard
     int64_t lastBatchTs_{0};
     TimeSource clock_;
     SequencedShard* owner_;
+    InstrumentRegistry* registry_{nullptr};
     bool replaying_{false};
     int64_t lastTs_{0};
     MatchingEngine<Book> engine_;
@@ -855,7 +904,11 @@ class SequencedShard
       return false;
     }
     Ledger scratch;
-    MatchingEngine<Book> probe(cfg_, [](const OutboundEvent&) {}, Book{bookProto_});
+    // The probe matches under the instrument's own allocation rule: a
+    // snapshot is validated by an engine configured like the one that wrote
+    // it, and configHash folds the policy, so a price-time probe would refuse
+    // every pro-rata generation this shard ever published.
+    MatchingEngine<Book> probe(cfg_, [](const OutboundEvent&) {}, Book{bookProto_}, cfg_.matchPolicy);
     if (consumer_.engine().ledger() != nullptr)
     {
       probe.setLedger(&scratch, consumer_.engine().venueAccount());
@@ -919,6 +972,14 @@ class SequencedShard
     //
     // A checkpoint asked for by name waits, because somebody is waiting for
     // the answer.
+    //
+    // The pause opens HERE, before the wait and before the lane, because both
+    // run on the consumer thread with matching stopped. A shard crowded out of
+    // the lane stands still for as long as whoever holds it, and a gauge that
+    // starts after that wait reports a pause the shard did not have. The
+    // skipping branch below returns without recording anything: an automatic
+    // checkpoint that skips takes no pause worth the name.
+    const auto pause0 = std::chrono::steady_clock::now();
     if (mandatory)
     {
       waitCheckpointPublish();
@@ -940,7 +1001,6 @@ class SequencedShard
         return;
       }
     }
-    const auto pause0 = std::chrono::steady_clock::now();
     auto clone = consumer_.engine().cloneForSnapshot(Book{bookProto_});
     journal_.flush();
     journal_.reopen(segmentPath(journalPath_, ts), Journal::OpenMode::Truncate);
@@ -949,18 +1009,6 @@ class SequencedShard
     if (checkpointHook_)
     {
       checkpointHook_(ts);  // sidecar persistence rides the same boundary (consumer thread)
-    }
-    const int64_t pauseNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                std::chrono::steady_clock::now() - pause0)
-                                .count();
-    lastCheckpointPauseNs_.store(pauseNs, std::memory_order_release);
-    checkpointPauseTotalNs_.fetch_add(pauseNs, std::memory_order_relaxed);
-    if (lane_ != nullptr)
-    {
-      // How long the DRIVER was stopped, by anybody on it. Per-shard pauses
-      // do not add up to anything an operator can act on once shards share a
-      // thread.
-      lane_->notePause(pauseNs);
     }
     // The next threshold is a fresh cut, so shards that drifted into step
     // during this segment do not stay there.
@@ -1018,8 +1066,26 @@ class SequencedShard
         return notePublishFailure(snap, "unknown exception");
       }
     };
-    std::lock_guard<std::mutex> lk(ckptMx_);
-    ckptPending_ = std::async(std::launch::async, std::move(publish)).share();
+    {
+      // Still the consumer thread, still not matching: the mutex and the
+      // thread the spawn creates are part of the stall, and a thread spawn is
+      // tens of microseconds -- the same order as the clone this gauge was
+      // built to report. The pause closes after the spawn returns.
+      std::lock_guard<std::mutex> lk(ckptMx_);
+      ckptPending_ = std::async(std::launch::async, std::move(publish)).share();
+    }
+    const int64_t pauseNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now() - pause0)
+                                .count();
+    lastCheckpointPauseNs_.store(pauseNs, std::memory_order_release);
+    checkpointPauseTotalNs_.fetch_add(pauseNs, std::memory_order_relaxed);
+    if (lane_ != nullptr)
+    {
+      // How long the DRIVER was stopped, by anybody on it. Per-shard pauses
+      // do not add up to anything an operator can act on once shards share a
+      // thread.
+      lane_->notePause(pauseNs);
+    }
   }
 
   // A failed publish leaves the previous generation as the newest valid one,

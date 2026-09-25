@@ -4,6 +4,7 @@
 
 #include <napi.h>
 
+#include "bindings_common.h"
 #include "data_ops.h"
 #include "error_translator.h"
 #include "flox/capi/bridge_strategy.h"
@@ -432,8 +433,10 @@ struct NodeStrategyHost : TsfnHost
       o.Set("low", Napi::Number::New(env, b.low.toDouble()));
       o.Set("close", Napi::Number::New(env, b.close.toDouble()));
       o.Set("volume", Napi::Number::New(env, b.volume.toDouble()));
-      o.Set("startNs", Napi::Number::New(env, static_cast<double>(b.startTime.time_since_epoch().count())));
-      o.Set("endNs", Napi::Number::New(env, static_cast<double>(b.endTime.time_since_epoch().count())));
+      o.Set("startNs",
+            Napi::BigInt::New(env, static_cast<int64_t>(b.startTime.time_since_epoch().count())));
+      o.Set("endNs",
+            Napi::BigInt::New(env, static_cast<int64_t>(b.endTime.time_since_epoch().count())));
       return o;
     };
     em.Set("lastClosedBar", Napi::Function::New(env_, [buildBar](const Napi::CallbackInfo& i) -> Napi::Value
@@ -538,8 +541,10 @@ struct NodeStrategyHost : TsfnHost
     o.Set("close", Napi::Number::New(env, flox_price_to_double(bar->close_raw)));
     o.Set("volume", Napi::Number::New(env, flox_quantity_to_double(bar->volume_raw)));
     o.Set("buyVolume", Napi::Number::New(env, flox_quantity_to_double(bar->buy_volume_raw)));
-    o.Set("startTimeNs", Napi::Number::New(env, static_cast<double>(bar->start_time_ns)));
-    o.Set("endTimeNs", Napi::Number::New(env, static_cast<double>(bar->end_time_ns)));
+    // BigInt for the same reason as TradeData.timestampNs above: a real ns
+    // reading does not survive a double.
+    o.Set("startTimeNs", Napi::BigInt::New(env, static_cast<int64_t>(bar->start_time_ns)));
+    o.Set("endTimeNs", Napi::BigInt::New(env, static_cast<int64_t>(bar->end_time_ns)));
     o.Set("closeReason", Napi::Number::New(env, bar->close_reason));
   }
 
@@ -1103,6 +1108,11 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
                    {
       auto tsArr = info[0].As<Napi::BigInt64Array>();
       auto closeArr = info[1].As<Napi::Float64Array>();
+      if (!requireSameLength(info.Env(), "runOhlcv",
+                             {tsArr.ElementLength(), closeArr.ElementLength()}))
+      {
+        return info.Env().Undefined();
+      }
       std::string symbol = info[2].As<Napi::String>().Utf8Value();
       uint32_t n = static_cast<uint32_t>(tsArr.ElementLength());
       FloxBacktestStats s{};
@@ -1131,6 +1141,21 @@ class BacktestRunnerNode : public Napi::ObjectWrap<BacktestRunnerNode>
       auto lowA = info[4].As<Napi::Float64Array>();
       auto closeA = info[5].As<Napi::Float64Array>();
       auto volA = info[6].As<Napi::Float64Array>();
+      // The C entry point takes one element count for all eight columns and
+      // indexes every one of them over [0, n). n came from startNs alone, so
+      // a `high` one element short was an out-of-bounds read of the other
+      // seven and the run reported stats as if nothing had happened. Reject
+      // before the call, the way indicators.h and aggregators.h already do,
+      // so a mismatch delivers no bars at all rather than a partial run over
+      // whatever followed the short array.
+      if (!requireSameLength(info.Env(), "runBars",
+                             {startNs.ElementLength(), endNs.ElementLength(),
+                              openA.ElementLength(), highA.ElementLength(),
+                              lowA.ElementLength(), closeA.ElementLength(),
+                              volA.ElementLength()}))
+      {
+        return info.Env().Undefined();
+      }
       std::string symbol = info[7].As<Napi::String>().Utf8Value();
       uint8_t barType = info.Length() > 8 ? static_cast<uint8_t>(info[8].As<Napi::Number>().Uint32Value()) : 0;
       uint64_t barTypeParam = info.Length() > 9
@@ -1325,6 +1350,7 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
             InstanceMethod("setOrderValidator", &RunnerNode::setOrderValidator),
             InstanceMethod("setMarketDataRecorder", &RunnerNode::setMarketDataRecorder),
             InstanceMethod("setExecutor", &RunnerNode::setExecutor),
+            InstanceMethod("hookErrors", &RunnerNode::hookErrors),
             InstanceMethod("attachTraceRecorder", &RunnerNode::attachTraceRecorder),
             InstanceMethod("setTraceFeedTsNs", &RunnerNode::setTraceFeedTsNs),
             InstanceMethod("traceOrderEvent", &RunnerNode::traceOrderEvent),
@@ -1563,10 +1589,18 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       auto v = opts.Get(k);
       return v.IsNumber() ? v.As<Napi::Number>().DoubleValue() : dflt;
     };
+    // A BigInt is the type onBar hands back, so it has to be the type onBar
+    // takes: the old `IsNumber()` guard silently substituted the default for
+    // a BigInt startTimeNs, and a bar taken out of the addon and fed straight
+    // back in arrived stamped 0.
     auto getInt = [&](const char* k, int64_t dflt) -> int64_t
     {
       auto v = opts.Get(k);
-      return v.IsNumber() ? static_cast<int64_t>(v.As<Napi::Number>().Int64Value()) : dflt;
+      if (v.IsBigInt() || v.IsNumber())
+      {
+        return toInt64Ns(v);
+      }
+      return dflt;
     };
     auto getU8 = [&](const char* k, uint8_t dflt) -> uint8_t
     {
@@ -1621,6 +1655,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
   // detach / runner destruction so the C ABI handle is always valid
   // while the engine holds a reference.
 
+  // Declared ahead of every host that points at it: members are destroyed in
+  // reverse declaration order, so the sink outlives the hosts writing to it.
+  flox_node::HookErrorSink _hook_errors;
+
   std::unique_ptr<flox_node::PnLTrackerHost> _pnl_host;
   std::unique_ptr<flox_node::StorageSinkHost> _storage_host;
   std::unique_ptr<flox_node::RiskManagerHost> _risk_host;
@@ -1631,6 +1669,26 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
   // handle (borrowed via flox_binary_log_recorder_hook_as_recorder) stays valid.
   Napi::ObjectReference _recorder_binlog_ref;
   std::unique_ptr<flox_node::ExecutorHost> _executor_host;
+
+  // Every hook host in hooks.h calls straight into JS from the C bridge the
+  // engine invokes it by, so a threaded Runner -- whose engine calls those
+  // bridges from a C++ consumer thread -- would be reaching into V8 off the
+  // JS thread. index.d.ts has documented the four inline hooks as sync only
+  // since they were added; nothing enforced it, and all seven were accepted
+  // and wired into the LiveEngine. Detaching (a null argument) is always
+  // allowed: it touches no JS.
+  bool requireSyncHook(Napi::Env env, const char* setter)
+  {
+    if (_mode == Mode::Sync)
+    {
+      return true;
+    }
+    Napi::Error::New(env, std::string(setter) +
+                              " requires a sync Runner: the hook runs inline on the JS "
+                              "thread, which a threaded Runner does not dispatch from")
+        .ThrowAsJavaScriptException();
+    return false;
+  }
 
   Napi::Value setPnlTracker(const Napi::CallbackInfo& info)
   {
@@ -1646,6 +1704,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       {
         flox_live_engine_set_pnl_tracker(_engine, nullptr);
       }
+      return env.Undefined();
+    }
+    if (!requireSyncHook(env, "setPnlTracker"))
+    {
       return env.Undefined();
     }
     _pnl_host = std::make_unique<flox_node::PnLTrackerHost>(env, info[0].As<Napi::Object>());
@@ -1676,6 +1738,10 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       }
       return env.Undefined();
     }
+    if (!requireSyncHook(env, "setStorageSink"))
+    {
+      return env.Undefined();
+    }
     _storage_host = std::make_unique<flox_node::StorageSinkHost>(env, info[0].As<Napi::Object>());
     if (_mode == Mode::Sync)
     {
@@ -1704,7 +1770,11 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       }
       return env.Undefined();
     }
-    _risk_host = std::make_unique<flox_node::RiskManagerHost>(env, info[0].As<Napi::Object>());
+    if (!requireSyncHook(env, "setRiskManager"))
+    {
+      return env.Undefined();
+    }
+    _risk_host = std::make_unique<flox_node::RiskManagerHost>(env, info[0].As<Napi::Object>(), &_hook_errors);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_risk_manager(_runner, _risk_host->handle);
@@ -1732,7 +1802,11 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       }
       return env.Undefined();
     }
-    _kill_host = std::make_unique<flox_node::KillSwitchHost>(env, info[0].As<Napi::Object>());
+    if (!requireSyncHook(env, "setKillSwitch"))
+    {
+      return env.Undefined();
+    }
+    _kill_host = std::make_unique<flox_node::KillSwitchHost>(env, info[0].As<Napi::Object>(), &_hook_errors);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_kill_switch(_runner, _kill_host->handle);
@@ -1760,8 +1834,12 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       }
       return env.Undefined();
     }
+    if (!requireSyncHook(env, "setOrderValidator"))
+    {
+      return env.Undefined();
+    }
     _validator_host =
-        std::make_unique<flox_node::OrderValidatorHost>(env, info[0].As<Napi::Object>());
+        std::make_unique<flox_node::OrderValidatorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_order_validator(_runner, _validator_host->handle);
@@ -1788,6 +1866,11 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       {
         flox_live_engine_set_market_data_recorder(_engine, nullptr);
       }
+      return env.Undefined();
+    }
+
+    if (!requireSyncHook(env, "setMarketDataRecorder"))
+    {
       return env.Undefined();
     }
 
@@ -1847,7 +1930,12 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       }
       return env.Undefined();
     }
-    _executor_host = std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>());
+    if (!requireSyncHook(env, "setExecutor"))
+    {
+      return env.Undefined();
+    }
+    _executor_host =
+        std::make_unique<flox_node::ExecutorHost>(env, info[0].As<Napi::Object>(), &_hook_errors);
     if (_mode == Mode::Sync)
     {
       flox_runner_set_executor(_runner, _executor_host->handle);
@@ -1857,6 +1945,26 @@ class RunnerNode : public Napi::ObjectWrap<RunnerNode>, public TsfnHost
       flox_live_engine_set_executor(_engine, _executor_host->handle);
     }
     return env.Undefined();
+  }
+
+  // Every hook failure this runner has seen, oldest first. A gate runs inline
+  // while a signal is in flight and has no caller to throw back at, and the
+  // process-wide log callback is asynchronous and shared, so it cannot say
+  // which runner denied what. Records accumulate for the life of the runner.
+  Napi::Value hookErrors(const Napi::CallbackInfo& info)
+  {
+    auto env = info.Env();
+    const auto& records = _hook_errors.records;
+    auto arr = Napi::Array::New(env, records.size());
+    for (size_t i = 0; i < records.size(); ++i)
+    {
+      auto obj = Napi::Object::New(env);
+      obj.Set("hook", Napi::String::New(env, records[i].hook));
+      obj.Set("method", Napi::String::New(env, records[i].method));
+      obj.Set("message", Napi::String::New(env, records[i].message));
+      arr.Set(static_cast<uint32_t>(i), obj);
+    }
+    return arr;
   }
 
   Napi::Value attachTraceRecorder(const Napi::CallbackInfo& info)

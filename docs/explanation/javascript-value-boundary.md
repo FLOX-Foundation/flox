@@ -101,6 +101,40 @@ console.log('ts=' + trade.timestampNs);
 back to a plain string conversion when `JSON.stringify` refuses the
 object.
 
+## A pre-trade gate that fails denies the order
+
+The three pre-trade gates — `RiskManager.allow`, `KillSwitch.check`,
+`OrderValidator.validate` — are C function pointers the engine calls
+inline while a signal is in flight. Two failure modes used to be
+unhandled: the gate threw, and the thrown value unwound out of a bridge
+declared to C and surfaced at whatever JavaScript frame was on the stack;
+or the gate returned something that was not a boolean, which one binding
+folded into a deny and another into an allow.
+
+The policy, one for every binding: a host-language throw and a
+non-boolean return both DENY the order, and both are reported. Neither
+ever lets the order through, and neither escapes through the C boundary.
+A gate that plainly returns false is a decision, not a failure, and is
+not reported.
+
+In Node, reported means `runner.hookErrors()`: an array of
+`{ hook, method, message }` records accumulated on the runner, oldest
+first, readable synchronously after the call that failed. The
+process-wide log callback is asynchronous and shared, so it cannot say
+which runner denied what.
+
+```javascript
+runner.setKillSwitch({ check() { throw new Error('feed is down'); } });
+runner.onTrade(sym, 100, 1, true, 1000n);   // the order is denied
+
+runner.hookErrors();
+// [ { hook: 'killSwitch', method: 'check', message: 'feed is down' } ]
+```
+
+A throw out of `Executor.capabilities()` crosses the same boundary and is
+handled the same way: the executor is read as supporting nothing, and the
+throw is recorded.
+
 ## String arguments reject values they cannot convert
 
 A binding taking a string used to hand whatever QuickJS returned straight

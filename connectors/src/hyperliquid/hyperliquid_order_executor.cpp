@@ -19,8 +19,11 @@
 #include <simdjson.h>
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <iomanip>
+#include <memory>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <string>
@@ -243,10 +246,42 @@ void HyperliquidOrderExecutorT<Policies>::loadAssetIds()
   std::vector<std::pair<std::string_view, std::string_view>> hdr = {
       {"Content-Type", "application/json"}};
 
+  // The asset map has to be there before the first order is serialized -- an
+  // order for a coin that is not in the map is dropped at submit time -- and
+  // this runs from the constructor, so it is the one place in this connector
+  // that waits for a response instead of continuing on the callback. The
+  // transport answers on its own sender thread, hence the shared state and
+  // the bound: a venue that never answers must not keep the constructor for
+  // longer than a startup can tolerate.
+  struct MetaFetch
+  {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done{false};
+
+    void finish()
+    {
+      {
+        std::lock_guard<std::mutex> lock(mutex);
+        done = true;
+      }
+      cv.notify_all();
+    }
+  };
+  auto fetch = std::make_shared<MetaFetch>();
+
   _transport->post(
       "https://api.hyperliquid.xyz/info", BODY, hdr,
-      [this](std::string_view resp)
+      [this, fetch](std::string_view resp)
       {
+        // finish() runs on every exit from this callback, including the
+        // parse-error returns below.
+        struct Finish
+        {
+          std::shared_ptr<MetaFetch> f;
+          ~Finish() { f->finish(); }
+        } finish{fetch};
+
         simdjson::ondemand::parser p;
         simdjson::padded_string ps(resp);
         auto doc = p.iterate(ps);
@@ -270,10 +305,22 @@ void HyperliquidOrderExecutorT<Policies>::loadAssetIds()
         }
         _logger->info("[HL] asset map " + std::to_string(_assetIds.size()));
       },
-      [this](std::string_view e)
+      [this, fetch](std::string_view e)
       {
         _logger->warn(std::string("[HL] meta fetch err ") + std::string(e));
+        fetch->finish();
       });
+
+  static constexpr auto kMetaWait = std::chrono::seconds(15);
+  std::unique_lock<std::mutex> lock(fetch->mutex);
+  if (!fetch->cv.wait_for(lock, kMetaWait,
+                          [&fetch]
+                          {
+                            return fetch->done;
+                          }))
+  {
+    _logger->warn("[HL] meta fetch did not answer in time; asset map is empty");
+  }
 }
 
 template <typename Policies>
@@ -301,6 +348,27 @@ void HyperliquidOrderExecutorT<Policies>::publishRejection(const Order& order,
   ev.status = OrderEventStatus::REJECTED;
   ev.order = order;
   ev.rejectReason = reason;
+  ev.publishNs = nowMonoNanos();
+  _orderBus->publish(std::move(ev));
+}
+
+// A client-side rate-limit refusal never reached the venue and used to leave
+// no trace at all: no transport call, no event, and for a cancel a tracker
+// that goes on reporting the order live. Deliberately does not touch
+// OrderTracker -- unlike publishRejection there was no submission attempt to
+// mark rejected. Same shape as the Bitget executor's.
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::publishRateLimited(const Order& order)
+{
+  FLOX_LOG_WARN("[HL] client-side rate limit refused orderId=" << order.id);
+  if (!_orderBus)
+  {
+    return;
+  }
+  OrderEvent ev;
+  ev.status = OrderEventStatus::REJECTED_RATE_LIMIT;
+  ev.order = order;
+  ev.rejectReason = "client-side rate limit";
   ev.publishNs = nowMonoNanos();
   _orderBus->publish(std::move(ev));
 }
@@ -369,11 +437,21 @@ void HyperliquidOrderExecutorT<Policies>::publishFill(const Order& order, Quanti
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
 {
-  if (!_policies.rateLimit.tryAcquire(order.id))
-  {
-    return;
-  }
+  _policies.rateLimit.gate(
+      order.id,
+      [this, order]
+      {
+        sendSubmitOrder(order);
+      },
+      [this, order]
+      {
+        publishRateLimited(order);
+      });
+}
 
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::sendSubmitOrder(const Order& order)
+{
   auto info = _registry->getSymbolInfo(order.symbol);
   if (!info)
   {
@@ -570,11 +648,32 @@ void HyperliquidOrderExecutorT<Policies>::submitOrder(const Order& order)
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::cancelOrder(OrderId localId)
 {
-  if (!_policies.rateLimit.tryAcquire(localId))
+  // Resolved before the gate so a refused cancel is reported against the
+  // order it targeted instead of vanishing while the tracker keeps reporting
+  // that order live.
+  auto target = _orderTracker->get(localId);
+  if (!target)
   {
+    FLOX_LOG_ERROR("[HL] cancelOrder: no orderState for localId " << localId);
     return;
   }
 
+  Order local = target->localOrder;
+  _policies.rateLimit.gate(
+      localId,
+      [this, localId]
+      {
+        sendCancelOrder(localId);
+      },
+      [this, local]
+      {
+        publishRateLimited(local);
+      });
+}
+
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::sendCancelOrder(OrderId localId)
+{
   auto orderState = _orderTracker->get(localId);
   if (!orderState)
   {
@@ -665,15 +764,33 @@ void HyperliquidOrderExecutorT<Policies>::cancelOrder(OrderId localId)
 template <typename Policies>
 void HyperliquidOrderExecutorT<Policies>::replaceOrder(OrderId oldLocalId, const Order& n)
 {
-  if (!_policies.rateLimit.tryAcquire(oldLocalId))
+  auto target = _orderTracker->get(oldLocalId);
+  if (!target)
   {
+    FLOX_LOG_ERROR("[HL] replaceOrder: no orderState for oldLocalId " << oldLocalId);
     return;
   }
 
+  Order local = target->localOrder;
+  _policies.rateLimit.gate(
+      oldLocalId,
+      [this, oldLocalId, n]
+      {
+        sendReplaceOrder(oldLocalId, n);
+      },
+      [this, local]
+      {
+        publishRateLimited(local);
+      });
+}
+
+template <typename Policies>
+void HyperliquidOrderExecutorT<Policies>::sendReplaceOrder(OrderId oldLocalId, const Order& n)
+{
   auto orderState = _orderTracker->get(oldLocalId);
   if (!orderState)
   {
-    FLOX_LOG_ERROR("[HL] cancelOrder: no replaceOrder for oldLocalId " << oldLocalId);
+    FLOX_LOG_ERROR("[HL] replaceOrder: no orderState for oldLocalId " << oldLocalId);
     return;
   }
 

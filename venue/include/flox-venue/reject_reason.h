@@ -101,6 +101,15 @@ enum class RejectReason : uint8_t
   // The out-of-band price case keeps InvalidPrice: that one IS the client's
   // price. Appended -- the wire enum is append-only.
   BookCapacityExceeded,
+  // A pegged order on an instrument that declares no tick. The peg clamp
+  // exists to keep a tracking order strictly inside the price it tracks, and
+  // the only distance it has to step is the tick; with tickSize 0 the clamp
+  // lands on the opposite touch itself. Its own reason rather than
+  // TickSizeViolation, which says "your price is off the grid" and sends the
+  // client back with a rounded price: there is no price this client could
+  // send that would help, because the instrument -- not the order -- is what
+  // is missing something. Appended -- the wire enum is append-only.
+  PegRequiresTick,
 };
 
 enum class CancelReason : uint8_t

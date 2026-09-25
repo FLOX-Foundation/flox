@@ -96,6 +96,43 @@ inline bool writeAll(Fd fd, const void* data, size_t n)
   return true;
 }
 
+// Gives a freshly created file its first block before anything is waiting on
+// the next write.
+//
+// The first write() to a file that has just been created costs markedly more
+// than the ones after it -- the filesystem allocates on it: measured at ~14 us
+// against ~1.7 us steady state on APFS, for the same 100-byte record. A
+// write-ahead log that rotates onto a new file at a checkpoint hands that cost
+// to whatever command arrives first after the pause, which is a stall on the
+// matching path that no checkpoint gauge can see. Paying it here, while the
+// rotation still has the writer's attention, puts it where it belongs.
+//
+// The file is left exactly as it was found: one byte written, truncated away,
+// the offset rewound. A crash in between leaves a one-byte file, which is
+// shorter than any record header and reads back as an empty torn prefix.
+// Returns false if the file would be left with the byte still in it.
+inline bool reserveFirstBlock(Fd fd)
+{
+  const char zero = 0;
+  if (!writeAll(fd, &zero, 1))
+  {
+    return false;
+  }
+#if defined(_WIN32)
+  if (::_chsize_s(fd, 0) != 0)
+  {
+    return false;
+  }
+  return ::_lseek(fd, 0, SEEK_SET) == 0;
+#else
+  if (::ftruncate(fd, 0) != 0)
+  {
+    return false;
+  }
+  return ::lseek(fd, 0, SEEK_SET) == 0;
+#endif
+}
+
 // Makes a rename into `dir` durable.
 //
 // POSIX: a renamed file can be present while the directory entry naming it

@@ -19,7 +19,9 @@
  * (flox::util::Crc32) covers ts+stamp+tag+len+body. A torn tail (a record whose
  * bytes are not fully present) or a corrupted record is DETECTED on load: the
  * loader returns the largest intact prefix and never materialises a
- * partial/garbage command.
+ * partial/garbage command. The crc is what separates damage from a foreign
+ * format, so it is verified BEFORE the stamp and the tag it covers are
+ * believed; loadReported names which of the two ended the read and where.
  *
  * Format compatibility: ONE version is readable, the one this build writes.
  * A file in any other version is refused by name (JournalFormatError) rather
@@ -420,12 +422,7 @@ class Journal
                    OpenMode mode = OpenMode::Truncate)
       : sync_(sync)
   {
-    fd_ = flox::fileio::openForWrite(path, mode == OpenMode::Truncate ? flox::fileio::OpenMode::Truncate
-                                                                      : flox::fileio::OpenMode::Append);
-    if (fd_ < 0)
-    {
-      throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
-    }
+    fd_ = openFile(path, mode);
   }
 
   ~Journal()
@@ -450,12 +447,7 @@ class Journal
       flox::fileio::syncFd(fd_);
       flox::fileio::closeFd(fd_);
     }
-    fd_ = flox::fileio::openForWrite(path, mode == OpenMode::Truncate ? flox::fileio::OpenMode::Truncate
-                                                                      : flox::fileio::OpenMode::Append);
-    if (fd_ < 0)
-    {
-      throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
-    }
+    fd_ = openFile(path, mode);
     count_.store(0, std::memory_order_relaxed);
     bytes_.store(0, std::memory_order_relaxed);
   }
@@ -552,71 +544,195 @@ class Journal
     return v;
   }
 
+  // How a load ended.
+  //
+  // Intact:  the read stopped on a record boundary with nothing left over.
+  // Torn:    the last record's bytes are not all in the file -- the ordinary
+  //          shape of a crash, and the prefix ahead of it is sound.
+  // Corrupt: a record failed to verify and WHOLE BYTES FOLLOW it, so the file
+  //          was not cut short: it rotted, and there is history behind the
+  //          hole that this build will not replay.
+  enum class Tail : uint8_t
+  {
+    Intact,
+    Torn,
+    Corrupt,
+  };
+
+  // The same read loadTimed does, with the stop described instead of implied.
+  // "Returned nine records" and "returned nine records and the tenth was torn"
+  // are different answers, and only the second lets an operator tell a clean
+  // shutdown from a crash without diffing file sizes by hand.
+  struct LoadReport
+  {
+    std::vector<std::pair<int64_t, InboundCommand>> records;
+    Tail tail{Tail::Intact};
+    // Byte offset of the first record that was not recovered; the file size
+    // when the tail is Intact.
+    uint64_t stopOffset{0};
+  };
+
   // Replay records with their sequencer timestamps. Stops at the first record
   // that is short (torn tail) or fails its crc (corruption), returning the
   // intact prefix -- a partial trailing record is never materialised.
   //
   // Throws JournalFormatError if a record carries a format version this build
-  // does not read. That is deliberately NOT the torn-tail treatment: a torn
-  // tail is the expected shape of a crash and the prefix before it is sound,
-  // whereas a foreign version means every byte after the header was laid out
-  // by rules this build does not have. Returning a prefix there would hand
-  // back a state that looks plausible and is short of history, which is the
-  // outcome the whole recovery path is written to refuse.
+  // does not read, or a tag it has no command for. That is deliberately NOT
+  // the torn-tail treatment: a torn tail is the expected shape of a crash and
+  // the prefix before it is sound, whereas a foreign version means every byte
+  // after the header was laid out by rules this build does not have. Returning
+  // a prefix there would hand back a state that looks plausible and is short of
+  // history, which is the outcome the whole recovery path is written to refuse.
   static std::vector<std::pair<int64_t, InboundCommand>> loadTimed(const std::string& path)
   {
+    return loadReported(path).records;
+  }
+
+  // THE CRC DECIDES WHICH FAILURE THIS IS, so it is checked before anything
+  // the header says is believed.
+  //
+  // The stamp and the tag live in the header, and the crc covers the header.
+  // Testing them first -- as this loader used to -- asks a damaged byte what
+  // format the record is in and then refuses the whole file on its answer: one
+  // flipped bit in the last record's stamp cost every record before it, which
+  // is the opposite of the promise at the top of this file. A record whose crc
+  // does not cover its own bytes was damaged after it was written, whatever
+  // its stamp now reads, and damage stops the read with the intact prefix.
+  //
+  // Only once the crc has passed is the header the writer's own: then a
+  // foreign version or a tag this build has no command for is a real format
+  // statement and is refused by name, exactly as before.
+  //
+  // The other half of the rule: "the largest intact prefix" has to be a prefix
+  // OF SOMETHING. A file whose very first record does not read has never been
+  // this build's file, and handing back zero records from it is not a prefix,
+  // it is the whole history lost without a word -- the outcome every check in
+  // this loader exists to refuse. So a stop at offset 0, with a header there to
+  // read, is refused by name rather than returned. That is also where a
+  // genuinely foreign file usually lands: a version that moves a field moves
+  // the frame the crc is computed over, so a foreign build's crc does not match
+  // the one computed here either. "Crc valid, stamp foreign" is the narrow
+  // case; "the file reads as nothing at all" is the common one.
+  //
+  // Truncation is the exception, because truncation is not a statement about
+  // format: a file that simply ENDS inside a record whose shape this build
+  // writes -- or before a whole header -- is an append caught by a power cut,
+  // and a segment rotated and then cut inside its first append must still let
+  // the shard start. That comes back as an empty, Torn prefix.
+  static LoadReport loadReported(const std::string& path)
+  {
+    LoadReport report;
     std::ifstream in(path, std::ios::binary);
-    std::vector<std::pair<int64_t, InboundCommand>> v;
     if (!in)
     {
-      return v;
+      return report;
     }
+    in.seekg(0, std::ios::end);
+    const std::streamoff endPos = in.tellg();
+    const uint64_t fileSize = endPos > 0 ? static_cast<uint64_t>(endPos) : 0;
+    in.seekg(0, std::ios::beg);
 
     std::vector<uint8_t> frame;  // header+body, staged for one-shot crc
+    uint64_t off = 0;
     while (true)
     {
+      report.stopOffset = off;
+      const uint64_t left = fileSize - off;
+      if (left == 0)
+      {
+        report.tail = Tail::Intact;
+        break;
+      }
+      if (left < kHeaderSize)
+      {
+        report.tail = Tail::Torn;  // not even a header left
+        break;
+      }
       frame.resize(kHeaderSize);
       if (!in.read(reinterpret_cast<char*>(frame.data()), kHeaderSize))
       {
-        break;  // no more (complete) headers
+        report.tail = Tail::Torn;
+        break;
       }
-      const uint8_t stamp = frame[8];
-      if (stamp != kRecordStamp)
-      {
-        throw JournalFormatError(versionMismatchMessage(path, v.size(), stamp));
-      }
-      const uint8_t tag = frame[9];
       uint32_t len;
       std::memcpy(&len, frame.data() + 10, sizeof(len));
-
-      const uint32_t expect = expectedBodySize(tag);
-      if (expect == 0)
+      // A header is there, so from here on a stop that recovers nothing is a
+      // file this build cannot read rather than a prefix of one it can.
+      const uint8_t stamp = frame[8];
+      const auto refuseIfNothingRead = [&]
       {
-        // A tag this build has no record type for. Today that means a file
-        // written by a build that knows a command this one does not -- and
-        // stopping here quietly would hand back a PREFIX of the history as if
-        // it were all of it: recovery lands in a state the venue was never in,
-        // and nothing says so. A short read is a torn tail and is fine to stop
-        // on; this is not.
-        throw JournalFormatError(unknownTagMessage(path, tag, v.size()));
+        if (report.records.empty())
+        {
+          throw JournalFormatError(unreadableFileMessage(path, stamp));
+        }
+      };
+      // A length past the largest body this build writes describes no record
+      // this build could have produced, so it is not a cut-short one of ours:
+      // a truncated record of ours still names one of our lengths. There is no
+      // crc to reach past it either, and the header's number must not become
+      // the allocation it asked for.
+      if (len > maxBodySize())
+      {
+        refuseIfNothingRead();
+        report.tail = off + kHeaderSize < fileSize ? Tail::Corrupt : Tail::Torn;
+        break;
       }
-      if (!bodySizeAccepted(tag, len, expect))
+      // The extent the header claims, now that the claim is one this build
+      // could have written.
+      const uint64_t need = static_cast<uint64_t>(kHeaderSize) + len + sizeof(uint32_t);
+      // The file ends inside a record whose shape is ours: an append caught by
+      // a power cut, the ordinary torn tail. This is the one stop that is NOT
+      // refused when it recovers nothing -- a segment rotated and then cut
+      // inside its first append is a crash, not an unreadable file.
+      if (need > left)
       {
-        break;  // body the wrong size for its tag: corrupt, stop
+        report.tail = Tail::Torn;
+        break;
       }
       frame.resize(kHeaderSize + len);
       if (!in.read(reinterpret_cast<char*>(frame.data() + kHeaderSize), len))
       {
-        break;  // torn body
+        report.tail = Tail::Torn;  // torn body
+        break;
       }
       uint32_t crc;
       if (!in.read(reinterpret_cast<char*>(&crc), sizeof(crc)))
       {
-        break;  // torn crc
+        report.tail = Tail::Torn;  // torn crc
+        break;
       }
+      // Whole, and verified or not: from here the record either stops the read
+      // as damage, or its header speaks for the build that wrote it.
+      const Tail damaged = off + need < fileSize ? Tail::Corrupt : Tail::Torn;
       if (flox::util::Crc32::compute(frame.data(), frame.size()) != crc)
       {
-        break;  // corrupted record
+        refuseIfNothingRead();
+        report.tail = damaged;
+        break;
+      }
+
+      if (stamp != kRecordStamp)
+      {
+        throw JournalFormatError(versionMismatchMessage(path, report.records.size(), stamp));
+      }
+      const uint8_t tag = frame[9];
+      const uint32_t expect = expectedBodySize(tag);
+      if (expect == 0)
+      {
+        // A tag this build has no record type for, on a record the crc says
+        // was written exactly as it reads. That means a file written by a
+        // build that knows a command this one does not -- and stopping here
+        // quietly would hand back a PREFIX of the history as if it were all of
+        // it: recovery lands in a state the venue was never in, and nothing
+        // says so. A short read is a torn tail and is fine to stop on; this is
+        // not.
+        throw JournalFormatError(unknownTagMessage(path, tag, report.records.size()));
+      }
+      if (!bodySizeAccepted(tag, len, expect))
+      {
+        refuseIfNothingRead();
+        report.tail = damaged;  // body the wrong size for its tag: corrupt, stop
+        break;
       }
 
       int64_t ts;
@@ -628,11 +744,14 @@ class Journal
       // applying its rungs would replay a ladder nobody sent.
       if (tag == kQuoteLadderWireTag && !quoteLadderLengthAgrees(frame.data() + kHeaderSize, len))
       {
+        refuseIfNothingRead();
+        report.tail = damaged;
         break;
       }
-      appendDecoded(v, ts, tag, frame.data() + kHeaderSize, len);
+      appendDecoded(report.records, ts, tag, frame.data() + kHeaderSize, len);
+      off += need;
     }
-    return v;
+    return report;
   }
 
  private:
@@ -657,14 +776,47 @@ class Journal
     return msg;
   }
 
+  // What to tell an operator whose file reads as nothing at all. Named off the
+  // header at offset 0, because that is the only account of the file there is
+  // -- and it is usually the true one: a format change moves fields, which
+  // moves the frame the crc covers, so a foreign file typically fails the crc
+  // here rather than passing it with a foreign stamp.
+  static std::string unreadableFileMessage(const std::string& path, uint8_t stamp)
+  {
+    if (stamp == kRecordStamp)
+    {
+      return "Journal: '" + path +
+             "' record 0 does not verify against its own crc, so nothing in this file has been "
+             "read. An empty result would be the whole history gone without a word, so the file "
+             "is refused instead -- recover from a snapshot, or from the generation before it.";
+    }
+    return versionMismatchMessage(path, 0, stamp) +
+           " Its crc does not cover the bytes on disk either, which is what a frame laid out by "
+           "other rules looks like from here; nothing was decoded.";
+  }
+
   // Expected body size for a variant tag, or 0 if the tag is unknown.
   // Public so a test can hold the decoder to the invariant that makes
   // reordering safe: the size expected for a tag is the size of the
   // alternative that owns it.
  public:
-  static uint32_t expectedBodySizeForTag(uint8_t tag) { return expectedBodySize(tag); }
+  static constexpr uint32_t expectedBodySizeForTag(uint8_t tag) { return expectedBodySize(tag); }
 
  private:
+  // The largest body any command in this build occupies on disk. The bound the
+  // loader reads a record against when the header's own length is the part it
+  // cannot trust yet.
+  static constexpr uint32_t maxBodySize() noexcept
+  {
+    uint32_t m = 0;
+    for (unsigned t = 0; t < 256; ++t)
+    {
+      const uint32_t e = expectedBodySize(static_cast<uint8_t>(t));
+      m = e > m ? e : m;
+    }
+    return m;
+  }
+
   // Is `len` a length this tag can legitimately have? For every fixed-length
   // command that is "the one size its type has". The ladder is the exception
   // the whole record exists for: its body is the head plus 0..K rungs, so the
@@ -693,7 +845,7 @@ class Journal
     return quoteLadderBodySize(probe) == len;
   }
 
-  static uint32_t expectedBodySize(uint8_t tag)
+  static constexpr uint32_t expectedBodySize(uint8_t tag)
   {
     switch (tag)
     {
@@ -918,6 +1070,32 @@ class Journal
         v.emplace_back(ts, fromBody<SetAccountRiskLimits>(body));
         break;
     }
+  }
+
+  // A file that is about to become this journal.
+  //
+  // A fresh file gets its first block here rather than on its first record.
+  // The difference is not academic on the rotation path: reopen() runs inside
+  // the checkpoint pause, with matching stopped, and the first append after it
+  // runs on the matching path with an order waiting -- so the cheaper place to
+  // pay is the one that is already stopped (flox::fileio::reserveFirstBlock).
+  // A byte left behind by a failure there would sit in front of record 0, so a
+  // failure is fatal to the open rather than ignored.
+  static int openFile(const std::string& path, OpenMode mode)
+  {
+    const int fd = flox::fileio::openForWrite(
+        path, mode == OpenMode::Truncate ? flox::fileio::OpenMode::Truncate
+                                         : flox::fileio::OpenMode::Append);
+    if (fd < 0)
+    {
+      throw std::runtime_error("Journal: cannot open '" + path + "' for writing");
+    }
+    if (mode == OpenMode::Truncate && !flox::fileio::reserveFirstBlock(fd))
+    {
+      flox::fileio::closeFd(fd);
+      throw std::runtime_error("Journal: cannot prepare '" + path + "' for writing");
+    }
+    return fd;
   }
 
   void appendBytes(const void* p, size_t n)

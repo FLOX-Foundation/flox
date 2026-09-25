@@ -74,8 +74,10 @@ export interface BarData {
   close: number;
   volume: number;
   buyVolume: number;
-  startTimeNs: number;
-  endTimeNs: number;
+  /** Absolute nanosecond clock readings: a `Number` is a double and steps
+   *  256 ns at a time at present-day magnitudes. */
+  startTimeNs: bigint;
+  endTimeNs: bigint;
   /** 0=Time, 1=Tick, 2=Volume, 3=Renko, 4=Range, 5=HeikinAshi, 6=BpsRange.
    *  Mirrors `flox::BarType` (include/flox/aggregator/bar.h) and the
    *  `composite.BAR_TYPE_*` constants. */
@@ -102,11 +104,24 @@ export interface SymbolContext {
 
 /** Trade tick passed to `onTrade`. */
 export interface TradeData {
+  /** Symbol id. Set on every TradeData the addon delivers. */
+  symbol: number;
   price: number;
   qty: number;
   isBuy: boolean;
   side: Side;
   timestampNs: bigint;
+
+  /** @deprecated Alias of `qty`, kept for one release. A
+   *  `MarketDataRecorderHook` used to be handed `quantity` instead of the
+   *  declared `qty`; both are delivered now. Read `qty`. */
+  quantity?: number;
+  /** @deprecated Alias of `timestampNs`, kept for one release, and a
+   *  `bigint` like it — the reading never fit in a double. A
+   *  `MarketDataRecorderHook` used to be handed `exchangeTsNs` instead of
+   *  the declared `timestampNs`; both are delivered now. Read
+   *  `timestampNs`. */
+  exchangeTsNs?: bigint;
 }
 
 /** Order-event lifecycle status, mirrored from `FloxOrderEventStatus`. */
@@ -202,8 +217,8 @@ export interface ClosedBar {
   low: number;
   close: number;
   volume: number;
-  startNs: number;
-  endNs: number;
+  startNs: bigint;
+  endNs: bigint;
 }
 
 /** Order-emission helper passed as the third arg to strategy callbacks.
@@ -307,8 +322,10 @@ export interface Order {
   filledQuantity: number;
   triggerPrice: number;
   trailingOffset: number;
-  createdAtNs: number;
-  exchangeTsNs: number;
+  /** Absolute nanosecond clock readings: a `Number` is a double and steps
+   *  256 ns at present-day magnitudes. */
+  createdAtNs: bigint;
+  exchangeTsNs: bigint;
 }
 
 /** Returned by `Executor.capabilities()` — what the venue supports. */
@@ -497,6 +514,16 @@ export class SymbolRegistry {
 
 // ── Runner ────────────────────────────────────────────────────────────
 
+/** One entry of `Runner.hookErrors()`. */
+export interface HookErrorRecord {
+  /** `"riskManager"` | `"killSwitch"` | `"orderValidator"` | `"executor"`. */
+  hook: string;
+  /** The method on the hook object that failed, e.g. `"allow"`. */
+  method: string;
+  /** The thrown message, or what was returned instead of a boolean. */
+  message: string;
+}
+
 export class Runner {
   /** `threaded=true` runs callbacks on a background C++ Disruptor thread. */
   constructor(
@@ -528,20 +555,51 @@ export class Runner {
     askQtys: Float64Array,
     timestampNs: number | bigint,
   ): void;
-  onBar(symbol: Symbol | number, bar: Partial<BarData> & Pick<BarData, "open" | "high" | "low" | "close">): void;
+  /** The nanosecond fields take a `Number` or a `BigInt`; a bar read out
+   *  of `onBar` carries `BigInt`s and can be handed straight back. */
+  onBar(
+    symbol: Symbol | number,
+    bar: Partial<Omit<BarData, "startTimeNs" | "endTimeNs">> &
+      Pick<BarData, "open" | "high" | "low" | "close"> & {
+        startTimeNs?: number | bigint;
+        endTimeNs?: number | bigint;
+      },
+  ): void;
 
   // ── Hook setters ──
+  //
+  // Every one of these runs its JS on the thread the Runner dispatches
+  // from, so all of them are sync only and all of them throw when the
+  // Runner is `threaded`. Passing `null` detaches and is always allowed.
+  /** Sync only — PnLTracker.onSignal is called inline. Throws if `threaded`. */
   setPnlTracker(tracker: PnLTracker | null): void;
+  /** Sync only — StorageSink.store is called inline. Throws if `threaded`. */
   setStorageSink(sink: StorageSink | null): void;
   /** Sync only — RiskManager.allow is read inline. Throws if `threaded`. */
   setRiskManager(rm: RiskManager | null): void;
-  /** Sync only — KillSwitch.check is read inline. */
+  /** Sync only — KillSwitch.check is read inline. Throws if `threaded`. */
   setKillSwitch(ks: KillSwitch | null): void;
-  /** Sync only — OrderValidator.validate is read inline. */
+  /** Sync only — OrderValidator.validate is read inline. Throws if `threaded`. */
   setOrderValidator(ov: OrderValidator | null): void;
+  /** Sync only — the recorder's callbacks run inline. Throws if `threaded`.
+   *  A `BinaryLogRecorderHook` records in C++ and calls no JS, but goes
+   *  through the same setter and the same rule. */
   setMarketDataRecorder(recorder: MarketDataRecorderHook | BinaryLogRecorderHook | null): void;
-  /** Sync only — Executor.capabilities() is read inline. */
+  /** Sync only — Executor.capabilities() is read inline. Throws if `threaded`. */
   setExecutor(executor: Executor | null): void;
+
+  /** Every hook failure this Runner has seen, oldest first.
+   *
+   *  A pre-trade gate (`RiskManager.allow`, `KillSwitch.check`,
+   *  `OrderValidator.validate`) that throws, or hands back anything other
+   *  than a boolean, denies the order and lands here; so does a throw out
+   *  of `Executor.capabilities()`. A gate that returns `false` is a
+   *  decision, not a failure, and is not recorded.
+   *
+   *  Readable synchronously after the call that failed. The process-wide
+   *  log callback is asynchronous and shared, so it cannot say which
+   *  Runner denied what. */
+  hookErrors(): HookErrorRecord[];
 
   /** Auto-capture every signal into the given `.floxrun` recorder.
    *  Pass `null` to detach. Sync mode only; throws otherwise.
@@ -614,8 +672,10 @@ export class Engine {
   /** `symbol` defaults to the first loaded symbol in every accessor
    *  below; an unknown name throws. */
   barCount(symbol?: string): number;
-  /** Bar open times in nanoseconds. */
-  ts(symbol?: string): Float64Array;
+  /** Bar open times in nanoseconds. A `BigInt64Array`: the readings are
+   *  exact int64 in the store, and a double steps 256 ns at present-day
+   *  magnitudes. The price and volume accessors below stay `Float64Array`. */
+  ts(symbol?: string): BigInt64Array;
   open(symbol?: string): Float64Array;
   high(symbol?: string): Float64Array;
   low(symbol?: string): Float64Array;
@@ -626,12 +686,14 @@ export class Engine {
 
 export class SignalBuilder {
   constructor();
-  /** `ts` auto-scales from s / ms / us to ns. `symbol` defaults to the
-   *  engine's first loaded symbol at `run()` time. Returns `this`. */
-  buy(ts: number, qty: number, symbol?: string): this;
-  sell(ts: number, qty: number, symbol?: string): this;
-  limitBuy(ts: number, price: number, qty: number, symbol?: string): this;
-  limitSell(ts: number, price: number, qty: number, symbol?: string): this;
+  /** `ts` auto-scales from s / ms / us to ns and takes a `Number` or a
+   *  `BigInt`, so an `Engine.ts()` element goes straight in. `symbol`
+   *  defaults to the engine's first loaded symbol at `run()` time.
+   *  Returns `this`. */
+  buy(ts: number | bigint, qty: number, symbol?: string): this;
+  sell(ts: number | bigint, qty: number, symbol?: string): this;
+  limitBuy(ts: number | bigint, price: number, qty: number, symbol?: string): this;
+  limitSell(ts: number | bigint, price: number, qty: number, symbol?: string): this;
   clear(): void;
   readonly length: number;
 }
@@ -1510,8 +1572,8 @@ export function list_indicators(): string[];
 
 /** A single aggregated bar emitted by `aggregate*` helpers. */
 export interface AggregatedBar {
-  startTimeNs: number;
-  endTimeNs: number;
+  startTimeNs: bigint;
+  endTimeNs: bigint;
   open: number;
   high: number;
   low: number;
@@ -1522,42 +1584,42 @@ export interface AggregatedBar {
 }
 
 export function aggregateTimeBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   intervalSeconds: number,
 ): AggregatedBar[];
 export function aggregateTickBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   tickCount: number,
 ): AggregatedBar[];
 export function aggregateVolumeBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   threshold: number,
 ): AggregatedBar[];
 export function aggregateRangeBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   rangeSize: number,
 ): AggregatedBar[];
 export function aggregateRenkoBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
   brickSize: number,
 ): AggregatedBar[];
 export function aggregateHeikinAshiBars(
-  timestamps: Float64Array,
+  timestamps: Float64Array | BigInt64Array,
   prices: Float64Array,
   quantities: Float64Array,
   isBuy: Uint8Array,
@@ -2759,7 +2821,8 @@ export interface LiveQueueSnapshot {
   queueAheadEst: number;
   total: number;
   confidence: number;
-  lastUpdateNs: number;
+  /** Absolute nanosecond clock reading. */
+  lastUpdateNs: bigint;
   hiddenVolumeSeen: number;
 }
 
@@ -2774,15 +2837,18 @@ export class LiveQueuePositionEstimator {
   setShrinkAttributionFactor(factor: number): void;
   setHiddenOrderPolicy(policy: HiddenOrderPolicyName): void;
   onOrderPlaced(symbol: number, side: 0 | 1, price: number, orderId: number,
-                orderQty: number, levelQtyNow: number, tsNs?: number): void;
-  onOrderCancelled(orderId: number, tsNs?: number): void;
-  onOrderFilled(orderId: number, cumulativeFill: number, tsNs?: number): void;
-  onTrade(symbol: number, price: number, qty: number, tsNs?: number): void;
-  onTradeWithFlag(symbol: number, price: number, qty: number, tsNs: number,
-                  isHidden: boolean): void;
+                orderQty: number, levelQtyNow: number,
+                tsNs?: number | bigint): void;
+  onOrderCancelled(orderId: number, tsNs?: number | bigint): void;
+  onOrderFilled(orderId: number, cumulativeFill: number,
+                tsNs?: number | bigint): void;
+  onTrade(symbol: number, price: number, qty: number,
+          tsNs?: number | bigint): void;
+  onTradeWithFlag(symbol: number, price: number, qty: number,
+                  tsNs: number | bigint, isHidden: boolean): void;
   onLevelUpdate(symbol: number, side: 0 | 1, price: number, newQty: number,
-                tsNs?: number): void;
-  snapshot(orderId: number, nowNs?: number): LiveQueueSnapshot | null;
+                tsNs?: number | bigint): void;
+  snapshot(orderId: number, nowNs?: number | bigint): LiveQueueSnapshot | null;
   trackedOrderCount(): number;
 }
 
@@ -2820,14 +2886,14 @@ export interface FeedClockSnapshot {
   fired: boolean;
   triggeredBy: number;
   /** Symbol id → last-seen exchange-ts in nanoseconds (0 if never). */
-  lastTsNs: Record<number, number>;
+  lastTsNs: Record<number, bigint>;
   /** Symbol id → staleness in nanoseconds at the moment of this tick. */
   stalenessNs: Record<number, number>;
 }
 
 export class MultiFeedClock {
   constructor(opts: MultiFeedClockOptions);
-  tick(tsNs: number, symbol: number): FeedClockSnapshot;
+  tick(tsNs: number | bigint, symbol: number): FeedClockSnapshot;
   reset(): void;
   symbolCount(): number;
 }
@@ -2853,7 +2919,8 @@ interface ExecAlgoCommon {
 export interface TWAPOptions extends ExecAlgoCommon {
   durationNs: number;
   sliceCount: number;
-  startTimeNs: number;
+  /** A clock reading: takes a `Number` or a `BigInt`. */
+  startTimeNs: number | bigint;
 }
 
 export interface VWAPOptions extends ExecAlgoCommon {

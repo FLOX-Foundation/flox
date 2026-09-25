@@ -353,10 +353,16 @@ def build_binding_manifest(
         def _binding(key: str) -> Dict[str, Any]:
             b = entry.get(key) or {}
             status = b.get("status", "missing_yaml")
+            declared = b.get("functions") or []
+            # The QuickJS entry is a C-function-to-global map; the symbol a
+            # strategy calls is the global, so that is what the manifest
+            # lists -- the same content the list form carried before.
+            functions = (sorted(set(declared.values()))
+                         if isinstance(declared, dict) else list(declared))
             return {
                 "status": status,
                 "classes": list(b.get("classes") or []),
-                "functions": list(b.get("functions") or []),
+                "functions": functions,
                 **({"reason": b["reason"]} if "reason" in b else {}),
             }
 

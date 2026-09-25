@@ -39,41 +39,121 @@ groups:
     pybind11: { status: required, classes: [SymbolRegistry] }
     napi: { status: required, classes: [SymbolRegistry] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   strategy_lifecycle:
     pybind11: { status: required, classes: [Strategy] }
     napi: { status: required, classes: [SignalBuilder] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   signal_emission:
     pybind11: { status: required, classes: [Signal, SignalBuilder] }
     napi: { status: required, classes: [SignalBuilder] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_emit_cancel: __flox_emit_cancel
+        flox_emit_cancel_all: __flox_emit_cancel_all
+        flox_emit_close_position: __flox_emit_close_position
+        flox_emit_limit_buy_tif: __flox_emit_limit_buy_tif
+        flox_emit_limit_sell_tif: __flox_emit_limit_sell_tif
+        flox_emit_market_buy: __flox_emit_market_buy
+        flox_emit_market_sell: __flox_emit_market_sell
+        flox_emit_modify: __flox_emit_modify
+        flox_emit_stop_limit: __flox_emit_stop_limit
+        flox_emit_stop_market: __flox_emit_stop_market
+        flox_emit_take_profit_limit: __flox_emit_take_profit_limit
+        flox_emit_take_profit_market: __flox_emit_take_profit_market
+        flox_emit_trailing_stop: __flox_emit_trailing_stop
+        flox_emit_trailing_stop_percent: __flox_emit_trailing_stop_pct
 
   strategyrunner_synchronous:
     pybind11: { status: required, classes: [Runner] }
     napi: { status: required, classes: [Runner] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   floxliveengine_disruptor:
     pybind11: { status: required, classes: [Engine] }
     napi: { status: required, classes: [Engine] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   backtestrunner_replay:
     pybind11: { status: required, classes: [BacktestRunner] }
     napi: { status: required, classes: [BacktestRunner] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   backtest_slippage:
     pybind11: { status: required, classes: [SimulatedExecutor, BacktestResult, LatencyDistribution] }
     napi: { status: required, classes: [SimulatedExecutor, BacktestResult, LatencyDistribution] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_backtest_result_create: __flox_backtest_result_create
+        flox_backtest_result_destroy: __flox_backtest_result_destroy
+        flox_backtest_result_equity_curve: __flox_backtest_result_equity_curve
+        flox_backtest_result_ingest_executor: __flox_backtest_result_ingest
+        flox_backtest_result_record_fill: __flox_backtest_result_record_fill
+        flox_backtest_result_stats: __flox_backtest_result_stats
+        flox_backtest_result_write_equity_curve_csv: __flox_backtest_result_write_csv
+        flox_latency_distribution_create: __flox_latency_distribution_create
+        flox_latency_distribution_destroy: __flox_latency_distribution_destroy
+        flox_latency_distribution_median_ns: __flox_latency_distribution_median_ns
+        flox_latency_distribution_set_burst_correlation: __flox_latency_distribution_set_burst_correlation
+        flox_latency_distribution_set_constant: __flox_latency_distribution_set_constant
+        flox_latency_distribution_set_empirical: __flox_latency_distribution_set_empirical
+        flox_latency_distribution_set_lognormal: __flox_latency_distribution_set_lognormal
+        flox_latency_distribution_set_uniform: __flox_latency_distribution_set_uniform
+        flox_simulated_executor_apply_latency_profile: __flox_simulated_executor_apply_latency_profile
+        flox_simulated_executor_fok_mode: __flox_simulated_executor_fok_mode
+        flox_simulated_executor_on_best_levels: __flox_simulated_executor_on_best_levels
+        flox_simulated_executor_on_trade_qty: __flox_simulated_executor_on_trade_qty
+        flox_simulated_executor_set_cancel_ack_latency: __flox_simulated_executor_set_cancel_ack
+        flox_simulated_executor_set_cancel_ack_latency_distribution: __flox_simulated_executor_set_cancel_ack_latency_distribution
+        flox_simulated_executor_set_default_slippage: __flox_simulated_executor_set_default_slippage
+        flox_simulated_executor_set_fok_mode: __flox_simulated_executor_set_fok_mode
+        flox_simulated_executor_set_lmm_bonus_multiplier: __flox_simulated_executor_set_lmm_bonus_multiplier
+        flox_simulated_executor_set_lmm_orders: __flox_simulated_executor_set_lmm_orders
+        flox_simulated_executor_set_order_priority_multiplier: __flox_simulated_executor_set_order_priority_multiplier
+        flox_simulated_executor_set_queue_fifo_top_n: __flox_simulated_executor_set_queue_fifo_top_n
+        flox_simulated_executor_set_queue_model: __flox_simulated_executor_set_queue_model
+        flox_simulated_executor_set_replace_ack_latency: __flox_simulated_executor_set_replace_ack
+        flox_simulated_executor_set_replace_ack_latency_distribution: __flox_simulated_executor_set_replace_ack_latency_distribution
+        flox_simulated_executor_set_stp_group_membership: __flox_simulated_executor_set_stp_group_membership
+        flox_simulated_executor_set_stp_mode: __flox_simulated_executor_set_stp_mode
+        flox_simulated_executor_set_submit_ack_latency: __flox_simulated_executor_set_submit_ack
+        flox_simulated_executor_set_submit_ack_latency_distribution: __flox_simulated_executor_set_submit_ack_latency_distribution
+        flox_simulated_executor_set_symbol_slippage: __flox_simulated_executor_set_symbol_slippage
+        flox_simulated_executor_set_top_priority_share: __flox_simulated_executor_set_top_priority_share
+        flox_simulated_executor_stp_group_for: __flox_simulated_executor_stp_group_for
 
   rate_limit:
     pybind11: { status: required, classes: [RateLimitPolicy] }
     napi: { status: required, classes: [RateLimitPolicy] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_rate_limit_policy_add_bucket: __flox_rate_limit_policy_add_bucket
+        flox_rate_limit_policy_add_bucket_family: __flox_rate_limit_policy_add_bucket_family
+        flox_rate_limit_policy_ban_until_ns: __flox_rate_limit_policy_ban_until_ns
+        flox_rate_limit_policy_consecutive_rejects: __flox_rate_limit_policy_consecutive_rejects
+        flox_rate_limit_policy_create: __flox_rate_limit_policy_create
+        flox_rate_limit_policy_destroy: __flox_rate_limit_policy_destroy
+        flox_rate_limit_policy_load_profile: __flox_rate_limit_policy_load_profile
+        flox_rate_limit_policy_set_ban: __flox_rate_limit_policy_set_ban
+        flox_simulated_executor_clear_rate_limit_policy: __flox_simulated_executor_clear_rate_limit_policy
+        flox_simulated_executor_set_rate_limit_policy: __flox_simulated_executor_set_rate_limit_policy
 
   venue_availability:
     pybind11: { status: required, classes: [VenueAvailability, SimulatedExecutor] }
@@ -82,39 +162,130 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_simulated_executor_set_venue_availability
-        - __flox_venue_availability_auto_random_outages
-        - __flox_venue_availability_book_updates_allowed
-        - __flox_venue_availability_cancels_allowed
-        - __flox_venue_availability_consume_wrong_side_recovery_bps
-        - __flox_venue_availability_create
-        - __flox_venue_availability_destroy
-        - __flox_venue_availability_is_up
-        - __flox_venue_availability_latency_multiplier
-        - __flox_venue_availability_schedule_outage
-        - __flox_venue_availability_schedule_outage_ex
-        - __flox_venue_availability_submits_allowed
-        - __flox_venue_availability_trades_allowed
+        flox_simulated_executor_set_venue_availability: __flox_simulated_executor_set_venue_availability
+        flox_venue_availability_auto_random_outages: __flox_venue_availability_auto_random_outages
+        flox_venue_availability_book_updates_allowed: __flox_venue_availability_book_updates_allowed
+        flox_venue_availability_cancels_allowed: __flox_venue_availability_cancels_allowed
+        flox_venue_availability_consume_wrong_side_recovery_bps: __flox_venue_availability_consume_wrong_side_recovery_bps
+        flox_venue_availability_create: __flox_venue_availability_create
+        flox_venue_availability_destroy: __flox_venue_availability_destroy
+        flox_venue_availability_is_up: __flox_venue_availability_is_up
+        flox_venue_availability_latency_multiplier: __flox_venue_availability_latency_multiplier
+        flox_venue_availability_schedule_outage: __flox_venue_availability_schedule_outage
+        flox_venue_availability_schedule_outage_ex: __flox_venue_availability_schedule_outage_ex
+        flox_venue_availability_submits_allowed: __flox_venue_availability_submits_allowed
+        flox_venue_availability_trades_allowed: __flox_venue_availability_trades_allowed
 
   liquidation_engine:
     pybind11: { status: required, classes: [LiquidationEngine] }
     napi: { status: required, classes: [LiquidationEngine] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_liquidation_engine_add_tier: __flox_liquidation_engine_add_tier
+        flox_liquidation_engine_adl_closeouts_count: __flox_liquidation_engine_adl_closeouts_count
+        flox_liquidation_engine_adl_ranking: __flox_liquidation_engine_adl_ranking
+        flox_liquidation_engine_attach_account: __flox_liquidation_engine_attach_account
+        flox_liquidation_engine_cascade_sizes_copy: __flox_liquidation_engine_cascade_sizes
+        flox_liquidation_engine_cascade_sizes_size: __flox_liquidation_engine_cascade_sizes
+        flox_liquidation_engine_close_position: __flox_liquidation_engine_close_position
+        flox_liquidation_engine_create: __flox_liquidation_engine_create
+        flox_liquidation_engine_deficits_paid_by_adl_copy: __flox_liquidation_engine_deficits_paid_by_adl
+        flox_liquidation_engine_deficits_paid_by_adl_size: __flox_liquidation_engine_deficits_paid_by_adl
+        flox_liquidation_engine_deficits_paid_by_fund_copy: __flox_liquidation_engine_deficits_paid_by_fund
+        flox_liquidation_engine_deficits_paid_by_fund_size: __flox_liquidation_engine_deficits_paid_by_fund
+        flox_liquidation_engine_destroy: __flox_liquidation_engine_destroy
+        flox_liquidation_engine_detach_account: __flox_liquidation_engine_detach_account
+        flox_liquidation_engine_fund_balance_history_copy: __flox_liquidation_engine_fund_balance_history
+        flox_liquidation_engine_fund_balance_history_size: __flox_liquidation_engine_fund_balance_history
+        flox_liquidation_engine_insurance_fund_balance: __flox_liquidation_engine_insurance_fund_balance
+        flox_liquidation_engine_insurance_payments_count: __flox_liquidation_engine_insurance_payments_count
+        flox_liquidation_engine_liquidations_count: __flox_liquidation_engine_liquidations_count
+        flox_liquidation_engine_load_profile: __flox_liquidation_engine_load_profile
+        flox_liquidation_engine_mark_impact_model: __flox_liquidation_engine_mark_impact_model
+        flox_liquidation_engine_mark_impact_weight: __flox_liquidation_engine_mark_impact_weight
+        flox_liquidation_engine_max_cascade_depth: __flox_liquidation_engine_max_cascade_depth
+        flox_liquidation_engine_on_mark: __flox_liquidation_engine_on_mark
+        flox_liquidation_engine_on_marks: __flox_liquidation_engine_on_marks
+        flox_liquidation_engine_open_position: __flox_liquidation_engine_open_position
+        flox_liquidation_engine_reset_stats: __flox_liquidation_engine_reset_stats
+        flox_liquidation_engine_set_adl_enabled: __flox_liquidation_engine_set_adl_enabled
+        flox_liquidation_engine_set_adl_ranking: __flox_liquidation_engine_set_adl_ranking
+        flox_liquidation_engine_set_executor: __flox_liquidation_engine_set_executor
+        flox_liquidation_engine_set_insurance_fund_capital: __flox_liquidation_engine_set_insurance_fund_capital
+        flox_liquidation_engine_set_liquidation_slippage_bps: __flox_liquidation_engine_set_liquidation_slippage_bps
+        flox_liquidation_engine_set_mark_impact_model: __flox_liquidation_engine_set_mark_impact_model
+        flox_liquidation_engine_set_max_cascade_depth: __flox_liquidation_engine_set_max_cascade_depth
+        flox_liquidation_engine_ticks_to_first_adl: __flox_liquidation_engine_ticks_to_first_adl
 
   funding_schedule:
     pybind11: { status: required, classes: [FundingSchedule] }
     napi: { status: required, classes: [FundingSchedule] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_funding_schedule_create: __flox_funding_schedule_create
+        flox_funding_schedule_destroy: __flox_funding_schedule_destroy
+        flox_funding_schedule_load_profile: __flox_funding_schedule_load_profile
+        flox_funding_schedule_load_tape: __flox_funding_schedule_load_tape
+        flox_funding_schedule_reset: __flox_funding_schedule_reset
+        flox_funding_schedule_set_constant: __flox_funding_schedule_set_constant
+        flox_funding_schedule_set_constant_rate: __flox_funding_schedule_set_constant_rate
+        flox_funding_schedule_set_tape_by_symbol: __flox_funding_schedule_set_tape_by_symbol
+        flox_funding_schedule_tick: __flox_funding_schedule_tick
 
   fee_schedule:
     pybind11: { status: required, classes: [FeeSchedule] }
     napi: { status: required, classes: [FeeSchedule] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_fee_schedule_add_tier: __flox_fee_schedule_add_tier
+        flox_fee_schedule_bind_account: __flox_fee_schedule_bind_account
+        flox_fee_schedule_clear_account_binding: __flox_fee_schedule_clear_account_binding
+        flox_fee_schedule_create: __flox_fee_schedule_create
+        flox_fee_schedule_current_tier: __flox_fee_schedule_current_tier
+        flox_fee_schedule_destroy: __flox_fee_schedule_destroy
+        flox_fee_schedule_fee_for: __flox_fee_schedule_fee_for
+        flox_fee_schedule_load_profile: __flox_fee_schedule_load_profile
+        flox_fee_schedule_record_fill: __flox_fee_schedule_record_fill
+        flox_fee_schedule_reset_rolling: __flox_fee_schedule_reset_rolling
+        flox_fee_schedule_rolling_notional: __flox_fee_schedule_rolling_notional
 
   account:
     pybind11: { status: required, classes: [Account] }
     napi: { status: required, classes: [Account] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_account_add_equity: __flox_account_add_equity
+        flox_account_close_position: __flox_account_close_position
+        flox_account_create: __flox_account_create
+        flox_account_destroy: __flox_account_destroy
+        flox_account_equity: __flox_account_equity
+        flox_account_has_stale_marks: __flox_account_has_stale_marks
+        flox_account_id: __flox_account_id
+        flox_account_margin_mode: __flox_account_margin_mode
+        flox_account_mark_ts: __flox_account_mark_ts
+        flox_account_open_position: __flox_account_open_position
+        flox_account_open_position_isolated: __flox_account_open_position
+        flox_account_position_count: __flox_account_position_count
+        flox_account_record_fill: __flox_account_record_fill
+        flox_account_record_fill_ex: __flox_account_record_fill
+        flox_account_reset_rolling: __flox_account_reset_rolling
+        flox_account_rolling_notional_30d: __flox_account_rolling_notional_30d
+        flox_account_rolling_notional_by_symbol_copy: __flox_account_rolling_notional_by_symbol
+        flox_account_rolling_notional_by_symbol_size: __flox_account_rolling_notional_by_symbol
+        flox_account_set_equity: __flox_account_set_equity
+        flox_account_set_margin_mode: __flox_account_set_margin_mode
+        flox_account_set_mark: __flox_account_set_mark
+        flox_account_set_mark_at: __flox_account_set_mark
+        flox_account_total_notional: __flox_account_total_notional
+        flox_account_total_unrealised_pnl: __flox_account_total_unrealised_pnl
 
   venue_stack:
     pybind11: { status: required, classes: [VenueStack] }
@@ -123,25 +294,29 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_venue_stack_account
-        - __flox_venue_stack_create
-        - __flox_venue_stack_destroy
-        - __flox_venue_stack_executor
-        - __flox_venue_stack_fees
-        - __flox_venue_stack_funding
-        - __flox_venue_stack_liquidation
-        - __flox_venue_stack_venue
-        - __flox_venue_stack_venue_name
+        flox_venue_stack_account: __flox_venue_stack_account
+        flox_venue_stack_create: __flox_venue_stack_create
+        flox_venue_stack_destroy: __flox_venue_stack_destroy
+        flox_venue_stack_executor: __flox_venue_stack_executor
+        flox_venue_stack_fees: __flox_venue_stack_fees
+        flox_venue_stack_funding: __flox_venue_stack_funding
+        flox_venue_stack_liquidation: __flox_venue_stack_liquidation
+        flox_venue_stack_venue: __flox_venue_stack_venue
+        flox_venue_stack_venue_name: __flox_venue_stack_venue_name
 
   walk_forward:
     pybind11: { status: required, classes: [WalkForwardRunner] }
     napi: { status: required, classes: [WalkForwardRunner] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   grid_search:
     pybind11: { status: required, classes: [GridSearch] }
     napi: { status: required, classes: [GridSearch] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   heatmap:
     pybind11:
@@ -151,21 +326,69 @@ groups:
       status: allowlist
       reason: "exposed via flox.report.heatmapHtml namespace, not as a class or top-level function. Cosmetic gap; tracked as a follow-up if dts shape needs flattening."
     codon: { status: required }
+    quickjs:
+      status: required
 
   simulated_executor:
     pybind11: { status: required, classes: [SimulatedExecutor] }
     napi: { status: required, classes: [SimulatedExecutor] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_simulated_executor_advance_clock: __flox_simulated_executor_advance_clock
+        flox_simulated_executor_bracket_state: __flox_simulated_executor_bracket_state
+        flox_simulated_executor_cancel_bracket: __flox_simulated_executor_cancel_bracket
+        flox_simulated_executor_create: __flox_simulated_executor_create
+        flox_simulated_executor_destroy: __flox_simulated_executor_destroy
+        flox_simulated_executor_fill_count: __flox_simulated_executor_fill_count
+        flox_simulated_executor_iceberg_hidden_remaining_raw: __flox_simulated_executor_iceberg_hidden_remaining_raw
+        flox_simulated_executor_on_bar: __flox_simulated_executor_on_bar
+        flox_simulated_executor_on_trade: __flox_simulated_executor_on_trade
+        flox_simulated_executor_set_bracket_child_arm_mode: __flox_simulated_executor_set_bracket_child_arm_mode
+        flox_simulated_executor_set_iceberg_jitter_seed: __flox_simulated_executor_set_iceberg_jitter_seed
+        flox_simulated_executor_set_iceberg_priority_mode: __flox_simulated_executor_set_iceberg_priority_mode
+        flox_simulated_executor_set_iceberg_refresh_latency: __flox_simulated_executor_set_iceberg_refresh_latency
+        flox_simulated_executor_set_iceberg_size_randomisation_pct: __flox_simulated_executor_set_iceberg_size_randomisation_pct
+        flox_simulated_executor_submit_bracket: __flox_simulated_executor_submit_bracket
+        flox_simulated_executor_submit_iceberg: __flox_simulated_executor_submit_iceberg
+        flox_simulated_executor_submit_order: __flox_simulated_executor_submit
+        flox_simulated_executor_submit_order_ex: __flox_simulated_executor_submit_ex
 
   order_book:
     pybind11: { status: required, classes: [OrderBook] }
     napi: { status: required, classes: [OrderBook] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_book_apply_delta: __flox_book_apply_delta
+        flox_book_apply_snapshot: __flox_book_apply_snapshot
+        flox_book_best_ask: __flox_book_best_ask
+        flox_book_best_bid: __flox_book_best_bid
+        flox_book_clear: __flox_book_clear
+        flox_book_create: __flox_book_create
+        flox_book_destroy: __flox_book_destroy
+        flox_book_get_asks: __flox_book_get_asks
+        flox_book_get_bids: __flox_book_get_bids
+        flox_book_is_crossed: __flox_book_is_crossed
+        flox_book_mid: __flox_book_mid
+        flox_book_spread: __flox_book_spread
 
   l3_order:
     pybind11: { status: required, classes: [L3Book] }
     napi: { status: required, classes: [L3Book] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_l3_book_add_order: __flox_l3_add_order
+        flox_l3_book_best_ask: __flox_l3_best_ask
+        flox_l3_book_best_bid: __flox_l3_best_bid
+        flox_l3_book_create: __flox_l3_create
+        flox_l3_book_destroy: __flox_l3_destroy
+        flox_l3_book_modify_order: __flox_l3_modify_order
+        flox_l3_book_remove_order: __flox_l3_remove_order
 
   composite_book:
     pybind11: { status: required, classes: [CompositeBookMatrix] }
@@ -177,95 +400,273 @@ groups:
       # itself: this entry used to be unverifiable (see check_binding_parity.py).
       classes: [CompositeBook]
       functions:
-        - __flox_cb_create
-        - __flox_cb_destroy
-        - __flox_cb_apply_snapshot
-        - __flox_cb_apply_delta
-        - __flox_cb_best_bid
-        - __flox_cb_best_ask
-        - __flox_cb_has_arb
-        - __flox_cb_mark_stale
-        - __flox_cb_check_staleness
+        flox_composite_book_apply_delta: __flox_cb_apply_delta
+        flox_composite_book_apply_snapshot: __flox_cb_apply_snapshot
+        flox_composite_book_best_ask: __flox_cb_best_ask
+        flox_composite_book_best_bid: __flox_cb_best_bid
+        flox_composite_book_check_staleness: __flox_cb_check_staleness
+        flox_composite_book_create: __flox_cb_create
+        flox_composite_book_destroy: __flox_cb_destroy
+        flox_composite_book_has_arb: __flox_cb_has_arb
+        flox_composite_book_mark_stale: __flox_cb_mark_stale
 
   order_tracker:
     pybind11: { status: required, classes: [OrderTracker] }
     napi: { status: required, classes: [OrderTracker] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_order_tracker_active_count: __flox_ot_active_count
+        flox_order_tracker_create: __flox_ot_create
+        flox_order_tracker_destroy: __flox_ot_destroy
+        flox_order_tracker_is_active: __flox_ot_is_active
+        flox_order_tracker_on_canceled: __flox_ot_canceled
+        flox_order_tracker_on_filled: __flox_ot_filled
+        flox_order_tracker_on_submitted: __flox_ot_submit
+        flox_order_tracker_prune: __flox_ot_prune
+        flox_order_tracker_total_count: __flox_ot_total_count
 
   order_journey_tracer:
     pybind11: { status: required, classes: [OrderJourneyTracer] }
     napi: { status: required, classes: [OrderJourneyTracer] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_order_journey_tracer_cancel_race_loss_rate: __flox_ojt_cancel_race
+        flox_order_journey_tracer_clear: __flox_ojt_clear
+        flox_order_journey_tracer_create: __flox_ojt_create
+        flox_order_journey_tracer_destroy: __flox_ojt_destroy
+        flox_order_journey_tracer_journey: __flox_ojt_journey
+        flox_order_journey_tracer_maker_fill_ratio: __flox_ojt_maker_ratio
+        flox_order_journey_tracer_median_ack_latency_ns: __flox_ojt_median_ack
+        flox_order_journey_tracer_median_time_to_first_fill_ns: __flox_ojt_median_ttf
+        flox_order_journey_tracer_order_count: __flox_ojt_order_count
+        flox_order_journey_tracer_record_count: __flox_ojt_record_count
+        flox_order_journey_tracer_result: __flox_ojt_result
 
   position:
     pybind11: { status: required, classes: [PositionTracker] }
     napi: { status: required, classes: [PositionTracker] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_position_tracker_avg_entry: __flox_pos_avg_entry
+        flox_position_tracker_create: __flox_pos_create
+        flox_position_tracker_destroy: __flox_pos_destroy
+        flox_position_tracker_on_fill: __flox_pos_on_fill
+        flox_position_tracker_position: __flox_pos_position
+        flox_position_tracker_realized_pnl: __flox_pos_pnl
+        flox_position_tracker_total_pnl: __flox_pos_total_pnl
 
   position_group:
     pybind11: { status: required, classes: [PositionGroupTracker] }
     napi: { status: required, classes: [PositionGroupTracker] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_position_group_close: __flox_pg_close
+        flox_position_group_create: __flox_pg_create
+        flox_position_group_destroy: __flox_pg_destroy
+        flox_position_group_net_position: __flox_position
+        flox_position_group_open: __flox_pg_open
+        flox_position_group_open_count: __flox_pg_open_count
+        flox_position_group_partial_close: __flox_pg_partial_close
+        flox_position_group_prune: __flox_pg_prune
+        flox_position_group_realized_pnl: __flox_pg_pnl
+        flox_position_group_total_pnl: __flox_pg_total_pnl
 
   indicatorgraph:
     pybind11: { status: required, classes: [IndicatorGraph] }
     napi: { status: required, classes: [IndicatorGraph, StreamingIndicatorGraph] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_indicator_graph_add_node: __flox_graph_add_node
+        flox_indicator_graph_create: __flox_graph_create
+        flox_indicator_graph_get: __flox_graph_get
+        flox_indicator_graph_invalidate: __flox_graph_invalidate
+        flox_indicator_graph_invalidate_all: __flox_graph_invalidate_all
+        flox_indicator_graph_require: __flox_graph_require
+        flox_indicator_graph_set_bars: __flox_graph_set_bars
+        flox_streaming_graph_add_node: __flox_streaming_add_node
+        flox_streaming_graph_bar_count: __flox_streaming_bar_count
+        flox_streaming_graph_create: __flox_streaming_create
+        flox_streaming_graph_current: __flox_streaming_current
+        flox_streaming_graph_reset: __flox_streaming_reset
+        flox_streaming_graph_reset_all: __flox_streaming_reset_all
+        flox_streaming_graph_step: __flox_streaming_step
 
   market_profile:
     pybind11: { status: required, classes: [MarketProfile] }
     napi: { status: required, classes: [MarketProfile] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_market_profile_add_trade: __flox_mp_add_trade
+        flox_market_profile_clear: __flox_mp_clear
+        flox_market_profile_create: __flox_mp_create
+        flox_market_profile_destroy: __flox_mp_destroy
+        flox_market_profile_ib_high: __flox_mp_ib_high
+        flox_market_profile_ib_low: __flox_mp_ib_low
+        flox_market_profile_is_poor_high: __flox_mp_is_poor_high
+        flox_market_profile_is_poor_low: __flox_mp_is_poor_low
+        flox_market_profile_poc: __flox_mp_poc
+        flox_market_profile_vah: __flox_mp_vah
+        flox_market_profile_val: __flox_mp_val
 
   volume_profile:
     pybind11: { status: required, classes: [VolumeProfile] }
     napi: { status: required, classes: [VolumeProfile] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_volume_profile_add_trade: __flox_vprofile_add_trade
+        flox_volume_profile_clear: __flox_vprofile_clear
+        flox_volume_profile_create: __flox_vprofile_create
+        flox_volume_profile_destroy: __flox_vprofile_destroy
+        flox_volume_profile_poc: __flox_vprofile_poc
+        flox_volume_profile_total_volume: __flox_vprofile_total_volume
+        flox_volume_profile_vah: __flox_vprofile_vah
+        flox_volume_profile_val: __flox_vprofile_val
 
   footprint_bar:
     pybind11: { status: required, classes: [FootprintBar] }
     napi: { status: required, classes: [FootprintBar] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_footprint_add_trade: __flox_fp_add_trade
+        flox_footprint_clear: __flox_fp_clear
+        flox_footprint_create: __flox_fp_create
+        flox_footprint_destroy: __flox_fp_destroy
+        flox_footprint_total_delta: __flox_fp_total_delta
+        flox_footprint_total_volume: __flox_fp_total_volume
 
   binary_log_recorder_hook:
     pybind11: { status: required, classes: [BinaryLogRecorderHook] }
     napi: { status: required, classes: [BinaryLogRecorderHook] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_binary_log_recorder_hook_add_symbol: __flox_blrh_add_symbol
+        flox_binary_log_recorder_hook_as_recorder: __flox_blrh_as_recorder
+        flox_binary_log_recorder_hook_create_ex: __flox_blrh_create
+        flox_binary_log_recorder_hook_destroy: __flox_blrh_destroy
+        flox_binary_log_recorder_hook_flush: __flox_blrh_flush
+        flox_binary_log_recorder_hook_stats: __flox_blrh_stats
 
   merged_tape_reader:
     pybind11: { status: required, classes: [MergedTapeReader] }
     napi: { status: required, classes: [MergedTapeReader] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_merged_tape_reader_count_books: __flox_mtr_count_books
+        flox_merged_tape_reader_count_trades: __flox_mtr_count_trades
+        flox_merged_tape_reader_create: __flox_mtr_create
+        flox_merged_tape_reader_destroy: __flox_mtr_destroy
+        flox_merged_tape_reader_get_symbols: __flox_mtr_get_symbols
+        flox_merged_tape_reader_get_tape_stats: __flox_mtr_get_tape_stats
+        flox_merged_tape_reader_read_books: __flox_mtr_read_books
+        flox_merged_tape_reader_read_trades: __flox_mtr_read_trades
+        flox_merged_tape_reader_symbol_count: __flox_mtr_symbol_count
+        flox_merged_tape_reader_tape_count: __flox_mtr_tape_count
+        flox_merged_tape_reader_time_range: __flox_mtr_time_range
 
   data_reader:
     pybind11: { status: required, classes: [DataReader] }
     napi: { status: required, classes: [DataReader] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_data_reader_count: __flox_dr_count
+        flox_data_reader_create: __flox_dr_create
+        flox_data_reader_destroy: __flox_dr_destroy
 
   datareader:
     pybind11: { status: required, classes: [DataReader] }
     napi: { status: required, classes: [DataReader] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_data_reader_count_book_updates: __flox_dr_read_book_updates
+        flox_data_reader_count_book_updates_from: __flox_dr_read_book_updates_from
+        flox_data_reader_create_filtered: __flox_dr_create_filtered
+        flox_data_reader_read_bbo: __flox_dr_read_bbo
+        flox_data_reader_read_bbo_from: __flox_dr_read_bbo_from
+        flox_data_reader_read_book_updates: __flox_dr_read_book_updates
+        flox_data_reader_read_book_updates_from: __flox_dr_read_book_updates_from
+        flox_data_reader_read_trades: __flox_dr_read_trades
+        flox_data_reader_read_trades_from: __flox_dr_read_trades_from
+        flox_data_reader_stats: __flox_dr_stats
+        flox_data_reader_summary: __flox_dr_summary
 
   data_writer:
     pybind11: { status: required, classes: [DataWriter] }
     napi: { status: required, classes: [DataWriter] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_data_writer_close: __flox_dw_close
+        flox_data_writer_create: __flox_dw_create
+        flox_data_writer_destroy: __flox_dw_destroy
+        flox_data_writer_flush: __flox_dw_flush
+        flox_data_writer_write_book: __flox_dw_write_book
+        flox_data_writer_write_trade: __flox_dw_write_trade
 
   datawriter:
     pybind11: { status: required, classes: [DataWriter] }
     napi: { status: required, classes: [DataWriter] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_data_writer_stats: __flox_dw_stats
 
   partitioner:
     pybind11: { status: required, classes: [Partitioner] }
     napi: { status: required, classes: [Partitioner] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_partitioner_by_calendar: __flox_part_by_calendar
+        flox_partitioner_by_duration: __flox_part_by_duration
+        flox_partitioner_by_event_count: __flox_part_by_event_count
+        flox_partitioner_by_symbol: __flox_part_by_symbol
+        flox_partitioner_by_time: __flox_part_by_time
+        flox_partitioner_create: __flox_part_create
+        flox_partitioner_destroy: __flox_part_destroy
+        flox_partitioner_per_symbol: __flox_part_per_symbol
 
   segment:
     pybind11: { status: required, classes: [Partitioner] }
     napi: { status: required, classes: [Partitioner] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_segment_export: __flox_seg_export
+        flox_segment_extract_symbols: __flox_seg_extract_symbols
+        flox_segment_extract_time_range: __flox_seg_extract_time
+        flox_segment_merge: __flox_segment_merge
+        flox_segment_merge_dir: __flox_seg_merge_dir
+        flox_segment_recompress: __flox_seg_recompress
+        flox_segment_split: __flox_seg_split
+        flox_segment_validate: __flox_segment_validate
 
   # ── Function-shaped groups (module-level helpers, no class) ───────────
 
@@ -277,6 +678,12 @@ groups:
       status: required
       functions: [aggregateTimeBars, aggregateTickBars, aggregateVolumeBars]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_aggregate_tick_bars: __flox_agg_tick
+        flox_aggregate_time_bars: __flox_agg_time
+        flox_aggregate_volume_bars: __flox_agg_volume
 
   additional_bar:
     pybind11:
@@ -286,6 +693,11 @@ groups:
       status: required
       functions: [aggregateRangeBars, aggregateRenkoBars]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_aggregate_range_bars: __flox_agg_range
+        flox_aggregate_renko_bars: __flox_agg_renko
 
   heikin_ashi:
     pybind11:
@@ -295,6 +707,10 @@ groups:
       status: required
       functions: [aggregateHeikinAshiBars]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_aggregate_heikin_ashi_bars: __flox_agg_heikin
 
   additional_stats:
     pybind11:
@@ -304,6 +720,11 @@ groups:
       status: required
       functions: [bootstrapCI, permutationTest, whitesRealityCheck]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_stat_bootstrap_ci: __flox_stat_bootstrap_ci
+        flox_stat_permutation_test: __flox_stat_permutation_test
 
   statistics:
     pybind11:
@@ -316,9 +737,9 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_stat_correlation
-        - __flox_stat_profit_factor
-        - __flox_stat_win_rate
+        flox_stat_correlation: __flox_stat_correlation
+        flox_stat_profit_factor: __flox_stat_profit_factor
+        flox_stat_win_rate: __flox_stat_win_rate
 
   indicator_functions:
     pybind11:
@@ -331,33 +752,33 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_indicator_adf
-        - __flox_indicator_adx
-        - __flox_indicator_atr
-        - __flox_indicator_autocorrelation
-        - __flox_indicator_bollinger
-        - __flox_indicator_cci
-        - __flox_indicator_chop
-        - __flox_indicator_correlation
-        - __flox_indicator_cvd
-        - __flox_indicator_dema
-        - __flox_indicator_ema
-        - __flox_indicator_kama
-        - __flox_indicator_kurtosis
-        - __flox_indicator_macd
-        - __flox_indicator_obv
-        - __flox_indicator_parkinson_vol
-        - __flox_indicator_rma
-        - __flox_indicator_rogers_satchell_vol
-        - __flox_indicator_rolling_zscore
-        - __flox_indicator_rsi
-        - __flox_indicator_shannon_entropy
-        - __flox_indicator_skewness
-        - __flox_indicator_slope
-        - __flox_indicator_sma
-        - __flox_indicator_stochastic
-        - __flox_indicator_tema
-        - __flox_indicator_vwap
+        flox_indicator_adf: __flox_indicator_adf
+        flox_indicator_adx: __flox_indicator_adx
+        flox_indicator_atr: __flox_indicator_atr
+        flox_indicator_autocorrelation: __flox_indicator_autocorrelation
+        flox_indicator_bollinger: __flox_indicator_bollinger
+        flox_indicator_cci: __flox_indicator_cci
+        flox_indicator_chop: __flox_indicator_chop
+        flox_indicator_correlation: __flox_indicator_correlation
+        flox_indicator_cvd: __flox_indicator_cvd
+        flox_indicator_dema: __flox_indicator_dema
+        flox_indicator_ema: __flox_indicator_ema
+        flox_indicator_kama: __flox_indicator_kama
+        flox_indicator_kurtosis: __flox_indicator_kurtosis
+        flox_indicator_macd: __flox_indicator_macd
+        flox_indicator_obv: __flox_indicator_obv
+        flox_indicator_parkinson_vol: __flox_indicator_parkinson_vol
+        flox_indicator_rma: __flox_indicator_rma
+        flox_indicator_rogers_satchell_vol: __flox_indicator_rogers_satchell_vol
+        flox_indicator_rolling_zscore: __flox_indicator_rolling_zscore
+        flox_indicator_rsi: __flox_indicator_rsi
+        flox_indicator_shannon_entropy: __flox_indicator_shannon_entropy
+        flox_indicator_skewness: __flox_indicator_skewness
+        flox_indicator_slope: __flox_indicator_slope
+        flox_indicator_sma: __flox_indicator_sma
+        flox_indicator_stochastic: __flox_indicator_stochastic
+        flox_indicator_tema: __flox_indicator_tema
+        flox_indicator_vwap: __flox_indicator_vwap
 
   targets:
     pybind11:
@@ -370,9 +791,9 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_target_future_ctc_volatility
-        - __flox_target_future_linear_slope
-        - __flox_target_future_return
+        flox_target_future_ctc_volatility: __flox_target_future_ctc_volatility
+        flox_target_future_linear_slope: __flox_target_future_linear_slope
+        flox_target_future_return: __flox_target_future_return
 
   # ── New hooks (added in this & previous sessions, NOT yet in pybind11/napi) ──
   # Followup tracked in trackers; gate forces explicit acknowledgement.
@@ -385,21 +806,29 @@ groups:
       status: required
       classes: [RiskManager, KillSwitch, OrderValidator]
     codon: { status: required }
+    quickjs:
+      status: required
 
   metrics:
     pybind11: { status: required, classes: [PnLTracker] }
     napi: { status: required, classes: [PnLTracker] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   storage:
     pybind11: { status: required, classes: [StorageSink] }
     napi: { status: required, classes: [StorageSink] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   recorder:
     pybind11: { status: required, classes: [MarketDataRecorderHook] }
     napi: { status: required, classes: [MarketDataRecorderHook] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   replay:
     pybind11: { status: required, classes: [ReplaySource] }
@@ -407,16 +836,22 @@ groups:
       status: allowlist
       reason: "the napi ReplaySourceHost adapter was written but never wired to a constructible class or a BacktestRunner method that would accept one, so it was unreachable dead code; removed along with the ReplaySource/ReplayEvent interfaces in index.d.ts that referenced the same nonexistent method. Python is the only binding that implements this group today."
     codon: { status: required }
+    quickjs:
+      status: required
 
   execution:
     pybind11: { status: required, classes: [Executor, ExecutionListener] }
     napi: { status: required, classes: [Executor, ExecutionListener] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   logger:
     pybind11: { status: required, functions: [set_log_callback] }
     napi: { status: required, functions: [setLogCallback] }
     codon: { status: required }
+    quickjs:
+      status: required
 
   # ── Internal helpers — not user-facing in pybind11/napi ───────────────
 
@@ -424,21 +859,42 @@ groups:
     pybind11: { status: not_applicable }  # exposed via Price.toDouble() etc on classes
     napi: { status: not_applicable }
     codon: { status: required }
+    quickjs:
+      status: required
 
   pointer_out:
     pybind11: { status: not_applicable }  # internal output-pointer helpers
     napi: { status: not_applicable }
     codon: { status: required }
+    quickjs:
+      status: required
 
   validation:
     pybind11: { status: not_applicable }  # input validation, used internally
     napi: { status: not_applicable }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_dataset_validate: __flox_dataset_validate
+        flox_segment_validate_full: __flox_seg_validate_full
 
   context_queries:
     pybind11: { status: not_applicable }  # surfaced via SymbolContext class
     napi: { status: not_applicable }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_best_ask_raw: __flox_best_ask
+        flox_best_ask_raw_opt: __flox_best_ask
+        flox_best_bid_raw: __flox_best_bid
+        flox_best_bid_raw_opt: __flox_best_bid
+        flox_get_order_status: __flox_get_order_status
+        flox_last_trade_price_raw: __flox_last_trade_price
+        flox_mid_price_raw: __flox_mid_price
+        flox_mid_price_raw_opt: __flox_mid_price
+        flox_position_raw: __flox_position
 
   multi_tf_helpers:
     pybind11: { status: not_applicable }  # surfaced via Strategy class methods
@@ -447,15 +903,40 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_strategy_get_bar_ring_capacity
-        - __flox_strategy_last_closed_bar
-        - __flox_strategy_last_n_closed_bars
-        - __flox_strategy_set_bar_ring_capacity
+        flox_strategy_get_bar_ring_capacity: __flox_strategy_get_bar_ring_capacity
+        flox_strategy_last_closed_bar: __flox_strategy_last_closed_bar
+        flox_strategy_last_n_closed_bars: __flox_strategy_last_n_closed_bars
+        flox_strategy_set_bar_ring_capacity: __flox_strategy_set_bar_ring_capacity
 
   order_group:
     pybind11: { status: required, classes: [OrderGroup] }
     napi: { status: required, classes: [OrderGroup] }
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_order_group_add_limit_leg: __flox_order_group_add_limit_leg
+        flox_order_group_add_market_leg: __flox_order_group_add_market_leg
+        flox_order_group_create: __flox_order_group_create
+        flox_order_group_destroy: __flox_order_group_destroy
+        flox_order_group_find_leg_by_order_id: __flox_order_group_find_leg_by_order_id
+        flox_order_group_leg_count: __flox_order_group_leg_count
+        flox_order_group_leg_filled_raw: __flox_order_group_leg_filled
+        flox_order_group_leg_order_id: __flox_order_group_leg_order_id
+        flox_order_group_leg_state: __flox_order_group_leg_state
+        flox_order_group_mark_action_dispatched: __flox_order_group_mark_action_dispatched
+        flox_order_group_pair_latency_decision: __flox_order_group_pair_latency_decision
+        flox_order_group_precheck_submission: __flox_order_group_precheck_submission
+        flox_order_group_recommended_actions: __flox_order_group_recommended_actions
+        flox_order_group_record_cancel: __flox_order_group_record_cancel
+        flox_order_group_record_failure: __flox_order_group_record_failure
+        flox_order_group_record_fill: __flox_order_group_record_fill
+        flox_order_group_record_replace_accepted: __flox_order_group_record_replace_accepted
+        flox_order_group_record_replace_rejected: __flox_order_group_record_replace_rejected
+        flox_order_group_record_submit: __flox_order_group_record_submit
+        flox_order_group_set_pair_latency_budget_ns: __flox_order_group_set_pair_latency_budget_ns
+        flox_order_group_set_risk_limits: __flox_order_group_set_risk_limits
+        flox_order_group_state: __flox_order_group_state
 
   live_queue_position:
     pybind11: { status: required, classes: [LiveQueuePositionEstimator] }
@@ -464,19 +945,19 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_live_queue_position_create
-        - __flox_live_queue_position_destroy
-        - __flox_live_queue_position_on_level_update
-        - __flox_live_queue_position_on_order_cancelled
-        - __flox_live_queue_position_on_order_filled
-        - __flox_live_queue_position_on_order_placed
-        - __flox_live_queue_position_on_trade
-        - __flox_live_queue_position_on_trade_with_flag
-        - __flox_live_queue_position_set_confidence_half_life_ns
-        - __flox_live_queue_position_set_hidden_order_policy
-        - __flox_live_queue_position_set_shrink_factor
-        - __flox_live_queue_position_snapshot
-        - __flox_live_queue_position_tracked_count
+        flox_live_queue_position_create: __flox_live_queue_position_create
+        flox_live_queue_position_destroy: __flox_live_queue_position_destroy
+        flox_live_queue_position_on_level_update: __flox_live_queue_position_on_level_update
+        flox_live_queue_position_on_order_cancelled: __flox_live_queue_position_on_order_cancelled
+        flox_live_queue_position_on_order_filled: __flox_live_queue_position_on_order_filled
+        flox_live_queue_position_on_order_placed: __flox_live_queue_position_on_order_placed
+        flox_live_queue_position_on_trade: __flox_live_queue_position_on_trade
+        flox_live_queue_position_on_trade_with_flag: __flox_live_queue_position_on_trade_with_flag
+        flox_live_queue_position_set_confidence_half_life_ns: __flox_live_queue_position_set_confidence_half_life_ns
+        flox_live_queue_position_set_hidden_order_policy: __flox_live_queue_position_set_hidden_order_policy
+        flox_live_queue_position_set_shrink_factor: __flox_live_queue_position_set_shrink_factor
+        flox_live_queue_position_snapshot: __flox_live_queue_position_snapshot
+        flox_live_queue_position_tracked_count: __flox_live_queue_position_tracked_count
 
   bar_dispatch:
     pybind11: { status: required, classes: [BarDispatchRecorder] }
@@ -485,14 +966,14 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_bar_dispatch_recorder_add_time_seconds
-        - __flox_bar_dispatch_recorder_count
-        - __flox_bar_dispatch_recorder_create
-        - __flox_bar_dispatch_recorder_destroy
-        - __flox_bar_dispatch_recorder_finalize
-        - __flox_bar_dispatch_recorder_on_trade
-        - __flox_bar_dispatch_recorder_param_at
-        - __flox_bar_dispatch_recorder_type_at
+        flox_bar_dispatch_recorder_add_time_seconds: __flox_bar_dispatch_recorder_add_time_seconds
+        flox_bar_dispatch_recorder_count: __flox_bar_dispatch_recorder_count
+        flox_bar_dispatch_recorder_create: __flox_bar_dispatch_recorder_create
+        flox_bar_dispatch_recorder_destroy: __flox_bar_dispatch_recorder_destroy
+        flox_bar_dispatch_recorder_finalize: __flox_bar_dispatch_recorder_finalize
+        flox_bar_dispatch_recorder_on_trade: __flox_bar_dispatch_recorder_on_trade
+        flox_bar_dispatch_recorder_param_at: __flox_bar_dispatch_recorder_param_at
+        flox_bar_dispatch_recorder_type_at: __flox_bar_dispatch_recorder_type_at
 
   feed_clock:
     pybind11: { status: required, classes: [MultiFeedClock] }
@@ -501,26 +982,30 @@ groups:
     quickjs:
       status: required
       functions:
-        - __flox_feed_clock_create
-        - __flox_feed_clock_destroy
-        - __flox_feed_clock_last_fired
-        - __flox_feed_clock_last_seen_at
-        - __flox_feed_clock_last_triggered_by
-        - __flox_feed_clock_reset
-        - __flox_feed_clock_staleness_at
-        - __flox_feed_clock_symbol_at
-        - __flox_feed_clock_symbol_count
-        - __flox_feed_clock_tick
+        flox_feed_clock_create: __flox_feed_clock_create
+        flox_feed_clock_destroy: __flox_feed_clock_destroy
+        flox_feed_clock_last_fired: __flox_feed_clock_last_fired
+        flox_feed_clock_last_seen_at: __flox_feed_clock_last_seen_at
+        flox_feed_clock_last_triggered_by: __flox_feed_clock_last_triggered_by
+        flox_feed_clock_reset: __flox_feed_clock_reset
+        flox_feed_clock_staleness_at: __flox_feed_clock_staleness_at
+        flox_feed_clock_symbol_at: __flox_feed_clock_symbol_at
+        flox_feed_clock_symbol_count: __flox_feed_clock_symbol_count
+        flox_feed_clock_tick: __flox_feed_clock_tick
 
   trace_attach:
     pybind11: { status: not_applicable }  # surfaced as Runner class methods
     napi: { status: not_applicable }
     codon: { status: required }
+    quickjs:
+      status: required
 
   executor_fill:
     pybind11: { status: not_applicable }  # fills accessed via SimulatedExecutor.fills()
     napi: { status: not_applicable }
     codon: { status: required }
+    quickjs:
+      status: required
 
   latency_models:
     pybind11:
@@ -530,6 +1015,19 @@ groups:
       status: required
       classes: [ConstantLatency, GaussianLatency, ExponentialLatency, EmpiricalLatency]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_latency_constant_create: __flox_lat_constant_create
+        flox_latency_destroy: __flox_lat_destroy
+        flox_latency_empirical_create: __flox_lat_empirical_create
+        flox_latency_exponential_create: __flox_lat_exponential_create
+        flox_latency_feed_delay: __flox_lat_feed_delay
+        flox_latency_fill_delay: __flox_lat_fill_delay
+        flox_latency_gaussian_create: __flox_lat_gaussian_create
+        flox_latency_order_delay: __flox_lat_order_delay
+        flox_latency_reset: __flox_lat_reset
+        flox_latency_sample: __flox_lat_sample
 
   tape_diff:
     pybind11:
@@ -539,6 +1037,17 @@ groups:
       status: required
       functions: [tapeDiff]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_tape_diff_copy_mismatches: __flox_tape_diff
+        flox_tape_diff_create: __flox_tape_diff
+        flox_tape_diff_destroy: __flox_tape_diff
+        flox_tape_diff_equal: __flox_tape_diff
+        flox_tape_diff_first_divergence: __flox_tape_diff
+        flox_tape_diff_left_count: __flox_tape_diff
+        flox_tape_diff_mismatch_count: __flox_tape_diff
+        flox_tape_diff_right_count: __flox_tape_diff
 
   portfolio_risk:
     pybind11:
@@ -548,6 +1057,23 @@ groups:
       status: required
       classes: [PortfolioRiskAggregator]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_portfolio_risk_account_count: __flox_portfolio_risk_snapshot
+        flox_portfolio_risk_breach_at: __flox_portfolio_risk_snapshot
+        flox_portfolio_risk_breach_count: __flox_portfolio_risk_snapshot
+        flox_portfolio_risk_check_order: __flox_portfolio_risk_check_order
+        flox_portfolio_risk_create: __flox_portfolio_risk_create
+        flox_portfolio_risk_current_equity: __flox_portfolio_risk_snapshot
+        flox_portfolio_risk_destroy: __flox_portfolio_risk_destroy
+        flox_portfolio_risk_drawdown_pct: __flox_portfolio_risk_snapshot
+        flox_portfolio_risk_kill_switch_active: __flox_portfolio_risk_snapshot
+        flox_portfolio_risk_remove: __flox_portfolio_risk_remove
+        flox_portfolio_risk_reset_kill_switch: __flox_portfolio_risk_reset
+        flox_portfolio_risk_total_daily_pnl: __flox_portfolio_risk_snapshot
+        flox_portfolio_risk_total_gross_exposure: __flox_portfolio_risk_snapshot
+        flox_portfolio_risk_update: __flox_portfolio_risk_update
 
   execution_algos:
     pybind11:
@@ -557,6 +1083,24 @@ groups:
       status: required
       classes: [TWAPExecutor, VWAPExecutor, IcebergExecutor, POVExecutor]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_exec_clear_pending: __flox_exec_step
+        flox_exec_destroy: __flox_exec_destroy
+        flox_exec_filled_qty: __flox_exec_filled_qty
+        flox_exec_iceberg_create: __flox_exec_iceberg_create
+        flox_exec_is_done: __flox_exec_is_done
+        flox_exec_observe_volume: __flox_exec_observe_volume
+        flox_exec_pending_at: __flox_exec_step
+        flox_exec_pending_count: __flox_exec_step
+        flox_exec_pov_create: __flox_exec_pov_create
+        flox_exec_remaining_qty: __flox_exec_remaining_qty
+        flox_exec_report_fill: __flox_exec_report_fill
+        flox_exec_step: __flox_exec_step
+        flox_exec_submitted_qty: __flox_exec_submitted_qty
+        flox_exec_twap_create: __flox_exec_twap_create
+        flox_exec_vwap_create: __flox_exec_vwap_create
 
   delta_book:
     pybind11:
@@ -566,6 +1110,19 @@ groups:
       status: required
       classes: [DeltaBookEncoder, DeltaBookReplayer]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_delta_book_encoder_copy_asks: __flox_delta_book_encoder_encode
+        flox_delta_book_encoder_copy_bids: __flox_delta_book_encoder_encode
+        flox_delta_book_encoder_create: __flox_delta_book_encoder_create
+        flox_delta_book_encoder_destroy: __flox_delta_book_encoder_destroy
+        flox_delta_book_encoder_encode: __flox_delta_book_encoder_encode
+        flox_delta_book_replayer_apply: __flox_delta_book_replayer_apply
+        flox_delta_book_replayer_copy_asks: __flox_delta_book_replayer_apply
+        flox_delta_book_replayer_copy_bids: __flox_delta_book_replayer_apply
+        flox_delta_book_replayer_create: __flox_delta_book_replayer_create
+        flox_delta_book_replayer_destroy: __flox_delta_book_replayer_destroy
 
   floxrun:
     pybind11:
@@ -575,6 +1132,32 @@ groups:
       status: required
       classes: [TraceRecorder, TraceReader]
     codon: { status: required }
+    quickjs:
+      status: required
+      functions:
+        flox_run_reader_close: __flox_run_reader_close
+        flox_run_reader_fill: __flox_run_reader_fills
+        flox_run_reader_fill_count: __flox_run_reader_fills
+        flox_run_reader_open: __flox_run_reader_open
+        flox_run_reader_order_event_count: __flox_run_reader_orders
+        flox_run_reader_order_event_header: __flox_run_reader_orders
+        flox_run_reader_order_event_reason: __flox_run_reader_orders
+        flox_run_reader_run_ended_ns: __flox_run_reader_run_ended_ns
+        flox_run_reader_run_started_ns: __flox_run_reader_run_started_ns
+        flox_run_reader_signal_count: __flox_run_reader_signals
+        flox_run_reader_signal_header: __flox_run_reader_signals
+        flox_run_reader_signal_name: __flox_run_reader_signals
+        flox_run_reader_signal_payload: __flox_run_reader_signals
+        flox_run_reader_signal_symbol_ids: __flox_run_reader_signals
+        flox_run_reader_strategy_id: __flox_run_reader_strategy_id
+        flox_run_recorder_add_tape_ref: __flox_run_recorder_add_tape_ref
+        flox_run_recorder_close: __flox_run_recorder_close
+        flox_run_recorder_create: __flox_run_recorder_create
+        flox_run_recorder_destroy: __flox_run_recorder_destroy
+        flox_run_recorder_set_run_ended_ns: __flox_run_recorder_set_run_ended_ns
+        flox_run_recorder_write_fill: __flox_run_recorder_write_fill
+        flox_run_recorder_write_order_event: __flox_run_recorder_write_order_event
+        flox_run_recorder_write_signal: __flox_run_recorder_write_signal
 
   tape_aggregator:
     pybind11:
@@ -596,6 +1179,8 @@ groups:
         - PeakAggregator
         - QuantileAggregator
     codon: { status: required }
+    quickjs:
+      status: required
 
   # DEX 256-bit amounts (u256 / i256). The boundary type for the AMM/DEX curves,
   # bound as a native bignum (Python int, Node BigInt).
@@ -608,7 +1193,7 @@ groups:
       functions: [u256Roundtrip, i256Roundtrip, u256FromHex]
     codon: { status: required }
     quickjs:
-      status: allowlist
+      status: required
       reason: >
         QuickJS has no arbitrary-precision integer in the bound surface, so a 256-bit
         amount cannot round-trip through a JS number. Bind when the QuickJS layer
@@ -636,7 +1221,7 @@ groups:
         - ammCurveClone
     codon: { status: required }
     quickjs:
-      status: allowlist
+      status: required
       reason: >
         Pricing needs 256-bit amounts, which the QuickJS bound surface has no BigInt
         for yet (see dex_amount). Bind the curves once that lands.
@@ -663,7 +1248,7 @@ groups:
         - poolReplayCurve
     codon: { status: required }
     quickjs:
-      status: allowlist
+      status: required
       reason: >
         Replay returns 256-bit reserves, which the QuickJS bound surface has no BigInt
         for yet (see dex_amount / amm_curve). Bind once that lands.
@@ -677,4 +1262,1255 @@ groups:
     pybind11: { status: not_applicable }
     napi: { status: not_applicable }
     codon: { status: required }
-    quickjs: { status: not_applicable }
+    quickjs:
+      status: required
+
+
+## ── Per-function allowlist ───────────────────────────────────────────
+##
+## The functions each binding does not reach, with why. This is the honest
+## inventory the gate checks against: a C function that is neither reachable
+## from the binding nor listed here fails the gate, so a new C entry point
+## cannot be added without either a wrapper or a line in this section.
+##
+## An entry is removed when the wrapper is written. See
+## docs/contributors/parity-gate.md for the counts and what they mean.
+
+allowlist_reasons:
+  cpp_direct: &cpp_direct
+    the Python binding wraps the C++ API directly rather than calling the C
+    ABI, so this entry point has no call site under python/
+  no_napi_wrapper: &no_napi_wrapper
+    no call site under node/src/
+  no_codon_import: &no_codon_import
+    not imported by any module under codon/flox/
+  no_quickjs_global: &no_quickjs_global
+    no addGlobalFunc registration in src/quickjs/js_bindings.cpp reaches it
+  quickjs_helper_only: &quickjs_helper_only
+    called only inside other wrappers; no global of its own to map to
+
+allowlist_functions:
+  pybind11:
+    flox_account_add_equity: *cpp_direct
+    flox_account_close_position: *cpp_direct
+    flox_account_create: *cpp_direct
+    flox_account_destroy: *cpp_direct
+    flox_account_equity: *cpp_direct
+    flox_account_has_stale_marks: *cpp_direct
+    flox_account_id: *cpp_direct
+    flox_account_margin_mode: *cpp_direct
+    flox_account_mark_ts: *cpp_direct
+    flox_account_open_position: *cpp_direct
+    flox_account_open_position_isolated: *cpp_direct
+    flox_account_position_count: *cpp_direct
+    flox_account_record_fill: *cpp_direct
+    flox_account_record_fill_ex: *cpp_direct
+    flox_account_reset_rolling: *cpp_direct
+    flox_account_rolling_notional_30d: *cpp_direct
+    flox_account_rolling_notional_by_symbol_copy: *cpp_direct
+    flox_account_rolling_notional_by_symbol_size: *cpp_direct
+    flox_account_set_equity: *cpp_direct
+    flox_account_set_margin_mode: *cpp_direct
+    flox_account_set_mark: *cpp_direct
+    flox_account_set_mark_at: *cpp_direct
+    flox_account_total_notional: *cpp_direct
+    flox_account_total_unrealised_pnl: *cpp_direct
+    flox_aggregate_heikin_ashi_bars: *cpp_direct
+    flox_aggregate_range_bars: *cpp_direct
+    flox_aggregate_renko_bars: *cpp_direct
+    flox_aggregate_tick_bars: *cpp_direct
+    flox_aggregate_time_bars: *cpp_direct
+    flox_aggregate_volume_bars: *cpp_direct
+    flox_aggregator_destroy: *cpp_direct
+    flox_backtest_result_create: *cpp_direct
+    flox_backtest_result_destroy: *cpp_direct
+    flox_backtest_result_equity_curve: *cpp_direct
+    flox_backtest_result_ingest_executor: *cpp_direct
+    flox_backtest_result_record_fill: *cpp_direct
+    flox_backtest_result_stats: *cpp_direct
+    flox_backtest_result_trades: *cpp_direct
+    flox_backtest_result_write_equity_curve_csv: *cpp_direct
+    flox_backtest_runner_add_execution_listener: *cpp_direct
+    flox_backtest_runner_add_journey_tracer: *cpp_direct
+    flox_backtest_runner_create: *cpp_direct
+    flox_backtest_runner_destroy: *cpp_direct
+    flox_backtest_runner_run_bars: *cpp_direct
+    flox_backtest_runner_run_csv: *cpp_direct
+    flox_backtest_runner_run_ohlcv: *cpp_direct
+    flox_backtest_runner_run_replay_source: *cpp_direct
+    flox_backtest_runner_run_tape: *cpp_direct
+    flox_backtest_runner_run_tapes: *cpp_direct
+    flox_backtest_runner_set_executor: *cpp_direct
+    flox_backtest_runner_set_kill_switch: *cpp_direct
+    flox_backtest_runner_set_order_validator: *cpp_direct
+    flox_backtest_runner_set_pnl_tracker: *cpp_direct
+    flox_backtest_runner_set_risk_manager: *cpp_direct
+    flox_backtest_runner_set_strategy: *cpp_direct
+    flox_backtest_runner_take_result: *cpp_direct
+    flox_bar_dispatch_recorder_add_time_seconds: *cpp_direct
+    flox_bar_dispatch_recorder_count: *cpp_direct
+    flox_bar_dispatch_recorder_create: *cpp_direct
+    flox_bar_dispatch_recorder_destroy: *cpp_direct
+    flox_bar_dispatch_recorder_finalize: *cpp_direct
+    flox_bar_dispatch_recorder_on_trade: *cpp_direct
+    flox_bar_dispatch_recorder_param_at: *cpp_direct
+    flox_bar_dispatch_recorder_type_at: *cpp_direct
+    flox_best_ask_raw: *cpp_direct
+    flox_best_bid_raw: *cpp_direct
+    flox_bin_count_aggregator_create: *cpp_direct
+    flox_bin_count_read_result: *cpp_direct
+    flox_binary_log_recorder_hook_add_symbol: *cpp_direct
+    flox_binary_log_recorder_hook_as_recorder: *cpp_direct
+    flox_binary_log_recorder_hook_create: *cpp_direct
+    flox_binary_log_recorder_hook_create_ex: *cpp_direct
+    flox_binary_log_recorder_hook_destroy: *cpp_direct
+    flox_binary_log_recorder_hook_flush: *cpp_direct
+    flox_binary_log_recorder_hook_stats: *cpp_direct
+    flox_binary_log_recorder_hook_stats_p: *cpp_direct
+    flox_book_apply_delta: *cpp_direct
+    flox_book_apply_snapshot: *cpp_direct
+    flox_book_ask_at_price: *cpp_direct
+    flox_book_best_ask: *cpp_direct
+    flox_book_best_bid: *cpp_direct
+    flox_book_bid_at_price: *cpp_direct
+    flox_book_clear: *cpp_direct
+    flox_book_create: *cpp_direct
+    flox_book_destroy: *cpp_direct
+    flox_book_get_asks: *cpp_direct
+    flox_book_get_bids: *cpp_direct
+    flox_book_is_crossed: *cpp_direct
+    flox_book_mid: *cpp_direct
+    flox_book_snapshot_bin_aggregator_create: *cpp_direct
+    flox_book_snapshot_bin_read_result: *cpp_direct
+    flox_book_spread: *cpp_direct
+    flox_capi_abi_version: *cpp_direct
+    flox_clear_last_error: *cpp_direct
+    flox_composite_book_apply_delta: *cpp_direct
+    flox_composite_book_apply_snapshot: *cpp_direct
+    flox_composite_book_best_ask: *cpp_direct
+    flox_composite_book_best_bid: *cpp_direct
+    flox_composite_book_check_staleness: *cpp_direct
+    flox_composite_book_create: *cpp_direct
+    flox_composite_book_destroy: *cpp_direct
+    flox_composite_book_has_arb: *cpp_direct
+    flox_composite_book_mark_stale: *cpp_direct
+    flox_curve_amount_out: *cpp_direct
+    flox_curve_apply_swap: *cpp_direct
+    flox_curve_balance: *cpp_direct
+    flox_curve_clone: *cpp_direct
+    flox_curve_constant_product: *cpp_direct
+    flox_curve_destroy: *cpp_direct
+    flox_curve_liquidity: *cpp_direct
+    flox_curve_raydium_cp: *cpp_direct
+    flox_curve_sqrt_price: *cpp_direct
+    flox_curve_token_count: *cpp_direct
+    flox_curve_uniswap_v3: *cpp_direct
+    flox_data_reader_clear_progress_callback: *cpp_direct
+    flox_data_reader_count: *cpp_direct
+    flox_data_reader_count_book_updates: *cpp_direct
+    flox_data_reader_count_book_updates_from: *cpp_direct
+    flox_data_reader_create: *cpp_direct
+    flox_data_reader_create_filtered: *cpp_direct
+    flox_data_reader_create_ordered: *cpp_direct
+    flox_data_reader_destroy: *cpp_direct
+    flox_data_reader_read_bbo: *cpp_direct
+    flox_data_reader_read_bbo_from: *cpp_direct
+    flox_data_reader_read_book_updates: *cpp_direct
+    flox_data_reader_read_book_updates_from: *cpp_direct
+    flox_data_reader_read_trades: *cpp_direct
+    flox_data_reader_read_trades_from: *cpp_direct
+    flox_data_reader_run: *cpp_direct
+    flox_data_reader_set_progress_callback: *cpp_direct
+    flox_data_reader_stats: *cpp_direct
+    flox_data_reader_stats_p: *cpp_direct
+    flox_data_reader_summary: *cpp_direct
+    flox_data_reader_summary_p: *cpp_direct
+    flox_data_writer_close: *cpp_direct
+    flox_data_writer_create: *cpp_direct
+    flox_data_writer_destroy: *cpp_direct
+    flox_data_writer_flush: *cpp_direct
+    flox_data_writer_stats: *cpp_direct
+    flox_data_writer_stats_p: *cpp_direct
+    flox_data_writer_write_book: *cpp_direct
+    flox_data_writer_write_books: *cpp_direct
+    flox_data_writer_write_trade: *cpp_direct
+    flox_dataset_validate: *cpp_direct
+    flox_dataset_validate_p: *cpp_direct
+    flox_delta_book_encoder_copy_asks: *cpp_direct
+    flox_delta_book_encoder_copy_bids: *cpp_direct
+    flox_delta_book_encoder_create: *cpp_direct
+    flox_delta_book_encoder_destroy: *cpp_direct
+    flox_delta_book_encoder_encode: *cpp_direct
+    flox_delta_book_encoder_reset: *cpp_direct
+    flox_delta_book_encoder_reset_all: *cpp_direct
+    flox_delta_book_replayer_apply: *cpp_direct
+    flox_delta_book_replayer_copy_asks: *cpp_direct
+    flox_delta_book_replayer_copy_bids: *cpp_direct
+    flox_delta_book_replayer_create: *cpp_direct
+    flox_delta_book_replayer_destroy: *cpp_direct
+    flox_delta_book_replayer_reset: *cpp_direct
+    flox_emit_cancel: *cpp_direct
+    flox_emit_cancel_all: *cpp_direct
+    flox_emit_close_position: *cpp_direct
+    flox_emit_limit_buy: *cpp_direct
+    flox_emit_limit_buy_tif: *cpp_direct
+    flox_emit_limit_sell: *cpp_direct
+    flox_emit_limit_sell_tif: *cpp_direct
+    flox_emit_market_buy: *cpp_direct
+    flox_emit_market_sell: *cpp_direct
+    flox_emit_modify: *cpp_direct
+    flox_emit_stop_limit: *cpp_direct
+    flox_emit_stop_market: *cpp_direct
+    flox_emit_take_profit_limit: *cpp_direct
+    flox_emit_take_profit_market: *cpp_direct
+    flox_emit_trailing_stop: *cpp_direct
+    flox_emit_trailing_stop_percent: *cpp_direct
+    flox_event_type_stats_aggregator_create: *cpp_direct
+    flox_event_type_stats_read_result: *cpp_direct
+    flox_exec_clear_pending: *cpp_direct
+    flox_exec_destroy: *cpp_direct
+    flox_exec_filled_qty: *cpp_direct
+    flox_exec_iceberg_create: *cpp_direct
+    flox_exec_is_done: *cpp_direct
+    flox_exec_observe_volume: *cpp_direct
+    flox_exec_pending_at: *cpp_direct
+    flox_exec_pending_count: *cpp_direct
+    flox_exec_pov_create: *cpp_direct
+    flox_exec_remaining_qty: *cpp_direct
+    flox_exec_report_fill: *cpp_direct
+    flox_exec_step: *cpp_direct
+    flox_exec_submitted_qty: *cpp_direct
+    flox_exec_target_qty: *cpp_direct
+    flox_exec_twap_create: *cpp_direct
+    flox_exec_vwap_create: *cpp_direct
+    flox_execution_listener_create_p: *cpp_direct
+    flox_executor_create_p: *cpp_direct
+    flox_executor_get_capabilities: *cpp_direct
+    flox_fee_schedule_add_tier: *cpp_direct
+    flox_fee_schedule_bind_account: *cpp_direct
+    flox_fee_schedule_clear_account_binding: *cpp_direct
+    flox_fee_schedule_create: *cpp_direct
+    flox_fee_schedule_current_tier: *cpp_direct
+    flox_fee_schedule_destroy: *cpp_direct
+    flox_fee_schedule_fee_for: *cpp_direct
+    flox_fee_schedule_load_profile: *cpp_direct
+    flox_fee_schedule_record_fill: *cpp_direct
+    flox_fee_schedule_reset_rolling: *cpp_direct
+    flox_fee_schedule_rolling_notional: *cpp_direct
+    flox_fee_schedule_tier_transitions: *cpp_direct
+    flox_feed_clock_create: *cpp_direct
+    flox_feed_clock_destroy: *cpp_direct
+    flox_feed_clock_last_fired: *cpp_direct
+    flox_feed_clock_last_seen_at: *cpp_direct
+    flox_feed_clock_last_triggered_by: *cpp_direct
+    flox_feed_clock_reset: *cpp_direct
+    flox_feed_clock_staleness_at: *cpp_direct
+    flox_feed_clock_symbol_at: *cpp_direct
+    flox_feed_clock_symbol_count: *cpp_direct
+    flox_feed_clock_tick: *cpp_direct
+    flox_footprint_add_trade: *cpp_direct
+    flox_footprint_clear: *cpp_direct
+    flox_footprint_create: *cpp_direct
+    flox_footprint_destroy: *cpp_direct
+    flox_footprint_num_levels: *cpp_direct
+    flox_footprint_total_delta: *cpp_direct
+    flox_footprint_total_volume: *cpp_direct
+    flox_funding_schedule_create: *cpp_direct
+    flox_funding_schedule_destroy: *cpp_direct
+    flox_funding_schedule_load_profile: *cpp_direct
+    flox_funding_schedule_load_tape: *cpp_direct
+    flox_funding_schedule_reset: *cpp_direct
+    flox_funding_schedule_set_constant: *cpp_direct
+    flox_funding_schedule_set_constant_rate: *cpp_direct
+    flox_funding_schedule_set_tape: *cpp_direct
+    flox_funding_schedule_set_tape_by_symbol: *cpp_direct
+    flox_funding_schedule_tick: *cpp_direct
+    flox_get_order_status: *cpp_direct
+    flox_get_symbol_context: *cpp_direct
+    flox_grid_search_add_axis: *cpp_direct
+    flox_grid_search_create: *cpp_direct
+    flox_grid_search_destroy: *cpp_direct
+    flox_grid_search_params_for_index: *cpp_direct
+    flox_grid_search_run: *cpp_direct
+    flox_grid_search_total: *cpp_direct
+    flox_i256_roundtrip: *cpp_direct
+    flox_indicator_adf: *cpp_direct
+    flox_indicator_adx: *cpp_direct
+    flox_indicator_atr: *cpp_direct
+    flox_indicator_autocorrelation: *cpp_direct
+    flox_indicator_bollinger: *cpp_direct
+    flox_indicator_cci: *cpp_direct
+    flox_indicator_chop: *cpp_direct
+    flox_indicator_correlation: *cpp_direct
+    flox_indicator_cvd: *cpp_direct
+    flox_indicator_dema: *cpp_direct
+    flox_indicator_ema: *cpp_direct
+    flox_indicator_graph_add_node: *cpp_direct
+    flox_indicator_graph_bar_count: *cpp_direct
+    flox_indicator_graph_close: *cpp_direct
+    flox_indicator_graph_create: *cpp_direct
+    flox_indicator_graph_current: *cpp_direct
+    flox_indicator_graph_destroy: *cpp_direct
+    flox_indicator_graph_get: *cpp_direct
+    flox_indicator_graph_high: *cpp_direct
+    flox_indicator_graph_invalidate: *cpp_direct
+    flox_indicator_graph_invalidate_all: *cpp_direct
+    flox_indicator_graph_low: *cpp_direct
+    flox_indicator_graph_require: *cpp_direct
+    flox_indicator_graph_reset: *cpp_direct
+    flox_indicator_graph_reset_all: *cpp_direct
+    flox_indicator_graph_set_bars: *cpp_direct
+    flox_indicator_graph_step: *cpp_direct
+    flox_indicator_graph_volume: *cpp_direct
+    flox_indicator_kama: *cpp_direct
+    flox_indicator_kurtosis: *cpp_direct
+    flox_indicator_macd: *cpp_direct
+    flox_indicator_obv: *cpp_direct
+    flox_indicator_parkinson_vol: *cpp_direct
+    flox_indicator_rma: *cpp_direct
+    flox_indicator_rogers_satchell_vol: *cpp_direct
+    flox_indicator_rolling_zscore: *cpp_direct
+    flox_indicator_rsi: *cpp_direct
+    flox_indicator_shannon_entropy: *cpp_direct
+    flox_indicator_skewness: *cpp_direct
+    flox_indicator_slope: *cpp_direct
+    flox_indicator_sma: *cpp_direct
+    flox_indicator_stochastic: *cpp_direct
+    flox_indicator_tema: *cpp_direct
+    flox_indicator_vwap: *cpp_direct
+    flox_kill_switch_create_p: *cpp_direct
+    flox_l3_book_add_order: *cpp_direct
+    flox_l3_book_ask_at_price: *cpp_direct
+    flox_l3_book_best_ask: *cpp_direct
+    flox_l3_book_best_bid: *cpp_direct
+    flox_l3_book_bid_at_price: *cpp_direct
+    flox_l3_book_create: *cpp_direct
+    flox_l3_book_destroy: *cpp_direct
+    flox_l3_book_modify_order: *cpp_direct
+    flox_l3_book_remove_order: *cpp_direct
+    flox_last_error_code: *cpp_direct
+    flox_last_error_message: *cpp_direct
+    flox_last_trade_price_raw: *cpp_direct
+    flox_latency_constant_create: *cpp_direct
+    flox_latency_destroy: *cpp_direct
+    flox_latency_distribution_create: *cpp_direct
+    flox_latency_distribution_destroy: *cpp_direct
+    flox_latency_distribution_median_ns: *cpp_direct
+    flox_latency_distribution_set_burst_correlation: *cpp_direct
+    flox_latency_distribution_set_constant: *cpp_direct
+    flox_latency_distribution_set_empirical: *cpp_direct
+    flox_latency_distribution_set_lognormal: *cpp_direct
+    flox_latency_distribution_set_uniform: *cpp_direct
+    flox_latency_empirical_create: *cpp_direct
+    flox_latency_exponential_create: *cpp_direct
+    flox_latency_feed_delay: *cpp_direct
+    flox_latency_fill_delay: *cpp_direct
+    flox_latency_gaussian_create: *cpp_direct
+    flox_latency_order_delay: *cpp_direct
+    flox_latency_reset: *cpp_direct
+    flox_latency_sample: *cpp_direct
+    flox_liquidation_engine_add_tier: *cpp_direct
+    flox_liquidation_engine_adl_closeouts_count: *cpp_direct
+    flox_liquidation_engine_adl_ranking: *cpp_direct
+    flox_liquidation_engine_attach_account: *cpp_direct
+    flox_liquidation_engine_cascade_sizes_copy: *cpp_direct
+    flox_liquidation_engine_cascade_sizes_size: *cpp_direct
+    flox_liquidation_engine_close_position: *cpp_direct
+    flox_liquidation_engine_create: *cpp_direct
+    flox_liquidation_engine_deficits_paid_by_adl_copy: *cpp_direct
+    flox_liquidation_engine_deficits_paid_by_adl_size: *cpp_direct
+    flox_liquidation_engine_deficits_paid_by_fund_copy: *cpp_direct
+    flox_liquidation_engine_deficits_paid_by_fund_size: *cpp_direct
+    flox_liquidation_engine_destroy: *cpp_direct
+    flox_liquidation_engine_detach_account: *cpp_direct
+    flox_liquidation_engine_fund_balance_history_copy: *cpp_direct
+    flox_liquidation_engine_fund_balance_history_size: *cpp_direct
+    flox_liquidation_engine_insurance_fund_balance: *cpp_direct
+    flox_liquidation_engine_insurance_payments_count: *cpp_direct
+    flox_liquidation_engine_liquidations_count: *cpp_direct
+    flox_liquidation_engine_load_profile: *cpp_direct
+    flox_liquidation_engine_mark_impact_model: *cpp_direct
+    flox_liquidation_engine_mark_impact_weight: *cpp_direct
+    flox_liquidation_engine_max_cascade_depth: *cpp_direct
+    flox_liquidation_engine_on_mark: *cpp_direct
+    flox_liquidation_engine_on_marks: *cpp_direct
+    flox_liquidation_engine_open_position: *cpp_direct
+    flox_liquidation_engine_reset_stats: *cpp_direct
+    flox_liquidation_engine_set_adl_enabled: *cpp_direct
+    flox_liquidation_engine_set_adl_ranking: *cpp_direct
+    flox_liquidation_engine_set_executor: *cpp_direct
+    flox_liquidation_engine_set_insurance_fund_capital: *cpp_direct
+    flox_liquidation_engine_set_liquidation_slippage_bps: *cpp_direct
+    flox_liquidation_engine_set_mark_impact_model: *cpp_direct
+    flox_liquidation_engine_set_max_cascade_depth: *cpp_direct
+    flox_liquidation_engine_ticks_to_first_adl: *cpp_direct
+    flox_live_queue_position_create: *cpp_direct
+    flox_live_queue_position_destroy: *cpp_direct
+    flox_live_queue_position_on_level_update: *cpp_direct
+    flox_live_queue_position_on_order_cancelled: *cpp_direct
+    flox_live_queue_position_on_order_filled: *cpp_direct
+    flox_live_queue_position_on_order_placed: *cpp_direct
+    flox_live_queue_position_on_trade: *cpp_direct
+    flox_live_queue_position_on_trade_with_flag: *cpp_direct
+    flox_live_queue_position_set_confidence_half_life_ns: *cpp_direct
+    flox_live_queue_position_set_hidden_order_policy: *cpp_direct
+    flox_live_queue_position_set_shrink_factor: *cpp_direct
+    flox_live_queue_position_snapshot: *cpp_direct
+    flox_live_queue_position_tracked_count: *cpp_direct
+    flox_market_data_recorder_create_p: *cpp_direct
+    flox_market_profile_add_trade: *cpp_direct
+    flox_market_profile_clear: *cpp_direct
+    flox_market_profile_create: *cpp_direct
+    flox_market_profile_destroy: *cpp_direct
+    flox_market_profile_ib_high: *cpp_direct
+    flox_market_profile_ib_low: *cpp_direct
+    flox_market_profile_is_poor_high: *cpp_direct
+    flox_market_profile_is_poor_low: *cpp_direct
+    flox_market_profile_num_levels: *cpp_direct
+    flox_market_profile_poc: *cpp_direct
+    flox_market_profile_vah: *cpp_direct
+    flox_market_profile_val: *cpp_direct
+    flox_merged_tape_reader_count_books: *cpp_direct
+    flox_merged_tape_reader_count_trades: *cpp_direct
+    flox_merged_tape_reader_create: *cpp_direct
+    flox_merged_tape_reader_destroy: *cpp_direct
+    flox_merged_tape_reader_get_symbols: *cpp_direct
+    flox_merged_tape_reader_get_tape_stats: *cpp_direct
+    flox_merged_tape_reader_read_books: *cpp_direct
+    flox_merged_tape_reader_read_trades: *cpp_direct
+    flox_merged_tape_reader_run: *cpp_direct
+    flox_merged_tape_reader_symbol_count: *cpp_direct
+    flox_merged_tape_reader_tape_count: *cpp_direct
+    flox_merged_tape_reader_time_range: *cpp_direct
+    flox_mid_price_raw: *cpp_direct
+    flox_ohlc_bin_aggregator_create: *cpp_direct
+    flox_ohlc_bin_read_result: *cpp_direct
+    flox_order_group_add_limit_leg: *cpp_direct
+    flox_order_group_add_market_leg: *cpp_direct
+    flox_order_group_create: *cpp_direct
+    flox_order_group_destroy: *cpp_direct
+    flox_order_group_find_leg_by_order_id: *cpp_direct
+    flox_order_group_leg_count: *cpp_direct
+    flox_order_group_leg_filled_raw: *cpp_direct
+    flox_order_group_leg_order_id: *cpp_direct
+    flox_order_group_leg_state: *cpp_direct
+    flox_order_group_mark_action_dispatched: *cpp_direct
+    flox_order_group_pair_latency_decision: *cpp_direct
+    flox_order_group_precheck_submission: *cpp_direct
+    flox_order_group_recommended_actions: *cpp_direct
+    flox_order_group_record_cancel: *cpp_direct
+    flox_order_group_record_failure: *cpp_direct
+    flox_order_group_record_fill: *cpp_direct
+    flox_order_group_record_replace_accepted: *cpp_direct
+    flox_order_group_record_replace_rejected: *cpp_direct
+    flox_order_group_record_submit: *cpp_direct
+    flox_order_group_set_pair_latency_budget_ns: *cpp_direct
+    flox_order_group_set_risk_limits: *cpp_direct
+    flox_order_group_state: *cpp_direct
+    flox_order_journey_tracer_cancel_race_loss_rate: *cpp_direct
+    flox_order_journey_tracer_clear: *cpp_direct
+    flox_order_journey_tracer_create: *cpp_direct
+    flox_order_journey_tracer_destroy: *cpp_direct
+    flox_order_journey_tracer_journey: *cpp_direct
+    flox_order_journey_tracer_maker_fill_ratio: *cpp_direct
+    flox_order_journey_tracer_median_ack_latency_ns: *cpp_direct
+    flox_order_journey_tracer_median_time_to_first_fill_ns: *cpp_direct
+    flox_order_journey_tracer_order_count: *cpp_direct
+    flox_order_journey_tracer_record_count: *cpp_direct
+    flox_order_journey_tracer_result: *cpp_direct
+    flox_order_tracker_active_count: *cpp_direct
+    flox_order_tracker_create: *cpp_direct
+    flox_order_tracker_destroy: *cpp_direct
+    flox_order_tracker_is_active: *cpp_direct
+    flox_order_tracker_on_canceled: *cpp_direct
+    flox_order_tracker_on_filled: *cpp_direct
+    flox_order_tracker_on_submitted: *cpp_direct
+    flox_order_tracker_prune: *cpp_direct
+    flox_order_tracker_total_count: *cpp_direct
+    flox_order_validator_create_p: *cpp_direct
+    flox_partitioner_by_calendar: *cpp_direct
+    flox_partitioner_by_duration: *cpp_direct
+    flox_partitioner_by_event_count: *cpp_direct
+    flox_partitioner_by_symbol: *cpp_direct
+    flox_partitioner_by_time: *cpp_direct
+    flox_partitioner_create: *cpp_direct
+    flox_partitioner_destroy: *cpp_direct
+    flox_partitioner_per_symbol: *cpp_direct
+    flox_peak_aggregator_create: *cpp_direct
+    flox_peak_read_result: *cpp_direct
+    flox_pnl_tracker_create_p: *cpp_direct
+    flox_pool_replay_curve: *cpp_direct
+    flox_pool_replay_destroy: *cpp_direct
+    flox_pool_replay_drift_count: *cpp_direct
+    flox_pool_replay_trade_count: *cpp_direct
+    flox_pool_tape_checkpoint: *cpp_direct
+    flox_pool_tape_checkpoint_clmm: *cpp_direct
+    flox_pool_tape_create: *cpp_direct
+    flox_pool_tape_descriptor_clmm: *cpp_direct
+    flox_pool_tape_descriptor_constant_product: *cpp_direct
+    flox_pool_tape_descriptor_raydium_cp: *cpp_direct
+    flox_pool_tape_destroy: *cpp_direct
+    flox_pool_tape_replay: *cpp_direct
+    flox_pool_tape_swap: *cpp_direct
+    flox_portfolio_risk_account_count: *cpp_direct
+    flox_portfolio_risk_breach_at: *cpp_direct
+    flox_portfolio_risk_breach_count: *cpp_direct
+    flox_portfolio_risk_check_order: *cpp_direct
+    flox_portfolio_risk_create: *cpp_direct
+    flox_portfolio_risk_current_equity: *cpp_direct
+    flox_portfolio_risk_destroy: *cpp_direct
+    flox_portfolio_risk_drawdown_pct: *cpp_direct
+    flox_portfolio_risk_kill_switch_active: *cpp_direct
+    flox_portfolio_risk_remove: *cpp_direct
+    flox_portfolio_risk_reset_kill_switch: *cpp_direct
+    flox_portfolio_risk_total_daily_pnl: *cpp_direct
+    flox_portfolio_risk_total_gross_exposure: *cpp_direct
+    flox_portfolio_risk_update: *cpp_direct
+    flox_position_group_close: *cpp_direct
+    flox_position_group_create: *cpp_direct
+    flox_position_group_destroy: *cpp_direct
+    flox_position_group_net_position: *cpp_direct
+    flox_position_group_open: *cpp_direct
+    flox_position_group_open_count: *cpp_direct
+    flox_position_group_partial_close: *cpp_direct
+    flox_position_group_prune: *cpp_direct
+    flox_position_group_realized_pnl: *cpp_direct
+    flox_position_group_total_pnl: *cpp_direct
+    flox_position_raw: *cpp_direct
+    flox_position_tracker_avg_entry: *cpp_direct
+    flox_position_tracker_create: *cpp_direct
+    flox_position_tracker_destroy: *cpp_direct
+    flox_position_tracker_on_fill: *cpp_direct
+    flox_position_tracker_position: *cpp_direct
+    flox_position_tracker_realized_pnl: *cpp_direct
+    flox_position_tracker_total_pnl: *cpp_direct
+    flox_price_from_double: *cpp_direct
+    flox_quantile_aggregator_create: *cpp_direct
+    flox_quantile_read_result: *cpp_direct
+    flox_quantity_from_double: *cpp_direct
+    flox_rate_limit_policy_add_bucket: *cpp_direct
+    flox_rate_limit_policy_add_bucket_family: *cpp_direct
+    flox_rate_limit_policy_ban_until_ns: *cpp_direct
+    flox_rate_limit_policy_bucket_state: *cpp_direct
+    flox_rate_limit_policy_consecutive_rejects: *cpp_direct
+    flox_rate_limit_policy_create: *cpp_direct
+    flox_rate_limit_policy_destroy: *cpp_direct
+    flox_rate_limit_policy_load_profile: *cpp_direct
+    flox_rate_limit_policy_set_ban: *cpp_direct
+    flox_registry_add_symbol: *cpp_direct
+    flox_registry_create: *cpp_direct
+    flox_registry_destroy: *cpp_direct
+    flox_registry_get_symbol_id: *cpp_direct
+    flox_registry_get_symbol_name: *cpp_direct
+    flox_registry_symbol_count: *cpp_direct
+    flox_render_heatmap_html: *cpp_direct
+    flox_replay_source_create_p: *cpp_direct
+    flox_replay_source_seek_to: *cpp_direct
+    flox_risk_manager_create_p: *cpp_direct
+    flox_run_reader_close: *cpp_direct
+    flox_run_reader_fill: *cpp_direct
+    flox_run_reader_fill_count: *cpp_direct
+    flox_run_reader_open: *cpp_direct
+    flox_run_reader_order_event_count: *cpp_direct
+    flox_run_reader_order_event_header: *cpp_direct
+    flox_run_reader_order_event_reason: *cpp_direct
+    flox_run_reader_run_ended_ns: *cpp_direct
+    flox_run_reader_run_started_ns: *cpp_direct
+    flox_run_reader_signal_count: *cpp_direct
+    flox_run_reader_signal_header: *cpp_direct
+    flox_run_reader_signal_name: *cpp_direct
+    flox_run_reader_signal_payload: *cpp_direct
+    flox_run_reader_signal_symbol_ids: *cpp_direct
+    flox_run_reader_strategy_hash: *cpp_direct
+    flox_run_reader_strategy_id: *cpp_direct
+    flox_run_reader_tape_ref_count: *cpp_direct
+    flox_run_reader_tape_ref_path: *cpp_direct
+    flox_run_recorder_add_tape_ref: *cpp_direct
+    flox_run_recorder_close: *cpp_direct
+    flox_run_recorder_create: *cpp_direct
+    flox_run_recorder_destroy: *cpp_direct
+    flox_run_recorder_set_run_ended_ns: *cpp_direct
+    flox_run_recorder_write_fill: *cpp_direct
+    flox_run_recorder_write_order_event: *cpp_direct
+    flox_run_recorder_write_signal: *cpp_direct
+    flox_segment_export: *cpp_direct
+    flox_segment_export_p: *cpp_direct
+    flox_segment_extract_symbols: *cpp_direct
+    flox_segment_extract_time_range: *cpp_direct
+    flox_segment_merge: *cpp_direct
+    flox_segment_merge_dir: *cpp_direct
+    flox_segment_merge_dir_p: *cpp_direct
+    flox_segment_merge_full: *cpp_direct
+    flox_segment_merge_full_p: *cpp_direct
+    flox_segment_recompress: *cpp_direct
+    flox_segment_split: *cpp_direct
+    flox_segment_split_p: *cpp_direct
+    flox_segment_validate: *cpp_direct
+    flox_segment_validate_full: *cpp_direct
+    flox_segment_validate_full_p: *cpp_direct
+    flox_simulated_executor_advance_clock: *cpp_direct
+    flox_simulated_executor_apply_latency_profile: *cpp_direct
+    flox_simulated_executor_bracket_state: *cpp_direct
+    flox_simulated_executor_cancel_all: *cpp_direct
+    flox_simulated_executor_cancel_bracket: *cpp_direct
+    flox_simulated_executor_cancel_order: *cpp_direct
+    flox_simulated_executor_clear_rate_limit_policy: *cpp_direct
+    flox_simulated_executor_create: *cpp_direct
+    flox_simulated_executor_destroy: *cpp_direct
+    flox_simulated_executor_fill_count: *cpp_direct
+    flox_simulated_executor_fok_mode: *cpp_direct
+    flox_simulated_executor_get_fills: *cpp_direct
+    flox_simulated_executor_iceberg_hidden_remaining_raw: *cpp_direct
+    flox_simulated_executor_on_bar: *cpp_direct
+    flox_simulated_executor_on_best_levels: *cpp_direct
+    flox_simulated_executor_on_book_snapshot: *cpp_direct
+    flox_simulated_executor_on_trade: *cpp_direct
+    flox_simulated_executor_on_trade_qty: *cpp_direct
+    flox_simulated_executor_set_bracket_child_arm_mode: *cpp_direct
+    flox_simulated_executor_set_cancel_ack_latency: *cpp_direct
+    flox_simulated_executor_set_cancel_ack_latency_distribution: *cpp_direct
+    flox_simulated_executor_set_default_slippage: *cpp_direct
+    flox_simulated_executor_set_fok_mode: *cpp_direct
+    flox_simulated_executor_set_iceberg_jitter_seed: *cpp_direct
+    flox_simulated_executor_set_iceberg_priority_mode: *cpp_direct
+    flox_simulated_executor_set_iceberg_refresh_latency: *cpp_direct
+    flox_simulated_executor_set_iceberg_size_randomisation_pct: *cpp_direct
+    flox_simulated_executor_set_lmm_bonus_multiplier: *cpp_direct
+    flox_simulated_executor_set_lmm_orders: *cpp_direct
+    flox_simulated_executor_set_order_priority_multiplier: *cpp_direct
+    flox_simulated_executor_set_queue_fifo_top_n: *cpp_direct
+    flox_simulated_executor_set_queue_model: *cpp_direct
+    flox_simulated_executor_set_rate_limit_policy: *cpp_direct
+    flox_simulated_executor_set_replace_ack_latency: *cpp_direct
+    flox_simulated_executor_set_replace_ack_latency_distribution: *cpp_direct
+    flox_simulated_executor_set_stp_group_membership: *cpp_direct
+    flox_simulated_executor_set_stp_mode: *cpp_direct
+    flox_simulated_executor_set_submit_ack_latency: *cpp_direct
+    flox_simulated_executor_set_submit_ack_latency_distribution: *cpp_direct
+    flox_simulated_executor_set_symbol_slippage: *cpp_direct
+    flox_simulated_executor_set_top_priority_share: *cpp_direct
+    flox_simulated_executor_set_venue_availability: *cpp_direct
+    flox_simulated_executor_stp_group_for: *cpp_direct
+    flox_simulated_executor_submit_bracket: *cpp_direct
+    flox_simulated_executor_submit_iceberg: *cpp_direct
+    flox_simulated_executor_submit_order: *cpp_direct
+    flox_simulated_executor_submit_order_ex: *cpp_direct
+    flox_stat_bootstrap_ci: *cpp_direct
+    flox_stat_correlation: *cpp_direct
+    flox_stat_permutation_test: *cpp_direct
+    flox_stat_profit_factor: *cpp_direct
+    flox_stat_whites_reality_check: *cpp_direct
+    flox_stat_win_rate: *cpp_direct
+    flox_storage_sink_create_p: *cpp_direct
+    flox_strategy_create: *cpp_direct
+    flox_strategy_create_p: *cpp_direct
+    flox_strategy_destroy: *cpp_direct
+    flox_strategy_get_bar_ring_capacity: *cpp_direct
+    flox_strategy_last_closed_bar: *cpp_direct
+    flox_strategy_last_n_closed_bars: *cpp_direct
+    flox_strategy_replace_callbacks: *cpp_direct
+    flox_strategy_replace_callbacks_p: *cpp_direct
+    flox_strategy_set_bar_ring_capacity: *cpp_direct
+    flox_streaming_graph_add_node: *cpp_direct
+    flox_streaming_graph_bar_count: *cpp_direct
+    flox_streaming_graph_close: *cpp_direct
+    flox_streaming_graph_create: *cpp_direct
+    flox_streaming_graph_current: *cpp_direct
+    flox_streaming_graph_destroy: *cpp_direct
+    flox_streaming_graph_high: *cpp_direct
+    flox_streaming_graph_low: *cpp_direct
+    flox_streaming_graph_reset: *cpp_direct
+    flox_streaming_graph_reset_all: *cpp_direct
+    flox_streaming_graph_step: *cpp_direct
+    flox_streaming_graph_volume: *cpp_direct
+    flox_tape_diff_copy_mismatches: *cpp_direct
+    flox_tape_diff_create: *cpp_direct
+    flox_tape_diff_destroy: *cpp_direct
+    flox_tape_diff_equal: *cpp_direct
+    flox_tape_diff_first_divergence: *cpp_direct
+    flox_tape_diff_left_count: *cpp_direct
+    flox_tape_diff_mismatch_count: *cpp_direct
+    flox_tape_diff_right_count: *cpp_direct
+    flox_target_future_ctc_volatility: *cpp_direct
+    flox_target_future_linear_slope: *cpp_direct
+    flox_target_future_return: *cpp_direct
+    flox_u256_from_hex: *cpp_direct
+    flox_u256_from_words: *cpp_direct
+    flox_u256_roundtrip: *cpp_direct
+    flox_u256_to_words: *cpp_direct
+    flox_venue_availability_auto_random_outages: *cpp_direct
+    flox_venue_availability_book_updates_allowed: *cpp_direct
+    flox_venue_availability_cancels_allowed: *cpp_direct
+    flox_venue_availability_consume_wrong_side_recovery_bps: *cpp_direct
+    flox_venue_availability_create: *cpp_direct
+    flox_venue_availability_destroy: *cpp_direct
+    flox_venue_availability_is_up: *cpp_direct
+    flox_venue_availability_latency_multiplier: *cpp_direct
+    flox_venue_availability_schedule_outage: *cpp_direct
+    flox_venue_availability_schedule_outage_ex: *cpp_direct
+    flox_venue_availability_submits_allowed: *cpp_direct
+    flox_venue_availability_trades_allowed: *cpp_direct
+    flox_venue_stack_account: *cpp_direct
+    flox_venue_stack_create: *cpp_direct
+    flox_venue_stack_destroy: *cpp_direct
+    flox_venue_stack_executor: *cpp_direct
+    flox_venue_stack_fees: *cpp_direct
+    flox_venue_stack_funding: *cpp_direct
+    flox_venue_stack_liquidation: *cpp_direct
+    flox_venue_stack_venue: *cpp_direct
+    flox_venue_stack_venue_name: *cpp_direct
+    flox_volume_bin_aggregator_create: *cpp_direct
+    flox_volume_bin_read_result: *cpp_direct
+    flox_volume_profile_add_trade: *cpp_direct
+    flox_volume_profile_clear: *cpp_direct
+    flox_volume_profile_create: *cpp_direct
+    flox_volume_profile_destroy: *cpp_direct
+    flox_volume_profile_num_levels: *cpp_direct
+    flox_volume_profile_poc: *cpp_direct
+    flox_volume_profile_total_delta: *cpp_direct
+    flox_volume_profile_total_volume: *cpp_direct
+    flox_volume_profile_vah: *cpp_direct
+    flox_volume_profile_val: *cpp_direct
+    flox_walk_forward_run_csv: *cpp_direct
+
+  napi:
+    flox_backtest_result_write_equity_curve_csv: *no_napi_wrapper
+    flox_backtest_runner_add_journey_tracer: *no_napi_wrapper
+    flox_backtest_runner_run_replay_source: *no_napi_wrapper
+    flox_backtest_runner_set_kill_switch: *no_napi_wrapper
+    flox_backtest_runner_set_order_validator: *no_napi_wrapper
+    flox_backtest_runner_set_pnl_tracker: *no_napi_wrapper
+    flox_backtest_runner_set_risk_manager: *no_napi_wrapper
+    flox_best_ask_raw: *no_napi_wrapper
+    flox_best_bid_raw: *no_napi_wrapper
+    flox_binary_log_recorder_hook_create: *no_napi_wrapper
+    flox_binary_log_recorder_hook_stats_p: *no_napi_wrapper
+    flox_book_ask_at_price: *no_napi_wrapper
+    flox_book_bid_at_price: *no_napi_wrapper
+    flox_capi_abi_version: *no_napi_wrapper
+    flox_clear_last_error: *no_napi_wrapper
+    flox_data_reader_create_filtered: *no_napi_wrapper
+    flox_data_reader_stats_p: *no_napi_wrapper
+    flox_data_reader_summary_p: *no_napi_wrapper
+    flox_data_writer_stats_p: *no_napi_wrapper
+    flox_data_writer_write_books: *no_napi_wrapper
+    flox_dataset_validate_p: *no_napi_wrapper
+    flox_emit_cancel: *no_napi_wrapper
+    flox_emit_cancel_all: *no_napi_wrapper
+    flox_emit_close_position: *no_napi_wrapper
+    flox_emit_limit_buy: *no_napi_wrapper
+    flox_emit_limit_buy_tif: *no_napi_wrapper
+    flox_emit_limit_sell: *no_napi_wrapper
+    flox_emit_limit_sell_tif: *no_napi_wrapper
+    flox_emit_market_buy: *no_napi_wrapper
+    flox_emit_market_sell: *no_napi_wrapper
+    flox_emit_modify: *no_napi_wrapper
+    flox_emit_stop_limit: *no_napi_wrapper
+    flox_emit_stop_market: *no_napi_wrapper
+    flox_emit_take_profit_limit: *no_napi_wrapper
+    flox_emit_take_profit_market: *no_napi_wrapper
+    flox_emit_trailing_stop: *no_napi_wrapper
+    flox_emit_trailing_stop_percent: *no_napi_wrapper
+    flox_exec_target_qty: *no_napi_wrapper
+    flox_execution_listener_create_p: *no_napi_wrapper
+    flox_executor_create_p: *no_napi_wrapper
+    flox_executor_get_capabilities: *no_napi_wrapper
+    flox_feed_clock_last_fired: *no_napi_wrapper
+    flox_get_order_status: *no_napi_wrapper
+    flox_get_symbol_context: *no_napi_wrapper
+    flox_indicator_adf: *no_napi_wrapper
+    flox_indicator_adx: *no_napi_wrapper
+    flox_indicator_atr: *no_napi_wrapper
+    flox_indicator_autocorrelation: *no_napi_wrapper
+    flox_indicator_bollinger: *no_napi_wrapper
+    flox_indicator_cci: *no_napi_wrapper
+    flox_indicator_chop: *no_napi_wrapper
+    flox_indicator_correlation: *no_napi_wrapper
+    flox_indicator_cvd: *no_napi_wrapper
+    flox_indicator_dema: *no_napi_wrapper
+    flox_indicator_ema: *no_napi_wrapper
+    flox_indicator_graph_add_node: *no_napi_wrapper
+    flox_indicator_graph_bar_count: *no_napi_wrapper
+    flox_indicator_graph_close: *no_napi_wrapper
+    flox_indicator_graph_create: *no_napi_wrapper
+    flox_indicator_graph_current: *no_napi_wrapper
+    flox_indicator_graph_destroy: *no_napi_wrapper
+    flox_indicator_graph_get: *no_napi_wrapper
+    flox_indicator_graph_high: *no_napi_wrapper
+    flox_indicator_graph_invalidate: *no_napi_wrapper
+    flox_indicator_graph_invalidate_all: *no_napi_wrapper
+    flox_indicator_graph_low: *no_napi_wrapper
+    flox_indicator_graph_require: *no_napi_wrapper
+    flox_indicator_graph_reset: *no_napi_wrapper
+    flox_indicator_graph_reset_all: *no_napi_wrapper
+    flox_indicator_graph_set_bars: *no_napi_wrapper
+    flox_indicator_graph_step: *no_napi_wrapper
+    flox_indicator_graph_volume: *no_napi_wrapper
+    flox_indicator_kama: *no_napi_wrapper
+    flox_indicator_kurtosis: *no_napi_wrapper
+    flox_indicator_macd: *no_napi_wrapper
+    flox_indicator_obv: *no_napi_wrapper
+    flox_indicator_parkinson_vol: *no_napi_wrapper
+    flox_indicator_rma: *no_napi_wrapper
+    flox_indicator_rogers_satchell_vol: *no_napi_wrapper
+    flox_indicator_rolling_zscore: *no_napi_wrapper
+    flox_indicator_rsi: *no_napi_wrapper
+    flox_indicator_shannon_entropy: *no_napi_wrapper
+    flox_indicator_skewness: *no_napi_wrapper
+    flox_indicator_slope: *no_napi_wrapper
+    flox_indicator_sma: *no_napi_wrapper
+    flox_indicator_stochastic: *no_napi_wrapper
+    flox_indicator_tema: *no_napi_wrapper
+    flox_indicator_vwap: *no_napi_wrapper
+    flox_kill_switch_create_p: *no_napi_wrapper
+    flox_last_error_code: *no_napi_wrapper
+    flox_last_error_message: *no_napi_wrapper
+    flox_last_trade_price_raw: *no_napi_wrapper
+    flox_market_data_recorder_create_p: *no_napi_wrapper
+    flox_market_profile_num_levels: *no_napi_wrapper
+    flox_mid_price_raw: *no_napi_wrapper
+    flox_order_validator_create_p: *no_napi_wrapper
+    flox_pnl_tracker_create_p: *no_napi_wrapper
+    flox_pool_tape_checkpoint_clmm: *no_napi_wrapper
+    flox_position_raw: *no_napi_wrapper
+    flox_registry_add_symbol: *no_napi_wrapper
+    flox_registry_create: *no_napi_wrapper
+    flox_registry_destroy: *no_napi_wrapper
+    flox_registry_get_symbol_id: *no_napi_wrapper
+    flox_registry_get_symbol_name: *no_napi_wrapper
+    flox_registry_symbol_count: *no_napi_wrapper
+    flox_replay_source_create: *no_napi_wrapper
+    flox_replay_source_create_p: *no_napi_wrapper
+    flox_replay_source_destroy: *no_napi_wrapper
+    flox_replay_source_seek_to: *no_napi_wrapper
+    flox_risk_manager_create_p: *no_napi_wrapper
+    flox_segment_export_p: *no_napi_wrapper
+    flox_segment_merge_dir_p: *no_napi_wrapper
+    flox_segment_merge_full: *no_napi_wrapper
+    flox_segment_merge_full_p: *no_napi_wrapper
+    flox_segment_split_p: *no_napi_wrapper
+    flox_segment_validate_full_p: *no_napi_wrapper
+    flox_simulated_executor_get_fills: *no_napi_wrapper
+    flox_simulated_executor_on_best_levels: *no_napi_wrapper
+    flox_simulated_executor_on_book_snapshot: *no_napi_wrapper
+    flox_simulated_executor_on_trade_qty: *no_napi_wrapper
+    flox_simulated_executor_set_symbol_slippage: *no_napi_wrapper
+    flox_storage_sink_create_p: *no_napi_wrapper
+    flox_strategy_create: *no_napi_wrapper
+    flox_strategy_create_p: *no_napi_wrapper
+    flox_strategy_destroy: *no_napi_wrapper
+    flox_strategy_get_bar_ring_capacity: *no_napi_wrapper
+    flox_strategy_last_closed_bar: *no_napi_wrapper
+    flox_strategy_last_n_closed_bars: *no_napi_wrapper
+    flox_strategy_replace_callbacks: *no_napi_wrapper
+    flox_strategy_replace_callbacks_p: *no_napi_wrapper
+    flox_strategy_set_bar_ring_capacity: *no_napi_wrapper
+    flox_streaming_graph_add_node: *no_napi_wrapper
+    flox_streaming_graph_bar_count: *no_napi_wrapper
+    flox_streaming_graph_close: *no_napi_wrapper
+    flox_streaming_graph_create: *no_napi_wrapper
+    flox_streaming_graph_current: *no_napi_wrapper
+    flox_streaming_graph_destroy: *no_napi_wrapper
+    flox_streaming_graph_high: *no_napi_wrapper
+    flox_streaming_graph_low: *no_napi_wrapper
+    flox_streaming_graph_reset: *no_napi_wrapper
+    flox_streaming_graph_reset_all: *no_napi_wrapper
+    flox_streaming_graph_step: *no_napi_wrapper
+    flox_streaming_graph_volume: *no_napi_wrapper
+    flox_target_future_ctc_volatility: *no_napi_wrapper
+    flox_target_future_linear_slope: *no_napi_wrapper
+    flox_target_future_return: *no_napi_wrapper
+    flox_venue_stack_executor: *no_napi_wrapper
+    flox_venue_stack_funding: *no_napi_wrapper
+    flox_venue_stack_venue: *no_napi_wrapper
+    flox_volume_profile_num_levels: *no_napi_wrapper
+    flox_volume_profile_total_delta: *no_napi_wrapper
+
+  codon:
+    flox_best_ask_raw_opt: "the Codon context reads the raw accessors; the optional variants that tell no quote from a price of zero are a follow-up"
+    flox_best_bid_raw_opt: "the Codon context reads the raw accessors; the optional variants that tell no quote from a price of zero are a follow-up"
+    flox_mid_price_raw_opt: "the Codon context reads the raw accessors; the optional variants that tell no quote from a price of zero are a follow-up"
+    flox_aggregator_destroy: *no_codon_import
+    flox_backtest_runner_add_execution_listener: *no_codon_import
+    flox_backtest_runner_add_journey_tracer: *no_codon_import
+    flox_backtest_runner_run_replay_source: *no_codon_import
+    flox_backtest_runner_set_executor: *no_codon_import
+    flox_backtest_runner_set_kill_switch: *no_codon_import
+    flox_backtest_runner_set_order_validator: *no_codon_import
+    flox_backtest_runner_set_pnl_tracker: *no_codon_import
+    flox_backtest_runner_set_risk_manager: *no_codon_import
+    flox_bin_count_aggregator_create: *no_codon_import
+    flox_bin_count_read_result: *no_codon_import
+    flox_binary_log_recorder_hook_stats: *no_codon_import
+    flox_book_ask_at_price: *no_codon_import
+    flox_book_bid_at_price: *no_codon_import
+    flox_book_snapshot_bin_aggregator_create: *no_codon_import
+    flox_book_snapshot_bin_read_result: *no_codon_import
+    flox_capi_abi_version: *no_codon_import
+    flox_clear_last_error: *no_codon_import
+    flox_curve_amount_out: *no_codon_import
+    flox_curve_apply_swap: *no_codon_import
+    flox_curve_balance: *no_codon_import
+    flox_curve_clone: *no_codon_import
+    flox_curve_constant_product: *no_codon_import
+    flox_curve_destroy: *no_codon_import
+    flox_curve_liquidity: *no_codon_import
+    flox_curve_raydium_cp: *no_codon_import
+    flox_curve_sqrt_price: *no_codon_import
+    flox_curve_token_count: *no_codon_import
+    flox_curve_uniswap_v3: *no_codon_import
+    flox_data_reader_clear_progress_callback: *no_codon_import
+    flox_data_reader_create_ordered: *no_codon_import
+    flox_data_reader_run: *no_codon_import
+    flox_data_reader_set_progress_callback: *no_codon_import
+    flox_data_reader_stats: *no_codon_import
+    flox_data_reader_summary: *no_codon_import
+    flox_data_writer_stats: *no_codon_import
+    flox_data_writer_write_books: *no_codon_import
+    flox_dataset_validate: *no_codon_import
+    flox_delta_book_encoder_copy_asks: *no_codon_import
+    flox_delta_book_encoder_copy_bids: *no_codon_import
+    flox_delta_book_replayer_copy_asks: *no_codon_import
+    flox_delta_book_replayer_copy_bids: *no_codon_import
+    flox_event_type_stats_aggregator_create: *no_codon_import
+    flox_event_type_stats_read_result: *no_codon_import
+    flox_exec_pending_at: *no_codon_import
+    flox_exec_target_qty: *no_codon_import
+    flox_exec_vwap_create: *no_codon_import
+    flox_execution_listener_create: *no_codon_import
+    flox_execution_listener_create_p: *no_codon_import
+    flox_execution_listener_destroy: *no_codon_import
+    flox_executor_create: *no_codon_import
+    flox_executor_create_p: *no_codon_import
+    flox_executor_destroy: *no_codon_import
+    flox_executor_get_capabilities: *no_codon_import
+    flox_funding_schedule_set_tape: *no_codon_import
+    flox_get_symbol_context: *no_codon_import
+    flox_i256_roundtrip: *no_codon_import
+    flox_indicator_graph_bar_count: *no_codon_import
+    flox_indicator_graph_current: *no_codon_import
+    flox_indicator_graph_reset: *no_codon_import
+    flox_indicator_graph_reset_all: *no_codon_import
+    flox_indicator_graph_step: *no_codon_import
+    flox_kill_switch_create: *no_codon_import
+    flox_kill_switch_create_p: *no_codon_import
+    flox_kill_switch_destroy: *no_codon_import
+    flox_last_error_code: *no_codon_import
+    flox_last_error_message: *no_codon_import
+    flox_latency_sample: *no_codon_import
+    flox_liquidation_engine_cascade_sizes_copy: *no_codon_import
+    flox_liquidation_engine_cascade_sizes_size: *no_codon_import
+    flox_liquidation_engine_deficits_paid_by_adl_copy: *no_codon_import
+    flox_liquidation_engine_deficits_paid_by_adl_size: *no_codon_import
+    flox_liquidation_engine_deficits_paid_by_fund_copy: *no_codon_import
+    flox_liquidation_engine_deficits_paid_by_fund_size: *no_codon_import
+    flox_liquidation_engine_fund_balance_history_copy: *no_codon_import
+    flox_liquidation_engine_fund_balance_history_size: *no_codon_import
+    flox_live_engine_set_executor: *no_codon_import
+    flox_live_engine_set_kill_switch: *no_codon_import
+    flox_live_engine_set_order_validator: *no_codon_import
+    flox_live_engine_set_pnl_tracker: *no_codon_import
+    flox_live_engine_set_risk_manager: *no_codon_import
+    flox_live_engine_set_storage_sink: *no_codon_import
+    flox_market_data_recorder_create: *no_codon_import
+    flox_market_data_recorder_create_p: *no_codon_import
+    flox_market_data_recorder_destroy: *no_codon_import
+    flox_market_profile_num_levels: *no_codon_import
+    flox_merged_tape_reader_run: *no_codon_import
+    flox_ohlc_bin_aggregator_create: *no_codon_import
+    flox_ohlc_bin_read_result: *no_codon_import
+    flox_order_journey_tracer_journey: *no_codon_import
+    flox_order_journey_tracer_result: *no_codon_import
+    flox_order_validator_create: *no_codon_import
+    flox_order_validator_create_p: *no_codon_import
+    flox_order_validator_destroy: *no_codon_import
+    flox_peak_aggregator_create: *no_codon_import
+    flox_peak_read_result: *no_codon_import
+    flox_pnl_tracker_create: *no_codon_import
+    flox_pnl_tracker_create_p: *no_codon_import
+    flox_pnl_tracker_destroy: *no_codon_import
+    flox_pool_replay_curve: *no_codon_import
+    flox_pool_replay_destroy: *no_codon_import
+    flox_pool_replay_drift_count: *no_codon_import
+    flox_pool_replay_trade_count: *no_codon_import
+    flox_pool_tape_checkpoint: *no_codon_import
+    flox_pool_tape_checkpoint_clmm: *no_codon_import
+    flox_pool_tape_create: *no_codon_import
+    flox_pool_tape_descriptor_clmm: *no_codon_import
+    flox_pool_tape_descriptor_constant_product: *no_codon_import
+    flox_pool_tape_descriptor_raydium_cp: *no_codon_import
+    flox_pool_tape_destroy: *no_codon_import
+    flox_pool_tape_replay: *no_codon_import
+    flox_pool_tape_swap: *no_codon_import
+    flox_portfolio_risk_breach_at: *no_codon_import
+    flox_price_from_double: *no_codon_import
+    flox_quantile_aggregator_create: *no_codon_import
+    flox_quantile_read_result: *no_codon_import
+    flox_quantity_from_double: *no_codon_import
+    flox_registry_get_symbol_id: *no_codon_import
+    flox_registry_symbol_count: *no_codon_import
+    flox_replay_source_create: *no_codon_import
+    flox_replay_source_create_p: *no_codon_import
+    flox_replay_source_destroy: *no_codon_import
+    flox_replay_source_seek_to: *no_codon_import
+    flox_risk_manager_create: *no_codon_import
+    flox_risk_manager_create_p: *no_codon_import
+    flox_risk_manager_destroy: *no_codon_import
+    flox_run_reader_fill: *no_codon_import
+    flox_run_reader_order_event_header: *no_codon_import
+    flox_run_reader_order_event_reason: *no_codon_import
+    flox_run_reader_signal_header: *no_codon_import
+    flox_run_reader_signal_name: *no_codon_import
+    flox_run_reader_signal_payload: *no_codon_import
+    flox_run_reader_signal_symbol_ids: *no_codon_import
+    flox_run_reader_strategy_hash: *no_codon_import
+    flox_run_reader_strategy_id: *no_codon_import
+    flox_run_reader_tape_ref_count: *no_codon_import
+    flox_run_reader_tape_ref_path: *no_codon_import
+    flox_runner_attach_trace_recorder: *no_codon_import
+    flox_runner_set_executor: *no_codon_import
+    flox_runner_set_kill_switch: *no_codon_import
+    flox_runner_set_order_validator: *no_codon_import
+    flox_runner_set_pnl_tracker: *no_codon_import
+    flox_runner_set_risk_manager: *no_codon_import
+    flox_runner_set_storage_sink: *no_codon_import
+    flox_runner_set_trace_feed_ts_ns: *no_codon_import
+    flox_runner_trace_fill: *no_codon_import
+    flox_runner_trace_order_event: *no_codon_import
+    flox_segment_export: *no_codon_import
+    flox_segment_merge_dir: *no_codon_import
+    flox_segment_merge_full: *no_codon_import
+    flox_segment_merge_full_p: *no_codon_import
+    flox_segment_split: *no_codon_import
+    flox_segment_validate_full: *no_codon_import
+    flox_set_log_callback: *no_codon_import
+    flox_simulated_executor_get_fills: *no_codon_import
+    flox_simulated_executor_on_book_snapshot: *no_codon_import
+    flox_stat_whites_reality_check: *no_codon_import
+    flox_storage_sink_create: *no_codon_import
+    flox_storage_sink_create_p: *no_codon_import
+    flox_storage_sink_destroy: *no_codon_import
+    flox_strategy_replace_callbacks: *no_codon_import
+    flox_tape_diff_copy_mismatches: *no_codon_import
+    flox_u256_from_hex: *no_codon_import
+    flox_u256_from_words: *no_codon_import
+    flox_u256_roundtrip: *no_codon_import
+    flox_u256_to_words: *no_codon_import
+    flox_volume_bin_aggregator_create: *no_codon_import
+    flox_volume_bin_read_result: *no_codon_import
+    flox_volume_profile_num_levels: *no_codon_import
+    flox_volume_profile_total_delta: *no_codon_import
+
+  quickjs:
+    flox_aggregator_destroy: *no_quickjs_global
+    flox_backtest_result_trades: *no_quickjs_global
+    flox_backtest_runner_add_execution_listener: *no_quickjs_global
+    flox_backtest_runner_add_journey_tracer: *no_quickjs_global
+    flox_backtest_runner_create: *no_quickjs_global
+    flox_backtest_runner_destroy: *no_quickjs_global
+    flox_backtest_runner_run_bars: *no_quickjs_global
+    flox_backtest_runner_run_csv: *no_quickjs_global
+    flox_backtest_runner_run_ohlcv: *no_quickjs_global
+    flox_backtest_runner_run_replay_source: *no_quickjs_global
+    flox_backtest_runner_run_tape: *no_quickjs_global
+    flox_backtest_runner_run_tapes: *no_quickjs_global
+    flox_backtest_runner_set_executor: *no_quickjs_global
+    flox_backtest_runner_set_kill_switch: *no_quickjs_global
+    flox_backtest_runner_set_order_validator: *no_quickjs_global
+    flox_backtest_runner_set_pnl_tracker: *no_quickjs_global
+    flox_backtest_runner_set_risk_manager: *no_quickjs_global
+    flox_backtest_runner_set_strategy: *no_quickjs_global
+    flox_backtest_runner_take_result: *no_quickjs_global
+    flox_bin_count_aggregator_create: *no_quickjs_global
+    flox_bin_count_read_result: *no_quickjs_global
+    flox_binary_log_recorder_hook_create: *no_quickjs_global
+    flox_binary_log_recorder_hook_stats_p: *no_quickjs_global
+    flox_book_ask_at_price: *no_quickjs_global
+    flox_book_bid_at_price: *no_quickjs_global
+    flox_book_snapshot_bin_aggregator_create: *no_quickjs_global
+    flox_book_snapshot_bin_read_result: *no_quickjs_global
+    flox_capi_abi_version: *no_quickjs_global
+    flox_clear_last_error: *no_quickjs_global
+    flox_curve_amount_out: *no_quickjs_global
+    flox_curve_apply_swap: *no_quickjs_global
+    flox_curve_balance: *no_quickjs_global
+    flox_curve_clone: *no_quickjs_global
+    flox_curve_constant_product: *no_quickjs_global
+    flox_curve_destroy: *no_quickjs_global
+    flox_curve_liquidity: *no_quickjs_global
+    flox_curve_raydium_cp: *no_quickjs_global
+    flox_curve_sqrt_price: *no_quickjs_global
+    flox_curve_token_count: *no_quickjs_global
+    flox_curve_uniswap_v3: *no_quickjs_global
+    flox_data_reader_clear_progress_callback: *no_quickjs_global
+    flox_data_reader_create_ordered: *no_quickjs_global
+    flox_data_reader_run: *no_quickjs_global
+    flox_data_reader_set_progress_callback: *no_quickjs_global
+    flox_data_reader_stats_p: *no_quickjs_global
+    flox_data_reader_summary_p: *no_quickjs_global
+    flox_data_writer_stats_p: *no_quickjs_global
+    flox_data_writer_write_books: *no_quickjs_global
+    flox_dataset_validate_p: *no_quickjs_global
+    flox_delta_book_encoder_reset: *no_quickjs_global
+    flox_delta_book_encoder_reset_all: *no_quickjs_global
+    flox_delta_book_replayer_reset: *no_quickjs_global
+    flox_emit_limit_buy: *no_quickjs_global
+    flox_emit_limit_sell: *no_quickjs_global
+    flox_event_type_stats_aggregator_create: *no_quickjs_global
+    flox_event_type_stats_read_result: *no_quickjs_global
+    flox_exec_target_qty: *no_quickjs_global
+    flox_execution_listener_create: *no_quickjs_global
+    flox_execution_listener_create_p: *no_quickjs_global
+    flox_execution_listener_destroy: *no_quickjs_global
+    flox_executor_create: *no_quickjs_global
+    flox_executor_create_p: *no_quickjs_global
+    flox_executor_destroy: *no_quickjs_global
+    flox_executor_get_capabilities: *no_quickjs_global
+    flox_fee_schedule_tier_transitions: *no_quickjs_global
+    flox_footprint_num_levels: *no_quickjs_global
+    flox_funding_schedule_set_tape: *no_quickjs_global
+    flox_get_symbol_context: *no_quickjs_global
+    flox_grid_search_add_axis: *no_quickjs_global
+    flox_grid_search_create: *no_quickjs_global
+    flox_grid_search_destroy: *no_quickjs_global
+    flox_grid_search_params_for_index: *no_quickjs_global
+    flox_grid_search_run: *no_quickjs_global
+    flox_grid_search_total: *no_quickjs_global
+    flox_i256_roundtrip: *no_quickjs_global
+    flox_indicator_graph_bar_count: *no_quickjs_global
+    flox_indicator_graph_close: *no_quickjs_global
+    flox_indicator_graph_current: *no_quickjs_global
+    flox_indicator_graph_destroy: *no_quickjs_global
+    flox_indicator_graph_high: *no_quickjs_global
+    flox_indicator_graph_low: *no_quickjs_global
+    flox_indicator_graph_reset: *no_quickjs_global
+    flox_indicator_graph_reset_all: *no_quickjs_global
+    flox_indicator_graph_step: *no_quickjs_global
+    flox_indicator_graph_volume: *no_quickjs_global
+    flox_kill_switch_create: *no_quickjs_global
+    flox_kill_switch_create_p: *no_quickjs_global
+    flox_kill_switch_destroy: *no_quickjs_global
+    flox_l3_book_ask_at_price: *no_quickjs_global
+    flox_l3_book_bid_at_price: *no_quickjs_global
+    flox_last_error_code: *no_quickjs_global
+    flox_last_error_message: *no_quickjs_global
+    flox_live_engine_add_strategy: *no_quickjs_global
+    flox_live_engine_create: *no_quickjs_global
+    flox_live_engine_destroy: *no_quickjs_global
+    flox_live_engine_publish_bar: *no_quickjs_global
+    flox_live_engine_publish_book_snapshot: *no_quickjs_global
+    flox_live_engine_publish_trade: *no_quickjs_global
+    flox_live_engine_set_executor: *no_quickjs_global
+    flox_live_engine_set_kill_switch: *no_quickjs_global
+    flox_live_engine_set_market_data_recorder: *no_quickjs_global
+    flox_live_engine_set_order_validator: *no_quickjs_global
+    flox_live_engine_set_pnl_tracker: *no_quickjs_global
+    flox_live_engine_set_risk_manager: *no_quickjs_global
+    flox_live_engine_set_storage_sink: *no_quickjs_global
+    flox_live_engine_start: *no_quickjs_global
+    flox_live_engine_stop: *no_quickjs_global
+    flox_market_data_recorder_create: *no_quickjs_global
+    flox_market_data_recorder_create_p: *no_quickjs_global
+    flox_market_data_recorder_destroy: *no_quickjs_global
+    flox_market_profile_num_levels: *no_quickjs_global
+    flox_merged_tape_reader_run: *no_quickjs_global
+    flox_ohlc_bin_aggregator_create: *no_quickjs_global
+    flox_ohlc_bin_read_result: *no_quickjs_global
+    flox_order_validator_create: *no_quickjs_global
+    flox_order_validator_create_p: *no_quickjs_global
+    flox_order_validator_destroy: *no_quickjs_global
+    flox_peak_aggregator_create: *no_quickjs_global
+    flox_peak_read_result: *no_quickjs_global
+    flox_pnl_tracker_create: *no_quickjs_global
+    flox_pnl_tracker_create_p: *no_quickjs_global
+    flox_pnl_tracker_destroy: *no_quickjs_global
+    flox_pool_replay_curve: *no_quickjs_global
+    flox_pool_replay_destroy: *no_quickjs_global
+    flox_pool_replay_drift_count: *no_quickjs_global
+    flox_pool_replay_trade_count: *no_quickjs_global
+    flox_pool_tape_checkpoint: *no_quickjs_global
+    flox_pool_tape_checkpoint_clmm: *no_quickjs_global
+    flox_pool_tape_create: *no_quickjs_global
+    flox_pool_tape_descriptor_clmm: *no_quickjs_global
+    flox_pool_tape_descriptor_constant_product: *no_quickjs_global
+    flox_pool_tape_descriptor_raydium_cp: *no_quickjs_global
+    flox_pool_tape_destroy: *no_quickjs_global
+    flox_pool_tape_replay: *no_quickjs_global
+    flox_pool_tape_swap: *no_quickjs_global
+    flox_price_from_double: *quickjs_helper_only
+    flox_price_to_double: *quickjs_helper_only
+    flox_quantile_aggregator_create: *no_quickjs_global
+    flox_quantile_read_result: *no_quickjs_global
+    flox_quantity_from_double: *quickjs_helper_only
+    flox_quantity_to_double: *quickjs_helper_only
+    flox_rate_limit_policy_bucket_state: *no_quickjs_global
+    flox_registry_add_symbol: *no_quickjs_global
+    flox_registry_create: *no_quickjs_global
+    flox_registry_destroy: *no_quickjs_global
+    flox_registry_get_symbol_id: *no_quickjs_global
+    flox_registry_get_symbol_name: *no_quickjs_global
+    flox_registry_symbol_count: *no_quickjs_global
+    flox_render_heatmap_html: *no_quickjs_global
+    flox_replay_source_create: *no_quickjs_global
+    flox_replay_source_create_p: *no_quickjs_global
+    flox_replay_source_destroy: *no_quickjs_global
+    flox_replay_source_seek_to: *no_quickjs_global
+    flox_risk_manager_create: *no_quickjs_global
+    flox_risk_manager_create_p: *no_quickjs_global
+    flox_risk_manager_destroy: *no_quickjs_global
+    flox_run_reader_strategy_hash: *no_quickjs_global
+    flox_run_reader_tape_ref_count: *no_quickjs_global
+    flox_run_reader_tape_ref_path: *no_quickjs_global
+    flox_runner_add_strategy: *no_quickjs_global
+    flox_runner_attach_trace_recorder: *no_quickjs_global
+    flox_runner_create: *no_quickjs_global
+    flox_runner_destroy: *no_quickjs_global
+    flox_runner_on_bar: *no_quickjs_global
+    flox_runner_on_book_snapshot: *no_quickjs_global
+    flox_runner_on_trade: *no_quickjs_global
+    flox_runner_set_executor: *no_quickjs_global
+    flox_runner_set_kill_switch: *no_quickjs_global
+    flox_runner_set_market_data_recorder: *no_quickjs_global
+    flox_runner_set_order_validator: *no_quickjs_global
+    flox_runner_set_pnl_tracker: *no_quickjs_global
+    flox_runner_set_risk_manager: *no_quickjs_global
+    flox_runner_set_storage_sink: *no_quickjs_global
+    flox_runner_set_trace_feed_ts_ns: *no_quickjs_global
+    flox_runner_start: *no_quickjs_global
+    flox_runner_stop: *no_quickjs_global
+    flox_runner_trace_fill: *no_quickjs_global
+    flox_runner_trace_order_event: *no_quickjs_global
+    flox_segment_export_p: *no_quickjs_global
+    flox_segment_merge_dir_p: *no_quickjs_global
+    flox_segment_merge_full: *no_quickjs_global
+    flox_segment_merge_full_p: *no_quickjs_global
+    flox_segment_split_p: *no_quickjs_global
+    flox_segment_validate_full_p: *no_quickjs_global
+    flox_set_log_callback: *no_quickjs_global
+    flox_simulated_executor_cancel_all: *no_quickjs_global
+    flox_simulated_executor_cancel_order: *no_quickjs_global
+    flox_simulated_executor_get_fills: *no_quickjs_global
+    flox_simulated_executor_on_book_snapshot: *no_quickjs_global
+    flox_stat_whites_reality_check: *no_quickjs_global
+    flox_storage_sink_create: *no_quickjs_global
+    flox_storage_sink_create_p: *no_quickjs_global
+    flox_storage_sink_destroy: *no_quickjs_global
+    flox_strategy_create: *no_quickjs_global
+    flox_strategy_create_p: *no_quickjs_global
+    flox_strategy_destroy: *no_quickjs_global
+    flox_strategy_replace_callbacks: *no_quickjs_global
+    flox_strategy_replace_callbacks_p: *no_quickjs_global
+    flox_streaming_graph_close: *no_quickjs_global
+    flox_streaming_graph_destroy: *no_quickjs_global
+    flox_streaming_graph_high: *no_quickjs_global
+    flox_streaming_graph_low: *no_quickjs_global
+    flox_streaming_graph_volume: *no_quickjs_global
+    flox_u256_from_hex: *no_quickjs_global
+    flox_u256_from_words: *no_quickjs_global
+    flox_u256_roundtrip: *no_quickjs_global
+    flox_u256_to_words: *no_quickjs_global
+    flox_volume_bin_aggregator_create: *no_quickjs_global
+    flox_volume_bin_read_result: *no_quickjs_global
+    flox_volume_profile_num_levels: *no_quickjs_global
+    flox_volume_profile_total_delta: *no_quickjs_global
+    flox_walk_forward_run_csv: *no_quickjs_global

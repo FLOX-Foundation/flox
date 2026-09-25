@@ -3,6 +3,9 @@
 Subcommands:
 
     emit-capi      Generate the C header from the spec.
+    emit-layout-h  Generate the C struct-layout table from the spec.
+    emit-layout-codon
+                   Generate the Codon struct-offset constants.
     check          Diff codegen output vs the live flox_capi.h.
     extract        Print IR as JSON (debugging).
 """
@@ -14,7 +17,8 @@ import json
 import sys
 from pathlib import Path
 
-from . import abi_snapshot, check_signatures, emit_capi, emit_codon, emit_llms, extractor
+from . import (abi_snapshot, check_signatures, emit_capi, emit_codon, emit_layout,
+               emit_llms, extractor)
 
 
 def _cmd_emit_capi(args: argparse.Namespace) -> int:
@@ -51,6 +55,33 @@ def _cmd_emit_codon(args: argparse.Namespace) -> int:
     module = extractor.parse_spec(Path(args.spec))
     text = emit_codon.emit(module)
     _emit_to_path(text, args.out, "codon FFI", len(module.functions))
+    return 0
+
+
+def _emit_layout_to_path(text: str, out: str, kind: str) -> None:
+    if out == "-":
+        sys.stdout.write(text)
+        return
+    out_path = Path(out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(text)
+    print(f"wrote {out_path} ({len(emit_layout.LAYOUT_STRUCTS)} structs, {kind})")
+
+
+def _cmd_emit_layout_h(args: argparse.Namespace) -> int:
+    module = extractor.parse_spec(Path(args.spec))
+    style_anchor = Path(args.spec).resolve()
+    text = emit_layout.emit_header(
+        module, format=not args.no_format, style_file=style_anchor
+    )
+    _emit_layout_to_path(text, args.out, "C layout table")
+    return 0
+
+
+def _cmd_emit_layout_codon(args: argparse.Namespace) -> int:
+    module = extractor.parse_spec(Path(args.spec))
+    text = emit_layout.emit_codon(module)
+    _emit_layout_to_path(text, args.out, "codon offset constants")
     return 0
 
 
@@ -202,6 +233,22 @@ def build_parser() -> argparse.ArgumentParser:
     pco.add_argument("--out", required=True,
                      help="Output path (use '-' for stdout)")
     pco.set_defaults(func=_cmd_emit_codon)
+
+    plh = sub.add_parser("emit-layout-h",
+                         help="Generate the C struct-layout table.")
+    plh.add_argument("--spec", required=True)
+    plh.add_argument("--out", required=True,
+                     help="Output path (use '-' for stdout)")
+    plh.add_argument("--no-format", action="store_true",
+                     help="Skip the clang-format post-pass (debugging only).")
+    plh.set_defaults(func=_cmd_emit_layout_h)
+
+    plc = sub.add_parser("emit-layout-codon",
+                         help="Generate the Codon struct-offset constants.")
+    plc.add_argument("--spec", required=True)
+    plc.add_argument("--out", required=True,
+                     help="Output path (use '-' for stdout)")
+    plc.set_defaults(func=_cmd_emit_layout_codon)
 
     pll = sub.add_parser("emit-llms",
                          help="Generate Markdown C-API reference for AI agents.")

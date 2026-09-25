@@ -208,7 +208,7 @@ void test_perp_venue()
   g.openInterestRaw = cm.openInterestRaw();
   g.openPositions = cm.openPositionCount();
   g.restingOrders = eng.restingOrderCount();
-  g.fundingRate = sched.lastRate();
+  g.fundingRateRaw = fundingRateRawOf(sched.lastRate());
   const std::string page = prom::render(metrics, g);
   CHECK(page.find("fme_open_interest_raw") != std::string::npos);
   CHECK(page.find("fme_insurance_fund_raw") != std::string::npos);

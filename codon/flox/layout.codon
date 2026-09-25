@@ -1,0 +1,100 @@
+# GENERATED — do not edit by hand.
+# Source: include/flox/capi/flox_capi_spec.hpp
+# Tool:   tools/codegen/flox_codegen/emit_layout.py
+#
+# Byte offsets of the C event structs, for the Codon binding's readers.
+# Codon's FFI models every aggregate as an opaque cobj, so an event payload
+# is read field by field out of the pointer the engine hands over. These are
+# the offsets to read it at.
+#
+# The same pass writes include/flox/capi/flox_capi_layout.h, and
+# tests/test_capi_event_layout.cpp compares that table against offsetof on
+# the real structs -- so an offset here that the C compiler disagrees with
+# fails CI rather than delivering a wrong number to a strategy.
+
+# FloxTradeData
+_TRADE_SYMBOL = 0
+_TRADE_PRICE_RAW = 8
+_TRADE_QTY_RAW = 16
+_TRADE_IS_BUY = 24
+_TRADE_TS_NS = 32
+_TRADE_SIZE = 40
+_TRADE_ALIGN = 8
+
+# FloxBookSnapshot
+_BOOK_BID_PRICE_RAW = 0
+_BOOK_BID_QTY_RAW = 8
+_BOOK_ASK_PRICE_RAW = 16
+_BOOK_ASK_QTY_RAW = 24
+_BOOK_MID_RAW = 32
+_BOOK_SPREAD_RAW = 40
+_BOOK_SIZE = 48
+_BOOK_ALIGN = 8
+
+# FloxSymbolContext
+_CTX_SYMBOL_ID = 0
+_CTX_HAS_AVG_ENTRY_PRICE = 4
+_CTX_POSITION_RAW = 8
+_CTX_AVG_ENTRY_PRICE_RAW = 16
+_CTX_LAST_TRADE_PRICE_RAW = 24
+_CTX_LAST_UPDATE_NS = 32
+_CTX_BOOK = 40
+_CTX_SIZE = 88
+_CTX_ALIGN = 8
+
+# FloxBarData
+_BAR_SYMBOL = 0
+_BAR_TYPE = 4
+_BAR_CLOSE_REASON = 5
+_BAR_TYPE_PARAM = 8
+_BAR_OPEN_RAW = 16
+_BAR_HIGH_RAW = 24
+_BAR_LOW_RAW = 32
+_BAR_CLOSE_RAW = 40
+_BAR_VOLUME_RAW = 48
+_BAR_BUY_VOLUME_RAW = 56
+_BAR_TRADE_COUNT_RAW = 64
+_BAR_START_NS = 72
+_BAR_END_NS = 80
+_BAR_SIZE = 88
+_BAR_ALIGN = 8
+
+# FloxOrderEventData
+_EV_ORDER_ID = 0
+_EV_SYMBOL_ID = 8
+_EV_SIDE = 12
+_EV_ORDER_TYPE = 13
+_EV_STATUS = 14
+_EV_FILL_QTY_RAW = 16
+_EV_FILL_PRICE_RAW = 24
+_EV_TS_NS = 32
+_EV_REJECT_REASON = 40
+_EV_QUEUE_AHEAD_RAW = 48
+_EV_QUEUE_TOTAL_RAW = 56
+_EV_SUBMITTED_AT_NS = 64
+_EV_ACCEPTED_AT_NS = 72
+_EV_FIRST_FILL_AT_NS = 80
+_EV_LAST_FILL_AT_NS = 88
+_EV_CANCELED_AT_NS = 96
+_EV_REJECTED_AT_NS = 104
+_EV_TRIGGERED_AT_NS = 112
+_EV_EXPIRED_AT_NS = 120
+_EV_IS_MAKER = 128
+_EV_MARKET_POSITION = 129
+_EV_DISTANCE_TICKS = 132
+_EV_SIZE = 144
+_EV_ALIGN = 8
+
+# FloxBar
+_FLOXBAR_START_NS = 0
+_FLOXBAR_END_NS = 8
+_FLOXBAR_OPEN_RAW = 16
+_FLOXBAR_HIGH_RAW = 24
+_FLOXBAR_LOW_RAW = 32
+_FLOXBAR_CLOSE_RAW = 40
+_FLOXBAR_VOLUME_RAW = 48
+_FLOXBAR_BUY_VOLUME_RAW = 56
+_FLOXBAR_TRADE_COUNT = 64
+_FLOXBAR_SIZE = 72
+_FLOXBAR_ALIGN = 8
+

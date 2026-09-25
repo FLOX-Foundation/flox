@@ -53,9 +53,20 @@ There is no separate configuration store: the journaled command stream is the
 source of truth for instrument configuration as well. Listing, band changes,
 trigger-reference switches and halts arrive as `ListInstrument` / `SetBands` /
 `SetTriggerRef` / `AdminCmd` records; `InstrumentRegistry::apply` rebuilds the
-registry from the same stream the engines replay. Structural knobs the control
-plane cannot express (assets, scales, margin parameters, fee schedule) are
-startup configuration supplied when a shard is constructed.
+registry from the same stream the engines replay -- `SequencedShard::setRegistry`
+is what wires it: set before `start()`, and every record the shard applies (the
+snapshot's config section, each replayed segment, and every command sequenced
+afterwards) is offered to `apply()`. Without it a restarted venue came up with
+an engine that knew all of its state and a registry that knew no instruments,
+while the control plane validated every operator request against that empty
+registry. The registry is then written on the shard's consumer thread, so a
+deployment serving a `ControlApi` against the same registry has to reach it
+from that thread too. Structural knobs the control
+plane cannot express (assets, scales, margin parameters, fee schedule, the
+allocation rule `matchPolicy`) are startup configuration supplied when a shard
+is constructed -- the shard, the router and `replayWindow` all build their
+engine from that `SymbolConfig`, so a pro-rata instrument is configured rather
+than hand-wired (see [Matching](matching.md)).
 
 ## Trading sessions and the funding calendar
 
@@ -229,6 +240,25 @@ naming the version found and the version expected. Nothing in it is decoded,
 and it is not treated as a torn tail: a torn tail is the expected shape of a
 crash and the prefix ahead of it is sound, whereas a foreign version means
 every byte after the header was laid out by rules this build does not have.
+
+**The CRC decides which of the two a record is, and it is checked first.** The
+stamp and the tag sit in the header, and the CRC covers the header, so reading
+them before the CRC asks a possibly damaged byte what format the record is in
+and then refuses the whole file on its answer -- one flipped bit in the last
+record's stamp used to cost every record ahead of it. A record whose CRC does
+not cover its own bytes was damaged after it was written, whatever its stamp
+now reads, and damage stops the read with the intact prefix. A record whose CRC
+passes is the writer's own statement about its format, and a foreign version or
+a tag this build has no command for is refused by name there, as before.
+
+`Journal::loadReported(path)` is that same read with the stop described instead
+of implied: the records recovered, a `Tail` (`Intact`, `Torn`, `Corrupt`) and
+the byte offset of the first record that was not recovered. `Torn` means the
+last record's bytes are not all in the file -- the ordinary shape of a crash.
+`Corrupt` means whole bytes follow the record that failed, so the file was not
+cut short but rotted, and there is history behind the hole this build will not
+replay. `loadTimed` is `loadReported(path).records` and keeps throwing by name
+for a foreign version or an unknown tag.
 
 What that means per file:
 
@@ -656,8 +686,25 @@ The lane does not make a checkpoint cheaper; it spreads checkpoints in time,
 so fewer of them land inside any given window and none of them wait for a disk
 inside the pause.
 
-The consumer pause is the clone alone (`lastCheckpointPauseNs()` gauges it,
-`checkpointPauseTotalNs()` adds them up);
+`lastCheckpointPauseNs()` gauges the consumer-thread stall and
+`checkpointPauseTotalNs()` adds them up. The stall is **everything between the
+moment the consumer stops matching and the moment it resumes**, measured on the
+consumer's own clock: the wait for the previous publish and for the checkpoint
+lane, the state clone, the journal rotation, the `onCheckpoint` hook, and the
+mutex and thread spawn that hand the snapshot to the background. The clone is
+the largest part of it, but it is not the whole of it -- a shard crowded out of
+the lane stands still for as long as whoever holds it, and a thread spawn is
+tens of microseconds -- and an operator sizing a venue's worst-case matching
+gap from this number needs all of it. Serialization itself is not in it: that
+runs on the background thread while matching is going again.
+
+Nothing the checkpoint costs is left for the first order after it, either. A
+fresh file's first write is markedly dearer than the ones after it, so the
+rotation gives the new segment its first block while the consumer is still
+stopped (`flox::fileio::reserveFirstBlock`) rather than letting the next
+command pay ~14 us of filesystem work on the matching path, where no gauge
+would have seen it.
+
 `test_venue_checkpoint` measures both the clone pause and the old synchronous
 serialize time on a 100k-order book rather than guessing (the clone is a
 small fraction of the serialize+fsync cost). Snapshot-only `Restore*` records

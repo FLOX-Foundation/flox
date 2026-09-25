@@ -98,6 +98,9 @@ class CrossMarginManager
   // is mirrored on the venue pool, so value is conserved regardless.
   void applyFunding(SymbolId s, double rate, Price mark)
   {
+    // The same boundary the clearing path takes: the double becomes the raw
+    // once, and the payments below are integer arithmetic on it.
+    const int64_t rateRaw = fundingRateRawOf(rate);
     const int64_t markRaw = mark.raw();
     // order: not observable -- each account's funding leg is an independent
     // integer credit, and the venue pool accumulates by addition
@@ -110,7 +113,7 @@ class CrossMarginManager
       }
       const auto [pS, qS] = scalesOf(s);
       const Amount notionalSigned = notionalRaw(markRaw, l->second.qtyRaw, pS, qS);
-      const Amount pay = -static_cast<Amount>(static_cast<double>(notionalSigned) * rate);
+      const Amount pay = -rateOnNotional(notionalSigned, rateRaw, kFundingRateScale);
       if (pay == 0)
       {
         continue;

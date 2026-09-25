@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "flox-venue/engine/snapshot_lock.h"
 #include "flox-venue/engine/state_hash_tags.h"
 #include "flox-venue/event_hash.h"
 #include "flox-venue/journal.h"
@@ -19,6 +20,7 @@
 #include <atomic>
 #include <concepts>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -222,7 +224,18 @@ class LastLook
   // it did not; one taking the free option refuses almost only when it was
   // losing. That single split is what makes the behaviour visible without
   // anyone having to see the maker's code.
-  const std::unordered_map<uint64_t, LastLookStats>& stats() const noexcept { return stats_; }
+  //
+  // Handed out BY VALUE, under engine::SnapshotLock: the caller is the
+  // /metrics thread (docs/venue/perimeter.md), and a reference into the map
+  // the consumer writes on every hold is not a sample -- it keeps moving
+  // while the page is built, so two series on one page come from two
+  // different moments and a reader can land between the `held` write and the
+  // accepted/rejected write that follows it, on a row that does not balance.
+  std::unordered_map<uint64_t, LastLookStats> stats() const
+  {
+    std::lock_guard<SnapshotLock> lk(statsLock_);
+    return stats_;
+  }
 
   // Last-look accepts turned into rejects because the fill would have breached
   // a perp risk limit by the time the maker answered (see resolve()).
@@ -700,6 +713,10 @@ class LastLook
 
   void record(const Held& h, int64_t moveRaw, bool accepted)
   {
+    // The whole row is written under the lock: `held` and the outcome that
+    // balances it are one fact, and a sampler must not see half of it. Once
+    // per resolved hold, not per order -- see snapshot_lock.h.
+    std::lock_guard<SnapshotLock> lk(statsLock_);
     LastLookStats& st = stats_[h.makerAccount];
     ++st.held;
     if (accepted)
@@ -867,6 +884,8 @@ class LastLook
   // Diagnostic only, like the pro-rata skip counters: conduct measurement, not
   // matching state, so it stays out of the state hash and the snapshot.
   std::unordered_map<uint64_t, LastLookStats> stats_;
+  // Mutable because taking a snapshot is a const operation on the engine.
+  mutable SnapshotLock statsLock_;
 
   uint64_t riskRejected_{0};
 

@@ -253,7 +253,7 @@ uint64_t MatchingEngine<Book>::riskRejectedHolds() const noexcept
 
 // Per-maker last-look conduct; see engine::LastLook::stats().
 template <class Book>
-const std::unordered_map<uint64_t, LastLookStats>& MatchingEngine<Book>::lastLookStats() const noexcept
+std::unordered_map<uint64_t, LastLookStats> MatchingEngine<Book>::lastLookStats() const
 {
   return lastLook_.stats();
 }

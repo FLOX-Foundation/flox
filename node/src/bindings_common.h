@@ -14,11 +14,30 @@
 #pragma once
 #include <napi.h>
 
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 
 namespace node_flox
 {
+
+// JS Numbers are float64 and lose precision past 2^53, which truncates
+// nanosecond timestamps in unpredictable ways (e.g. 1765615835519000000
+// round-trips as 1765615835519000064). Accept BigInt for any int64_t arg
+// that may hold a real ns timestamp; fall back to Number for callers that
+// pass smaller values. This lived in data_ops.h, where the three other
+// headers that police nanoseconds -- strategy.h, live_queue_position.h,
+// feed_clock.h -- could not reach it without pulling in the whole reader
+// and writer surface, so each of them truncated instead.
+inline int64_t toInt64Ns(const Napi::Value& v)
+{
+  if (v.IsBigInt())
+  {
+    bool lossless = false;
+    return v.As<Napi::BigInt>().Int64Value(&lossless);
+  }
+  return v.As<Napi::Number>().Int64Value();
+}
 
 inline bool requireSameLength(Napi::Env env, const char* fnName,
                               std::initializer_list<size_t> lens)

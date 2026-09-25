@@ -19,9 +19,11 @@
 #pragma once
 
 #include "flox/common.h"
+#include "flox/util/base/scale_check.h"
 
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 
 namespace flox::venue
@@ -70,6 +72,31 @@ inline Amount notionalRaw(int64_t priceRaw, int64_t qtyRaw, int64_t priceScale, 
     return prod * mul / priceScale;
   }
   return prod / (static_cast<Amount>(priceScale) * (qtyScale / kMoneyScale));
+}
+
+// A rate applied to a notional, both already fixed point: notional * rateRaw /
+// rateScale, truncated toward zero exactly the way notionalRaw truncates.
+//
+// The venue has two money rates -- the fee schedule's and funding's -- and
+// both used to be spent as doubles, which stops being arithmetic at all once
+// the notional passes 2^53 raw (about 9e7 quote units, an ordinary block).
+// This is the one place the multiply happens, so the two rates cannot drift
+// apart, and it is the engine's own mulDivI64: one widening multiply, one
+// divide, the same answer on the native and the portable 128-bit path.
+//
+// A notional wider than an int64 raw -- 9.2e10 quote units in a single print,
+// which the Amount type permits and no venue has ever seen -- has no
+// mulDivI64 to run on and takes the 128-bit arithmetic directly rather than
+// being clamped into a wrong answer on the way in.
+inline Amount rateOnNotional(Amount notional, int64_t rateRaw, int64_t rateScale)
+{
+  constexpr Amount kI64Max = static_cast<Amount>((std::numeric_limits<int64_t>::max)());
+  constexpr Amount kI64Min = static_cast<Amount>((std::numeric_limits<int64_t>::min)());
+  if (notional <= kI64Max && notional >= kI64Min)
+  {
+    return static_cast<Amount>(mulDivI64(static_cast<int64_t>(notional), rateRaw, rateScale));
+  }
+  return notional * rateRaw / rateScale;
 }
 
 class Ledger

@@ -105,9 +105,9 @@ void HyperliquidExchangeConnector::start()
       });
 
   _wsClient->onClose(
-      [this](uint16_t code, std::string_view reason)
+      [this](int code, std::string_view reason)
       {
-        FLOX_LOG("[Hyperliquid] WS close code=" << code << " reason=\"" << reason << '"');
+        handleDisconnect(code, reason);
       });
 
   _wsClient->onMessage(
@@ -115,6 +115,15 @@ void HyperliquidExchangeConnector::start()
       {
         handleMessage(payload);
       });
+
+  // Baseline for the staleness check: without it a feed that never delivers a
+  // single frame has no stamp to age out from, which is the loudest failure
+  // of the two this check exists for.
+  const MonoNanos startedAt = nowMonoNanos();
+  for (const auto& coin : _config.symbols)
+  {
+    markFeedActivity(resolveSymbolId(coin), startedAt);
+  }
 
   _wsClient->start();
 
@@ -124,6 +133,22 @@ void HyperliquidExchangeConnector::start()
                            {
                              pingLoop();
                            });
+}
+
+void HyperliquidExchangeConnector::handleDisconnect(int code, std::string_view reason)
+{
+  const std::string detail = "code=" + std::to_string(code) + ", reason=" + std::string(reason);
+  FLOX_LOG("[Hyperliquid] WS closed: " << detail);
+  if (_logger)
+  {
+    _logger->info("[Hyperliquid] WS closed: " + detail);
+  }
+  emitDisconnect(detail);
+}
+
+void HyperliquidExchangeConnector::pollFeedHealth(MonoNanos now)
+{
+  checkStaleFeeds(now, _config.staleDataTimeoutMs);
 }
 
 void HyperliquidExchangeConnector::pingLoop()
@@ -190,6 +215,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
   const uint64_t recvNs = nowNsMonotonic();
 
   static thread_local simdjson::dom::parser parser;
+  const MonoNanos arrivedAt = nowMonoNanos();
 
   try
   {
@@ -234,6 +260,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
       }
 
       SymbolId sid = resolveSymbolId(coinEl.get_string().value());
+      markFeedActivity(sid, arrivedAt);
 
       ev->update.symbol = sid;
       ev->recvNs = MonoNanos::fromRaw(recvNs);
@@ -328,6 +355,7 @@ void HyperliquidExchangeConnector::handleMessage(std::string_view payload)
         }
 
         SymbolId sid = resolveSymbolId(coinEl.get_string().value());
+        markFeedActivity(sid, arrivedAt);
 
         TradeEvent ev;
         ev.recvNs = MonoNanos::fromRaw(recvNs);

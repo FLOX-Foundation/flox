@@ -11,6 +11,7 @@
 
 #include <cstring>
 
+#include "bindings_common.h"
 #include "flox/capi/flox_capi.h"
 
 namespace node_flox
@@ -85,7 +86,7 @@ class LiveQueuePositionEstimatorWrap
         static_cast<uint64_t>(info[3].As<Napi::Number>().Int64Value());
     double order_qty = info[4].As<Napi::Number>().DoubleValue();
     double level_qty = info[5].As<Napi::Number>().DoubleValue();
-    int64_t ts_ns = info.Length() > 6 ? info[6].As<Napi::Number>().Int64Value() : 0;
+    int64_t ts_ns = info.Length() > 6 ? toInt64Ns(info[6]) : 0;
     flox_live_queue_position_on_order_placed(
         _h, symbol, side, flox_price_from_double(price), order_id,
         flox_quantity_from_double(order_qty), flox_quantity_from_double(level_qty),
@@ -96,7 +97,7 @@ class LiveQueuePositionEstimatorWrap
   {
     uint64_t order_id =
         static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
-    int64_t ts_ns = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
+    int64_t ts_ns = info.Length() > 1 ? toInt64Ns(info[1]) : 0;
     flox_live_queue_position_on_order_cancelled(_h, order_id, ts_ns);
   }
 
@@ -105,7 +106,7 @@ class LiveQueuePositionEstimatorWrap
     uint64_t order_id =
         static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
     double cum = info[1].As<Napi::Number>().DoubleValue();
-    int64_t ts_ns = info.Length() > 2 ? info[2].As<Napi::Number>().Int64Value() : 0;
+    int64_t ts_ns = info.Length() > 2 ? toInt64Ns(info[2]) : 0;
     flox_live_queue_position_on_order_filled(_h, order_id,
                                              flox_quantity_from_double(cum), ts_ns);
   }
@@ -115,7 +116,7 @@ class LiveQueuePositionEstimatorWrap
     uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
     double price = info[1].As<Napi::Number>().DoubleValue();
     double qty = info[2].As<Napi::Number>().DoubleValue();
-    int64_t ts_ns = info.Length() > 3 ? info[3].As<Napi::Number>().Int64Value() : 0;
+    int64_t ts_ns = info.Length() > 3 ? toInt64Ns(info[3]) : 0;
     flox_live_queue_position_on_trade(_h, symbol, flox_price_from_double(price),
                                       flox_quantity_from_double(qty), ts_ns);
   }
@@ -125,7 +126,7 @@ class LiveQueuePositionEstimatorWrap
     uint32_t symbol = info[0].As<Napi::Number>().Uint32Value();
     double price = info[1].As<Napi::Number>().DoubleValue();
     double qty = info[2].As<Napi::Number>().DoubleValue();
-    int64_t ts_ns = info[3].As<Napi::Number>().Int64Value();
+    int64_t ts_ns = toInt64Ns(info[3]);
     bool is_hidden = info[4].As<Napi::Boolean>().Value();
     flox_live_queue_position_on_trade_with_flag(
         _h, symbol, flox_price_from_double(price), flox_quantity_from_double(qty),
@@ -153,7 +154,7 @@ class LiveQueuePositionEstimatorWrap
     uint8_t side = static_cast<uint8_t>(info[1].As<Napi::Number>().Uint32Value());
     double price = info[2].As<Napi::Number>().DoubleValue();
     double new_qty = info[3].As<Napi::Number>().DoubleValue();
-    int64_t ts_ns = info.Length() > 4 ? info[4].As<Napi::Number>().Int64Value() : 0;
+    int64_t ts_ns = info.Length() > 4 ? toInt64Ns(info[4]) : 0;
     flox_live_queue_position_on_level_update(_h, symbol, side,
                                              flox_price_from_double(price),
                                              flox_quantity_from_double(new_qty), ts_ns);
@@ -164,7 +165,7 @@ class LiveQueuePositionEstimatorWrap
     auto env = info.Env();
     uint64_t order_id =
         static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
-    int64_t now_ns = info.Length() > 1 ? info[1].As<Napi::Number>().Int64Value() : 0;
+    int64_t now_ns = info.Length() > 1 ? toInt64Ns(info[1]) : 0;
     int64_t slots[6] = {0};
     uint8_t ok = flox_live_queue_position_snapshot(_h, order_id, now_ns, slots);
     if (!ok)
@@ -178,8 +179,10 @@ class LiveQueuePositionEstimatorWrap
     out.Set("queueAheadEst",
             Napi::Number::New(env, flox_quantity_to_double(slots[1])));
     out.Set("total", Napi::Number::New(env, flox_quantity_to_double(slots[2])));
-    out.Set("lastUpdateNs",
-            Napi::Number::New(env, static_cast<double>(slots[3])));
+    // The reading the estimator was handed, given back at full width: a
+    // Number steps 256 ns at present-day magnitudes, in a class whose whole
+    // job is to age an estimate by a confidence half-life.
+    out.Set("lastUpdateNs", Napi::BigInt::New(env, slots[3]));
     out.Set("confidence", Napi::Number::New(env, conf));
     out.Set("hiddenVolumeSeen",
             Napi::Number::New(env, flox_quantity_to_double(slots[5])));

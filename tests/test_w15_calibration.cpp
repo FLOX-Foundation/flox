@@ -111,6 +111,12 @@ TEST(W15Calibration, EightHourFundingSettlementMatchesAnalytical)
   const double position = 0.5;  // long
   const double mark = 50'000.0;
 
+  // Seed the schedule at the start of the window. The first tick of a
+  // schedule establishes its cursor and settles at most the boundary that
+  // just passed, so that the opening tick of a run stamped with real
+  // exchange timestamps does not settle every boundary since 1970.
+  funding.tick(0, {sym}, {position}, {mark});
+
   // Drive 24 hours → exactly 3 settlements expected.
   const int64_t one_day_ns = 24LL * 3600LL * 1'000'000'000LL;
   const auto payments = funding.tick(one_day_ns, {sym}, {position}, {mark});

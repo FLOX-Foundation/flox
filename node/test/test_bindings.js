@@ -8,6 +8,7 @@
 
 const path = require('path');
 const fs   = require('fs');
+const os   = require('os');
 const flox = require(path.join(__dirname, '..'));
 
 let passed = 0;
@@ -280,6 +281,30 @@ if (fs.existsSync(csvPath)) {
   console.log(`  loaded ${n} bars, price ${Math.min(...closes).toFixed(0)}–${Math.max(...closes).toFixed(0)}`);
 } else {
   console.log(`  skip Engine (CSV not found: ${csvPath})`);
+}
+
+{
+  // Engine.ts() returns a BigInt64Array. parseCsv reads the column from
+  // text into an int64, so this reading is exact in the store; handing it
+  // back through a Float64Array rounded it to 1765615835519000064.
+  const NS = 1765615835519000000n;
+  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'flox-engine-ts-')), 'ns.csv');
+  fs.writeFileSync(tmp, `ts,open,high,low,close,volume\n${NS},100,101,99,100.5,10\n`);
+  const engine = new flox.Engine();
+  engine.loadCsv(tmp, 'NS');
+  const ts = engine.ts('NS');
+  check(ts instanceof BigInt64Array, `Engine.ts() is a BigInt64Array (got ${ts.constructor.name})`);
+  check(ts[0] === NS, `a reading past 2^53 survives Engine.ts() (got ${ts[0]}, want ${NS})`);
+
+  // The read side is the write side's argument: SignalBuilder has to take
+  // what Engine.ts() hands out.
+  const sigs = new flox.SignalBuilder();
+  let sigErr = null;
+  try { sigs.buy(ts[0], 1.0, 'NS'); } catch (e) { sigErr = e; }
+  check(sigErr === null,
+        `SignalBuilder.buy takes an Engine.ts() element` + (sigErr ? ` (threw ${sigErr.message})` : ''));
+
+  fs.rmSync(path.dirname(tmp), { recursive: true, force: true });
 }
 
 // ── BacktestRunner accessors ──────────────────────────────────────────

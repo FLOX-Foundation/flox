@@ -124,10 +124,12 @@ Once `set_venue_stack` is called, `run_csv` / `run_bars` /
 `run_tape(s)` feed the stack's own executor instead of the
 built-in one, so fills come from the venue's fill mechanics — queue
 model and depth, iceberg refresh latency, venue availability, and
-rate limits — rather than an instant-fill assumption. Fees still
-come from `BacktestConfig` (a `Fill` carries no maker/taker flag),
-and funding and liquidation stay driven by explicit calls to `liq`
-and `funding`, not by the replay loop. Pass `None` to revert to the
+rate limits — rather than an instant-fill assumption. Fees come from
+the stack's `FeeSchedule` as well: each fill is billed at the tier
+the account's 30-day notional resolves to, with the fill's
+maker/taker flag picking the side, instead of the flat `fee_rate`.
+Funding and liquidation stay driven by explicit calls to `liq` and
+`funding`, not by the replay loop. Pass `None` to revert to the
 built-in executor.
 
 `BacktestRunner.set_executor(...)` refuses a bare venue executor

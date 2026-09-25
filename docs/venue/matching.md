@@ -87,6 +87,26 @@ LadderBook book(LadderBook::Config{
   firm size is zero stops the sweep, so the aggressor residual follows its
   TIF instead of a fabricated fill.
 
+The rule is **instrument configuration**: `SymbolConfig::matchPolicy` carries
+it, and `SequencedShard`, `SymbolRouter` and the offline `replayWindow` all
+build their engine with it. That is what makes a pro-rata instrument
+deployable rather than test-only -- the config is the only way into a journal,
+a checkpoint, a gateway or a window query. `MatchingEngine`'s constructor
+argument still wins for a caller that names it, so the hand-built engines in
+the test tree are unchanged.
+
+```cpp
+SymbolConfig cfg;
+cfg.id = 1;
+cfg.matchPolicy = MatchPolicy::ProRata;   // the shard, the router and replay all read this
+SequencedShard<> shard(cfg, "/var/lib/flox/sym1.journal");
+```
+
+`configHash()` folds the policy, so the two rules do not share snapshots: a
+generation written by a pro-rata engine is refused by a price-time one instead
+of re-queueing every resting order under an allocation it was never priced
+for.
+
 ```cpp
 Matcher<MatchingBook> m(MatchPolicy::ProRata);
 m.setStpGroup(/*account*/ 10, /*firm*/ 1);   // firm-scope self-trade prevention
@@ -152,7 +172,9 @@ a cherry-picking maker would otherwise keep. Inside the band the maker's answer
 still stands: the tolerance caps the option rather than abolishing last look.
 `0` disables the check.
 
-`MatchingEngine::lastLookStats()` reports per maker how many holds it saw, how
+`MatchingEngine::lastLookStats()` returns a snapshot by value -- it is one of
+the three accessors a /metrics thread may call while the consumer is matching
+(see the thread rule in `docs/venue/perimeter.md`). It reports per maker how many holds it saw, how
 many it refused, and — the number that matters — the split by which way the
 price had moved. A maker applying a symmetric rule refuses about as often when
 the move favoured it as when it did not. One taking the free option refuses
@@ -177,8 +199,9 @@ the margin requirement are changed with the sequenced `SetRiskLimits` command
 carries, so raising one cannot zero another by omission.
 
 One account's own caps are set with the sequenced `SetAccountRiskLimits`
-command: the fat-finger size and notional, the open-order cap and the position
-cap, under a field mask like `SetRiskLimits`'. Where both the symbol's and the
+command (control-plane verb `setAccountRiskLimits`): the fat-finger size and
+notional, the open-order cap and the position cap, under a field mask like
+`SetRiskLimits`'. Where both the symbol's and the
 account's limit are set, the tighter one binds. The record is journaled before
 it is applied and written into the snapshot's config section, so a replay and
 a recovered engine refuse exactly the orders the live one refused -- a limit
@@ -244,7 +267,16 @@ venue.submit(InboundCommand{a}, tsNs);
 
 It is a command, not a setter, for the same reason as everything else here: a
 correction applied directly to the engine reverts on restart and a replica
-replaying the journal never sees it.
+replaying the journal never sees it. The operator sends it through the
+control-plane verb `adjustPosition`, which forwards exactly this record:
+
+```json
+{"method":"adjustPosition","symbol":1,"account":1,"qtyDelta":-2.0,
+ "entry":98.25,"reason":"counterpartyReport","note":"LP fill 88213"}
+```
+
+`reason` is required -- the record is the only explanation a correction has --
+and `entry` omitted keeps the average entry rather than zeroing it.
 
 **It is deliberately not a trade.** No PnL is realized, no fee is charged, the
 ledger is not touched and posted margin is left alone. The discrepancy being
@@ -389,7 +421,15 @@ profile does not allow.
 - **Iceberg.** `visibleQuantity` shows a peak and hides the rest; the hidden
   reserve is real liquidity for matching and stays out of the public feed.
 - **Peg.** `PegRef::{Bid,Ask,Mid}` plus a signed offset; repriced at each
-  submit boundary, tick-aligned, clamped so it never crosses.
+  submit boundary, tick-aligned, clamped so it never crosses. The clamp steps
+  back by one tick, so an instrument that declares **no tick**
+  (`tickSize == 0`) cannot carry a peg at all: it is refused at admission with
+  `PegRequiresTick`. Taking it instead would put the order ON the opposite
+  touch -- the clamp's distance being zero -- and a reprice re-rests through
+  `addResting`, which runs no matching pass, so the instrument would quote
+  bid == ask and nobody could trade out of it. The reason is its own rather
+  than `TickSizeViolation`: no price the client could send would help, because
+  what is missing belongs to the instrument.
 - **OCO.** `ocoGroup`; a fill on one leg cancels its siblings. A leg that
   leaves the venue by any other door -- refused at admission, refused by the
   matcher, canceled as an unfilled residual, expired, pulled -- leaves the
