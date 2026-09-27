@@ -33,6 +33,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -404,10 +405,15 @@ TEST(LogCost, SwappingTheSinkUnderAConcurrentLoggerIsWellDefined)
 
   // Keep swapping until the reader has actually been through the loop, so
   // the two sides overlap rather than the writer finishing before the thread
-  // has started. The second bound stops a reader that never runs from
-  // hanging the suite.
+  // has started. The bound that stops a reader that never runs from hanging
+  // the suite is a time budget, not a swap count: on a busy two-core runner
+  // two million swaps finish in a few milliseconds, before the thread is
+  // scheduled for the first time, and the test then reports a reader that
+  // was never given the chance to run.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
   int swaps = 0;
-  while ((swaps < 2000 || turns.load(std::memory_order_relaxed) < 500) && swaps < 2'000'000)
+  while ((swaps < 2000 || turns.load(std::memory_order_relaxed) < 500) &&
+         std::chrono::steady_clock::now() < deadline)
   {
     setGlobalLogger(swaps % 2 == 0 ? &everything : &errorsOnly);
     ++swaps;
