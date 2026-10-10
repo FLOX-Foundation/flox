@@ -371,11 +371,13 @@ class MdDistributionServer
         subs_.erase(symbol);
         scratch_.clear();
         enc_->reject(symbol, MdRejectReason::UnknownSymbol, scratch_);
-        enqueueLocked(scratch_);
+        // Counted before the frame leaves: a client that has read the reject
+        // must already see it in the counters, as with snapshots and resends.
         if (server_.counters_ != nullptr)
         {
           server_.counters_->subscribeRejects.fetch_add(1, std::memory_order_relaxed);
         }
+        enqueueLocked(scratch_);
         return;
       }
 
